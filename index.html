@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fidevia | Construction Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F7F6EF;
+    --white:#FFFFFF;
+    --olive-900:#3F4322;
+    --olive-700:#5C6130;
+    --olive-600:#6B6F39;
+    --olive-500:#7C8049;
+    --khaki-300:#B9B98A;
+    --khaki-200:#D9D8BD;
+    --khaki-100:#ECEBDB;
+    --ink:#33361C;
+    --muted:#74775A;
+    --danger:#A8392E;
+    --danger-bg:#F4DEDA;
+    --success-bg:#E4E7CF;
+    --warn-bg:#EFE9C9;
+    --border:#DCDACA;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:'Inter',sans-serif; background:var(--cream); color:var(--ink);}
+
+  /* ── SCREENS ── */
+  .screen{display:none;}
+  .screen.active{display:flex;}
+
+  /* ── LOGIN ── */
+  #screen-login{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; background:var(--olive-900); padding:40px 24px;}
+  .login-card{background:var(--white); border-radius:12px; padding:48px 44px; width:100%; max-width:420px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.25);}
+  .login-logo{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:48px; color:var(--olive-900);}
+  .login-tagline{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-top:4px; margin-bottom:36px;}
+  .login-divider{border:none; border-top:1px solid var(--border); margin:28px 0;}
+  .login-desc{font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.6;}
+  .btn-box-login{display:flex; align-items:center; justify-content:center; gap:10px; background:#0061D5; color:#fff; border:none; border-radius:8px; padding:14px 24px; font-size:14px; font-weight:600; cursor:pointer; width:100%; font-family:'Inter',sans-serif; transition:background 0.15s;}
+  .btn-box-login:hover{background:#0052b4;}
+  .login-footer{margin-top:20px; font-size:11px; color:var(--muted);}
+
+  /* ── PICKER ── */
+  #screen-picker{min-height:100vh; flex-direction:column; align-items:center; padding:56px 24px;}
+  .picker-topbar{width:100%; max-width:800px; display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;}
+  .picker-logo{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:36px; color:var(--olive-900);}
+  .picker-user{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:10px;}
+  .btn-logout{background:none; border:1px solid var(--border); border-radius:5px; padding:5px 12px; font-size:12px; color:var(--muted); cursor:pointer; font-family:'Inter',sans-serif;}
+  .btn-logout:hover{background:var(--khaki-100);}
+  .picker-heading{font-size:22px; font-weight:700; color:var(--olive-900); margin-bottom:6px; text-align:center;}
+  .picker-sub{font-size:13px; color:var(--muted); margin-bottom:32px; text-align:center;}
+  .project-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px; width:100%; max-width:800px;}
+  .project-card{background:var(--white); border:1px solid var(--border); border-top:5px solid var(--olive-700); border-radius:8px; padding:22px; cursor:pointer; transition:box-shadow 0.15s,transform 0.15s;}
+  .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
+  .project-card .pname{font-size:15px; font-weight:700; color:var(--olive-900); margin-bottom:4px;}
+  .project-card .psub{font-size:12px; color:var(--muted); margin-bottom:16px;}
+  .project-card .popen{display:inline-block; background:var(--olive-700); color:#fff; font-size:11px; font-weight:600; padding:6px 14px; border-radius:4px;}
+  .add-project-card{background:var(--white); border:2px dashed var(--border); border-radius:8px; padding:22px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:13px; font-weight:600; gap:8px; min-height:130px; transition:background 0.15s,border-color 0.15s;}
+  .add-project-card:hover{background:var(--khaki-100); border-color:var(--khaki-300);}
+  .loading-state{color:var(--muted); font-size:14px; text-align:center; padding:40px;}
+
+  /* ── NEW PROJECT ── */
+  #screen-new-project{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; padding:40px 24px;}
+  .form-card{background:var(--white); border:1px solid var(--border); border-radius:10px; padding:36px 40px; width:100%; max-width:480px;}
+  .form-card h2{font-size:18px; font-weight:700; color:var(--olive-900); margin-bottom:6px;}
+  .form-card .form-desc{font-size:13px; color:var(--muted); margin-bottom:28px;}
+  .field{margin-bottom:18px;}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--olive-900); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.4px;}
+  .field input,.field select,.field textarea{width:100%; border:1px solid var(--border); border-radius:6px; padding:10px 12px; font-size:13px; font-family:'Inter',sans-serif; color:var(--ink); background:var(--white); outline:none; transition:border-color 0.15s;}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--olive-500);}
+  .field textarea{resize:vertical; min-height:80px;}
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .btn-primary{background:var(--olive-700); color:#fff; border:none; border-radius:6px; padding:11px 20px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; transition:background 0.15s;}
+  .btn-primary:hover{background:var(--olive-900);}
+  .btn-primary:disabled{opacity:0.5; cursor:not-allowed;}
+  .btn-secondary{background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:10px 18px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;}
+  .btn-secondary:hover{background:var(--khaki-100);}
+  .form-actions{display:flex; gap:10px; margin-top:8px;}
+  .status-msg{font-size:12px; margin-top:12px; padding:10px 14px; border-radius:5px; display:none;}
+  .status-msg.success{background:var(--success-bg); color:var(--olive-700); display:block;}
+  .status-msg.error{background:var(--danger-bg); color:var(--danger); display:block;}
+  .status-msg.info{background:var(--warn-bg); color:#6B5A0E; display:block;}
+
+  /* ── DASHBOARD (original design) ── */
+  #screen-dashboard{min-height:100vh;}
+  .app{display:flex; min-height:100vh;}
+  .sidebar{width:230px; background:var(--olive-900); color:var(--khaki-200); padding:24px 0; flex-shrink:0; display:flex; flex-direction:column;}
+  .logo-block{text-align:center; padding:0 16px 20px; border-bottom:1px solid rgba(255,255,255,0.15); margin-bottom:16px;}
+  .logo-script{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:30px; color:var(--khaki-200); letter-spacing:0.5px;}
+  .logo-sub{font-size:9px; letter-spacing:1.5px; color:var(--khaki-300); margin-top:4px; text-transform:uppercase;}
+  .nav-item{display:flex; align-items:center; gap:10px; padding:11px 24px; font-size:13px; font-weight:500; color:var(--khaki-200); cursor:pointer; border-left:3px solid transparent;}
+  .nav-item:hover{background:rgba(255,255,255,0.06);}
+  .nav-item.active{background:rgba(255,255,255,0.1); border-left:3px solid var(--khaki-300); color:#fff;}
+  .nav-section-label{font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--olive-500); padding:16px 24px 6px;}
+  .sidebar-footer{margin-top:auto; padding:16px 20px 0;}
+  .btn-switch-project{display:block; width:100%; text-align:center; background:rgba(255,255,255,0.08); color:var(--khaki-200); border:1px solid rgba(255,255,255,0.2); border-radius:5px; padding:8px 10px; font-size:11px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif;}
+  .btn-switch-project:hover{background:rgba(255,255,255,0.15);}
+  .main{flex:1; display:flex; flex-direction:column;}
+  .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:16px 32px; display:flex; align-items:center; justify-content:space-between;}
+  .topbar h1{font-size:20px; margin:0; color:var(--olive-900); font-weight:600;}
+  .topbar .project-name{font-size:13px; color:var(--muted); margin-top:2px;}
+  .viewer-toggle{display:flex; align-items:center; gap:10px; background:var(--khaki-100); padding:6px 8px; border-radius:6px;}
+  .viewer-toggle button{border:none; background:transparent; padding:7px 14px; font-size:12px; font-weight:600; border-radius:5px; cursor:pointer; color:var(--muted); letter-spacing:0.3px; font-family:'Inter',sans-serif;}
+  .viewer-toggle button.active{background:var(--olive-700); color:#fff;}
+  .content{padding:28px 32px; flex:1; overflow-y:auto;}
+  .section{display:none;}
+  .section.active{display:block;}
+  .external-banner{background:var(--warn-bg); border:1px solid var(--khaki-300); color:var(--olive-900); font-size:13px; padding:10px 16px; border-radius:6px; margin-bottom:20px; display:none;}
+  body.external-mode .external-banner{display:block;}
+  .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;}
+  .stat-card{background:var(--white); border:1px solid var(--border); border-top:4px solid var(--olive-700); border-radius:6px; padding:16px 18px;}
+  .stat-card .label{font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); font-weight:600;}
+  .stat-card .value{font-size:28px; font-weight:700; color:var(--olive-900); margin-top:6px;}
+  .stat-card.alert{border-top-color:var(--danger);}
+  .stat-card.alert .value{color:var(--danger);}
+  .stat-card.neg .value{color:var(--danger);}
+  .stat-card.pos .value{color:var(--olive-700);}
+  .panel{background:var(--white); border:1px solid var(--border); border-radius:6px; margin-bottom:24px; overflow:hidden;}
+  .panel-header{background:var(--olive-600); color:#fff; padding:10px 18px; font-size:13px; font-weight:600; letter-spacing:0.4px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center;}
+  .panel-header .src{font-size:10px; text-transform:none; font-weight:600; color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); padding:3px 8px; border-radius:4px;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{background:var(--khaki-100); color:var(--olive-900); text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--border);}
+  td{padding:11px 14px; border-bottom:1px solid var(--border); color:var(--ink); vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--cream);}
+  .pill{display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; white-space:nowrap;}
+  .pill.open{background:var(--warn-bg); color:#6B5A0E;}
+  .pill.overdue{background:var(--danger-bg); color:var(--danger);}
+  .pill.closed,.pill.approved{background:var(--success-bg); color:var(--olive-700);}
+  .pill.review{background:var(--khaki-100); color:var(--olive-700);}
+  .pill.pending{background:var(--warn-bg); color:#6B5A0E;}
+  .pill.rejected{background:var(--danger-bg); color:var(--danger);}
+  h2.page-title{font-size:18px; color:var(--olive-900); margin:0 0 18px; font-weight:600;}
+  .page-title-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
+  .page-title-row h2{font-size:18px; color:var(--olive-900); font-weight:600; margin:0;}
+  .btn-add{background:var(--olive-700); color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; letter-spacing:0.2px;}
+  .btn-add:hover{background:var(--olive-900);}
+  .daily-log-list{list-style:none; margin:0; padding:0;}
+  .daily-log-list li{display:flex; justify-content:space-between; align-items:center; padding:13px 18px; border-bottom:1px solid var(--border); font-size:13px; gap:12px;}
+  .daily-log-list li:last-child{border-bottom:none;}
+  .daily-log-list .date{font-weight:600; color:var(--olive-900); min-width:90px;}
+  .daily-log-list .desc{flex:1; color:var(--ink);}
+  .daily-log-list a{color:var(--olive-700); text-decoration:none; font-weight:600; border:1px solid var(--olive-700); padding:4px 10px; border-radius:4px; font-size:12px; white-space:nowrap;}
+  .daily-log-list a:hover{background:var(--olive-700); color:#fff;}
+  .daily-log-list .no-link{color:var(--muted); font-size:12px; font-style:italic; white-space:nowrap;}
+  .attach-link{color:var(--olive-700); text-decoration:none; font-weight:600; border:1px solid var(--olive-700); padding:3px 8px; border-radius:4px; font-size:12px; white-space:nowrap;}
+  .attach-link:hover{background:var(--olive-700); color:#fff;}
+  .note{color:var(--muted); font-size:12px; padding:14px 18px; border-top:1px solid var(--border); background:var(--cream);}
+  .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
+  .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
+  .hide-external{display:table-row;}
+  body.external-mode .hide-external{display:none;}
+  body.external-mode .nav-budget,
+  body.external-mode .nav-contacts,
+  body.external-mode .nav-dailylogs{display:none;}
+
+  /* ── MODAL ── */
+  .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;}
+  .modal-backdrop.open{display:flex;}
+  .modal{background:var(--white); border-radius:10px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25);}
+  .modal-header{background:var(--olive-900); color:#fff; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; position:sticky; top:0; z-index:1;}
+  .modal-header h3{font-size:15px; font-weight:600;}
+  .modal-close{background:none; border:none; color:rgba(255,255,255,0.7); font-size:20px; cursor:pointer; padding:0 4px; line-height:1;}
+  .modal-close:hover{color:#fff;}
+  .modal-body{padding:24px;}
+  .modal-body .field{margin-bottom:16px;}
+  .file-hint{font-size:11px; color:var(--muted); margin-top:4px;}
+  .modal-footer{padding:0 24px 24px; display:flex; gap:10px; align-items:center;}
+  .upload-progress{font-size:12px; color:var(--muted); display:none;}
+  input[type="file"]{width:100%; padding:8px 12px; border:1px dashed var(--border); border-radius:6px; font-size:12px; color:var(--muted); cursor:pointer; background:var(--cream); font-family:'Inter',sans-serif;}
+  input[type="file"]:hover{border-color:var(--olive-500);}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="screen-login" class="screen active">
+  <div class="login-card">
+    <div class="login-logo">Fidevia</div>
+    <div class="login-tagline">Construction Management &amp; Consulting</div>
+    <hr class="login-divider">
+    <p class="login-desc">Sign in with your Box account to access the project dashboard. Your files stay securely in Box.</p>
+    <button class="btn-box-login" onclick="initiateLogin()">
+      <svg width="18" height="18" viewBox="0 0 40 40"><rect width="40" height="40" rx="6" fill="#0061D5"/><text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-size="24" font-weight="bold" fill="white">B</text></svg>
+      Continue with Box
+    </button>
+    <p class="login-footer">Fidevia does not store your Box credentials.</p>
+  </div>
+</div>
+
+<!-- ══ PICKER ══ -->
+<div id="screen-picker" class="screen">
+  <div class="picker-topbar">
+    <div class="picker-logo">Fidevia</div>
+    <div class="picker-user">
+      <span id="user-name-display"></span>
+      <button class="btn-logout" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+  <h2 class="picker-heading">Select a project</h2>
+  <p class="picker-sub">Projects load from your Box account. Select one to open its dashboard.</p>
+  <div class="project-grid" id="project-grid">
+    <div class="loading-state">Loading projects from Box…</div>
+  </div>
+</div>
+
+<!-- ══ NEW PROJECT ══ -->
+<div id="screen-new-project" class="screen">
+  <div class="form-card">
+    <h2>Create new project</h2>
+    <p class="form-desc">Creates a project folder in Box with all required subfolders (RFIs, Change Orders, Submittals, Daily Logs, Contacts, Budget, Documents).</p>
+    <div class="field"><label>Project Name *</label><input type="text" id="new-proj-name" placeholder="e.g. Hempfield High School Renovation"></div>
+    <div class="field"><label>Client / Owner</label><input type="text" id="new-proj-client" placeholder="e.g. Hempfield School District"></div>
+    <div class="field"><label>Description (optional)</label><textarea id="new-proj-desc" placeholder="Scope, location, key details…"></textarea></div>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="createProject()" id="btn-create-proj">Create Project</button>
+      <button class="btn-secondary" onclick="showScreen('screen-picker')">Cancel</button>
+    </div>
+    <div class="status-msg" id="new-proj-status"></div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<div id="screen-dashboard" class="screen">
+<div class="app">
+
+  <div class="sidebar">
+    <div class="logo-block">
+      <div class="logo-script">Fidevia</div>
+      <div class="logo-sub">Construction Dashboard</div>
+    </div>
+    <div class="nav-section-label">Overview</div>
+    <div class="nav-item active" data-section="overview">Dashboard</div>
+    <div class="nav-section-label">Activity</div>
+    <div class="nav-item" data-section="rfis">RFIs</div>
+    <div class="nav-item" data-section="cos">Change Orders</div>
+    <div class="nav-item" data-section="submittals">Submittals</div>
+    <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Logs</div>
+    <div class="nav-section-label">Records</div>
+    <div class="nav-item nav-contacts" data-section="contacts">Contacts Directory</div>
+    <div class="nav-item nav-budget" data-section="budget">Budget</div>
+    <div class="nav-item" data-section="documents">Documents</div>
+    <div class="sidebar-footer">
+      <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="topbar-title">Project</h1>
+        <div class="project-name" id="topbar-sub"></div>
+      </div>
+      <div class="viewer-toggle">
+        <button class="active" id="btn-internal" onclick="setViewer('internal')">Internal Viewer</button>
+        <button id="btn-external" onclick="setViewer('external')">External Viewer (Prime)</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="external-banner">Viewing as: <strong>Prime Contractor</strong> &mdash; Budget, daily logs, and contact management are hidden in this view.</div>
+
+      <!-- OVERVIEW -->
+      <div class="section active" id="section-overview">
+        <h2 class="page-title">Project overview</h2>
+        <div class="stat-grid">
+          <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">—</div></div>
+          <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">—</div></div>
+          <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">—</div></div>
+          <div class="stat-card hide-external" id="stat-variance"><div class="label">Budget Variance</div><div class="value">—</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Needs your review</div>
+          <table><thead><tr><th>Type</th><th>Item</th><th>Submitted By</th><th>Due</th><th>Status</th></tr></thead>
+          <tbody id="tbody-review"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- RFIs -->
+      <div class="section" id="section-rfis">
+        <div class="page-title-row">
+          <h2>RFI log</h2>
+          <button class="btn-add" onclick="openModal('rfi')">+ New RFI</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span>All RFIs</span><span class="src">Box · 01 - RFIs</span></div>
+          <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th></tr></thead>
+          <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+          <div class="note" id="note-rfis"></div>
+        </div>
+      </div>
+
+      <!-- CHANGE ORDERS -->
+      <div class="section" id="section-cos">
+        <div class="page-title-row">
+          <h2>Change order log</h2>
+          <button class="btn-add" onclick="openModal('co')">+ New CO</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
+          <table><thead><tr><th>CO #</th><th>Description</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th></tr></thead>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- SUBMITTALS -->
+      <div class="section" id="section-submittals">
+        <div class="page-title-row">
+          <h2>Submittals log</h2>
+          <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Reviewer</th><th>Status</th><th>File</th></tr></thead>
+          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- DAILY LOGS -->
+      <div class="section" id="section-dailylogs">
+        <div class="page-title-row">
+          <h2>Daily logs</h2>
+          <button class="btn-add" onclick="openModal('daily')">+ Log Day</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Box-linked daily reports</div>
+          <ul class="daily-log-list" id="list-daily">
+            <li><span class="desc" style="color:var(--muted);font-style:italic;">Loading…</span></li>
+          </ul>
+          <div class="note">These rows link out to the actual daily report files stored in Box. The dashboard indexes by date; it does not store the reports themselves.</div>
+        </div>
+      </div>
+
+      <!-- CONTACTS -->
+      <div class="section" id="section-contacts">
+        <div class="page-title-row">
+          <h2>Job contacts directory</h2>
+          <button class="btn-add" onclick="openModal('contact')">+ Add Contact</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Project contacts &amp; notification routing</div>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th>Notify - RFI</th><th>Notify - CO</th><th>Notify - Submittal</th></tr></thead>
+          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- BUDGET -->
+      <div class="section" id="section-budget">
+        <div class="page-title-row">
+          <h2>Budget tracker</h2>
+          <button class="btn-add" onclick="openModal('budget')">+ Add Line Item</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Cost code summary</div>
+          <table><thead><tr><th>Cost Code</th><th>Description</th><th>Budget</th><th>Committed</th><th>Approved COs</th><th>Actual to Date</th><th>Variance</th></tr></thead>
+          <tbody id="tbody-budget"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- DOCUMENTS -->
+      <div class="section" id="section-documents">
+        <div class="page-title-row">
+          <h2>Document index</h2>
+          <button class="btn-add" onclick="openModal('document')">+ Upload Document</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Drawings, specs &amp; contracts</div>
+          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th></tr></thead>
+          <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeModalOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Submit</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <span class="upload-progress" id="upload-progress">Saving to Box…</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──
+const CLIENT_ID    = '85sfp3r7vwb2wk33lrftdo1ma6crwoyv';
+const REDIRECT_URI = 'https://chriscicala555.github.io/fidevia-dashboard/';
+const ROOT_NAME    = 'Construction Dashboard';
+
+// ── STATE ──
+let currentProject = null;
+let currentModal   = null;
+let allData        = {};
+
+// ── PKCE AUTH ──
+function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); }
+function genVerifier(){ const a=new Uint8Array(32); crypto.getRandomValues(a); return b64url(a.buffer); }
+async function genChallenge(v){ return b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))); }
+
+async function initiateLogin(){
+  const v = genVerifier();
+  sessionStorage.setItem('pkce_v', v);
+  const ch = await genChallenge(v);
+  const st = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer);
+  sessionStorage.setItem('pkce_s', st);
+  const p = new URLSearchParams({ client_id:CLIENT_ID, redirect_uri:REDIRECT_URI, response_type:'code', code_challenge:ch, code_challenge_method:'S256', state:st });
+  window.location.href = 'https://account.box.com/api/oauth2/authorize?' + p;
+}
+
+async function handleCallback(code){
+  const v = sessionStorage.getItem('pkce_v');
+  const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'authorization_code', client_id:CLIENT_ID, code, redirect_uri:REDIRECT_URI, code_verifier:v }) });
+  const d = await r.json();
+  if(!d.access_token){ alert('Login failed — please try again.'); showScreen('screen-login'); return; }
+  storeTokens(d);
+  window.history.replaceState({}, '', window.location.pathname);
+  await loadPicker();
+}
+
+function storeTokens(d){
+  sessionStorage.setItem('box_token', d.access_token);
+  sessionStorage.setItem('box_refresh', d.refresh_token||'');
+  sessionStorage.setItem('box_expiry', Date.now()+((d.expires_in||3600)-120)*1000);
+}
+
+async function ensureToken(){
+  if(Date.now() > parseInt(sessionStorage.getItem('box_expiry')||'0')){
+    const ref = sessionStorage.getItem('box_refresh');
+    if(!ref){ logout(); throw new Error('Session expired'); }
+    const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'refresh_token', client_id:CLIENT_ID, refresh_token:ref }) });
+    const d = await r.json();
+    if(!d.access_token){ logout(); throw new Error('Token refresh failed'); }
+    storeTokens(d);
+  }
+  return sessionStorage.getItem('box_token');
+}
+
+function logout(){ sessionStorage.clear(); currentProject=null; showScreen('screen-login'); }
+
+// ── BOX API ──
+async function boxGet(path){
+  const t = await ensureToken();
+  const r = await fetch('https://api.box.com/2.0/'+path, { headers:{Authorization:'Bearer '+t} });
+  if(r.status===401){ logout(); throw new Error('Unauthorized'); }
+  if(!r.ok) throw new Error('Box API '+r.status+': '+path);
+  return r.json();
+}
+
+async function boxGetText(fileId){
+  const t = await ensureToken();
+  const r = await fetch('https://api.box.com/2.0/files/'+fileId+'/content', { headers:{Authorization:'Bearer '+t} });
+  return r.ok ? r.text() : '';
+}
+
+async function boxCreateFolder(name, parentId){
+  const t = await ensureToken();
+  const r = await fetch('https://api.box.com/2.0/folders',{ method:'POST', headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'}, body:JSON.stringify({name,parent:{id:parentId}}) });
+  return (await r.json()).id;
+}
+
+async function boxUploadText(filename, content, parentId, existingId=null){
+  const t = await ensureToken();
+  const form = new FormData();
+  form.append('attributes', existingId ? JSON.stringify({name:filename}) : JSON.stringify({name:filename,parent:{id:parentId}}));
+  form.append('file', new Blob([content],{type:'text/plain'}), filename);
+  const url = existingId ? 'https://upload.box.com/api/2.0/files/'+existingId+'/content' : 'https://upload.box.com/api/2.0/files/content';
+  const r = await fetch(url,{ method:'POST', headers:{Authorization:'Bearer '+t}, body:form });
+  return r.json();
+}
+
+async function boxUploadBinary(file, parentId){
+  const t = await ensureToken();
+  const form = new FormData();
+  form.append('attributes', JSON.stringify({name:file.name,parent:{id:parentId}}));
+  form.append('file', file, file.name);
+  const r = await fetch('https://upload.box.com/api/2.0/files/content',{ method:'POST', headers:{Authorization:'Bearer '+t}, body:form });
+  return r.json();
+}
+
+async function boxList(folderId){
+  const d = await boxGet('folders/'+folderId+'/items?limit=200&fields=id,name,type');
+  return d.entries||[];
+}
+
+async function findOrCreateFolder(name, parentId){
+  const items = await boxList(parentId);
+  const f = items.find(i=>i.type==='folder'&&i.name===name);
+  return f ? f.id : boxCreateFolder(name, parentId);
+}
+
+async function findFile(folderId, filename){
+  const items = await boxList(folderId);
+  return items.find(i=>i.type==='file'&&i.name===filename)||null;
+}
+
+// ── CSV ──
+function parseCSV(text){
+  if(!text||!text.trim()) return {headers:[],rows:[]};
+  const lines = text.trim().split('\n').filter(l=>l.trim());
+  const parse = line=>{
+    const res=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+      else if(c===','&&!inQ){res.push(cur.trim());cur='';}
+      else cur+=c;
+    }
+    res.push(cur.trim()); return res;
+  };
+  const headers=parse(lines[0]);
+  const rows=lines.slice(1).map(l=>{ const v=parse(l),o={}; headers.forEach((h,i)=>o[h]=v[i]!==undefined?v[i]:''); return o; });
+  return {headers,rows};
+}
+
+function toCSV(headers, rows){
+  const e=v=>{ const s=String(v||''); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  return [headers.join(','),...rows.map(r=>headers.map(h=>e(r[h]||'')).join(','))].join('\n');
+}
+
+// ── MODULE DEFS ──
+const MODULES = {
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name']},
+  daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
+  contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
+  budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
+  docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name']}
+};
+
+// ── PICKER ──
+async function loadPicker(){
+  showScreen('screen-picker');
+  try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
+  const grid = document.getElementById('project-grid');
+  grid.innerHTML = '<div class="loading-state">Loading projects from Box…</div>';
+  try{
+    const rootItems = await boxList('0');
+    let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
+    const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
+    sessionStorage.setItem('root_id', rootId);
+    const projects = (await boxList(rootId)).filter(i=>i.type==='folder');
+    grid.innerHTML = '';
+    projects.forEach(p=>{
+      const card=document.createElement('div'); card.className='project-card';
+      card.innerHTML='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
+      card.onclick=()=>openProject(p.id,p.name);
+      grid.appendChild(card);
+    });
+    const add=document.createElement('div'); add.className='add-project-card';
+    add.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>New Project</span>';
+    add.onclick=()=>showScreen('screen-new-project');
+    grid.appendChild(add);
+  }catch(e){ grid.innerHTML='<div class="loading-state" style="color:var(--danger)">Failed to load: '+esc(e.message)+'</div>'; }
+}
+
+async function openProject(folderId, name){
+  document.getElementById('topbar-title').textContent = name;
+  document.getElementById('topbar-sub').textContent = 'Box &middot; '+ROOT_NAME;
+  showScreen('screen-dashboard');
+  const items = await boxList(folderId);
+  const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
+  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07') } };
+  navTo('overview'); setViewer('internal'); allData={};
+  loadDashboard();
+}
+
+async function createProject(){
+  const name = document.getElementById('new-proj-name').value.trim();
+  if(!name){ showStatus('new-proj-status','Project name is required.','error'); return; }
+  const btn = document.getElementById('btn-create-proj'); btn.disabled=true;
+  showStatus('new-proj-status','Creating folders in Box…','info');
+  try{
+    const rootId = sessionStorage.getItem('root_id') || await findOrCreateFolder(ROOT_NAME,'0');
+    const projId = await boxCreateFolder(name, rootId);
+    for(const key of Object.keys(MODULES)){
+      const fid = await boxCreateFolder(MODULES[key].folder, projId);
+      await boxUploadText(MODULES[key].log, MODULES[key].headers.join(',')+'\n', fid);
+    }
+    showStatus('new-proj-status','Project created!','success');
+    setTimeout(()=>{ btn.disabled=false; showScreen('screen-picker'); loadPicker(); }, 1200);
+  }catch(e){ btn.disabled=false; showStatus('new-proj-status','Error: '+e.message,'error'); }
+}
+
+// ── DASHBOARD ──
+async function loadDashboard(){
+  const keys=['rfi','co','sub','daily','contacts','budget','docs'];
+  await Promise.allSettled(keys.map(k=>loadModule(k)));
+  renderAll();
+}
+
+async function loadModule(key){
+  const fid=currentProject.folders[key];
+  if(!fid){allData[key]=[];return;}
+  const file=await findFile(fid,MODULES[key].log);
+  if(!file){allData[key]=[];return;}
+  allData[key]=(parseCSV(await boxGetText(file.id))).rows;
+}
+
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); }
+
+// ── HELPERS ──
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pill(status,overdue){
+  if(overdue) return '<span class="pill overdue">Overdue</span>';
+  const map={'open':'open','closed':'closed','approved':'approved','under review':'review','under-review':'review','pending review':'pending','pending-review':'pending','rejected':'rejected'};
+  const cls=map[(status||'').toLowerCase()]||'open';
+  return '<span class="pill '+cls+'">'+esc(status)+'</span>';
+}
+function isOverdue(r){ if((r['Status']||'').toLowerCase()!=='open') return false; const d=new Date(r['Due Date']); return !isNaN(d)&&d<new Date(); }
+function fmtMoney(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmtSigned(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); if(isNaN(n)) return s; return (n>=0?'+':'-')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">'+esc(fn||'View')+'</a>':'—'; }
+function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
+
+// ── RENDERERS ──
+function renderRFIs(){
+  const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
+  if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
+  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td>'+fileCell(r)+'</td></tr>').join('');
+  const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
+  document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(r['Date Closed'])+')').join('<br>');
+}
+
+function renderCOs(){
+  const rows=allData.co||[], tb=document.getElementById('tbody-cos');
+  if(!rows.length){tb.innerHTML=emptyRow(7);return;}
+  tb.innerHTML=rows.map(r=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td></tr>'; }).join('');
+}
+
+function renderSubmittals(){
+  const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
+  if(!rows.length){tb.innerHTML=emptyRow(7);return;}
+  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td></tr>').join('');
+}
+
+function renderDailyLogs(){
+  const rows=allData.daily||[], ul=document.getElementById('list-daily');
+  if(!rows.length){ul.innerHTML='<li><span class="desc" style="color:var(--muted);font-style:italic;">No daily logs yet.</span></li>';return;}
+  ul.innerHTML=rows.slice().reverse().map(r=>{
+    const fid=r['Attachment File ID'],fn=r['Attachment Name'];
+    const link=fid?'<a href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">Open in Box</a>':'<span class="no-link">No file attached</span>';
+    return '<li><span class="date">'+esc(r['Date'])+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
+  }).join('');
+}
+
+function renderContacts(){
+  const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
+  if(!rows.length){tb.innerHTML=emptyRow(8);return;}
+  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td>'+esc(r['Phone'])+'</td><td>'+esc(r['Notify - RFI'])+'</td><td>'+esc(r['Notify - CO'])+'</td><td>'+esc(r['Notify - Submittal'])+'</td></tr>').join('');
+}
+
+function renderBudget(){
+  const rows=allData.budget||[], tb=document.getElementById('tbody-budget');
+  let total=0;
+  if(!rows.length){tb.innerHTML=emptyRow(7);}
+  else{
+    tb.innerHTML=rows.map(r=>{ const v=parseFloat(String(r['Variance']||'0').replace(/[^0-9.\-]/g,''))||0; total+=v; return '<tr><td>'+esc(r['Cost Code'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Budget Amount'])+'</td><td>'+fmtMoney(r['Committed Costs'])+'</td><td>'+fmtMoney(r['Approved Change Orders'])+'</td><td>'+fmtMoney(r['Actual to Date'])+'</td><td>'+fmtSigned(r['Variance'])+'</td></tr>'; }).join('');
+  }
+  const card=document.getElementById('stat-variance');
+  card.querySelector('.value').textContent=fmtSigned(String(total));
+  card.classList.toggle('neg',total<0); card.classList.toggle('pos',total>=0);
+}
+
+function renderDocuments(){
+  const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
+  if(!rows.length){tb.innerHTML=emptyRow(6);return;}
+  tb.innerHTML=rows.map(r=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td></tr>'; }).join('');
+}
+
+function renderOverview(){
+  const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[];
+  const openR=rfis.filter(r=>(r['Status']||'').toLowerCase()==='open');
+  const ovd=rfis.filter(isOverdue);
+  const openC=cos.filter(r=>(r['Status']||'').toLowerCase()!=='approved');
+  document.querySelector('#stat-open-rfis .value').textContent=openR.length;
+  document.querySelector('#stat-overdue .value').textContent=ovd.length;
+  document.querySelector('#stat-open-cos .value').textContent=openC.length;
+  const review=[
+    ...openR.map(r=>({type:'RFI',item:r['RFI #']+' — '+r['Subject'],by:r['Submitted By'],due:r['Due Date'],status:r['Status'],od:isOverdue(r)})),
+    ...openC.map(r=>({type:'CO',item:r['CO #']+' — '+r['Description'],by:'',due:'—',status:r['Status'],od:false})),
+    ...subs.filter(r=>(r['Status']||'').toLowerCase()==='under review').map(r=>({type:'Submittal',item:r['Submittal #']+' — '+r['Description'],by:r['Submitted By (Sub)'],due:'—',status:r['Status'],od:false}))
+  ];
+  const tb=document.getElementById('tbody-review');
+  tb.innerHTML=review.length?review.map(r=>'<tr><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+esc(r.due)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">Nothing outstanding — all caught up.</td></tr>';
+}
+
+// ── MODAL FORMS ──
+const FORMS = {
+  rfi:{title:'Submit New RFI',html:`
+    <div class="field-row"><div class="field"><label>RFI # *</label><input id="f-num" placeholder="RFI-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Open</option><option>Closed</option></select></div></div>
+    <div class="field"><label>Subject *</label><input id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
+    <div class="field"><label>Description</label><textarea id="f-desc" placeholder="Detailed description…"></textarea></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned To</label><input id="f-assigned" placeholder="Engineer / PM"></div></div>
+    <div class="field-row"><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div><div class="field"><label>Due Date</label><input type="date" id="f-due"></div></div>
+    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
+  co:{title:'Submit New Change Order',html:`
+    <div class="field-row"><div class="field"><label>CO # *</label><input id="f-num" placeholder="CO-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
+    <div class="field"><label>Description *</label><input id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
+    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input id="f-cost" placeholder="8400"></div><div class="field"><label>Schedule Impact (Days)</label><input type="number" id="f-sched" placeholder="2"></div></div>
+    <div class="field-row"><div class="field"><label>Linked RFI</label><input id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
+    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
+  submittal:{title:'Submit New Submittal',html:`
+    <div class="field-row"><div class="field"><label>Submittal # *</label><input id="f-num" placeholder="SUB-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Pending Review</option><option>Under Review</option><option>Approved</option><option>Rejected</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Spec Section</label><input id="f-spec" placeholder="26 05 00"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
+    <div class="field"><label>Description *</label><input id="f-subject" placeholder="Panelboard shop drawings"></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Reviewer</label><input id="f-reviewer" placeholder="Engineer / PM"></div></div>
+    <div class="field"><label>Submittal Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
+  daily:{title:'Log a Daily Report',html:`
+    <div class="field-row"><div class="field"><label>Date *</label><input type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="R. Alvarez (Super)"></div></div>
+    <div class="field-row"><div class="field"><label>Weather</label><input id="f-weather" placeholder="Partly cloudy, 72°F"></div><div class="field"><label>Crew Count</label><input type="number" id="f-crew" placeholder="14"></div></div>
+    <div class="field"><label>Work Performed *</label><textarea id="f-subject" placeholder="Concrete pour, north footing…"></textarea></div>
+    <div class="field"><label>Delays / Issues</label><textarea id="f-delays" placeholder="Any delays, safety incidents…"></textarea></div>
+    <div class="field"><label>Daily Report File</label><input type="file" id="f-file"><p class="file-hint">PDF or photo — uploaded directly to Box.</p></div>`},
+  contact:{title:'Add Contact',html:`
+    <div class="field-row"><div class="field"><label>Name *</label><input id="f-name"></div><div class="field"><label>Role *</label><input id="f-role" placeholder="PM, Superintendent…"></div></div>
+    <div class="field"><label>Company</label><input id="f-company"></div>
+    <div class="field-row"><div class="field"><label>Email</label><input type="email" id="f-email"></div><div class="field"><label>Phone</label><input type="tel" id="f-phone"></div></div>
+    <div class="field-row"><div class="field"><label>Notify on RFI?</label><select id="f-rfi"><option>Yes</option><option>No</option></select></div><div class="field"><label>Notify on CO?</label><select id="f-co"><option>Yes</option><option>No</option></select></div></div>
+    <div class="field"><label>Notify on Submittal?</label><select id="f-sub"><option>Yes</option><option>No</option></select></div>`},
+  budget:{title:'Add Budget Line Item',html:`
+    <div class="field-row"><div class="field"><label>Cost Code *</label><input id="f-code" placeholder="03-300"></div><div class="field"><label>Description *</label><input id="f-subject" placeholder="Cast-in-Place Concrete"></div></div>
+    <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input id="f-budget" placeholder="185000"></div><div class="field"><label>Committed Costs ($)</label><input id="f-committed" placeholder="182500"></div></div>
+    <div class="field-row"><div class="field"><label>Approved COs ($)</label><input id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input id="f-actual" placeholder="140200"></div></div>`},
+  document:{title:'Upload Document',html:`
+    <div class="field"><label>Document Name *</label><input id="f-name" placeholder="Architectural Drawings - Set A"></div>
+    <div class="field-row"><div class="field"><label>Category</label><select id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input id="f-ver" placeholder="Rev 3"></div></div>
+    <div class="field-row"><div class="field"><label>Date</label><input type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select id="f-vis"><option value="Internal + Prime">Internal + Prime</option><option value="Internal Only">Internal Only</option></select></div></div>
+    <div class="field"><label>File *</label><input type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`}
+};
+
+function v(id){ const el=document.getElementById(id); return el?el.value:''; }
+function today(){ return new Date().toISOString().split('T')[0]; }
+
+function openModal(type){
+  const def=FORMS[type]; if(!def) return;
+  currentModal=type;
+  document.getElementById('modal-title').textContent=def.title;
+  document.getElementById('modal-body').innerHTML=def.html;
+  const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=today();
+  document.getElementById('modal-backdrop').classList.add('open');
+  document.getElementById('upload-progress').style.display='none';
+  document.getElementById('modal-submit-btn').disabled=false;
+}
+
+function closeModal(){ document.getElementById('modal-backdrop').classList.remove('open'); currentModal=null; }
+function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-backdrop')) closeModal(); }
+
+async function submitForm(){
+  if(!currentModal) return;
+  const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
+  btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
+  try{
+    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs'};
+    const key=keyMap[currentModal];
+    const folderId=currentProject.folders[key];
+    if(!folderId) throw new Error('Module folder not found — please re-open the project.');
+
+    let attachId='',attachName='';
+    const fi=document.getElementById('f-file');
+    if(fi&&fi.files.length>0){
+      prog.textContent='Uploading file to Box…';
+      const up=await boxUploadBinary(fi.files[0],folderId);
+      const entry=up.entries?up.entries[0]:up;
+      attachId=entry.id||''; attachName=fi.files[0].name;
+    }
+
+    let newRow={};
+    if(currentModal==='rfi'){
+      if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('RFI #, Subject, and Submitted By are required.');
+      newRow={'RFI #':v('f-num'),'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':v('f-date-sub'),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='co'){
+      if(!v('f-num')||!v('f-subject')) throw new Error('CO # and Description are required.');
+      newRow={'CO #':v('f-num'),'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':v('f-sched'),'Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':v('f-date-sub'),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='submittal'){
+      if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('Submittal #, Description, and Submitted By are required.');
+      newRow={'Submittal #':v('f-num'),'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':v('f-date-sub'),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='daily'){
+      if(!v('f-date-sub')||!v('f-by')||!v('f-subject')) throw new Error('Date, Submitted By, and Work Performed are required.');
+      newRow={'Date':v('f-date-sub'),'Submitted By':v('f-by'),'Weather':v('f-weather'),'Crew Count':v('f-crew'),'Work Performed':v('f-subject'),'Delays / Issues':v('f-delays'),'Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='contact'){
+      if(!v('f-name')||!v('f-role')) throw new Error('Name and Role are required.');
+      newRow={'Name':v('f-name'),'Company':v('f-company'),'Role':v('f-role'),'Email':v('f-email'),'Phone':v('f-phone'),'Notify - RFI':v('f-rfi'),'Notify - CO':v('f-co'),'Notify - Submittal':v('f-sub')};
+    } else if(currentModal==='budget'){
+      if(!v('f-code')||!v('f-subject')) throw new Error('Cost Code and Description are required.');
+      const bud=parseFloat(v('f-budget'))||0, act=parseFloat(v('f-actual'))||0;
+      newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
+    } else if(currentModal==='document'){
+      if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
+      newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':v('f-date-sub'),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
+    }
+
+    prog.textContent='Updating log in Box…';
+    const headers=MODULES[key].headers;
+    const existing=await findFile(folderId,MODULES[key].log);
+    let rows=[];
+    if(existing){ rows=(parseCSV(await boxGetText(existing.id))).rows; }
+    rows.push(newRow);
+    await boxUploadText(MODULES[key].log, toCSV(headers,rows), folderId, existing?existing.id:null);
+    allData[key]=rows;
+    renderAll();
+    closeModal();
+  }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
+}
+
+// ── NAV + VIEWER ──
+function navTo(sec){
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
+  document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
+}
+document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
+
+function setViewer(mode){
+  document.body.classList.toggle('external-mode',mode==='external');
+  document.getElementById('btn-internal').classList.toggle('active',mode==='internal');
+  document.getElementById('btn-external').classList.toggle('active',mode==='external');
+  if(mode==='external'){
+    const a=document.querySelector('.nav-item.active');
+    if(a&&(a.classList.contains('nav-budget')||a.classList.contains('nav-contacts')||a.classList.contains('nav-dailylogs'))) navTo('overview');
+  }
+}
+
+function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
+function showStatus(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='status-msg '+type; }
+
+// ── INIT ──
+(async()=>{
+  const params=new URLSearchParams(window.location.search);
+  const code=params.get('code');
+  if(code){ showScreen('screen-login'); await handleCallback(code); }
+  else if(sessionStorage.getItem('box_token')){ await loadPicker(); }
+  else{ showScreen('screen-login'); }
+})();
+</script>
+</body>
+</html>
