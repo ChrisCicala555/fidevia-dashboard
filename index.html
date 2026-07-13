@@ -173,6 +173,55 @@
   .upload-progress{font-size:12px; color:var(--muted); display:none;}
   input[type="file"]{width:100%; padding:8px 12px; border:1px dashed var(--border); border-radius:6px; font-size:12px; color:var(--muted); cursor:pointer; background:var(--cream); font-family:'Inter',sans-serif;}
   input[type="file"]:hover{border-color:var(--olive-500);}
+  .hamburger{display:none;background:none;border:none;color:var(--khaki-200);cursor:pointer;padding:6px 14px;font-size:22px;line-height:1;}
+  @media(max-width:900px){
+    .app{flex-direction:column;}
+    .hamburger{display:block;}
+    .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;max-height:56px;overflow:hidden;transition:max-height 0.3s;}
+    .sidebar.open{max-height:900px;}
+    .logo-block{flex:1;padding:8px 16px;border-bottom:none;display:flex;align-items:center;justify-content:space-between;}
+    .logo-sub{display:none;}
+    .nav-section-label,.sidebar-footer{width:100%;}
+    .stat-grid{grid-template-columns:repeat(2,1fr);}
+    .topbar{flex-wrap:wrap;gap:8px;padding:12px 16px;}
+    table{display:block;overflow-x:auto;}
+    .content{padding:16px;}
+  }
+  @media(max-width:540px){.stat-grid{grid-template-columns:1fr;}}
+  .photo-section-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px solid var(--border);background:var(--cream);margin-top:8px;}
+  .photo-section-hdr h4{font-size:12px;font-weight:700;color:var(--olive-900);text-transform:uppercase;letter-spacing:0.5px;}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;padding:16px;}
+  .photo-card{border-radius:5px;overflow:hidden;border:1px solid var(--border);}
+  .photo-card img{width:100%;height:90px;object-fit:cover;display:block;}
+  .photo-card .pdate{font-size:10px;color:var(--muted);padding:4px 8px;font-weight:600;background:var(--white);}
+  .photo-empty{padding:20px 18px;color:var(--muted);font-size:13px;font-style:italic;}
+  .version-badge{background:var(--khaki-100);color:var(--olive-700);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:5px;vertical-align:middle;}
+  .btn-ver{background:none;border:1px solid var(--khaki-300);color:var(--muted);font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;}
+  .btn-ver:hover{border-color:var(--olive-500);color:var(--olive-700);}
+  .comment-list{list-style:none;}
+  .comment-item{padding:14px 18px;border-bottom:1px solid var(--border);}
+  .comment-item:last-child{border-bottom:none;}
+  .comment-meta{font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .comment-meta strong{color:var(--olive-900);}
+  .comment-text{font-size:13px;line-height:1.6;}
+  .comment-compose{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end;background:var(--cream);}
+  .comment-compose textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;font-family:inherit;resize:none;height:64px;}
+  .comment-author{border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;font-family:inherit;width:150px;}
+  .contract-bar{display:flex;gap:20px;padding:12px 18px;background:var(--cream);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .cb-item .cb-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);}
+  .cb-item .cb-val{font-size:20px;font-weight:700;color:var(--olive-900);}
+  .btn-approve{background:var(--success-bg);color:var(--olive-700);border:1px solid var(--khaki-300);border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;}
+  .btn-reject{background:var(--danger-bg);color:var(--danger);border:1px solid #E8BFB9;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px;}
+  .wizard-steps{display:flex;border-bottom:1px solid var(--border);margin-bottom:22px;}
+  .wstep{flex:1;text-align:center;padding:10px 4px;font-size:12px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;}
+  .wstep.active{color:var(--olive-700);border-bottom-color:var(--olive-700);}
+  .wstep.done{color:var(--khaki-300);border-bottom-color:var(--khaki-300);}
+  .wpane{display:none;}
+  .wpane.active{display:block;}
+  .dyn-row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;}
+  .btn-add-row{width:100%;border:1px dashed var(--border);background:none;color:var(--muted);border-radius:5px;padding:9px;font-size:12px;cursor:pointer;margin-bottom:6px;}
+  .btn-add-row:hover{border-color:var(--olive-500);color:var(--olive-700);}
+  .btn-remove{background:none;border:none;color:var(--danger);font-size:20px;cursor:pointer;line-height:1;padding:2px;}
 </style>
 </head>
 <body>
@@ -232,6 +281,7 @@
     <div class="logo-block">
       <img src="./Fidevia w_branch.avif" alt="Fidevia" class="sidebar-logo-img">
       <div class="logo-sub">Construction Dashboard</div>
+      <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
     </div>
     <div class="nav-section-label">Overview</div>
     <div class="nav-item active" data-section="overview">Dashboard</div>
@@ -244,6 +294,8 @@
     <div class="nav-item nav-contacts" data-section="contacts">Contacts Directory</div>
     <div class="nav-item nav-budget" data-section="budget">Budget</div>
     <div class="nav-item" data-section="documents">Documents</div>
+    <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
+    <div class="nav-item" data-section="payapps">Payment Applications</div>
     <div class="sidebar-footer">
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
     </div>
@@ -315,7 +367,7 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
-          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Reviewer</th><th>Status</th><th>File</th></tr></thead>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Reviewer</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -332,7 +384,15 @@
             <li><span class="desc" style="color:var(--muted);font-style:italic;">Loading…</span></li>
           </ul>
           <div class="note">These rows link out to the actual daily report files stored in Box. The dashboard indexes by date; it does not store the reports themselves.</div>
+        
+        <div class="photo-section-hdr">
+          <h4>Site Photos</h4>
+          <label class="btn-add" style="cursor:pointer;font-size:12px;">
+            + Upload Photo
+            <input type="file" accept="image/*" multiple id="photo-input" style="display:none" onchange="uploadPhotos(this)">
+          </label>
         </div>
+        <div class="photo-grid" id="photo-grid"><div class="photo-empty">No photos yet. Upload site photos above.</div></div>
       </div>
 
       <!-- CONTACTS -->
@@ -378,6 +438,48 @@
   </div>
 </div>
 </div>
+
+      <!-- Q & A -->
+      <div class="section hide-external" id="section-qa">
+        <div class="page-title-row">
+          <h2>Q &amp; A / Comments</h2>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span>Internal Comments &amp; Questions</span></div>
+          <ul class="comment-list" id="comment-list">
+            <li class="comment-item"><span class="comment-meta">Loading…</span></li>
+          </ul>
+          <div class="comment-compose">
+            <input class="comment-author" id="comment-author" placeholder="Your name">
+            <textarea id="comment-text" placeholder="Add a comment or question…"></textarea>
+            <button class="btn-add" onclick="postComment()">Post</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAYMENT APPLICATIONS -->
+      <div class="section" id="section-payapps">
+        <div class="page-title-row">
+          <h2>Payment Applications</h2>
+          <button class="btn-add" onclick="openModal('payapp')">+ New Pay App</button>
+        </div>
+        <div class="contract-bar">
+          <div class="cb-item"><div class="cb-lbl">Contract Amount</div><div class="cb-val" id="cb-contract">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Previously Paid</div><div class="cb-val" id="cb-paid">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Current Request</div><div class="cb-val" id="cb-current">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">—</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span>Pay Application Log</span></div>
+          <table>
+            <thead><tr>
+              <th>App #</th><th>Contractor</th><th>Period</th>
+              <th>Requested</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
 
 <!-- ══ MODAL ══ -->
 <div class="modal-backdrop" id="modal-backdrop" onclick="closeModalOnBackdrop(event)">
@@ -541,6 +643,8 @@ const MODULES = {
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name']}
+  comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']}
 };
 
 // ── PICKER ──
@@ -575,7 +679,7 @@ async function openProject(folderId, name){
   showScreen('screen-dashboard');
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
-  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07') } };
+  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09') } };
   navTo('overview'); setViewer('internal'); allData={};
   loadDashboard();
 }
@@ -599,7 +703,7 @@ async function createProject(){
 
 // ── DASHBOARD ──
 async function loadDashboard(){
-  const keys=['rfi','co','sub','daily','contacts','budget','docs'];
+  const keys=['rfi','co','sub','daily','contacts','budget','docs','comments','pay_apps'];
   await Promise.allSettled(keys.map(k=>loadModule(k)));
   renderAll();
 }
@@ -612,7 +716,7 @@ async function loadModule(key){
   allData[key]=(parseCSV(await boxGetText(file.id))).rows;
 }
 
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); }
 
 // ── HELPERS ──
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -645,8 +749,8 @@ function renderCOs(){
 
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
-  if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td></tr>').join('');
+  if(!rows.length){tb.innerHTML=emptyRow(8);return;}
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">↑ New Ver.</button></td></tr>').join('');
 }
 
 function renderDailyLogs(){
@@ -679,8 +783,8 @@ function renderBudget(){
 
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
-  if(!rows.length){tb.innerHTML=emptyRow(6);return;}
-  tb.innerHTML=rows.map(r=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td></tr>'; }).join('');
+  if(!rows.length){tb.innerHTML=emptyRow(7);return;}
+  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button></td></tr>'; }).join('');
 }
 
 function renderOverview(){
@@ -717,7 +821,7 @@ const FORMS = {
     <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
     <div class="field-row"><div class="field"><label>Submittal # *</label><input id="f-num" placeholder="SUB-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Pending Review</option><option>Under Review</option><option>Approved</option><option>Rejected</option></select></div></div>
-    <div class="field-row"><div class="field"><label>Spec Section</label><input id="f-spec" placeholder="26 05 00"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
+    <div class="field-row"><div class="field"><label>Spec Section</label><input id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
     <div class="field"><label>Description *</label><input id="f-subject" placeholder="Panelboard shop drawings"></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Reviewer</label><input id="f-reviewer" placeholder="Engineer / PM"></div></div>
     <div class="field"><label>Submittal Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
@@ -737,7 +841,14 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Cost Code *</label><input id="f-code" placeholder="03-300"></div><div class="field"><label>Description *</label><input id="f-subject" placeholder="Cast-in-Place Concrete"></div></div>
     <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input id="f-budget" placeholder="185000"></div><div class="field"><label>Committed Costs ($)</label><input id="f-committed" placeholder="182500"></div></div>
     <div class="field-row"><div class="field"><label>Approved COs ($)</label><input id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input id="f-actual" placeholder="140200"></div></div>`},
-  document:{title:'Upload Document',html:`
+  payapp:{title:'New Payment Application',html:`
+    <div class="field-row"><div class="field"><label>App # *</label><input id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input id="f-contr" placeholder="ABC Mechanical"></div></div>
+    <div class="field"><label>Company</label><input id="f-company" placeholder="ABC Mechanical Inc."></div>
+    <div class="field-row"><div class="field"><label>Period From</label><input type="date" id="f-from"></div><div class="field"><label>Period To</label><input type="date" id="f-to"></div></div>
+    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input id="f-contract" placeholder="850000"></div><div class="field"><label>Previously Paid ($)</label><input id="f-prev" placeholder="200000"></div></div>
+    <div class="field-row"><div class="field"><label>Requested Amount ($) *</label><input id="f-req" placeholder="45000"></div><div class="field"><label>Remaining on Contract ($)</label><input id="f-remain" placeholder="605000"></div></div>
+    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box.</p></div>`},
+    document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input id="f-ver" placeholder="Rev 3"></div></div>
     <div class="field-row"><div class="field"><label>Date</label><input type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select id="f-vis"><option value="Internal + Prime">Internal + Prime</option><option value="Internal Only">Internal Only</option></select></div></div>
@@ -766,7 +877,7 @@ async function submitForm(){
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
   try{
-    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs'};
+    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps'};
     const key=keyMap[currentModal];
     const folderId=currentProject.folders[key];
     if(!folderId) throw new Error('Module folder not found — please re-open the project.');
@@ -800,7 +911,13 @@ async function submitForm(){
       if(!v('f-code')||!v('f-subject')) throw new Error('Cost Code and Description are required.');
       const bud=parseFloat(v('f-budget'))||0, act=parseFloat(v('f-actual'))||0;
       newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
+    } else if(currentModal==='payapp'){
+      if(!v('f-num')||!v('f-contr')||!v('f-req')) throw new Error('App #, Contractor, and Requested Amount are required.');
+      const contract=parseFloat(v('f-contract'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
+      const remain=contract-prev-req;
+      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':v('f-from'),'Period To':v('f-to'),'Contract Amount':v('f-contract'),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Status':'Pending','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='document'){
+
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':v('f-date-sub'),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
     }
@@ -846,6 +963,203 @@ function showStatus(id,msg,type){ const el=document.getElementById(id); el.textC
   else if(sessionStorage.getItem('box_token')){ await loadPicker(); }
   else{ showScreen('screen-login'); }
 })();
+
+// ══════════════════════════════════════════════
+// SIDEBAR TOGGLE (mobile hamburger)
+// ══════════════════════════════════════════════
+function toggleSidebar(){
+  document.querySelector('.sidebar').classList.toggle('open');
+}
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>{
+    if(window.innerWidth<=900) document.querySelector('.sidebar').classList.remove('open');
+  });
+});
+
+// ══════════════════════════════════════════════
+// PHOTO UPLOADS — Daily Log
+// ══════════════════════════════════════════════
+async function uploadPhotos(input){
+  const files=[...input.files]; if(!files.length) return;
+  const dailyFid = currentProject.folders.daily;
+  if(!dailyFid){ alert('Daily log folder not found.'); return; }
+  const photosFid = await findOrCreateFolder('Photos', dailyFid);
+  const td = new Date().toISOString().slice(0,10);
+  const dateFid = await findOrCreateFolder(td, photosFid);
+  const grid=document.getElementById('photo-grid');
+  grid.innerHTML='<div class="photo-empty">Uploading '+files.length+' photo(s)…</div>';
+  for(const f of files) await boxUploadBinary(f, dateFid);
+  await loadPhotos(photosFid);
+  input.value='';
+}
+
+async function loadPhotos(photosFid){
+  const grid=document.getElementById('photo-grid'); if(!grid) return;
+  if(!photosFid){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
+  const dateFolders=(await boxList(photosFid)).filter(i=>i.type==='folder').sort((a,b)=>b.name.localeCompare(a.name));
+  if(!dateFolders.length){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
+  grid.innerHTML='';
+  for(const df of dateFolders){
+    const imgs=(await boxList(df.id)).filter(i=>i.type==='file');
+    imgs.forEach(img=>{
+      const card=document.createElement('div'); card.className='photo-card';
+      card.innerHTML='<div style="height:90px;background:var(--khaki-100);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;" onclick="window.open(\'https://app.box.com/file/'+esc(img.id)+'\',\'_blank\')">🖼</div><div class="pdate">'+esc(df.name)+'</div>';
+      grid.appendChild(card);
+    });
+  }
+  if(!grid.children.length) grid.innerHTML='<div class="photo-empty">No photos yet.</div>';
+}
+
+// ══════════════════════════════════════════════
+// Q & A COMMENTS
+// ══════════════════════════════════════════════
+function renderComments(){
+  const list=document.getElementById('comment-list'); if(!list) return;
+  const rows=allData.comments||[];
+  if(!rows.length){ list.innerHTML='<li class="comment-item"><div class="comment-text" style="color:var(--muted);font-style:italic;">No comments yet — be the first.</div></li>'; return; }
+  list.innerHTML=rows.slice().reverse().map(r=>'<li class="comment-item"><div class="comment-meta"><strong>'+esc(r['Author']||'—')+'</strong>'+(r['Role']?' · '+esc(r['Role']):'')+'<span style="margin-left:10px;color:var(--muted)">'+esc(r['Date']||'')+'</span></div><div class="comment-text">'+esc(r['Comment']||'')+'</div></li>').join('');
+}
+
+async function postComment(){
+  const author=(document.getElementById('comment-author').value||'').trim();
+  const text=(document.getElementById('comment-text').value||'').trim();
+  if(!author||!text){ alert('Enter your name and a comment.'); return; }
+  const mod=MODULES.comments, fid=currentProject.folders.comments;
+  if(!fid){ alert('Comments folder not found in this project. Re-open project or recreate it.'); return; }
+  const now=new Date().toISOString().slice(0,16).replace('T',' ');
+  const newRow={'Date':now,'Author':author,'Role':'Internal','Comment':text,'Parent ID':''};
+  const existing=await findFile(fid,mod.log);
+  let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+  rows.push(newRow);
+  await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+  allData.comments=rows;
+  document.getElementById('comment-text').value='';
+  renderComments();
+}
+
+// ══════════════════════════════════════════════
+// PAYMENT APPLICATIONS
+// ══════════════════════════════════════════════
+function renderPayApps(){
+  const tbody=document.getElementById('payapp-tbody'); if(!tbody) return;
+  const rows=allData.pay_apps||[];
+  updateContractBar(rows);
+  if(!rows.length){ tbody.innerHTML='<tr class="loading-row"><td colspan="6">No pay applications yet.</td></tr>'; return; }
+  tbody.innerHTML=rows.map(r=>{
+    const s=r['Status']||'Pending';
+    const bg=s==='Approved'?'var(--success-bg)':s==='Rejected'?'var(--danger-bg)':'var(--khaki-100)';
+    return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(r['Contractor']||'')+'</td>'
+      +'<td>'+esc((r['Period From']||'')+(r['Period To']?' – '+r['Period To']:''))+'</td>'
+      +'<td>'+fmtMoney(r['Requested Amount']||'')+'</td>'
+      +'<td><span class="pill" style="background:'+bg+'">'+esc(s)+'</span></td>'
+      +'<td><button class="btn-approve" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Approved'+'\')">Approve</button>'
+      +'<button class="btn-reject" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Rejected'+'\')">Reject</button></td></tr>';
+  }).join('');
+}
+
+function updateContractBar(rows){
+  const el=id=>document.getElementById(id);
+  const fmt=v=>{ const n=parseFloat((v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?'—':'$'+n.toLocaleString(); };
+  if(!rows.length){ ['cb-contract','cb-paid','cb-current','cb-remaining'].forEach(id=>{ if(el(id)) el(id).textContent='—'; }); return; }
+  const last=rows[rows.length-1];
+  if(el('cb-contract')) el('cb-contract').textContent=fmt(last['Contract Amount']||'');
+  if(el('cb-paid'))     el('cb-paid').textContent    =fmt(last['Previously Paid']||'');
+  if(el('cb-current'))  el('cb-current').textContent =fmt(last['Requested Amount']||'');
+  if(el('cb-remaining'))el('cb-remaining').textContent=fmt(last['Remaining on Contract']||'');
+}
+
+async function setPayStatus(appNum, status){
+  const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
+  if(!fid) return;
+  const existing=await findFile(fid,mod.log);
+  let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+  rows=rows.map(r=>{ if(r['App #']===appNum){ r['Status']=status; r['Review Date']=new Date().toISOString().slice(0,10); } return r; });
+  await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+  allData.pay_apps=rows; renderPayApps();
+}
+
+// ══════════════════════════════════════════════
+// DOCUMENT VERSIONING
+// ══════════════════════════════════════════════
+async function uploadNewVersion(key, rowIdx){
+  const input=document.createElement('input'); input.type='file';
+  input.onchange=async()=>{
+    const file=input.files[0]; if(!file) return;
+    const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
+    const existing=await findFile(fid,mod.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    const row=rows[rowIdx]; if(!row) return;
+    const up=await boxUploadBinary(file,fid);
+    const entry=up.entries?.[0]||up;
+    if(row['File ID']!==undefined)          row['File ID']=entry.id||'';
+    if(row['Attachment File ID']!==undefined)row['Attachment File ID']=entry.id||'';
+    if(row['File Name']!==undefined)         row['File Name']=file.name;
+    if(row['Attachment Name']!==undefined)   row['Attachment Name']=file.name;
+    const vKey=Object.keys(row).find(k=>k.toLowerCase().includes('version'));
+    if(vKey) row[vKey]=String((parseInt(row[vKey])||1)+1);
+    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    allData[key]=rows; renderAll();
+  };
+  input.click();
+}
+
 </script>
+
+<datalist id="csi-list">
+  <option value="00 00 00 Procurement and Contracting">
+  <option value="01 11 00 Summary of Work">
+  <option value="02 41 00 Demolition">
+  <option value="03 30 00 Cast-in-Place Concrete">
+  <option value="04 20 00 Unit Masonry">
+  <option value="05 10 00 Structural Metal Framing">
+  <option value="05 30 00 Steel Decking">
+  <option value="05 40 00 Cold-Formed Metal Framing">
+  <option value="05 50 00 Metal Fabrications">
+  <option value="06 10 00 Rough Carpentry">
+  <option value="06 20 00 Finish Carpentry">
+  <option value="07 21 00 Thermal Insulation">
+  <option value="07 31 00 Shingles and Shakes">
+  <option value="07 54 00 Thermoplastic Membrane Roofing">
+  <option value="07 62 00 Sheet Metal Flashing">
+  <option value="07 84 00 Firestopping">
+  <option value="07 92 00 Joint Sealants">
+  <option value="08 11 00 Metal Doors and Frames">
+  <option value="08 14 00 Wood Doors">
+  <option value="08 40 00 Entrances and Storefronts">
+  <option value="08 50 00 Windows">
+  <option value="08 71 00 Door Hardware">
+  <option value="08 80 00 Glazing">
+  <option value="09 21 00 Gypsum Board Assemblies">
+  <option value="09 22 00 Supports for Plaster and Gypsum Board">
+  <option value="09 29 00 Gypsum Board">
+  <option value="09 51 00 Acoustical Ceilings">
+  <option value="09 65 00 Resilient Flooring">
+  <option value="09 68 00 Carpeting">
+  <option value="09 90 00 Paints and Coatings">
+  <option value="10 14 00 Signage">
+  <option value="10 21 00 Toilet Compartments">
+  <option value="10 28 00 Toilet Accessories">
+  <option value="11 10 00 Vehicle and Pedestrian Equipment">
+  <option value="12 20 00 Window Treatments">
+  <option value="14 20 00 Elevators">
+  <option value="21 10 00 Water-Based Fire Suppression">
+  <option value="22 10 00 Plumbing Piping">
+  <option value="22 40 00 Plumbing Fixtures">
+  <option value="23 05 00 Common Work Results for HVAC">
+  <option value="23 07 00 HVAC Insulation">
+  <option value="23 31 00 HVAC Ducts and Casings">
+  <option value="23 74 00 Packaged Outdoor HVAC Equipment">
+  <option value="26 05 00 Common Work Results for Electrical">
+  <option value="26 05 19 Low-Voltage Electrical Power Conductors">
+  <option value="26 20 00 Low-Voltage Electrical Distribution">
+  <option value="26 50 00 Lighting">
+  <option value="27 10 00 Structured Cabling">
+  <option value="28 10 00 Electronic Access Control">
+  <option value="31 10 00 Site Clearing">
+  <option value="31 20 00 Earth Moving">
+  <option value="32 10 00 Bases Ballasts and Paving">
+  <option value="32 90 00 Planting">
+  <option value="33 10 00 Water Utilities">
+</datalist>
 </body>
 </html>
