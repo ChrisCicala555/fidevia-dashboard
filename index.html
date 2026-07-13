@@ -36,7 +36,7 @@
   /* ── LOGIN ── */
   #screen-login{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; background:var(--olive-900); padding:40px 24px;}
   .login-card{background:var(--white); border-radius:12px; padding:48px 44px; width:100%; max-width:420px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.25);}
-  .login-logo{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:48px; color:var(--olive-900);}
+  .login-logo-img{height:72px; width:auto; margin-bottom:4px;} .picker-logo-img{height:44px; width:auto;} .sidebar-logo-img{height:48px; width:auto; filter:brightness(0) invert(1);}
   .login-tagline{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-top:4px; margin-bottom:36px;}
   .login-divider{border:none; border-top:1px solid var(--border); margin:28px 0;}
   .login-desc{font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.6;}
@@ -180,7 +180,7 @@
 <!-- ══ LOGIN ══ -->
 <div id="screen-login" class="screen active">
   <div class="login-card">
-    <div class="login-logo">Fidevia</div>
+    <img src="./Fidevia w_branch.avif" alt="Fidevia" class="login-logo-img">
     <div class="login-tagline">Construction Management &amp; Consulting</div>
     <hr class="login-divider">
     <p class="login-desc">Sign in with your Box account to access the project dashboard. Your files stay securely in Box.</p>
@@ -195,7 +195,7 @@
 <!-- ══ PICKER ══ -->
 <div id="screen-picker" class="screen">
   <div class="picker-topbar">
-    <div class="picker-logo">Fidevia</div>
+    <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
       <span id="user-name-display"></span>
       <button class="btn-logout" onclick="logout()">Sign out</button>
@@ -230,7 +230,7 @@
 
   <div class="sidebar">
     <div class="logo-block">
-      <div class="logo-script">Fidevia</div>
+      <img src="./Fidevia w_branch.avif" alt="Fidevia" class="sidebar-logo-img">
       <div class="logo-sub">Construction Dashboard</div>
     </div>
     <div class="nav-section-label">Overview</div>
