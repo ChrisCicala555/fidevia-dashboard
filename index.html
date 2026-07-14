@@ -1116,6 +1116,15 @@ async function uploadNewVersion(key, rowIdx){
 async function sendEmail(toEmails, subject, body){
   if(!toEmails||!toEmails.length) return;
   try{
+    const isNetlify = window.location.hostname.includes('netlify.app') || !window.location.hostname.includes('github.io');
+    if(isNetlify){
+      await fetch('/.netlify/functions/send-email',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({to:toEmails,subject,body})
+      });
+      return;
+    }
     await fetch('https://api.sendgrid.com/v3/mail/send',{
       method:'POST',
       headers:{'Authorization':'Bearer '+SG_KEY,'Content-Type':'application/json'},
