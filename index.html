@@ -29,11 +29,11 @@
   *{box-sizing:border-box; margin:0; padding:0;}
   body{font-family:'Inter',sans-serif; background:var(--cream); color:var(--ink);}
 
-  /* ââ SCREENS ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ SCREENS Ã¢ÂÂÃ¢ÂÂ */
   .screen{display:none;}
   .screen.active{display:flex;}
 
-  /* ââ LOGIN ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ LOGIN Ã¢ÂÂÃ¢ÂÂ */
   #screen-login{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; background:var(--olive-900); padding:40px 24px;}
   .login-card{background:var(--white); border-radius:12px; padding:48px 44px; width:100%; max-width:420px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.25);}
   .login-logo-img{height:72px; width:auto; margin-bottom:4px;} .picker-logo-img{height:44px; width:auto;} .sidebar-logo-img{height:48px; width:auto; filter:brightness(0) invert(1);}
@@ -44,7 +44,7 @@
   .btn-box-login:hover{background:#0052b4;}
   .login-footer{margin-top:20px; font-size:11px; color:var(--muted);}
 
-  /* ââ PICKER ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ PICKER Ã¢ÂÂÃ¢ÂÂ */
   #screen-picker{min-height:100vh; flex-direction:column; align-items:center; padding:56px 24px;}
   .picker-topbar{width:100%; max-width:800px; display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;}
   .picker-logo{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:36px; color:var(--olive-900);}
@@ -63,7 +63,7 @@
   .add-project-card:hover{background:var(--khaki-100); border-color:var(--khaki-300);}
   .loading-state{color:var(--muted); font-size:14px; text-align:center; padding:40px;}
 
-  /* ââ NEW PROJECT ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ NEW PROJECT Ã¢ÂÂÃ¢ÂÂ */
   #screen-new-project{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; padding:40px 24px;}
   .form-card{background:var(--white); border:1px solid var(--border); border-radius:10px; padding:36px 40px; width:100%; max-width:480px;}
   .form-card h2{font-size:18px; font-weight:700; color:var(--olive-900); margin-bottom:6px;}
@@ -85,7 +85,7 @@
   .status-msg.error{background:var(--danger-bg); color:var(--danger); display:block;}
   .status-msg.info{background:var(--warn-bg); color:#6B5A0E; display:block;}
 
-  /* ââ DASHBOARD (original design) ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ DASHBOARD (original design) Ã¢ÂÂÃ¢ÂÂ */
   #screen-dashboard{min-height:100vh;}
   .app{display:flex; min-height:100vh;}
   .sidebar{width:230px; background:var(--olive-900); color:var(--khaki-200); padding:24px 0; flex-shrink:0; display:flex; flex-direction:column;}
@@ -158,7 +158,7 @@
   body.external-mode .nav-contacts,
   body.external-mode .nav-dailylogs{display:none;}
 
-  /* ââ MODAL ââ */
+  /* Ã¢ÂÂÃ¢ÂÂ MODAL Ã¢ÂÂÃ¢ÂÂ */
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;}
   .modal-backdrop.open{display:flex;}
   .modal{background:var(--white); border-radius:10px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25);}
@@ -227,7 +227,15 @@
 </head>
 <body>
 
-<!-- ââ LOGIN ââ -->
+<!-- Ã¢ÂÂÃ¢ÂÂ LOGIN Ã¢ÂÂÃ¢ÂÂ -->
+<div id="screen-auth0login" class="screen">
+  <div class="login-card">
+    <div class="logo-block"><h1 class="logo-text">Fidevia</h1></div>
+    <p class="login-sub">Construction Management Dashboard</p>
+    <p style="color:#8899aa;font-size:13px;margin-bottom:24px">Sign in to access your projects</p>
+    <button class="btn-box" onclick="loginWithAuth0()" style="width:100%">&#128274; Sign In</button>
+  </div>
+</div>
 <div id="screen-login" class="screen active">
   <div class="login-card">
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="login-logo-img">
@@ -242,7 +250,7 @@
   </div>
 </div>
 
-<!-- ââ PICKER ââ -->
+<!-- Ã¢ÂÂÃ¢ÂÂ PICKER Ã¢ÂÂÃ¢ÂÂ -->
 <div id="screen-picker" class="screen">
   <div class="picker-topbar">
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
@@ -254,18 +262,18 @@
   <h2 class="picker-heading">Select a project</h2>
   <p class="picker-sub">Projects load from your Box account. Select one to open its dashboard.</p>
   <div class="project-grid" id="project-grid">
-    <div class="loading-state">Loading projects from Boxâ¦</div>
+    <div class="loading-state">Loading projects from BoxÃ¢ÂÂ¦</div>
   </div>
 </div>
 
-<!-- ââ NEW PROJECT ââ -->
+<!-- Ã¢ÂÂÃ¢ÂÂ NEW PROJECT Ã¢ÂÂÃ¢ÂÂ -->
 <div id="screen-new-project" class="screen">
   <div class="form-card">
     <h2>Create new project</h2>
     <p class="form-desc">Creates a project folder in Box with all required subfolders (RFIs, Change Orders, Submittals, Daily Logs, Contacts, Budget, Documents).</p>
     <div class="field"><label>Project Name *</label><input type="text" id="new-proj-name" placeholder="e.g. Hempfield High School Renovation"></div>
     <div class="field"><label>Client / Owner</label><input type="text" id="new-proj-client" placeholder="e.g. Hempfield School District"></div>
-    <div class="field"><label>Description (optional)</label><textarea id="new-proj-desc" placeholder="Scope, location, key detailsâ¦"></textarea></div>
+    <div class="field"><label>Description (optional)</label><textarea id="new-proj-desc" placeholder="Scope, location, key detailsÃ¢ÂÂ¦"></textarea></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="createProject()" id="btn-create-proj">Create Project</button>
       <button class="btn-secondary" onclick="showScreen('screen-picker')">Cancel</button>
@@ -274,7 +282,7 @@
   </div>
 </div>
 
-<!-- ââ DASHBOARD ââ -->
+<!-- Ã¢ÂÂÃ¢ÂÂ DASHBOARD Ã¢ÂÂÃ¢ÂÂ -->
 <div id="screen-dashboard" class="screen">
 <div class="app">
 
@@ -301,7 +309,7 @@
     <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
     <div class="nav-item" data-section="payapps">Payment Applications</div>
     <div class="sidebar-footer">
-      <button class="btn-switch-project" onclick="showScreen('screen-picker')">â Switch Project</button>
+      <button class="btn-switch-project" onclick="showScreen('screen-picker')">Ã¢ÂÂ Switch Project</button>
     </div>
   </div>
 
@@ -324,15 +332,15 @@
       <div class="section active" id="section-overview">
         <h2 class="page-title">Project overview</h2>
         <div class="stat-grid">
-          <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">â</div></div>
-          <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">â</div></div>
-          <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">â</div></div>
-          <div class="stat-card hide-external" id="stat-variance"><div class="label">Budget Variance</div><div class="value">â</div></div>
+          <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">Ã¢ÂÂ</div></div>
+          <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">Ã¢ÂÂ</div></div>
+          <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">Ã¢ÂÂ</div></div>
+          <div class="stat-card hide-external" id="stat-variance"><div class="label">Budget Variance</div><div class="value">Ã¢ÂÂ</div></div>
         </div>
         <div class="panel">
           <div class="panel-header">Needs your review</div>
           <table><thead><tr><th>Type</th><th>Item</th><th>Submitted By</th><th>Due</th><th>Status</th></tr></thead>
-          <tbody id="tbody-review"><tr class="loading-row"><td colspan="5">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-review"><tr class="loading-row"><td colspan="5">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -343,9 +351,9 @@
           <button class="btn-add" onclick="openModal('rfi')">+ New RFI</button>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All RFIs</span><span class="src">Box Â· 01 - RFIs</span></div>
+          <div class="panel-header"><span>All RFIs</span><span class="src">Box ÃÂ· 01 - RFIs</span></div>
           <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th></tr></thead>
-          <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="7">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="7">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
           <div class="note" id="note-rfis"></div>
         </div>
       </div>
@@ -357,9 +365,9 @@
           <button class="btn-add" onclick="openModal('co')">+ New CO</button>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All change orders</span><span class="src">Box Â· 02 - Change Orders</span></div>
+          <div class="panel-header"><span>All change orders</span><span class="src">Box ÃÂ· 02 - Change Orders</span></div>
           <table><thead><tr><th>CO #</th><th>Description</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th></tr></thead>
-          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -370,9 +378,9 @@
           <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All submittals</span><span class="src">Box Â· 03 - Submittals</span></div>
+          <div class="panel-header"><span>All submittals</span><span class="src">Box ÃÂ· 03 - Submittals</span></div>
           <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Reviewer</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
-          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -385,7 +393,7 @@
         <div class="panel">
           <div class="panel-header">Box-linked daily reports</div>
           <ul class="daily-log-list" id="list-daily">
-            <li><span class="desc" style="color:var(--muted);font-style:italic;">Loadingâ¦</span></li>
+            <li><span class="desc" style="color:var(--muted);font-style:italic;">LoadingÃ¢ÂÂ¦</span></li>
           </ul>
           <div class="note">These rows link out to the actual daily report files stored in Box. The dashboard indexes by date; it does not store the reports themselves.</div>
         
@@ -408,7 +416,7 @@
         <div class="panel">
           <div class="panel-header">Project contacts &amp; notification routing</div>
           <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th>Notify - RFI</th><th>Notify - CO</th><th>Notify - Submittal</th></tr></thead>
-          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -421,7 +429,7 @@
         <div class="panel">
           <div class="panel-header">Cost code summary</div>
           <table><thead><tr><th>Cost Code</th><th>Description</th><th>Budget</th><th>Committed</th><th>Approved COs</th><th>Actual to Date</th><th>Variance</th></tr></thead>
-          <tbody id="tbody-budget"><tr class="loading-row"><td colspan="7">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-budget"><tr class="loading-row"><td colspan="7">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -434,7 +442,7 @@
         <div class="panel">
           <div class="panel-header">Drawings, specs &amp; contracts</div>
           <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th></tr></thead>
-          <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loadingâ¦</td></tr></tbody></table>
+          <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">LoadingÃ¢ÂÂ¦</td></tr></tbody></table>
         </div>
       </div>
 
@@ -451,11 +459,11 @@
         <div class="panel">
           <div class="panel-header"><span>Internal Comments &amp; Questions</span></div>
           <ul class="comment-list" id="comment-list">
-            <li class="comment-item"><span class="comment-meta">Loadingâ¦</span></li>
+            <li class="comment-item"><span class="comment-meta">LoadingÃ¢ÂÂ¦</span></li>
           </ul>
           <div class="comment-compose">
             <input class="comment-author" id="comment-author" placeholder="Your name">
-            <textarea id="comment-text" placeholder="Add a comment or questionâ¦"></textarea>
+            <textarea id="comment-text" placeholder="Add a comment or questionÃ¢ÂÂ¦"></textarea>
             <button class="btn-add" onclick="postComment()">Post</button>
           </div>
         </div>
@@ -468,10 +476,10 @@
           <button class="btn-add" onclick="openModal('payapp')">+ New Pay App</button>
         </div>
         <div class="contract-bar">
-          <div class="cb-item"><div class="cb-lbl">Contract Amount</div><div class="cb-val" id="cb-contract">â</div></div>
-          <div class="cb-item"><div class="cb-lbl">Previously Paid</div><div class="cb-val" id="cb-paid">â</div></div>
-          <div class="cb-item"><div class="cb-lbl">Current Request</div><div class="cb-val" id="cb-current">â</div></div>
-          <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">â</div></div>
+          <div class="cb-item"><div class="cb-lbl">Contract Amount</div><div class="cb-val" id="cb-contract">Ã¢ÂÂ</div></div>
+          <div class="cb-item"><div class="cb-lbl">Previously Paid</div><div class="cb-val" id="cb-paid">Ã¢ÂÂ</div></div>
+          <div class="cb-item"><div class="cb-lbl">Current Request</div><div class="cb-val" id="cb-current">Ã¢ÂÂ</div></div>
+          <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">Ã¢ÂÂ</div></div>
         </div>
         <div class="panel">
           <div class="panel-header"><span>Pay Application Log</span></div>
@@ -480,29 +488,29 @@
               <th>App #</th><th>Contractor</th><th>Period</th>
               <th>Requested</th><th>Status</th><th>Actions</th>
             </tr></thead>
-            <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">Loadingâ¦</td></tr></tbody>
+            <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">LoadingÃ¢ÂÂ¦</td></tr></tbody>
           </table>
         </div>
       </div>
 
-<!-- ââ MODAL ââ -->
+<!-- Ã¢ÂÂÃ¢ÂÂ MODAL Ã¢ÂÂÃ¢ÂÂ -->
 <div class="modal-backdrop" id="modal-backdrop" onclick="closeModalOnBackdrop(event)">
   <div class="modal">
     <div class="modal-header">
       <h3 id="modal-title">Submit</h3>
-      <button class="modal-close" onclick="closeModal()">â</button>
+      <button class="modal-close" onclick="closeModal()">Ã¢ÂÂ</button>
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer">
       <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <span class="upload-progress" id="upload-progress">Saving to Boxâ¦</span>
+      <span class="upload-progress" id="upload-progress">Saving to BoxÃ¢ÂÂ¦</span>
     </div>
   </div>
 </div>
 
 <script>
-// ââ CONFIG ââ
+// Ã¢ÂÂÃ¢ÂÂ CONFIG Ã¢ÂÂÃ¢ÂÂ
 const CLIENT_ID     = '85sfp3r7vwb2wk33lrftdo1ma6crwoyv';
 const CLIENT_SECRET = 'HGtsn1vXWU4nTbTp7q8odATJUUOfd15n';
 const REDIRECT_URI  = window.location.origin + window.location.pathname.replace(/\/index\.html$/, '/').replace(/([^/])$/, '$1/');
@@ -511,12 +519,12 @@ const AUTH0_DOMAIN    = 'dev-477eis4yqjwd6d4g.us.auth0.com';
 const AUTH0_CLIENT_ID = 'LkuCVdAYFVpDljYze05RL1OCY3aCboxB';
 let   auth0Client     = null;
 
-// ââ STATE ââ
+// Ã¢ÂÂÃ¢ÂÂ STATE Ã¢ÂÂÃ¢ÂÂ
 let currentProject = null;
 let currentModal   = null;
 let allData        = {};
 
-// ââ PKCE AUTH ââ
+// Ã¢ÂÂÃ¢ÂÂ PKCE AUTH Ã¢ÂÂÃ¢ÂÂ
 function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); }
 function genVerifier(){ const a=new Uint8Array(32); crypto.getRandomValues(a); return b64url(a.buffer); }
 async function genChallenge(v){ return b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))); }
@@ -535,7 +543,7 @@ async function handleCallback(code){
   const v = sessionStorage.getItem('pkce_v');
   const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'authorization_code', client_id:CLIENT_ID, client_secret:CLIENT_SECRET, code, redirect_uri:REDIRECT_URI, code_verifier:v }) });
   const d = await r.json();
-  if(!d.access_token){ alert('Login failed â please try again.'); showScreen('screen-login'); return; }
+  if(!d.access_token){ alert('Login failed Ã¢ÂÂ please try again.'); showScreen('screen-login'); return; }
   storeTokens(d);
   window.history.replaceState({}, '', window.location.pathname);
   await loadPicker();
@@ -561,7 +569,7 @@ async function ensureToken(){
 
 function logout(){ sessionStorage.clear(); currentProject=null; showScreen('screen-login'); }
 
-// ââ BOX API ââ
+// Ã¢ÂÂÃ¢ÂÂ BOX API Ã¢ÂÂÃ¢ÂÂ
 async function boxGet(path){
   const t = await ensureToken();
   const r = await fetch('https://api.box.com/2.0/'+path, { headers:{Authorization:'Bearer '+t} });
@@ -617,7 +625,7 @@ async function findFile(folderId, filename){
   return items.find(i=>i.type==='file'&&i.name===filename)||null;
 }
 
-// ââ CSV ââ
+// Ã¢ÂÂÃ¢ÂÂ CSV Ã¢ÂÂÃ¢ÂÂ
 function parseCSV(text){
   if(!text||!text.trim()) return {headers:[],rows:[]};
   const lines = text.trim().split('\n').filter(l=>l.trim());
@@ -641,7 +649,7 @@ function toCSV(headers, rows){
   return [headers.join(','),...rows.map(r=>headers.map(h=>e(r[h]||'')).join(','))].join('\n');
 }
 
-// ââ MODULE DEFS ââ
+// Ã¢ÂÂÃ¢ÂÂ MODULE DEFS Ã¢ÂÂÃ¢ÂÂ
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name']},
@@ -654,12 +662,12 @@ const MODULES = {
   pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']}
 };
 
-// ââ PICKER ââ
+// Ã¢ÂÂÃ¢ÂÂ PICKER Ã¢ÂÂÃ¢ÂÂ
 async function loadPicker(){
   showScreen('screen-picker');
   try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
   const grid = document.getElementById('project-grid');
-  grid.innerHTML = '<div class="loading-state">Loading projects from Boxâ¦</div>';
+  grid.innerHTML = '<div class="loading-state">Loading projects from BoxÃ¢ÂÂ¦</div>';
   try{
     const rootItems = await boxList('0');
     let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
@@ -695,7 +703,7 @@ async function createProject(){
   const name = document.getElementById('new-proj-name').value.trim();
   if(!name){ showStatus('new-proj-status','Project name is required.','error'); return; }
   const btn = document.getElementById('btn-create-proj'); btn.disabled=true;
-  showStatus('new-proj-status','Creating folders in Boxâ¦','info');
+  showStatus('new-proj-status','Creating folders in BoxÃ¢ÂÂ¦','info');
   try{
     const rootId = sessionStorage.getItem('root_id') || await findOrCreateFolder(ROOT_NAME,'0');
     const projId = await boxCreateFolder(name, rootId);
@@ -708,7 +716,7 @@ async function createProject(){
   }catch(e){ btn.disabled=false; showStatus('new-proj-status','Error: '+e.message,'error'); }
 }
 
-// ââ DASHBOARD ââ
+// Ã¢ÂÂÃ¢ÂÂ DASHBOARD Ã¢ÂÂÃ¢ÂÂ
 async function loadDashboard(){
   const keys=['rfi','co','sub','daily','contacts','budget','docs','comments','pay_apps'];
   await Promise.allSettled(keys.map(k=>loadModule(k)));
@@ -725,7 +733,7 @@ async function loadModule(key){
 
 function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); }
 
-// ââ HELPERS ââ
+// Ã¢ÂÂÃ¢ÂÂ HELPERS Ã¢ÂÂÃ¢ÂÂ
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(status,overdue){
   if(overdue) return '<span class="pill overdue">Overdue</span>';
@@ -736,10 +744,10 @@ function pill(status,overdue){
 function isOverdue(r){ if((r['Status']||'').toLowerCase()!=='open') return false; const d=new Date(r['Due Date']); return !isNaN(d)&&d<new Date(); }
 function fmtMoney(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function fmtSigned(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); if(isNaN(n)) return s; return (n>=0?'+':'-')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
-function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">'+esc(fn||'View')+'</a>':'â'; }
-function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet â use the button above to add one.</td></tr>'; }
+function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">'+esc(fn||'View')+'</a>':'Ã¢ÂÂ'; }
+function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet Ã¢ÂÂ use the button above to add one.</td></tr>'; }
 
-// ââ RENDERERS ââ
+// Ã¢ÂÂÃ¢ÂÂ RENDERERS Ã¢ÂÂÃ¢ÂÂ
 function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
@@ -751,13 +759,13 @@ function renderRFIs(){
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map(r=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'â'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td></tr>'; }).join('');
+  tb.innerHTML=rows.map(r=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'Ã¢ÂÂ'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td></tr>'; }).join('');
 }
 
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">â New Ver.</button></td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">Ã¢ÂÂ New Ver.</button></td></tr>').join('');
 }
 
 function renderDailyLogs(){
@@ -791,7 +799,7 @@ function renderBudget(){
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">â New Version</button></td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">Ã¢ÂÂ New Version</button></td></tr>'; }).join('');
 }
 
 function renderOverview(){
@@ -803,23 +811,23 @@ function renderOverview(){
   document.querySelector('#stat-overdue .value').textContent=ovd.length;
   document.querySelector('#stat-open-cos .value').textContent=openC.length;
   const review=[
-    ...openR.map(r=>({type:'RFI',item:r['RFI #']+' â '+r['Subject'],by:r['Submitted By'],due:r['Due Date'],status:r['Status'],od:isOverdue(r)})),
-    ...openC.map(r=>({type:'CO',item:r['CO #']+' â '+r['Description'],by:'',due:'â',status:r['Status'],od:false})),
-    ...subs.filter(r=>(r['Status']||'').toLowerCase()==='under review').map(r=>({type:'Submittal',item:r['Submittal #']+' â '+r['Description'],by:r['Submitted By (Sub)'],due:'â',status:r['Status'],od:false}))
+    ...openR.map(r=>({type:'RFI',item:r['RFI #']+' Ã¢ÂÂ '+r['Subject'],by:r['Submitted By'],due:r['Due Date'],status:r['Status'],od:isOverdue(r)})),
+    ...openC.map(r=>({type:'CO',item:r['CO #']+' Ã¢ÂÂ '+r['Description'],by:'',due:'Ã¢ÂÂ',status:r['Status'],od:false})),
+    ...subs.filter(r=>(r['Status']||'').toLowerCase()==='under review').map(r=>({type:'Submittal',item:r['Submittal #']+' Ã¢ÂÂ '+r['Description'],by:r['Submitted By (Sub)'],due:'Ã¢ÂÂ',status:r['Status'],od:false}))
   ];
   const tb=document.getElementById('tbody-review');
-  tb.innerHTML=review.length?review.map(r=>'<tr><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+esc(r.due)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">Nothing outstanding â all caught up.</td></tr>';
+  tb.innerHTML=review.length?review.map(r=>'<tr><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+esc(r.due)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">Nothing outstanding Ã¢ÂÂ all caught up.</td></tr>';
 }
 
-// ââ MODAL FORMS ââ
+// Ã¢ÂÂÃ¢ÂÂ MODAL FORMS Ã¢ÂÂÃ¢ÂÂ
 const FORMS = {
   rfi:{title:'Submit New RFI',html:`
     <div class="field-row"><div class="field"><label>RFI # *</label><input id="f-num" placeholder="RFI-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
-    <div class="field"><label>Description</label><textarea id="f-desc" placeholder="Detailed descriptionâ¦"></textarea></div>
+    <div class="field"><label>Description</label><textarea id="f-desc" placeholder="Detailed descriptionÃ¢ÂÂ¦"></textarea></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned To</label><input id="f-assigned" placeholder="Engineer / PM"></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div><div class="field"><label>Due Date</label><input type="date" id="f-due"></div></div>
-    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF, DWG, or image â uploaded directly to Box.</p></div>`},
+    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF, DWG, or image Ã¢ÂÂ uploaded directly to Box.</p></div>`},
   co:{title:'Submit New Change Order',html:`
     <div class="field-row"><div class="field"><label>CO # *</label><input id="f-num" placeholder="CO-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
@@ -828,18 +836,18 @@ const FORMS = {
     <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
     <div class="field-row"><div class="field"><label>Submittal # *</label><input id="f-num" placeholder="SUB-001"></div><div class="field"><label>Status</label><select id="f-status"><option>Pending Review</option><option>Under Review</option><option>Approved</option><option>Rejected</option></select></div></div>
-    <div class="field-row"><div class="field"><label>Spec Section</label><input id="f-spec" placeholder="Type or search CSI codeâ¦" list="csi-list"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
+    <div class="field-row"><div class="field"><label>Spec Section</label><input id="f-spec" placeholder="Type or search CSI codeÃ¢ÂÂ¦" list="csi-list"></div><div class="field"><label>Date Submitted</label><input type="date" id="f-date-sub"></div></div>
     <div class="field"><label>Description *</label><input id="f-subject" placeholder="Panelboard shop drawings"></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Reviewer</label><input id="f-reviewer" placeholder="Engineer / PM"></div></div>
     <div class="field"><label>Submittal Document</label><input type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input id="f-by" placeholder="R. Alvarez (Super)"></div></div>
-    <div class="field-row"><div class="field"><label>Weather</label><input id="f-weather" placeholder="Partly cloudy, 72Â°F"></div><div class="field"><label>Crew Count</label><input type="number" id="f-crew" placeholder="14"></div></div>
-    <div class="field"><label>Work Performed *</label><textarea id="f-subject" placeholder="Concrete pour, north footingâ¦"></textarea></div>
-    <div class="field"><label>Delays / Issues</label><textarea id="f-delays" placeholder="Any delays, safety incidentsâ¦"></textarea></div>
-    <div class="field"><label>Daily Report File</label><input type="file" id="f-file"><p class="file-hint">PDF or photo â uploaded directly to Box.</p></div>`},
+    <div class="field-row"><div class="field"><label>Weather</label><input id="f-weather" placeholder="Partly cloudy, 72ÃÂ°F"></div><div class="field"><label>Crew Count</label><input type="number" id="f-crew" placeholder="14"></div></div>
+    <div class="field"><label>Work Performed *</label><textarea id="f-subject" placeholder="Concrete pour, north footingÃ¢ÂÂ¦"></textarea></div>
+    <div class="field"><label>Delays / Issues</label><textarea id="f-delays" placeholder="Any delays, safety incidentsÃ¢ÂÂ¦"></textarea></div>
+    <div class="field"><label>Daily Report File</label><input type="file" id="f-file"><p class="file-hint">PDF or photo Ã¢ÂÂ uploaded directly to Box.</p></div>`},
   contact:{title:'Add Contact',html:`
-    <div class="field-row"><div class="field"><label>Name *</label><input id="f-name"></div><div class="field"><label>Role *</label><input id="f-role" placeholder="PM, Superintendentâ¦"></div></div>
+    <div class="field-row"><div class="field"><label>Name *</label><input id="f-name"></div><div class="field"><label>Role *</label><input id="f-role" placeholder="PM, SuperintendentÃ¢ÂÂ¦"></div></div>
     <div class="field"><label>Company</label><input id="f-company"></div>
     <div class="field-row"><div class="field"><label>Email</label><input type="email" id="f-email"></div><div class="field"><label>Phone</label><input type="tel" id="f-phone"></div></div>
     <div class="field-row"><div class="field"><label>Notify on RFI?</label><select id="f-rfi"><option>Yes</option><option>No</option></select></div><div class="field"><label>Notify on CO?</label><select id="f-co"><option>Yes</option><option>No</option></select></div></div>
@@ -854,12 +862,12 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Period From</label><input type="date" id="f-from"></div><div class="field"><label>Period To</label><input type="date" id="f-to"></div></div>
     <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input id="f-contract" placeholder="850000"></div><div class="field"><label>Previously Paid ($)</label><input id="f-prev" placeholder="200000"></div></div>
     <div class="field-row"><div class="field"><label>Requested Amount ($) *</label><input id="f-req" placeholder="45000"></div><div class="field"><label>Remaining on Contract ($)</label><input id="f-remain" placeholder="605000"></div></div>
-    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF â uploaded directly to Box.</p></div>`},
+    <div class="field"><label>Supporting Document</label><input type="file" id="f-file"><p class="file-hint">PDF Ã¢ÂÂ uploaded directly to Box.</p></div>`},
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input id="f-ver" placeholder="Rev 3"></div></div>
     <div class="field-row"><div class="field"><label>Date</label><input type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select id="f-vis"><option value="Internal + Prime">Internal + Prime</option><option value="Internal Only">Internal Only</option></select></div></div>
-    <div class="field"><label>File *</label><input type="file" id="f-file"><p class="file-hint">Any file type â uploaded directly to Box.</p></div>`}
+    <div class="field"><label>File *</label><input type="file" id="f-file"><p class="file-hint">Any file type Ã¢ÂÂ uploaded directly to Box.</p></div>`}
 };
 
 function v(id){ const el=document.getElementById(id); return el?el.value:''; }
@@ -882,17 +890,17 @@ function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-b
 async function submitForm(){
   if(!currentModal) return;
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
-  btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Boxâ¦';
+  btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to BoxÃ¢ÂÂ¦';
   try{
     const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps'};
     const key=keyMap[currentModal];
     const folderId=currentProject.folders[key];
-    if(!folderId) throw new Error('Module folder not found â please re-open the project.');
+    if(!folderId) throw new Error('Module folder not found Ã¢ÂÂ please re-open the project.');
 
     let attachId='',attachName='';
     const fi=document.getElementById('f-file');
     if(fi&&fi.files.length>0){
-      prog.textContent='Uploading file to Boxâ¦';
+      prog.textContent='Uploading file to BoxÃ¢ÂÂ¦';
       const up=await boxUploadBinary(fi.files[0],folderId);
       const entry=up.entries?up.entries[0]:up;
       attachId=entry.id||''; attachName=fi.files[0].name;
@@ -935,7 +943,7 @@ async function submitForm(){
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':v('f-date-sub'),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
     }
 
-    prog.textContent='Updating log in Boxâ¦';
+    prog.textContent='Updating log in BoxÃ¢ÂÂ¦';
     const headers=MODULES[key].headers;
     const existing=await findFile(folderId,MODULES[key].log);
     let rows=[];
@@ -948,7 +956,7 @@ async function submitForm(){
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
 }
 
-// ââ NAV + VIEWER ââ
+// Ã¢ÂÂÃ¢ÂÂ NAV + VIEWER Ã¢ÂÂÃ¢ÂÂ
 function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
@@ -968,7 +976,7 @@ function setViewer(mode){
 function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
 function showStatus(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='status-msg '+type; }
 
-// ââ INIT ââ
+// Ã¢ÂÂÃ¢ÂÂ INIT Ã¢ÂÂÃ¢ÂÂ
 async function initAuth0(){
   auth0Client = await auth0.createAuth0Client({
     domain: AUTH0_DOMAIN, clientId: AUTH0_CLIENT_ID,
@@ -1005,9 +1013,9 @@ async function logoutAuth0(){
   else{ showScreen('screen-login'); }
 })();
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // SIDEBAR TOGGLE (mobile hamburger)
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 function toggleSidebar(){
   document.querySelector('.sidebar').classList.toggle('open');
 }
@@ -1017,9 +1025,9 @@ document.querySelectorAll('.nav-item').forEach(el=>{
   });
 });
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
-// PHOTO UPLOADS â Daily Log
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// PHOTO UPLOADS Ã¢ÂÂ Daily Log
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 async function uploadPhotos(input){
   const files=[...input.files]; if(!files.length) return;
   const dailyFid = currentProject.folders.daily;
@@ -1028,7 +1036,7 @@ async function uploadPhotos(input){
   const td = new Date().toISOString().slice(0,10);
   const dateFid = await findOrCreateFolder(td, photosFid);
   const grid=document.getElementById('photo-grid');
-  grid.innerHTML='<div class="photo-empty">Uploading '+files.length+' photo(s)â¦</div>';
+  grid.innerHTML='<div class="photo-empty">Uploading '+files.length+' photo(s)Ã¢ÂÂ¦</div>';
   for(const f of files) await boxUploadBinary(f, dateFid);
   await loadPhotos(photosFid);
   input.value='';
@@ -1044,21 +1052,21 @@ async function loadPhotos(photosFid){
     const imgs=(await boxList(df.id)).filter(i=>i.type==='file');
     imgs.forEach(img=>{
       const card=document.createElement('div'); card.className='photo-card';
-      card.innerHTML='<div style="height:90px;background:var(--khaki-100);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;" onclick="window.open(\'https://app.box.com/file/'+esc(img.id)+'\',\'_blank\')">ð¼</div><div class="pdate">'+esc(df.name)+'</div>';
+      card.innerHTML='<div style="height:90px;background:var(--khaki-100);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;" onclick="window.open(\'https://app.box.com/file/'+esc(img.id)+'\',\'_blank\')">Ã°ÂÂÂ¼</div><div class="pdate">'+esc(df.name)+'</div>';
       grid.appendChild(card);
     });
   }
   if(!grid.children.length) grid.innerHTML='<div class="photo-empty">No photos yet.</div>';
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // Q & A COMMENTS
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 function renderComments(){
   const list=document.getElementById('comment-list'); if(!list) return;
   const rows=allData.comments||[];
-  if(!rows.length){ list.innerHTML='<li class="comment-item"><div class="comment-text" style="color:var(--muted);font-style:italic;">No comments yet â be the first.</div></li>'; return; }
-  list.innerHTML=rows.slice().reverse().map(r=>'<li class="comment-item"><div class="comment-meta"><strong>'+esc(r['Author']||'â')+'</strong>'+(r['Role']?' Â· '+esc(r['Role']):'')+'<span style="margin-left:10px;color:var(--muted)">'+esc(r['Date']||'')+'</span></div><div class="comment-text">'+esc(r['Comment']||'')+'</div></li>').join('');
+  if(!rows.length){ list.innerHTML='<li class="comment-item"><div class="comment-text" style="color:var(--muted);font-style:italic;">No comments yet Ã¢ÂÂ be the first.</div></li>'; return; }
+  list.innerHTML=rows.slice().reverse().map(r=>'<li class="comment-item"><div class="comment-meta"><strong>'+esc(r['Author']||'Ã¢ÂÂ')+'</strong>'+(r['Role']?' ÃÂ· '+esc(r['Role']):'')+'<span style="margin-left:10px;color:var(--muted)">'+esc(r['Date']||'')+'</span></div><div class="comment-text">'+esc(r['Comment']||'')+'</div></li>').join('');
 }
 
 async function postComment(){
@@ -1078,9 +1086,9 @@ async function postComment(){
   renderComments();
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // PAYMENT APPLICATIONS
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 function renderPayApps(){
   const tbody=document.getElementById('payapp-tbody'); if(!tbody) return;
   const rows=allData.pay_apps||[];
@@ -1090,7 +1098,7 @@ function renderPayApps(){
     const s=r['Status']||'Pending';
     const bg=s==='Approved'?'var(--success-bg)':s==='Rejected'?'var(--danger-bg)':'var(--khaki-100)';
     return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(r['Contractor']||'')+'</td>'
-      +'<td>'+esc((r['Period From']||'')+(r['Period To']?' â '+r['Period To']:''))+'</td>'
+      +'<td>'+esc((r['Period From']||'')+(r['Period To']?' Ã¢ÂÂ '+r['Period To']:''))+'</td>'
       +'<td>'+fmtMoney(r['Requested Amount']||'')+'</td>'
       +'<td><span class="pill" style="background:'+bg+'">'+esc(s)+'</span></td>'
       +'<td><button class="btn-approve" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Approved'+'\')">Approve</button>'
@@ -1100,8 +1108,8 @@ function renderPayApps(){
 
 function updateContractBar(rows){
   const el=id=>document.getElementById(id);
-  const fmt=v=>{ const n=parseFloat((v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?'â':'$'+n.toLocaleString(); };
-  if(!rows.length){ ['cb-contract','cb-paid','cb-current','cb-remaining'].forEach(id=>{ if(el(id)) el(id).textContent='â'; }); return; }
+  const fmt=v=>{ const n=parseFloat((v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?'Ã¢ÂÂ':'$'+n.toLocaleString(); };
+  if(!rows.length){ ['cb-contract','cb-paid','cb-current','cb-remaining'].forEach(id=>{ if(el(id)) el(id).textContent='Ã¢ÂÂ'; }); return; }
   const last=rows[rows.length-1];
   if(el('cb-contract')) el('cb-contract').textContent=fmt(last['Contract Amount']||'');
   if(el('cb-paid'))     el('cb-paid').textContent    =fmt(last['Previously Paid']||'');
@@ -1119,9 +1127,9 @@ async function setPayStatus(appNum, status){
   allData.pay_apps=rows; renderPayApps();
 }
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // DOCUMENT VERSIONING
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 async function uploadNewVersion(key, rowIdx){
   const input=document.createElement('input'); input.type='file';
   input.onchange=async()=>{
@@ -1145,9 +1153,9 @@ async function uploadNewVersion(key, rowIdx){
 }
 
 
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 // SENDGRID EMAIL NOTIFICATIONS
-// ââââââââââââââââââââââââââââââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 async function sendEmail(toEmails, subject, body){
   if(!toEmails||!toEmails.length) return;
   try{
