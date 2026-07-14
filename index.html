@@ -895,13 +895,19 @@ async function submitForm(){
     if(currentModal==='rfi'){
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('RFI #, Subject, and Submitted By are required.');
       newRow={'RFI #':v('f-num'),'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':v('f-date-sub'),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      notifyContacts('Notify - RFI','[Fidevia] New RFI Submitted: '+newRow['RFI #'],emailTemplate('New RFI: '+newRow['Subject'],[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]],currentProject.name));
     } else if(currentModal==='co'){
+
       if(!v('f-num')||!v('f-subject')) throw new Error('CO # and Description are required.');
       newRow={'CO #':v('f-num'),'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':v('f-sched'),'Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':v('f-date-sub'),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      notifyContacts('Notify - CO','[Fidevia] New Change Order: '+newRow['CO #'],emailTemplate('Change Order Submitted: '+newRow['Description'],[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Schedule Impact',newRow['Schedule Impact (Days)']+' days'],['Status',newRow['Status']]],currentProject.name));
     } else if(currentModal==='submittal'){
+
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('Submittal #, Description, and Submitted By are required.');
       newRow={'Submittal #':v('f-num'),'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':v('f-date-sub'),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName};
+      notifyContacts('Notify - Submittal','[Fidevia] New Submittal: '+newRow['Submittal #'],emailTemplate('Submittal Received: '+newRow['Description'],[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]],currentProject.name));
     } else if(currentModal==='daily'){
+
       if(!v('f-date-sub')||!v('f-by')||!v('f-subject')) throw new Error('Date, Submitted By, and Work Performed are required.');
       newRow={'Date':v('f-date-sub'),'Submitted By':v('f-by'),'Weather':v('f-weather'),'Crew Count':v('f-crew'),'Work Performed':v('f-subject'),'Delays / Issues':v('f-delays'),'Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='contact'){
@@ -1101,6 +1107,44 @@ async function uploadNewVersion(key, rowIdx){
     allData[key]=rows; renderAll();
   };
   input.click();
+}
+
+
+// ══════════════════════════════════════════════
+// SENDGRID EMAIL NOTIFICATIONS
+// ══════════════════════════════════════════════
+async function sendEmail(toEmails, subject, body){
+  if(!toEmails||!toEmails.length) return;
+  try{
+    await fetch('https://api.sendgrid.com/v3/mail/send',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+SG_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        personalizations:[{to:toEmails.map(e=>({email:e}))}],
+        from:{email:FROM_EMAIL,name:FROM_NAME},
+        subject:subject,
+        content:[{type:'text/html',value:body}]
+      })
+    });
+  }catch(e){ console.warn('Email notification failed:',e.message); }
+}
+
+function notifyContacts(notifyField, subject, bodyHTML){
+  const contacts = allData.contacts||[];
+  const emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
+  if(emails.length) sendEmail(emails, subject, bodyHTML);
+}
+
+function emailTemplate(title, rows, projectName){
+  const rowsHTML = rows.map(([k,v])=>'<tr><td style="padding:6px 12px;color:#666;font-size:13px;width:160px">'+k+'</td><td style="padding:6px 12px;font-size:13px;font-weight:600">'+v+'</td></tr>').join('');
+  return '<div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:8px;overflow:hidden">'
+    +'<div style="background:#3d3a2f;padding:20px 24px;display:flex;align-items:center">'
+    +'<span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:0.5px">Fidevia</span>'
+    +'<span style="color:#c8b97a;margin-left:8px;font-size:13px">Construction Dashboard</span></div>'
+    +'<div style="padding:20px 24px"><p style="margin:0 0 16px;font-size:15px;font-weight:600;color:#1a1a1a">'+title+'</p>'
+    +'<p style="margin:0 0 12px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.5px">Project: '+projectName+'</p>'
+    +'<table style="width:100%;border-collapse:collapse;background:#faf9f6;border:1px solid #e2ddd5;border-radius:6px">'+rowsHTML+'</table>'
+    +'<p style="margin:20px 0 0;font-size:12px;color:#aaa">Sent automatically by Fidevia Dashboard</p></div></div>';
 }
 
 </script>
