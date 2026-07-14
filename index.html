@@ -501,7 +501,7 @@
 // ── CONFIG ──
 const CLIENT_ID     = '85sfp3r7vwb2wk33lrftdo1ma6crwoyv';
 const CLIENT_SECRET = 'HGtsn1vXWU4nTbTp7q8odATJUUOfd15n';
-const REDIRECT_URI = 'https://chriscicala555.github.io/fidevia-dashboard/';
+const REDIRECT_URI  = window.location.origin + window.location.pathname.replace(/\/index\.html$/, '/').replace(/([^/])$/, '$1/');
 const ROOT_NAME    = 'Construction Dashboard';
 
 // ── STATE ──
