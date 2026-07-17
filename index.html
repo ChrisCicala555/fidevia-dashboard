@@ -1028,7 +1028,8 @@ function showStatus(id,msg,type){ const el=document.getElementById(id); el.textC
 async function initAuth0(){
   auth0Client = await auth0.createAuth0Client({
     domain: AUTH0_DOMAIN, clientId: AUTH0_CLIENT_ID,
-    authorizationParams: { redirect_uri: REDIRECT_URI }
+    cacheLocation: 'localstorage', useRefreshTokens: true,
+    authorizationParams: { redirect_uri: REDIRECT_URI, scope: 'openid profile email offline_access' }
   });
   const p=new URLSearchParams(window.location.search);
   if(p.get('code') && !sessionStorage.getItem('pkce_v')){
@@ -1058,13 +1059,19 @@ async function saveProfile(){
   btn.disabled=true; btn.textContent='Saving...';
   try{
     const user = await auth0Client.getUser();
-    localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify({
+    const profile = {
       first_name:first, last_name:last,
       phone:document.getElementById('prof-phone').value.trim(),
       company:document.getElementById('prof-company').value.trim(),
       title:document.getElementById('prof-title').value.trim(),
       involvement:involvement, email:user.email||'', onboarded:true
-    }));
+    };
+    localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(profile));
+    try{
+      const tok = await auth0Client.getTokenSilently();
+      const r = await fetch('/api/profile',{ method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body:JSON.stringify(profile) });
+      if(!r.ok) console.warn('Server profile save failed:', r.status);
+    }catch(e){ console.warn('Server profile save skipped:', e.message); }
     if(sessionStorage.getItem('box_token')){ await loadPicker(); }
     else{ showScreen('screen-login'); }
   }catch(e){
@@ -1085,6 +1092,13 @@ async function saveProfile(){
     // Onboarding check
     const meta = user['https://fidevia.com/meta'] || {};
     let localProf=null; try{ localProf=JSON.parse(localStorage.getItem('fidevia_profile_'+user.sub)||'null'); }catch(e){}
+    if(!localProf){
+      try{
+        const tok = await auth0Client.getTokenSilently();
+        const r = await fetch('/api/profile',{ headers:{'Authorization':'Bearer '+tok} });
+        if(r.ok){ const d=await r.json(); if(d.profile){ localProf=d.profile; localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(d.profile)); } }
+      }catch(e){}
+    }
     if(!meta.onboarded && !(localProf&&localProf.onboarded)){
       if(user.given_name){ const el=document.getElementById('prof-first'); if(el) el.value=user.given_name; }
       if(user.family_name){ const el=document.getElementById('prof-last'); if(el) el.value=user.family_name; }
