@@ -1057,24 +1057,14 @@ async function saveProfile(){
   const btn=document.getElementById('prof-btn');
   btn.disabled=true; btn.textContent='Saving...';
   try{
-    const mgmtToken = await auth0Client.getTokenSilently({
-      authorizationParams:{
-        audience:'https://dev-477eis4yqjwd6d4g.us.auth0.com/api/v2/',
-        scope:'update:current_user_metadata'
-      }
-    });
     const user = await auth0Client.getUser();
-    await fetch('https://dev-477eis4yqjwd6d4g.us.auth0.com/api/v2/users/'+encodeURIComponent(user.sub),{
-      method:'PATCH',
-      headers:{'Authorization':'Bearer '+mgmtToken,'Content-Type':'application/json'},
-      body:JSON.stringify({user_metadata:{
-        first_name:first, last_name:last,
-        phone:document.getElementById('prof-phone').value.trim(),
-        company:document.getElementById('prof-company').value.trim(),
-        title:document.getElementById('prof-title').value.trim(),
-        involvement:involvement, onboarded:true
-      }})
-    });
+    localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify({
+      first_name:first, last_name:last,
+      phone:document.getElementById('prof-phone').value.trim(),
+      company:document.getElementById('prof-company').value.trim(),
+      title:document.getElementById('prof-title').value.trim(),
+      involvement:involvement, email:user.email||'', onboarded:true
+    }));
     if(sessionStorage.getItem('box_token')){ await loadPicker(); }
     else{ showScreen('screen-login'); }
   }catch(e){
@@ -1094,7 +1084,8 @@ async function saveProfile(){
     if(av && user.picture){ av.src=user.picture; av.style.display='inline'; }
     // Onboarding check
     const meta = user['https://fidevia.com/meta'] || {};
-    if(!meta.onboarded){
+    let localProf=null; try{ localProf=JSON.parse(localStorage.getItem('fidevia_profile_'+user.sub)||'null'); }catch(e){}
+    if(!meta.onboarded && !(localProf&&localProf.onboarded)){
       if(user.given_name){ const el=document.getElementById('prof-first'); if(el) el.value=user.given_name; }
       if(user.family_name){ const el=document.getElementById('prof-last'); if(el) el.value=user.family_name; }
       showScreen('screen-profile'); return;
