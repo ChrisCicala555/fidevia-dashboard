@@ -235,6 +235,11 @@
       <h2 style="color:#3a3a3a;font-size:20px;margin:12px 0 4px;font-weight:700;">Complete Your Profile</h2>
       <p style="color:#888;font-size:13px;margin:0;">Tell us about yourself to get started</p>
     </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Email</label>
+      <input id="prof-email" type="email" readonly style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;background:#f5f4ee;color:#555;cursor:not-allowed;">
+      <p style="font-size:11px;color:#999;margin:4px 0 0;">This is the email you signed in with.</p>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
         <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">First Name <span style="color:#c0392b;">*</span></label>
@@ -280,8 +285,9 @@
       <img src="https://static.wixstatic.com/media/0c9dfb_270a6b974c8e4889b4d2a82c532a4a1e~mv2.png/v1/fill/w_257,h_160,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Fidevia%20w_branch.png" alt="Fidevia" style="width:200px;height:auto;">
     </div>
     <p class="login-sub" style="color:#3a3a3a;font-size:15px;margin-bottom:6px;">Construction Management Dashboard</p>
-    <p style="color:#888;font-size:13px;margin-bottom:28px;">Sign in to access your projects</p>
+    <p style="color:#888;font-size:13px;margin-bottom:28px;">Sign in to your account, or create one to get started</p>
     <button class="btn-box" onclick="loginWithAuth0()" style="width:100%;background:#515520;border-color:#515520;color:#fff;font-size:15px;padding:12px;">Sign In</button>
+    <button class="btn-box" onclick="signupWithAuth0()" style="width:100%;background:#fff;border:1px solid #515520;color:#515520;font-size:15px;padding:12px;margin-top:10px;">Create Account</button>
   </div>
 </div>
 <div id="screen-login" class="screen active">
@@ -1041,6 +1047,9 @@ async function initAuth0(){
 async function loginWithAuth0(){
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI } });
 }
+async function signupWithAuth0(){
+  await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI, screen_hint: 'signup' } });
+}
 async function logoutAuth0(){
   await auth0Client.logout({ logoutParams: { returnTo: REDIRECT_URI } });
 }
@@ -1102,6 +1111,7 @@ async function saveProfile(){
     if(!meta.onboarded && !(localProf&&localProf.onboarded)){
       if(user.given_name){ const el=document.getElementById('prof-first'); if(el) el.value=user.given_name; }
       if(user.family_name){ const el=document.getElementById('prof-last'); if(el) el.value=user.family_name; }
+      const em=document.getElementById('prof-email'); if(em) em.value=user.email||'';
       showScreen('screen-profile'); return;
     }
   }
