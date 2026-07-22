@@ -6,6 +6,8 @@
 const AUTH0_DOMAIN = 'dev-477eis4yqjwd6d4g.us.auth0.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
+const csvEsc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+
 
 // --- Cache the service-account token in memory across warm invocations ---
 let _svc = { token: null, exp: 0 };
@@ -37,16 +39,6 @@ async function requireUser(req) {
 }
 
 export default async (req) => {
-  // TEMP diagnostic: verify service-account connectivity. Gated by token. REMOVE after testing.
-  const url = new URL(req.url);
-  if (req.method === 'GET' && url.searchParams.get('diag') === 'fidevia-check-9f3a') {
-    try {
-      const t = await serviceToken();
-      const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=50&fields=id,name,type`, { headers: { Authorization: 'Bearer ' + t } });
-      const d = await r.json();
-      return json({ ok: r.ok, status: r.status, rootId: process.env.BOX_PROJECTS_ROOT_ID, items: (d.entries||[]).map(e=>({name:e.name,type:e.type})), error: d.message||null });
-    } catch (e) { return json({ ok: false, error: e.message }); }
-  }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const user = await requireUser(req);
@@ -146,6 +138,35 @@ export default async (req) => {
         if (!ur.ok) return json({ error: 'Create log failed ' + ur.status }, ur.status);
         return json({ ok: true });
       }
+    }
+
+    // ---- APPEND ONE ROW to a CSV log (byte-safe: existing content is never re-serialized) ----
+    if (op === 'appendRow') {
+      const { folderId, filename, headers, row } = body;
+      if (!Array.isArray(headers) || typeof row !== 'object') return json({ error: 'headers[] and row{} required' }, 400);
+      const rowLine = headers.map(h => csvEsc(row[h])).join(',');
+      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const existing = items.find(i => i.type === 'file' && i.name === filename);
+      let out;
+      if (existing) {
+        const cr = await fetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
+        const current = cr.ok ? await cr.text() : '';
+        out = current.replace(/\s*$/, '') + '\n' + rowLine + '\n';   // append only; existing bytes untouched
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: filename }));
+        form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+        const ur = await fetch(`https://upload.box.com/api/2.0/files/${existing.id}/content`, { method: 'POST', headers: H, body: form });
+        if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
+      } else {
+        out = headers.join(',') + '\n' + rowLine + '\n';
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: filename, parent: { id: String(folderId) } }));
+        form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+        const ur = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
+        if (!ur.ok) return json({ error: 'Create log failed ' + ur.status }, ur.status);
+      }
+      return json({ ok: true });
     }
 
     // Any other op (update, delete, rename, move) is intentionally unsupported.

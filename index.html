@@ -153,6 +153,10 @@
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
+  body.is-external-user .viewer-toggle,
+  body.is-external-user .btn-ver,
+  body.is-external-user .btn-approve,
+  body.is-external-user .btn-reject{display:none !important;}
   body.external-mode .nav-budget,
   body.external-mode .nav-contacts,
   body.external-mode .nav-dailylogs{display:none;}
@@ -623,6 +627,17 @@ async function ensureToken(){
 
 function logout(){ sessionStorage.clear(); currentProject=null; showScreen('screen-login'); }
 
+// ── EXTERNAL (service-account proxy) ──
+let EXTERNAL = false;
+async function proxyCall(op, body){
+  const tok = await auth0Client.getTokenSilently();
+  const r = await fetch('/api/box-proxy', { method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({op}, body||{})) });
+  let d={}; try{ d=await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
+  return d;
+}
+function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(file); }); }
+
 // ── BOX API ──
 async function boxGet(path){
   const t = await ensureToken();
@@ -633,6 +648,7 @@ async function boxGet(path){
 }
 
 async function boxGetText(fileId){
+  if(EXTERNAL){ const d=await proxyCall('readText',{fileId}); return d.text||''; }
   const t = await ensureToken();
   const r = await fetch('https://api.box.com/2.0/files/'+fileId+'/content', { headers:{Authorization:'Bearer '+t} });
   return r.ok ? r.text() : '';
@@ -655,6 +671,7 @@ async function boxUploadText(filename, content, parentId, existingId=null){
 }
 
 async function boxUploadBinary(file, parentId){
+  if(EXTERNAL){ const b64=await fileToB64(file); const d=await proxyCall('upload',{folderId:parentId, filename:file.name, contentBase64:b64, mime:file.type}); return d.file; }
   const t = await ensureToken();
   const form = new FormData();
   form.append('attributes', JSON.stringify({name:file.name,parent:{id:parentId}}));
@@ -664,6 +681,7 @@ async function boxUploadBinary(file, parentId){
 }
 
 async function boxList(folderId){
+  if(EXTERNAL){ const d=await proxyCall('list',{folderId}); return d.entries||[]; }
   const d = await boxGet('folders/'+folderId+'/items?limit=200&fields=id,name,type');
   return d.entries||[];
 }
@@ -719,13 +737,19 @@ const MODULES = {
 // ── PICKER ──
 async function loadPicker(){
   showScreen('screen-picker');
-  try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
   const grid = document.getElementById('project-grid');
   grid.innerHTML = '<div class="loading-state">Loading projects from Box…</div>';
   try{
-    const rootItems = await boxList('0');
-    let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
-    const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
+    let rootId;
+    if(EXTERNAL){
+      try{ const u=await auth0Client.getUser(); const el=document.getElementById('user-name-display'); if(el) el.textContent=u.name||u.email||''; }catch(e){}
+      rootId = (await proxyCall('root',{})).folderId;
+    } else {
+      try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
+      const rootItems = await boxList('0');
+      let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
+      rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
+    }
     sessionStorage.setItem('root_id', rootId);
     const projects = (await boxList(rootId)).filter(i=>i.type==='folder');
     grid.innerHTML = '';
@@ -735,10 +759,12 @@ async function loadPicker(){
       card.onclick=()=>openProject(p.id,p.name);
       grid.appendChild(card);
     });
-    const add=document.createElement('div'); add.className='add-project-card';
-    add.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>New Project</span>';
-    add.onclick=()=>showScreen('screen-new-project');
-    grid.appendChild(add);
+    if(!EXTERNAL){
+      const add=document.createElement('div'); add.className='add-project-card';
+      add.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>New Project</span>';
+      add.onclick=()=>showScreen('screen-new-project');
+      grid.appendChild(add);
+    }
   }catch(e){ grid.innerHTML='<div class="loading-state" style="color:var(--danger)">Failed to load: '+esc(e.message)+'</div>'; }
 }
 
@@ -749,7 +775,7 @@ async function openProject(folderId, name){
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
   currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09') } };
-  navTo('overview'); setViewer('internal'); allData={};
+  navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
   loadDashboard();
 }
 
@@ -772,7 +798,9 @@ async function createProject(){
 
 // ── DASHBOARD ──
 async function loadDashboard(){
-  const keys=['rfi','co','sub','daily','contacts','budget','docs','comments','pay_apps'];
+  const allKeys=['rfi','co','sub','daily','contacts','budget','docs','comments','pay_apps'];
+  allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
+  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps'] : allKeys;
   await Promise.allSettled(keys.map(k=>loadModule(k)));
   renderAll();
 }
@@ -999,12 +1027,17 @@ async function submitForm(){
 
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
-    const existing=await findFile(folderId,MODULES[key].log);
-    let rows=[];
-    if(existing){ rows=(parseCSV(await boxGetText(existing.id))).rows; }
-    rows.push(newRow);
-    await boxUploadText(MODULES[key].log, toCSV(headers,rows), folderId, existing?existing.id:null);
-    allData[key]=rows;
+    if(EXTERNAL){
+      await proxyCall('appendRow',{folderId, filename:MODULES[key].log, headers, row:newRow});
+      allData[key]=(allData[key]||[]).concat([newRow]);
+    } else {
+      const existing=await findFile(folderId,MODULES[key].log);
+      let rows=[];
+      if(existing){ rows=(parseCSV(await boxGetText(existing.id))).rows; }
+      rows.push(newRow);
+      await boxUploadText(MODULES[key].log, toCSV(headers,rows), folderId, existing?existing.id:null);
+      allData[key]=rows;
+    }
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
@@ -1018,6 +1051,7 @@ function navTo(sec){
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
 function setViewer(mode){
+  if(EXTERNAL) mode='external';
   document.body.classList.toggle('external-mode',mode==='external');
   document.getElementById('btn-internal').classList.toggle('active',mode==='internal');
   document.getElementById('btn-external').classList.toggle('active',mode==='external');
@@ -1114,6 +1148,12 @@ async function saveProfile(){
       const em=document.getElementById('prof-email'); if(em) em.value=user.email||'';
       showScreen('screen-profile'); return;
     }
+  }
+  EXTERNAL = (user && user['https://fidevia.com/role'] === 'external');
+  if(EXTERNAL){
+    document.body.classList.add('is-external-user');
+    await loadPicker();
+    return;
   }
   const params=new URLSearchParams(window.location.search);
   const code=params.get('code');
