@@ -1149,7 +1149,10 @@ async function saveProfile(){
       showScreen('screen-profile'); return;
     }
   }
-  EXTERNAL = (user && user['https://fidevia.com/role'] === 'external');
+  // Role: prefer signed Auth0 claim if present; otherwise fall back to email domain.
+  const _email = ((user && user.email) || '').toLowerCase();
+  const _claimRole = user && user['https://fidevia.com/role'];
+  EXTERNAL = _claimRole ? (_claimRole === 'external') : (!!user && !_email.endsWith('@fidevia.com'));
   if(EXTERNAL){
     document.body.classList.add('is-external-user');
     await loadPicker();
