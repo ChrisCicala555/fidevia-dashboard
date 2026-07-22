@@ -97,6 +97,47 @@ export default async (req) => {
       return json({ ok: true, file: await r.json() });
     }
 
+    // ---- ROOT: return the configured shared projects folder id (for external browsing) ----
+    if (op === 'root') {
+      return json({ folderId: process.env.BOX_PROJECTS_ROOT_ID || '0' });
+    }
+
+    // ---- APPEND-ONLY write to a log file (RFIs/COs/comments) ----
+    // Safety: the new content MUST begin with the current content verbatim.
+    // Any attempt to alter or remove existing rows is rejected.
+    if (op === 'appendFile') {
+      const { folderId, filename, newContent } = body;
+      if (typeof newContent !== 'string') return json({ error: 'newContent required' }, 400);
+      // Locate existing file in the folder
+      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const existing = items.find(i => i.type === 'file' && i.name === filename);
+
+      if (existing) {
+        const cr = await fetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
+        const current = cr.ok ? await cr.text() : '';
+        if (current && !newContent.startsWith(current)) {
+          return json({ error: 'Append-only: existing content cannot be modified or removed.' }, 403);
+        }
+        const bytes = new TextEncoder().encode(newContent);
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: filename }));
+        form.append('file', new Blob([bytes], { type: 'text/csv' }), filename);
+        const ur = await fetch(`https://upload.box.com/api/2.0/files/${existing.id}/content`, { method: 'POST', headers: H, body: form });
+        if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
+        return json({ ok: true });
+      } else {
+        // Log doesn't exist yet — create it
+        const bytes = new TextEncoder().encode(newContent);
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: filename, parent: { id: String(folderId) } }));
+        form.append('file', new Blob([bytes], { type: 'text/csv' }), filename);
+        const ur = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
+        if (!ur.ok) return json({ error: 'Create log failed ' + ur.status }, ur.status);
+        return json({ ok: true });
+      }
+    }
+
     // Any other op (update, delete, rename, move) is intentionally unsupported.
     return json({ error: 'Operation not permitted for external users: ' + op }, 403);
   } catch (e) {
