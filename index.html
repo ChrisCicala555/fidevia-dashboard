@@ -1195,16 +1195,20 @@ async function initAuth0(){
     authorizationParams: { redirect_uri: REDIRECT_URI, scope: 'openid profile email offline_access' }
   });
   const p=new URLSearchParams(window.location.search);
-  if(p.get('code') && !sessionStorage.getItem('pkce_v')){
+  const _code=p.get('code'), _state=p.get('state'), _boxState=sessionStorage.getItem('pkce_s');
+  const _isBoxCallback = !!_code && !!_boxState && _state===_boxState;   // Box callback only if state matches
+  if(_code && !_isBoxCallback){
     try{ await auth0Client.handleRedirectCallback(); window.history.replaceState({},document.title,window.location.pathname); }
     catch(e){ console.warn('Auth0 callback:',e); }
   }
   return auth0Client.isAuthenticated();
 }
 async function loginWithAuth0(){
+  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI } });
 }
 async function signupWithAuth0(){
+  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI, screen_hint: 'signup' } });
 }
 async function logoutAuth0(){
