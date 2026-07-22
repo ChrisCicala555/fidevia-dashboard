@@ -34,12 +34,37 @@ async function caller(req) {
   const email = (u.email || '').toLowerCase();
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email);
-  return { email, name: u.name || u.given_name || '', isAdmin };
+  return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin };
 }
 
 // --- Grants store: key = external email, value = { projects:[{id,name}] } ---
 const grantsStore = () => getStore('access-grants');
 const requestsStore = () => getStore('access-requests');
+const notifStore = () => getStore('notif-templates');
+async function getProfileBySub(sub){ try{ return await getStore('profiles').get(sub, { type:'json' }); }catch(e){ return null; } }
+async function addContactToProject(H, projectId, contact){
+  const CH = ['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal'];
+  const fname = 'Job Contacts.csv';
+  const lr = await fetch(`https://api.box.com/2.0/folders/${projectId}/items?limit=1000&fields=id,name,type`, { headers: H });
+  const items = lr.ok ? ((await lr.json()).entries || []) : [];
+  const cf = items.find(i => i.type === 'folder' && /^0?5\b|^05/.test(i.name) || (i.type==='folder' && i.name.toLowerCase().includes('contact')));
+  if (!cf) return;
+  const flr = await fetch(`https://api.box.com/2.0/folders/${cf.id}/items?limit=1000&fields=id,name,type`, { headers: H });
+  const fitems = flr.ok ? ((await flr.json()).entries || []) : [];
+  const existing = fitems.find(i => i.type === 'file' && i.name === fname);
+  let current = '';
+  if (existing) { const cr = await fetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H }); current = cr.ok ? await cr.text() : ''; }
+  if (current && contact.Email && current.toLowerCase().includes(String(contact.Email).toLowerCase())) return; // already a contact
+  const rowLine = CH.map(h => csvEsc(contact[h])).join(',');
+  let out, url, attrs;
+  if (existing) { out = current.replace(/\s*$/, '') + '\n' + rowLine + '\n'; url = `https://upload.box.com/api/2.0/files/${existing.id}/content`; attrs = JSON.stringify({ name: fname }); }
+  else { out = CH.join(',') + '\n' + rowLine + '\n'; url = 'https://upload.box.com/api/2.0/files/content'; attrs = JSON.stringify({ name: fname, parent: { id: String(cf.id) } }); }
+  const form = new FormData(); form.append('attributes', attrs); form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), fname);
+  await fetch(url, { method: 'POST', headers: H, body: form });
+}
+function contactFromSnap(snap, email){
+  return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
+}
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 
@@ -91,6 +116,7 @@ export default async (req) => {
         const g = (await store.get(email, { type: 'json' })) || { projects: [] };
         if (!g.projects.some(p => String(p.id) === String(body.projectId))) g.projects.push({ id: String(body.projectId), name: body.projectName || '' });
         await store.setJSON(email, g);
+        try { await addContactToProject(H, String(body.projectId), contactFromSnap(null, email)); } catch(e) {}
         return json({ ok: true });
       }
       if (op === 'adminRevoke') {
@@ -114,8 +140,10 @@ export default async (req) => {
     if (op === 'requestAccess') {
       const projectId = String(body.projectId || '');
       if (!projectId) return json({ error: 'projectId required' }, 400);
+      const prof = await getProfileBySub(who.sub);
+      const snap = prof ? { name: ((prof.first_name||'')+' '+(prof.last_name||'')).trim()||who.name||'', company: prof.company||'', role: prof.title||prof.involvement||'', phone: prof.phone||'' } : { name: who.name||'' };
       await requestsStore().setJSON(reqKey(projectId, who.email), {
-        email: who.email, name: who.name || '', projectId, projectName: body.projectName || '', requestedAt: new Date().toISOString()
+        email: who.email, name: who.name || '', snap, projectId, projectName: body.projectName || '', requestedAt: new Date().toISOString()
       });
       return json({ ok: true });
     }
@@ -137,6 +165,9 @@ export default async (req) => {
       const g = (await gstore.get(email, { type: 'json' })) || { projects: [] };
       if (!g.projects.some(p => String(p.id) === projectId)) g.projects.push({ id: projectId, name: body.projectName || '' });
       await gstore.setJSON(email, g);
+      // auto-add to the project's contacts with notifications ON
+      const reqRec = await requestsStore().get(reqKey(projectId, email), { type: 'json' });
+      try { await addContactToProject(H, projectId, contactFromSnap(reqRec && reqRec.snap, email)); } catch(e) {}
       await requestsStore().delete(reqKey(projectId, email));
       return json({ ok: true });
     }
@@ -222,6 +253,16 @@ export default async (req) => {
       form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
       const ur = await fetch(uploadUrl, { method: 'POST', headers: H, body: form });
       if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
+      return json({ ok: true });
+    }
+
+    if (op === 'getNotifTemplates') {
+      const d = await notifStore().get(String(body.projectId), { type: 'json' });
+      return json({ templates: d || null });
+    }
+    if (op === 'saveNotifTemplates') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      await notifStore().setJSON(String(body.projectId), body.templates || {});
       return json({ ok: true });
     }
 

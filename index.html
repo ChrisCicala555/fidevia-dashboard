@@ -402,6 +402,8 @@
     <div class="nav-item" data-section="documents">Documents</div>
     <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
     <div class="nav-item" data-section="payapps">Payment Applications</div>
+    <div class="nav-section-label admin-only">Admin</div>
+    <div class="nav-item admin-only" data-section="notifsettings">Notification Settings</div>
     <div class="sidebar-footer">
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
     </div>
@@ -582,6 +584,25 @@
             </tr></thead>
             <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- NOTIFICATION SETTINGS (admin) -->
+      <div class="section" id="section-notifsettings">
+        <h2 class="page-title">Notification Settings</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;max-width:640px;">Customize the email that goes out when items are submitted on this project. Available placeholders: <code>{project}</code>, <code>{number}</code>, <code>{title}</code>, <code>{submitter}</code>.</p>
+        <div class="panel" style="padding:20px;max-width:680px;">
+          <h3 style="font-size:15px;margin:0 0 10px;">New RFI</h3>
+          <div class="field"><label>Subject</label><input id="nt-rfi-subject" placeholder="[Fidevia] New RFI Submitted: {number}"></div>
+          <div class="field"><label>Message heading</label><input id="nt-rfi-intro" placeholder="New RFI: {title}"></div>
+          <h3 style="font-size:15px;margin:20px 0 10px;">New Change Order</h3>
+          <div class="field"><label>Subject</label><input id="nt-co-subject" placeholder="[Fidevia] New Change Order: {number}"></div>
+          <div class="field"><label>Message heading</label><input id="nt-co-intro" placeholder="Change Order Submitted: {title}"></div>
+          <h3 style="font-size:15px;margin:20px 0 10px;">New Submittal</h3>
+          <div class="field"><label>Subject</label><input id="nt-sub-subject" placeholder="[Fidevia] New Submittal: {number}"></div>
+          <div class="field"><label>Message heading</label><input id="nt-sub-intro" placeholder="Submittal Received: {title}"></div>
+          <div style="margin-top:20px;"><button class="btn-primary" onclick="saveNotifSettings()" id="btn-notif-save">Save Settings</button></div>
+          <div class="status-msg" id="notif-status"></div>
         </div>
       </div>
 
@@ -823,6 +844,7 @@ async function openProject(folderId, name){
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
   currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09') } };
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
+  try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
   loadAccessRequests(folderId);
   loadDashboard();
 }
@@ -1040,17 +1062,17 @@ async function submitForm(){
     if(currentModal==='rfi'){
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('RFI #, Subject, and Submitted By are required.');
       newRow={'RFI #':v('f-num'),'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':v('f-date-sub'),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName};
-      notifyContacts('Notify - RFI','[Fidevia] New RFI Submitted: '+newRow['RFI #'],emailTemplate('New RFI: '+newRow['Subject'],[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]],currentProject.name));
+      sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]]);
     } else if(currentModal==='co'){
 
       if(!v('f-num')||!v('f-subject')) throw new Error('CO # and Description are required.');
       newRow={'CO #':v('f-num'),'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':v('f-sched'),'Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':v('f-date-sub'),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName};
-      notifyContacts('Notify - CO','[Fidevia] New Change Order: '+newRow['CO #'],emailTemplate('Change Order Submitted: '+newRow['Description'],[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Schedule Impact',newRow['Schedule Impact (Days)']+' days'],['Status',newRow['Status']]],currentProject.name));
+      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Schedule Impact',newRow['Schedule Impact (Days)']+' days'],['Status',newRow['Status']]]);
     } else if(currentModal==='submittal'){
 
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('Submittal #, Description, and Submitted By are required.');
       newRow={'Submittal #':v('f-num'),'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':v('f-date-sub'),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName};
-      notifyContacts('Notify - Submittal','[Fidevia] New Submittal: '+newRow['Submittal #'],emailTemplate('Submittal Received: '+newRow['Description'],[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]],currentProject.name));
+      sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]]);
     } else if(currentModal==='daily'){
 
       if(!v('f-date-sub')||!v('f-by')||!v('f-subject')) throw new Error('Date, Submitted By, and Work Performed are required.');
@@ -1108,6 +1130,33 @@ async function submitRequest(){
   const btn=document.getElementById('btn-request'); btn.disabled=true;
   try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted! A Fidevia admin will review it and grant access.','success'); }
   catch(e){ showStatus('req-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
+// ── ADMIN: NOTIFICATION SETTINGS ──
+function loadNotifSettings(){
+  const n=(currentProject&&currentProject.notif)||{};
+  const g=(t,k)=>((n[t]&&n[t][k])||'');
+  document.getElementById('nt-rfi-subject').value=g('rfi','subject');
+  document.getElementById('nt-rfi-intro').value=g('rfi','intro');
+  document.getElementById('nt-co-subject').value=g('co','subject');
+  document.getElementById('nt-co-intro').value=g('co','intro');
+  document.getElementById('nt-sub-subject').value=g('sub','subject');
+  document.getElementById('nt-sub-intro').value=g('sub','intro');
+}
+async function saveNotifSettings(){
+  const val=id=>document.getElementById(id).value.trim();
+  const templates={
+    rfi:{subject:val('nt-rfi-subject'),intro:val('nt-rfi-intro')},
+    co:{subject:val('nt-co-subject'),intro:val('nt-co-intro')},
+    sub:{subject:val('nt-sub-subject'),intro:val('nt-sub-intro')}
+  };
+  const btn=document.getElementById('btn-notif-save'); btn.disabled=true;
+  try{
+    await proxyCall('saveNotifTemplates',{projectId:currentProject.folderId,templates});
+    currentProject.notif=templates;
+    showStatus('notif-status','Notification settings saved.','success');
+  }catch(e){ showStatus('notif-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
 
@@ -1170,6 +1219,7 @@ async function revokeAccess(email,projectId){
 function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
+  if(sec==='notifsettings') loadNotifSettings();
 }
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
@@ -1462,6 +1512,9 @@ async function sendEmail(toEmails, subject, body){
   }catch(e){ console.warn('Email notification failed:',e.message); }
 }
 
+function notifCfg(type, def){ const c=(currentProject&&currentProject.notif&&currentProject.notif[type])||{}; return { subject:c.subject||def.subject, intro:c.intro||def.intro }; }
+function applyVars(s, v){ return String(s||'').replace(/\{project\}/g,v.project||'').replace(/\{number\}/g,v.number||'').replace(/\{submitter\}/g,v.submitter||'').replace(/\{title\}/g,v.title||''); }
+function sendItemNotif(notifyField, type, def, vars, rows){ const c=notifCfg(type,def); notifyContacts(notifyField, applyVars(c.subject,vars), emailTemplate(applyVars(c.intro,vars), rows, currentProject.name)); }
 function notifyContacts(notifyField, subject, bodyHTML){
   const contacts = allData.contacts||[];
   const emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
