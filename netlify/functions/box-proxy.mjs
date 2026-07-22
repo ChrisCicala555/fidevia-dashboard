@@ -37,6 +37,16 @@ async function requireUser(req) {
 }
 
 export default async (req) => {
+  // TEMP diagnostic: verify service-account connectivity. Gated by token. REMOVE after testing.
+  const url = new URL(req.url);
+  if (req.method === 'GET' && url.searchParams.get('diag') === 'fidevia-check-9f3a') {
+    try {
+      const t = await serviceToken();
+      const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=50&fields=id,name,type`, { headers: { Authorization: 'Bearer ' + t } });
+      const d = await r.json();
+      return json({ ok: r.ok, status: r.status, rootId: process.env.BOX_PROJECTS_ROOT_ID, items: (d.entries||[]).map(e=>({name:e.name,type:e.type})), error: d.message||null });
+    } catch (e) { return json({ ok: false, error: e.message }); }
+  }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const user = await requireUser(req);
