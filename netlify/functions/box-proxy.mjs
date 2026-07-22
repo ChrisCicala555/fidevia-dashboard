@@ -1,15 +1,12 @@
-// Box proxy for EXTERNAL (non-Fidevia) users who have no Box account.
-// Uses a Box service account (Client Credentials Grant). Exposes ONLY
-// read / list / download / upload. It has NO edit, rename, move, or delete
-// capability — so external users physically cannot alter existing Box files.
+import { getStore } from '@netlify/blobs';
 
 const AUTH0_DOMAIN = 'dev-477eis4yqjwd6d4g.us.auth0.com';
+const ADMIN_DOMAIN = 'fidevia.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 const csvEsc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 
-
-// --- Cache the service-account token in memory across warm invocations ---
+// --- Service-account (Client Credentials Grant) token, cached across warm invocations ---
 let _svc = { token: null, exp: 0 };
 async function serviceToken() {
   if (_svc.token && Date.now() < _svc.exp - 60000) return _svc.token;
@@ -20,157 +17,169 @@ async function serviceToken() {
     box_subject_type: 'enterprise',
     box_subject_id: process.env.BOX_ENTERPRISE_ID
   });
-  const r = await fetch('https://api.box.com/oauth2/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
-  });
+  const r = await fetch('https://api.box.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const d = await r.json();
-  if (!d.access_token) throw new Error('Service auth failed: ' + JSON.stringify(d));
+  if (!d.access_token) throw new Error('Service auth failed');
   _svc = { token: d.access_token, exp: Date.now() + (d.expires_in || 3600) * 1000 };
   return _svc.token;
 }
 
-// --- Validate the caller is a signed-in dashboard user (any authenticated user) ---
-async function requireUser(req) {
+// --- Identify the caller from their Auth0 token ---
+async function caller(req) {
   const auth = req.headers.get('authorization') || '';
   if (!auth.startsWith('Bearer ')) return null;
   const r = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, { headers: { Authorization: auth } });
   if (!r.ok) return null;
-  return r.json();
+  const u = await r.json();
+  const email = (u.email || '').toLowerCase();
+  const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email);
+  return { email, isAdmin };
+}
+
+// --- Grants store: key = external email, value = { projects:[{id,name}] } ---
+const grantsStore = () => getStore('access-grants');
+async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
+
+// --- Verify a folder/file lives inside one of the granted project folders ---
+async function withinGranted(t, grantedIds, kind, id) {
+  if (grantedIds.has(String(id))) return true;
+  const path = kind === 'folder' ? `folders/${id}?fields=path_collection` : `files/${id}?fields=path_collection`;
+  const r = await fetch('https://api.box.com/2.0/' + path, { headers: { Authorization: 'Bearer ' + t } });
+  if (!r.ok) return false;
+  const d = await r.json();
+  const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
+  return ids.some(x => grantedIds.has(x));
 }
 
 export default async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const who = await caller(req);
+  if (!who) return json({ error: 'Not authenticated' }, 401);
 
-  const user = await requireUser(req);
-  if (!user) return json({ error: 'Not authenticated' }, 401);
-
-  let body;
-  try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
+  let body; try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
   const op = body.op;
-
   const t = await serviceToken();
   const H = { Authorization: 'Bearer ' + t };
 
   try {
-    // ---- LIST a folder's items ----
+    // ---- WHOAMI (any authenticated user) ----
+    if (op === 'whoami') return json({ email: who.email, isAdmin: who.isAdmin });
+
+    // ---- ADMIN OPS ----
+    if (op === 'adminListProjects' || op === 'adminListGrants' || op === 'adminGrant' || op === 'adminRevoke') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+
+      if (op === 'adminListProjects') {
+        const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+        const d = await r.json();
+        return json({ projects: (d.entries || []).filter(e => e.type === 'folder').map(e => ({ id: e.id, name: e.name })) });
+      }
+      if (op === 'adminListGrants') {
+        const store = grantsStore();
+        const { blobs } = await store.list();
+        const out = [];
+        for (const b of blobs) { const g = await store.get(b.key, { type: 'json' }); if (g) out.push({ email: b.key, projects: g.projects || [] }); }
+        return json({ grants: out });
+      }
+      if (op === 'adminGrant') {
+        const email = (body.email || '').toLowerCase().trim();
+        if (!email || !body.projectId) return json({ error: 'email and projectId required' }, 400);
+        const store = grantsStore();
+        const g = (await store.get(email, { type: 'json' })) || { projects: [] };
+        if (!g.projects.some(p => String(p.id) === String(body.projectId))) g.projects.push({ id: String(body.projectId), name: body.projectName || '' });
+        await store.setJSON(email, g);
+        return json({ ok: true });
+      }
+      if (op === 'adminRevoke') {
+        const email = (body.email || '').toLowerCase().trim();
+        const store = grantsStore();
+        const g = (await store.get(email, { type: 'json' })) || { projects: [] };
+        g.projects = g.projects.filter(p => String(p.id) !== String(body.projectId));
+        await store.setJSON(email, g);
+        return json({ ok: true });
+      }
+    }
+
+    // ---- EXTERNAL: the projects this caller has been granted ----
+    if (op === 'myProjects') {
+      const grants = await getGrants(who.email);
+      const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const d = await r.json();
+      const existing = new Map((d.entries || []).filter(e => e.type === 'folder').map(e => [String(e.id), e.name]));
+      const mine = grants.filter(g => existing.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name }));
+      return json({ projects: mine });
+    }
+
+    // ---- DATA OPS: enforce grant scope for non-admins ----
+    const grantedIds = who.isAdmin ? null : new Set((await getGrants(who.email)).map(p => String(p.id)));
+    const guardFolder = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'folder', fid));
+    const guardFile = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'file', fid));
+
     if (op === 'list') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const r = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=200&fields=id,name,type`, { headers: H });
       if (!r.ok) return json({ error: 'Box list ' + r.status }, r.status);
       return json(await r.json());
     }
-
-    // ---- READ file text content (used for CSV logs) ----
     if (op === 'readText') {
+      if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
       const r = await fetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H });
       return json({ text: r.ok ? await r.text() : '' });
     }
-
-    // ---- DOWNLOAD link: return a short-lived direct download URL ----
     if (op === 'downloadUrl') {
+      if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
       const r = await fetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H, redirect: 'manual' });
       const loc = r.headers.get('location');
-      if (!loc) return json({ error: 'No download URL' }, 502);
-      return json({ url: loc });
+      return loc ? json({ url: loc }) : json({ error: 'No download URL' }, 502);
     }
-
-    // ---- GET file metadata ----
     if (op === 'fileInfo') {
+      if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
       const r = await fetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}?fields=id,name,size,modified_at`, { headers: H });
       if (!r.ok) return json({ error: 'Box file ' + r.status }, r.status);
       return json(await r.json());
     }
-
-    // ---- UPLOAD a NEW file (creates only; never overwrites an existing file) ----
     if (op === 'upload') {
-      // Refuse if a file of the same name already exists (prevents overwriting existing content)
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const chk = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
-      if (chk.ok) {
-        const items = (await chk.json()).entries || [];
-        if (items.some(i => i.type === 'file' && i.name === body.filename)) {
-          return json({ error: 'A file with that name already exists. External users cannot overwrite files.' }, 409);
-        }
-      }
+      if (chk.ok) { const items = (await chk.json()).entries || []; if (items.some(i => i.type === 'file' && i.name === body.filename)) return json({ error: 'A file with that name already exists.' }, 409); }
       const bytes = Uint8Array.from(atob(body.contentBase64), c => c.charCodeAt(0));
       const form = new FormData();
       form.append('attributes', JSON.stringify({ name: body.filename, parent: { id: String(body.folderId) } }));
       form.append('file', new Blob([bytes], { type: body.mime || 'application/octet-stream' }), body.filename);
       const r = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
-      if (!r.ok) return json({ error: 'Upload failed ' + r.status + ': ' + (await r.text()) }, r.status);
+      if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
       return json({ ok: true, file: await r.json() });
     }
-
-    // ---- ROOT: return the configured shared projects folder id (for external browsing) ----
-    if (op === 'root') {
-      return json({ folderId: process.env.BOX_PROJECTS_ROOT_ID || '0' });
-    }
-
-    // ---- APPEND-ONLY write to a log file (RFIs/COs/comments) ----
-    // Safety: the new content MUST begin with the current content verbatim.
-    // Any attempt to alter or remove existing rows is rejected.
-    if (op === 'appendFile') {
-      const { folderId, filename, newContent } = body;
-      if (typeof newContent !== 'string') return json({ error: 'newContent required' }, 400);
-      // Locate existing file in the folder
-      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
-      const items = lr.ok ? ((await lr.json()).entries || []) : [];
-      const existing = items.find(i => i.type === 'file' && i.name === filename);
-
-      if (existing) {
-        const cr = await fetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
-        const current = cr.ok ? await cr.text() : '';
-        if (current && !newContent.startsWith(current)) {
-          return json({ error: 'Append-only: existing content cannot be modified or removed.' }, 403);
-        }
-        const bytes = new TextEncoder().encode(newContent);
-        const form = new FormData();
-        form.append('attributes', JSON.stringify({ name: filename }));
-        form.append('file', new Blob([bytes], { type: 'text/csv' }), filename);
-        const ur = await fetch(`https://upload.box.com/api/2.0/files/${existing.id}/content`, { method: 'POST', headers: H, body: form });
-        if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
-        return json({ ok: true });
-      } else {
-        // Log doesn't exist yet — create it
-        const bytes = new TextEncoder().encode(newContent);
-        const form = new FormData();
-        form.append('attributes', JSON.stringify({ name: filename, parent: { id: String(folderId) } }));
-        form.append('file', new Blob([bytes], { type: 'text/csv' }), filename);
-        const ur = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
-        if (!ur.ok) return json({ error: 'Create log failed ' + ur.status }, ur.status);
-        return json({ ok: true });
-      }
-    }
-
-    // ---- APPEND ONE ROW to a CSV log (byte-safe: existing content is never re-serialized) ----
     if (op === 'appendRow') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, headers, row } = body;
       if (!Array.isArray(headers) || typeof row !== 'object') return json({ error: 'headers[] and row{} required' }, 400);
       const rowLine = headers.map(h => csvEsc(row[h])).join(',');
       const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       const items = lr.ok ? ((await lr.json()).entries || []) : [];
       const existing = items.find(i => i.type === 'file' && i.name === filename);
-      let out;
+      let out, uploadUrl, attrs;
       if (existing) {
         const cr = await fetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
         const current = cr.ok ? await cr.text() : '';
-        out = current.replace(/\s*$/, '') + '\n' + rowLine + '\n';   // append only; existing bytes untouched
-        const form = new FormData();
-        form.append('attributes', JSON.stringify({ name: filename }));
-        form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
-        const ur = await fetch(`https://upload.box.com/api/2.0/files/${existing.id}/content`, { method: 'POST', headers: H, body: form });
-        if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
+        out = current.replace(/\s*$/, '') + '\n' + rowLine + '\n';
+        uploadUrl = `https://upload.box.com/api/2.0/files/${existing.id}/content`;
+        attrs = JSON.stringify({ name: filename });
       } else {
         out = headers.join(',') + '\n' + rowLine + '\n';
-        const form = new FormData();
-        form.append('attributes', JSON.stringify({ name: filename, parent: { id: String(folderId) } }));
-        form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
-        const ur = await fetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
-        if (!ur.ok) return json({ error: 'Create log failed ' + ur.status }, ur.status);
+        uploadUrl = 'https://upload.box.com/api/2.0/files/content';
+        attrs = JSON.stringify({ name: filename, parent: { id: String(folderId) } });
       }
+      const form = new FormData();
+      form.append('attributes', attrs);
+      form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+      const ur = await fetch(uploadUrl, { method: 'POST', headers: H, body: form });
+      if (!ur.ok) return json({ error: 'Append failed ' + ur.status }, ur.status);
       return json({ ok: true });
     }
 
-    // Any other op (update, delete, rename, move) is intentionally unsupported.
-    return json({ error: 'Operation not permitted for external users: ' + op }, 403);
+    return json({ error: 'Unknown or unpermitted op: ' + op }, 400);
   } catch (e) {
     return json({ error: e.message }, 500);
   }

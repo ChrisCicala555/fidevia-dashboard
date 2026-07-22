@@ -153,6 +153,8 @@
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
+  .admin-only{display:none;}
+  body.is-admin .admin-only{display:inline-block;}
   body.is-external-user .viewer-toggle,
   body.is-external-user .btn-ver,
   body.is-external-user .btn-approve,
@@ -313,6 +315,7 @@
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
       <span id="user-name-display"></span>
+      <button class="btn-logout admin-only" onclick="openAdmin()" style="margin-right:8px;">Manage External Access</button>
       <button class="btn-logout" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -336,6 +339,23 @@
       <button class="btn-secondary" onclick="showScreen('screen-picker')">Cancel</button>
     </div>
     <div class="status-msg" id="new-proj-status"></div>
+  </div>
+</div>
+
+<!-- ══ ADMIN: EXTERNAL ACCESS ══ -->
+<div id="screen-admin" class="screen">
+  <div class="form-card" style="max-width:680px;">
+    <h2>Manage External Access</h2>
+    <p class="form-desc">Grant an external user access to a specific project. External users see only the projects you grant here — nothing else.</p>
+    <div class="field"><label>External user email *</label><input type="email" id="grant-email" placeholder="contractor@example.com"></div>
+    <div class="field"><label>Project *</label><select id="grant-project"><option value="">Loading projects…</option></select></div>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="grantAccess()" id="btn-grant">Grant Access</button>
+      <button class="btn-secondary" onclick="showScreen('screen-picker')">Back</button>
+    </div>
+    <div class="status-msg" id="grant-status"></div>
+    <h3 style="margin-top:30px;font-size:16px;color:var(--olive-900);">Current access</h3>
+    <div id="grants-list" style="margin-top:10px;">Loading…</div>
   </div>
 </div>
 
@@ -629,6 +649,7 @@ function logout(){ sessionStorage.clear(); currentProject=null; showScreen('scre
 
 // ── EXTERNAL (service-account proxy) ──
 let EXTERNAL = false;
+let IS_ADMIN = false;
 async function proxyCall(op, body){
   const tok = await auth0Client.getTokenSilently();
   const r = await fetch('/api/box-proxy', { method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({op}, body||{})) });
@@ -738,21 +759,27 @@ const MODULES = {
 async function loadPicker(){
   showScreen('screen-picker');
   const grid = document.getElementById('project-grid');
-  grid.innerHTML = '<div class="loading-state">Loading projects from Box…</div>';
+  grid.innerHTML = '<div class="loading-state">Loading projects…</div>';
+  const subEl=document.querySelector('.picker-sub');
   try{
-    let rootId;
+    let projects;
     if(EXTERNAL){
       try{ const u=await auth0Client.getUser(); const el=document.getElementById('user-name-display'); if(el) el.textContent=u.name||u.email||''; }catch(e){}
-      rootId = (await proxyCall('root',{})).folderId;
+      if(subEl) subEl.textContent='Projects you have been granted access to.';
+      projects = (await proxyCall('myProjects',{})).projects || [];
     } else {
       try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
       const rootItems = await boxList('0');
       let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
-      rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
+      const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
+      sessionStorage.setItem('root_id', rootId);
+      projects = (await boxList(rootId)).filter(i=>i.type==='folder');
     }
-    sessionStorage.setItem('root_id', rootId);
-    const projects = (await boxList(rootId)).filter(i=>i.type==='folder');
     grid.innerHTML = '';
+    if(EXTERNAL && !projects.length){
+      grid.innerHTML='<div class="loading-state" style="text-align:center;max-width:440px;margin:0 auto;line-height:1.6;">You don\'t have access to any projects yet.<br><span style="color:var(--muted);font-size:13px;">Contact your Fidevia representative to be granted access to a project.</span></div>';
+      return;
+    }
     projects.forEach(p=>{
       const card=document.createElement('div'); card.className='project-card';
       card.innerHTML='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
@@ -1043,6 +1070,42 @@ async function submitForm(){
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
 }
 
+// ── ADMIN: EXTERNAL ACCESS ──
+async function openAdmin(){ showScreen('screen-admin'); await loadAdmin(); }
+async function loadAdmin(){
+  try{
+    const d=await proxyCall('adminListProjects',{});
+    const sel=document.getElementById('grant-project');
+    sel.innerHTML='<option value="">Select a project…</option>'+(d.projects||[]).map(p=>'<option value="'+esc(p.id)+'" data-name="'+esc(p.name)+'">'+esc(p.name)+'</option>').join('');
+  }catch(e){ document.getElementById('grant-project').innerHTML='<option value="">Error loading projects</option>'; }
+  await renderGrants();
+}
+async function renderGrants(){
+  const el=document.getElementById('grants-list');
+  try{
+    const d=await proxyCall('adminListGrants',{});
+    const rows=[];
+    (d.grants||[]).forEach(g=>{ (g.projects||[]).forEach(p=>rows.push({email:g.email,id:p.id,name:p.name})); });
+    if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">No external users have access yet.</div>'; return; }
+    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Project</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(r.email)+'</td><td style="padding:8px 6px;">'+esc(r.name||r.id)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="revokeAccess(\''+esc(r.email)+'\',\''+esc(r.id)+'\')">Revoke</button></td></tr>').join('')+'</tbody></table>';
+  }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
+}
+async function grantAccess(){
+  const email=(document.getElementById('grant-email').value||'').trim();
+  const sel=document.getElementById('grant-project');
+  const projectId=sel.value; const opt=sel.options[sel.selectedIndex];
+  const projectName=opt?opt.getAttribute('data-name'):'';
+  if(!email||!projectId){ showStatus('grant-status','Email and project are required.','error'); return; }
+  const btn=document.getElementById('btn-grant'); btn.disabled=true;
+  try{ await proxyCall('adminGrant',{email,projectId,projectName}); showStatus('grant-status','Access granted to '+email+'.','success'); document.getElementById('grant-email').value=''; await renderGrants(); }
+  catch(e){ showStatus('grant-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+async function revokeAccess(email,projectId){
+  if(!confirm('Revoke access for '+email+'?')) return;
+  try{ await proxyCall('adminRevoke',{email,projectId}); await renderGrants(); }catch(e){ alert('Error: '+e.message); }
+}
+
 // ── NAV + VIEWER ──
 function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
@@ -1149,10 +1212,12 @@ async function saveProfile(){
       showScreen('screen-profile'); return;
     }
   }
-  // Role: prefer signed Auth0 claim if present; otherwise fall back to email domain.
-  const _email = ((user && user.email) || '').toLowerCase();
-  const _claimRole = user && user['https://fidevia.com/role'];
-  EXTERNAL = _claimRole ? (_claimRole === 'external') : (!!user && !_email.endsWith('@fidevia.com'));
+  // Determine role from server (single source of truth): admins = @fidevia.com or allowlisted.
+  let _whoami = { isAdmin:false };
+  try{ _whoami = await proxyCall('whoami',{}); }catch(e){}
+  IS_ADMIN = !!_whoami.isAdmin;
+  EXTERNAL = !IS_ADMIN;
+  if(IS_ADMIN) document.body.classList.add('is-admin');
   if(EXTERNAL){
     document.body.classList.add('is-external-user');
     await loadPicker();
