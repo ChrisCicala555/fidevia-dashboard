@@ -1134,9 +1134,14 @@ async function submitRequest(){
 }
 
 // ── ADMIN: NOTIFICATION SETTINGS ──
+const NOTIF_DEFAULTS={
+  rfi:{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},
+  co:{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},
+  sub:{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'}
+};
 function loadNotifSettings(){
   const n=(currentProject&&currentProject.notif)||{};
-  const g=(t,k)=>((n[t]&&n[t][k])||'');
+  const g=(t,k)=>((n[t]&&n[t][k])||NOTIF_DEFAULTS[t][k]);
   document.getElementById('nt-rfi-subject').value=g('rfi','subject');
   document.getElementById('nt-rfi-intro').value=g('rfi','intro');
   document.getElementById('nt-co-subject').value=g('co','subject');
