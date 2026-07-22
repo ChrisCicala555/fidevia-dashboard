@@ -34,11 +34,13 @@ async function caller(req) {
   const email = (u.email || '').toLowerCase();
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email);
-  return { email, isAdmin };
+  return { email, name: u.name || u.given_name || '', isAdmin };
 }
 
 // --- Grants store: key = external email, value = { projects:[{id,name}] } ---
 const grantsStore = () => getStore('access-grants');
+const requestsStore = () => getStore('access-requests');
+const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 
 // --- Verify a folder/file lives inside one of the granted project folders ---
@@ -99,6 +101,50 @@ export default async (req) => {
         await store.setJSON(email, g);
         return json({ ok: true });
       }
+    }
+
+    // ---- LIST ALL PROJECT NAMES (any authenticated user) for the request dropdown ----
+    if (op === 'listAllProjectNames') {
+      const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const d = await r.json();
+      return json({ projects: (d.entries || []).filter(e => e.type === 'folder').map(e => ({ id: e.id, name: e.name })) });
+    }
+
+    // ---- REQUEST ACCESS to a project (any authenticated user) ----
+    if (op === 'requestAccess') {
+      const projectId = String(body.projectId || '');
+      if (!projectId) return json({ error: 'projectId required' }, 400);
+      await requestsStore().setJSON(reqKey(projectId, who.email), {
+        email: who.email, name: who.name || '', projectId, projectName: body.projectName || '', requestedAt: new Date().toISOString()
+      });
+      return json({ ok: true });
+    }
+
+    // ---- ADMIN: pending requests for a project ----
+    if (op === 'listRequests') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const store = requestsStore();
+      const { blobs } = await store.list({ prefix: String(body.projectId || '') + '__' });
+      const out = [];
+      for (const b of blobs) { const r = await store.get(b.key, { type: 'json' }); if (r) out.push(r); }
+      return json({ requests: out });
+    }
+    if (op === 'approveRequest') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const email = (body.email || '').toLowerCase().trim();
+      const projectId = String(body.projectId || '');
+      const gstore = grantsStore();
+      const g = (await gstore.get(email, { type: 'json' })) || { projects: [] };
+      if (!g.projects.some(p => String(p.id) === projectId)) g.projects.push({ id: projectId, name: body.projectName || '' });
+      await gstore.setJSON(email, g);
+      await requestsStore().delete(reqKey(projectId, email));
+      return json({ ok: true });
+    }
+    if (op === 'denyRequest') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const email = (body.email || '').toLowerCase().trim();
+      await requestsStore().delete(reqKey(String(body.projectId || ''), email));
+      return json({ ok: true });
     }
 
     // ---- EXTERNAL: the projects this caller has been granted ----

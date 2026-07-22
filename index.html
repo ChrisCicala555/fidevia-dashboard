@@ -153,6 +153,9 @@
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
+  #access-requests-banner{padding:0 32px;margin-top:16px;}
+  .req-banner-item{background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px;color:var(--olive-900);}
+  .req-banner-item .btn-approve{margin-right:6px;}
   .admin-only{display:none;}
   body.is-admin .admin-only{display:inline-block;}
   body.is-external-user .viewer-toggle,
@@ -359,6 +362,20 @@
   </div>
 </div>
 
+<!-- ══ REQUEST PROJECT ACCESS (external) ══ -->
+<div id="screen-request" class="screen">
+  <div class="form-card">
+    <h2>Request Project Access</h2>
+    <p class="form-desc">Select the project you need access to. A Fidevia administrator will review your request.</p>
+    <div class="field"><label>Project *</label><select id="req-project"><option value="">Loading projects…</option></select></div>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="submitRequest()" id="btn-request">Request Access</button>
+      <button class="btn-secondary" onclick="loadPicker()">Back</button>
+    </div>
+    <div class="status-msg" id="req-status"></div>
+  </div>
+</div>
+
 <!-- ══ DASHBOARD ══ -->
 <div id="screen-dashboard" class="screen">
 <div class="app">
@@ -401,6 +418,8 @@
         <button id="btn-external" onclick="setViewer('external')">External Viewer (Prime)</button>
       </div>
     </div>
+
+    <div id="access-requests-banner" style="display:none;"></div>
 
     <div class="content">
       <div class="external-banner">Viewing as: <strong>Prime Contractor</strong> &mdash; Budget, daily logs, and contact management are hidden in this view.</div>
@@ -776,10 +795,6 @@ async function loadPicker(){
       projects = (await boxList(rootId)).filter(i=>i.type==='folder');
     }
     grid.innerHTML = '';
-    if(EXTERNAL && !projects.length){
-      grid.innerHTML='<div class="loading-state" style="text-align:center;max-width:440px;margin:0 auto;line-height:1.6;">You don\'t have access to any projects yet.<br><span style="color:var(--muted);font-size:13px;">Contact your Fidevia representative to be granted access to a project.</span></div>';
-      return;
-    }
     projects.forEach(p=>{
       const card=document.createElement('div'); card.className='project-card';
       card.innerHTML='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
@@ -791,6 +806,11 @@ async function loadPicker(){
       add.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>New Project</span>';
       add.onclick=()=>showScreen('screen-new-project');
       grid.appendChild(add);
+    } else {
+      const req=document.createElement('div'); req.className='add-project-card';
+      req.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Request Project Access</span>';
+      req.onclick=()=>openRequest();
+      grid.appendChild(req);
     }
   }catch(e){ grid.innerHTML='<div class="loading-state" style="color:var(--danger)">Failed to load: '+esc(e.message)+'</div>'; }
 }
@@ -803,6 +823,7 @@ async function openProject(folderId, name){
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
   currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09') } };
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
+  loadAccessRequests(folderId);
   loadDashboard();
 }
 
@@ -1068,6 +1089,45 @@ async function submitForm(){
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
+}
+
+// ── EXTERNAL: REQUEST PROJECT ACCESS ──
+async function openRequest(){
+  showScreen('screen-request');
+  try{
+    const d=await proxyCall('listAllProjectNames',{});
+    const sel=document.getElementById('req-project');
+    sel.innerHTML='<option value="">Select a project…</option>'+(d.projects||[]).map(p=>'<option value="'+esc(p.id)+'" data-name="'+esc(p.name)+'">'+esc(p.name)+'</option>').join('');
+  }catch(e){ document.getElementById('req-project').innerHTML='<option value="">Error loading projects</option>'; }
+}
+async function submitRequest(){
+  const sel=document.getElementById('req-project');
+  const projectId=sel.value; const opt=sel.options[sel.selectedIndex];
+  const projectName=opt?opt.getAttribute('data-name'):'';
+  if(!projectId){ showStatus('req-status','Please select a project.','error'); return; }
+  const btn=document.getElementById('btn-request'); btn.disabled=true;
+  try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted! A Fidevia admin will review it and grant access.','success'); }
+  catch(e){ showStatus('req-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
+// ── ADMIN: PENDING REQUESTS ON PROJECT DASHBOARD ──
+async function loadAccessRequests(projectId){
+  const b=document.getElementById('access-requests-banner'); if(!b) return;
+  if(!IS_ADMIN){ b.style.display='none'; b.innerHTML=''; return; }
+  try{
+    const d=await proxyCall('listRequests',{projectId});
+    const reqs=d.requests||[];
+    if(!reqs.length){ b.style.display='none'; b.innerHTML=''; return; }
+    b.style.display='block';
+    b.innerHTML=reqs.map(r=>'<div class="req-banner-item"><span><strong>'+esc(r.name||r.email)+'</strong> ('+esc(r.email)+') is requesting access to this project.</span><span style="white-space:nowrap;"><button class="btn-approve" onclick="approveRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\',\''+esc(r.projectName||'')+'\')">Approve</button><button class="btn-reject" onclick="denyRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\')">Deny</button></span></div>').join('');
+  }catch(e){ b.style.display='none'; }
+}
+async function approveRequest(email,projectId,projectName){
+  try{ await proxyCall('approveRequest',{email,projectId,projectName}); await loadAccessRequests(projectId); }catch(e){ alert('Error: '+e.message); }
+}
+async function denyRequest(email,projectId){
+  try{ await proxyCall('denyRequest',{email,projectId}); await loadAccessRequests(projectId); }catch(e){ alert('Error: '+e.message); }
 }
 
 // ── ADMIN: EXTERNAL ACCESS ──
