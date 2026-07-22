@@ -80,6 +80,93 @@ async function withinGranted(t, grantedIds, kind, id) {
 }
 
 export default async (req) => {
+  // TEMP one-time demo seeding. Gated by token. REMOVE after use.
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('seed') === 'fidevia-seed-7k2x') {
+    try {
+      const t = await serviceToken();
+      const H = { Authorization: 'Bearer ' + t };
+      const root = process.env.BOX_PROJECTS_ROOT_ID;
+      const mk = async (name, parent) => {
+        const r = await fetch('https://api.box.com/2.0/folders', { method:'POST', headers:{...H,'Content-Type':'application/json'}, body:JSON.stringify({name,parent:{id:String(parent)}}) });
+        if (r.status === 409) { const lr=await fetch(`https://api.box.com/2.0/folders/${parent}/items?limit=1000&fields=id,name,type`,{headers:H}); const items=(await lr.json()).entries||[]; const f=items.find(i=>i.name===name&&i.type==='folder'); return f.id; }
+        return (await r.json()).id;
+      };
+      const up = async (name, content, parent) => {
+        const form=new FormData(); form.append('attributes',JSON.stringify({name,parent:{id:String(parent)}})); form.append('file',new Blob([new TextEncoder().encode(content)],{type:'text/csv'}),name);
+        await fetch('https://upload.box.com/api/2.0/files/content',{method:'POST',headers:H,body:form});
+      };
+      const csv=(headers,rows)=>[headers.join(','),...rows.map(r=>headers.map(h=>csvEsc(r[h])).join(','))].join('\n')+'\n';
+      const projId = await mk('Lincoln Elementary Modernization', root);
+      const MOD = [
+        { folder:'01 - RFIs', file:'RFI Log.csv',
+          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name'],
+          rows:[
+            {'RFI #':'RFI-001','Subject':'Ceiling grid height at Gymnasium','Description':'Confirm finished ceiling height at the main gym.','Submitted By':'Summit Builders','Assigned To':'Draper & Associates','Date Submitted':'2026-05-04','Due Date':'2026-05-11','Date Closed':'2026-05-09','Status':'Closed','Response Summary':'Height confirmed at 12 ft AFF.'},
+            {'RFI #':'RFI-002','Subject':'Electrical panel location Room 104','Description':'Panel conflicts with planned casework on north wall.','Submitted By':'Summit Builders','Assigned To':'Draper & Associates','Date Submitted':'2026-05-18','Due Date':'2026-05-25','Status':'Open'},
+            {'RFI #':'RFI-003','Subject':'Window flashing detail at sill','Description':'Flashing detail missing at classroom window sills.','Submitted By':'Apex Glazing','Assigned To':'Draper & Associates','Date Submitted':'2026-06-02','Due Date':'2026-06-09','Status':'Open'},
+            {'RFI #':'RFI-004','Subject':'Fire-rated corridor door assembly','Description':'Verify required rating for corridor doors near stair 2.','Submitted By':'Summit Builders','Assigned To':'Fire Marshal','Date Submitted':'2026-05-28','Due Date':'2026-06-04','Date Closed':'2026-06-03','Status':'Closed','Response Summary':'90-minute rating confirmed.'}
+          ]},
+        { folder:'02 - Change Orders', file:'Change Order Log.csv',
+          headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name'],
+          rows:[
+            {'CO #':'CO-001','Description':'Added structural bracing at gym roof','Cost Impact':'24500','Schedule Impact (Days)':'5','Status':'Approved','Linked RFI':'RFI-001','Date Submitted':'2026-05-12','Date Approved':'2026-05-20'},
+            {'CO #':'CO-002','Description':'Upgrade HVAC controls to BACnet','Cost Impact':'18750','Schedule Impact (Days)':'3','Status':'Pending Review','Date Submitted':'2026-06-05'},
+            {'CO #':'CO-003','Description':'Additional site drainage at play area','Cost Impact':'32000','Schedule Impact (Days)':'7','Status':'Open','Date Submitted':'2026-06-10'}
+          ]},
+        { folder:'03 - Submittals', file:'Submittals Log.csv',
+          headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name'],
+          rows:[
+            {'Submittal #':'SUB-001','Spec Section':'08 71 00','Description':'Door hardware schedule','Submitted By (Sub)':'Ace Hardware Supply','Reviewer':'Draper & Associates','Date Submitted':'2026-05-10','Status':'Approved'},
+            {'Submittal #':'SUB-002','Spec Section':'23 09 00','Description':'HVAC control drawings','Submitted By (Sub)':'Comfort Systems','Reviewer':'MEP Engineer','Date Submitted':'2026-05-22','Status':'Under Review'},
+            {'Submittal #':'SUB-003','Spec Section':'09 51 00','Description':'Acoustic ceiling tiles','Submitted By (Sub)':'Interior Finishes Co','Reviewer':'Draper & Associates','Date Submitted':'2026-06-01','Status':'Pending Review'}
+          ]},
+        { folder:'04 - Daily Logs', file:'Daily Log Index.csv',
+          headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name'],
+          rows:[
+            {'Date':'2026-06-09','Submitted By':'M. Torres','Weather':'Sunny 78F','Crew Count':'14','Work Performed':'Poured gym slab; framing corridor B','Delays / Issues':'None'},
+            {'Date':'2026-06-10','Submitted By':'M. Torres','Weather':'Cloudy 71F','Crew Count':'12','Work Performed':'Rough-in electrical Rooms 101-105','Delays / Issues':'Late material delivery 2 hrs'},
+            {'Date':'2026-06-11','Submitted By':'M. Torres','Weather':'Rain 65F','Crew Count':'8','Work Performed':'Interior drywall hanging','Delays / Issues':'Rain halted exterior work'}
+          ]},
+        { folder:'05 - Contacts', file:'Job Contacts.csv',
+          headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal'],
+          rows:[
+            {'Name':'David Chen','Company':'Summit Builders','Role':'Project Manager','Email':'dchen@example.com','Phone':'(503) 555-0142','Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes'},
+            {'Name':'Sarah Draper','Company':'Draper & Associates','Role':'Architect','Email':'sdraper@example.com','Phone':'(503) 555-0177','Notify - RFI':'Yes','Notify - CO':'No','Notify - Submittal':'Yes'},
+            {'Name':'Miguel Torres','Company':'Summit Builders','Role':'Superintendent','Email':'mtorres@example.com','Phone':'(503) 555-0188','Notify - RFI':'No','Notify - CO':'No','Notify - Submittal':'No'},
+            {'Name':'Lincoln SD Facilities','Company':'Lincoln School District','Role':'Owner Representative','Email':'facilities@example.com','Phone':'(503) 555-0100','Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'No'}
+          ]},
+        { folder:'06 - Budget', file:'Budget Tracker.csv',
+          headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance'],
+          rows:[
+            {'Cost Code':'03 30 00','Description':'Cast-in-place concrete','Budget Amount':'420000','Committed Costs':'410000','Approved Change Orders':'24500','Actual to Date':'398000','Variance':'22000'},
+            {'Cost Code':'09 51 00','Description':'Acoustical ceilings','Budget Amount':'85000','Committed Costs':'82000','Approved Change Orders':'0','Actual to Date':'41000','Variance':'3000'},
+            {'Cost Code':'23 00 00','Description':'HVAC','Budget Amount':'610000','Committed Costs':'625000','Approved Change Orders':'18750','Actual to Date':'300000','Variance':'-33750'},
+            {'Cost Code':'26 00 00','Description':'Electrical','Budget Amount':'480000','Committed Costs':'470000','Approved Change Orders':'0','Actual to Date':'210000','Variance':'10000'}
+          ]},
+        { folder:'07 - Documents', file:'Document Index.csv',
+          headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name'],
+          rows:[
+            {'Document Name':'Architectural Set','Category':'Drawings','Version':'3','Date':'2026-05-01','Visible To':'Internal + Prime'},
+            {'Document Name':'Structural Calculations','Category':'Engineering','Version':'1','Date':'2026-04-20','Visible To':'Internal Only'},
+            {'Document Name':'Project Schedule','Category':'Schedule','Version':'2','Date':'2026-06-01','Visible To':'Internal + Prime'}
+          ]},
+        { folder:'08 - Internal', file:'Comments.csv',
+          headers:['Date','Author','Role','Comment','Parent ID'],
+          rows:[
+            {'Date':'2026-06-05 09:12','Author':'David Chen','Role':'Internal','Comment':'Owner walkthrough scheduled for 6/20.'},
+            {'Date':'2026-06-08 14:30','Author':'Sarah Draper','Role':'Internal','Comment':'Need CO-002 resolved before controls install.'}
+          ]},
+        { folder:'09 - Payment Applications', file:'Payment Applications.csv',
+          headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name'],
+          rows:[
+            {'App #':'PA-001','Contractor':'David Chen','Company':'Summit Builders','Period From':'2026-05-01','Period To':'2026-05-31','Contract Amount':'2100000','Previously Paid':'0','Requested Amount':'315000','Remaining on Contract':'1785000','Status':'Approved','Reviewed By':'Fidevia PM','Review Date':'2026-06-05'},
+            {'App #':'PA-002','Contractor':'David Chen','Company':'Summit Builders','Period From':'2026-06-01','Period To':'2026-06-30','Contract Amount':'2100000','Previously Paid':'315000','Requested Amount':'428000','Remaining on Contract':'1357000','Status':'Pending'}
+          ]}
+      ];
+      for (const m of MOD) { const fid = await mk(m.folder, projId); await up(m.file, csv(m.headers, m.rows), fid); }
+      return json({ ok:true, projectId:projId, modules:MOD.length });
+    } catch(e) { return json({ ok:false, error:e.message }); }
+  }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const who = await caller(req);
   if (!who) return json({ error: 'Not authenticated' }, 401);
