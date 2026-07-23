@@ -1191,10 +1191,17 @@ async function renderAdmins(){
   const el=document.getElementById('admins-list');
   try{
     const d=await proxyCall('getAdminList',{password:ADMIN_PW});
-    const emails=d.emails||[];
-    el.innerHTML = emails.length
-      ? '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+emails.map(e=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(e)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="removeAdmin(\''+esc(e)+'\')">Remove</button></td></tr>').join('')+'</table>'
-      : '<div style="color:var(--muted);font-style:italic;">No additional admins. (@fidevia.com emails are always admins.)</div>';
+    const custom=d.customAdmins||[], env=d.envAdmins||[], domain=d.domain||'fidevia.com';
+    let html='<div style="font-size:13px;color:var(--muted);margin-bottom:12px;padding:8px 12px;background:var(--khaki-100);border-radius:5px;">Anyone with an <strong>@'+esc(domain)+'</strong> email address is always an admin.</div>';
+    if(env.length){
+      html+='<div style="font-size:13px;font-weight:600;margin-bottom:6px;">System admins <span style="font-weight:400;color:var(--muted);">(managed in Netlify)</span></div>';
+      html+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">'+env.map(e=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(e)+'</td><td style="padding:8px 6px;text-align:right;color:var(--muted);font-size:12px;">read-only</td></tr>').join('')+'</table>';
+    }
+    html+='<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Additional admins</div>';
+    html+= custom.length
+      ? '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+custom.map(e=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(e)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="removeAdmin(\''+esc(e)+'\')">Remove</button></td></tr>').join('')+'</table>'
+      : '<div style="color:var(--muted);font-style:italic;">None yet \u2014 add one above.</div>';
+    el.innerHTML=html;
   }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 async function addAdmin(){
@@ -1203,7 +1210,7 @@ async function addAdmin(){
   const btn=document.getElementById('btn-add-admin'); btn.disabled=true;
   try{
     const d=await proxyCall('getAdminList',{password:ADMIN_PW});
-    const emails=d.emails||[]; if(!emails.includes(email)) emails.push(email);
+    const emails=d.customAdmins||[]; if(!emails.includes(email)) emails.push(email);
     await proxyCall('setAdminList',{password:ADMIN_PW,emails});
     document.getElementById('admin-add-email').value='';
     showStatus('admin-add-status','Admin added.','success');
@@ -1215,7 +1222,7 @@ async function removeAdmin(email){
   if(!confirm('Remove admin access for '+email+'?')) return;
   try{
     const d=await proxyCall('getAdminList',{password:ADMIN_PW});
-    const emails=(d.emails||[]).filter(e=>e!==email);
+    const emails=(d.customAdmins||[]).filter(e=>e!==email);
     await proxyCall('setAdminList',{password:ADMIN_PW,emails});
     await renderAdmins();
   }catch(e){ alert('Error: '+e.message); }

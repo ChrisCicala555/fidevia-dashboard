@@ -103,7 +103,10 @@ export default async (req) => {
       const pw = PANEL_PW();
       if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
       if (op === 'adminPanelUnlock') return json({ ok: true });
-      if (op === 'getAdminList') return json({ emails: await getBlobAdmins() });
+      if (op === 'getAdminList') {
+        const envAdmins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+        return json({ customAdmins: await getBlobAdmins(), envAdmins, domain: ADMIN_DOMAIN });
+      }
       if (op === 'setAdminList') {
         const emails = Array.isArray(body.emails) ? body.emails.map(e => String(e).toLowerCase().trim()).filter(Boolean) : [];
         await adminListStore().setJSON('emails', emails);
