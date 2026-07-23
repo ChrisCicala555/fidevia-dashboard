@@ -367,6 +367,21 @@
     <div class="status-msg" id="grant-status"></div>
     <h3 style="margin-top:30px;font-size:16px;color:var(--olive-900);">Current access</h3>
     <div id="grants-list" style="margin-top:10px;">Loading…</div>
+
+    <hr style="margin:28px 0;border:none;border-top:1px solid var(--khaki-300);">
+    <h3 style="font-size:16px;color:var(--olive-900);">Dashboard Administrators</h3>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">Admins can manage access, delete records, and edit settings. Anyone with an @fidevia.com email is always an admin. Enter the admin password to add or remove additional admins.</p>
+    <div id="admins-locked">
+      <div class="field"><label>Admin password</label><input type="password" id="admins-pw" placeholder="Enter password"></div>
+      <button class="btn-secondary" onclick="unlockAdmins()">Unlock</button>
+      <div class="status-msg" id="admins-pw-status"></div>
+    </div>
+    <div id="admins-panel" style="display:none;margin-top:6px;">
+      <div class="field"><label>Add admin by email</label><input id="admin-add-email" placeholder="name@example.com"></div>
+      <button class="btn-primary" onclick="addAdmin()" id="btn-add-admin">Add Admin</button>
+      <div class="status-msg" id="admin-add-status"></div>
+      <div id="admins-list" style="margin-top:14px;"></div>
+    </div>
   </div>
 </div>
 
@@ -1161,6 +1176,49 @@ async function submitRequest(){
   try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted! A Fidevia admin will review it and grant access.','success'); }
   catch(e){ showStatus('req-status','Error: '+e.message,'error'); }
   btn.disabled=false;
+}
+
+// ── ADMIN: MANAGE ADMINS (password-gated) ──
+let ADMIN_PW='';
+async function unlockAdmins(){
+  const pw=document.getElementById('admins-pw').value;
+  try{
+    const d=await proxyCall('adminPanelUnlock',{password:pw});
+    if(d.ok){ ADMIN_PW=pw; document.getElementById('admins-locked').style.display='none'; document.getElementById('admins-panel').style.display='block'; await renderAdmins(); }
+  }catch(e){ showStatus('admins-pw-status','Incorrect password.','error'); }
+}
+async function renderAdmins(){
+  const el=document.getElementById('admins-list');
+  try{
+    const d=await proxyCall('getAdminList',{password:ADMIN_PW});
+    const emails=d.emails||[];
+    el.innerHTML = emails.length
+      ? '<table style="width:100%;border-collapse:collapse;font-size:13px;">'+emails.map(e=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(e)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="removeAdmin(\''+esc(e)+'\')">Remove</button></td></tr>').join('')+'</table>'
+      : '<div style="color:var(--muted);font-style:italic;">No additional admins. (@fidevia.com emails are always admins.)</div>';
+  }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
+}
+async function addAdmin(){
+  const email=(document.getElementById('admin-add-email').value||'').trim().toLowerCase();
+  if(!email){ showStatus('admin-add-status','Enter an email.','error'); return; }
+  const btn=document.getElementById('btn-add-admin'); btn.disabled=true;
+  try{
+    const d=await proxyCall('getAdminList',{password:ADMIN_PW});
+    const emails=d.emails||[]; if(!emails.includes(email)) emails.push(email);
+    await proxyCall('setAdminList',{password:ADMIN_PW,emails});
+    document.getElementById('admin-add-email').value='';
+    showStatus('admin-add-status','Admin added.','success');
+    await renderAdmins();
+  }catch(e){ showStatus('admin-add-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+async function removeAdmin(email){
+  if(!confirm('Remove admin access for '+email+'?')) return;
+  try{
+    const d=await proxyCall('getAdminList',{password:ADMIN_PW});
+    const emails=(d.emails||[]).filter(e=>e!==email);
+    await proxyCall('setAdminList',{password:ADMIN_PW,emails});
+    await renderAdmins();
+  }catch(e){ alert('Error: '+e.message); }
 }
 
 // ── ADMIN: NOTIFICATION SETTINGS ──

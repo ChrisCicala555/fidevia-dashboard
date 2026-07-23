@@ -33,7 +33,8 @@ async function caller(req) {
   const u = await r.json();
   const email = (u.email || '').toLowerCase();
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-  const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email);
+  const blobAdmins = await getBlobAdmins();
+  const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email);
   return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin };
 }
 
@@ -41,6 +42,9 @@ async function caller(req) {
 const grantsStore = () => getStore('access-grants');
 const requestsStore = () => getStore('access-requests');
 const notifStore = () => getStore('notif-templates');
+const adminListStore = () => getStore('admin-list');
+async function getBlobAdmins(){ try{ const d=await adminListStore().get('emails',{type:'json'}); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
+const PANEL_PW = () => process.env.ADMIN_PANEL_PASSWORD || '';
 async function getProfileBySub(sub){ try{ return await getStore('profiles').get(sub, { type:'json' }); }catch(e){ return null; } }
 async function addContactToProject(H, projectId, contact){
   const CH = ['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal'];
@@ -92,6 +96,19 @@ export default async (req) => {
   try {
     // ---- WHOAMI (any authenticated user) ----
     if (op === 'whoami') return json({ email: who.email, isAdmin: who.isAdmin });
+
+    // ---- ADMIN LIST PANEL (password-gated) ----
+    if (op === 'adminPanelUnlock' || op === 'getAdminList' || op === 'setAdminList') {
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      if (op === 'adminPanelUnlock') return json({ ok: true });
+      if (op === 'getAdminList') return json({ emails: await getBlobAdmins() });
+      if (op === 'setAdminList') {
+        const emails = Array.isArray(body.emails) ? body.emails.map(e => String(e).toLowerCase().trim()).filter(Boolean) : [];
+        await adminListStore().setJSON('emails', emails);
+        return json({ ok: true });
+      }
+    }
 
     // ---- ADMIN OPS ----
     if (op === 'adminListProjects' || op === 'adminListGrants' || op === 'adminGrant' || op === 'adminRevoke') {
