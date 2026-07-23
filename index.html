@@ -327,7 +327,7 @@
     <div class="picker-user">
       <span id="user-name-display"></span>
       <button class="btn-logout admin-only" onclick="openAdmin()" style="margin-right:8px;">Manage External Access</button>
-      <button class="btn-logout" onclick="logout()">Sign out</button>
+      <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
     </div>
   </div>
   <h2 class="picker-heading">Select a project</h2>
@@ -1297,6 +1297,8 @@ async function signupWithAuth0(){
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI, screen_hint: 'signup' } });
 }
 async function logoutAuth0(){
+  try{ sessionStorage.clear(); }catch(e){}
+  currentProject=null;
   await auth0Client.logout({ logoutParams: { returnTo: REDIRECT_URI } });
 }
 
