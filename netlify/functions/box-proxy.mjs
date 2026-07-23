@@ -99,6 +99,7 @@ export default async (req) => {
 
     // ---- ADMIN LIST PANEL (password-gated) ----
     if (op === 'adminPanelUnlock' || op === 'getAdminList' || op === 'setAdminList') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const pw = PANEL_PW();
       if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
       if (op === 'adminPanelUnlock') return json({ ok: true });
