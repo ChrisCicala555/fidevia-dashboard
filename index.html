@@ -159,6 +159,13 @@
   .admin-only{display:none;}
   body.is-admin .admin-only{display:inline-block;}
   body.external-mode .admin-only{display:none !important;}
+  .admin-col{display:none;}
+  body.is-admin .admin-col{display:table-cell;}
+  body.external-mode .admin-col{display:none !important;}
+  .notify-toggle{border:1px solid var(--khaki-300);border-radius:4px;padding:3px 12px;font-size:12px;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;}
+  .notify-toggle.on{background:#e6f4ea;color:#1a7f37;border-color:#a3d9b1;}
+  .notify-toggle.off{background:#f3f1ec;color:#999;}
+  .btn-del{margin-left:6px;}
   body.is-external-user .viewer-toggle,
   body.is-external-user .btn-ver,
   body.is-external-user .btn-approve,
@@ -451,7 +458,7 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All RFIs</span><span class="src">Box · 01 - RFIs</span></div>
-          <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th></tr></thead>
+          <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
           <div class="note" id="note-rfis"></div>
         </div>
@@ -465,7 +472,7 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
-          <table><thead><tr><th>CO #</th><th>Description</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th></tr></thead>
+          <table><thead><tr><th>CO #</th><th>Description</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -487,7 +494,7 @@
       <div class="section" id="section-dailylogs">
         <div class="page-title-row">
           <h2>Daily logs</h2>
-          <button class="btn-add" onclick="openModal('daily')">+ Log Day</button>
+          <button class="btn-add" onclick="openModal('daily')">+ Upload Daily Report</button>
         </div>
         <div class="panel">
           <div class="panel-header">Box-linked daily reports</div>
@@ -515,7 +522,7 @@
         </div>
         <div class="panel">
           <div class="panel-header">Project contacts &amp; notification routing</div>
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th>Notify - RFI</th><th>Notify - CO</th><th>Notify - Submittal</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th>Notify - RFI</th><th>Notify - CO</th><th>Notify - Submittal</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -528,7 +535,7 @@
         </div>
         <div class="panel">
           <div class="panel-header">Cost code summary</div>
-          <table><thead><tr><th>Cost Code</th><th>Description</th><th>Budget</th><th>Committed</th><th>Approved COs</th><th>Actual to Date</th><th>Variance</th></tr></thead>
+          <table><thead><tr><th>Cost Code</th><th>Description</th><th>Budget</th><th>Committed</th><th>Approved COs</th><th>Actual to Date</th><th>Variance</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-budget"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -541,7 +548,7 @@
         </div>
         <div class="panel">
           <div class="panel-header">Drawings, specs &amp; contracts</div>
-          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th></tr></thead>
+          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th>Actions</th></tr></thead>
           <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -655,16 +662,20 @@ async function initiateLogin(){
   const st = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer);
   sessionStorage.setItem('pkce_s', st);
   const p = new URLSearchParams({ client_id:CLIENT_ID, redirect_uri:REDIRECT_URI, response_type:'code', code_challenge:ch, code_challenge_method:'S256', state:st });
-  window.location.href = 'https://account.box.com/api/oauth2/authorize?' + p;
+  window.location.replace('https://account.box.com/api/oauth2/authorize?' + p);
 }
 
 async function handleCallback(code){
+  // Back button can re-hit this with a stale/used code — handle gracefully.
+  if(sessionStorage.getItem('box_token')){ window.history.replaceState({}, '', window.location.pathname); await loadPicker(); return; }
   const v = sessionStorage.getItem('pkce_v');
+  if(!v){ window.history.replaceState({}, '', window.location.pathname); showScreen('screen-login'); return; }
   const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'authorization_code', client_id:CLIENT_ID, client_secret:CLIENT_SECRET, code, redirect_uri:REDIRECT_URI, code_verifier:v }) });
   const d = await r.json();
-  if(!d.access_token){ alert('Login failed — please try again.'); showScreen('screen-login'); return; }
-  storeTokens(d);
   window.history.replaceState({}, '', window.location.pathname);
+  if(!d.access_token){ sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s'); showScreen('screen-login'); return; }
+  storeTokens(d);
+  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
   await loadPicker();
 }
 
@@ -887,6 +898,23 @@ async function loadModule(key){
 function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); }
 
 // ── HELPERS ──
+function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
+async function deleteRow(key,i){
+  if(!confirm('Delete this item permanently? This cannot be undone.')) return;
+  const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
+  const existing=await findFile(fid,mod.log);
+  const rows=(allData[key]||[]).slice(); rows.splice(i,1);
+  await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+  allData[key]=rows; renderAll();
+}
+async function toggleNotify(i,f){
+  const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
+  const cur=allData.contacts[i]; if(!cur) return;
+  cur[f]=(String(cur[f]||'').toLowerCase()==='yes')?'No':'Yes';
+  const existing=await findFile(fid,mod.log);
+  await boxUploadText(mod.log,toCSV(mod.headers,allData.contacts),fid,existing?existing.id:null);
+  renderContacts();
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(status,overdue){
   if(overdue) return '<span class="pill overdue">Overdue</span>';
@@ -904,7 +932,7 @@ function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No recor
 function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
-  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td>'+fileCell(r)+'</td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('rfi',i)+'</td></tr>').join('');
   const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
   document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(r['Date Closed'])+')').join('<br>');
 }
@@ -912,13 +940,13 @@ function renderRFIs(){
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map(r=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('co',i)+'</td></tr>'; }).join('');
 }
 
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">↑ New Ver.</button></td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">↑ New Ver.</button>'+delBtn('sub',i)+'</td></tr>').join('');
 }
 
 function renderDailyLogs(){
@@ -934,7 +962,8 @@ function renderDailyLogs(){
 function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=rows.map(r=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td>'+esc(r['Phone'])+'</td><td>'+esc(r['Notify - RFI'])+'</td><td>'+esc(r['Notify - CO'])+'</td><td>'+esc(r['Notify - Submittal'])+'</td></tr>').join('');
+  const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td>'+esc(v)+'</td>'; };
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+'<td class="admin-col">'+delBtn('contacts',i)+'</td></tr>').join('');
 }
 
 function renderBudget(){
@@ -942,7 +971,7 @@ function renderBudget(){
   let total=0;
   if(!rows.length){tb.innerHTML=emptyRow(7);}
   else{
-    tb.innerHTML=rows.map(r=>{ const v=parseFloat(String(r['Variance']||'0').replace(/[^0-9.\-]/g,''))||0; total+=v; return '<tr><td>'+esc(r['Cost Code'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Budget Amount'])+'</td><td>'+fmtMoney(r['Committed Costs'])+'</td><td>'+fmtMoney(r['Approved Change Orders'])+'</td><td>'+fmtMoney(r['Actual to Date'])+'</td><td>'+fmtSigned(r['Variance'])+'</td></tr>'; }).join('');
+    tb.innerHTML=rows.map((r,i)=>{ const v=parseFloat(String(r['Variance']||'0').replace(/[^0-9.\-]/g,''))||0; total+=v; return '<tr><td>'+esc(r['Cost Code'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Budget Amount'])+'</td><td>'+fmtMoney(r['Committed Costs'])+'</td><td>'+fmtMoney(r['Approved Change Orders'])+'</td><td>'+fmtMoney(r['Actual to Date'])+'</td><td>'+fmtSigned(r['Variance'])+'</td><td class="admin-col">'+delBtn('budget',i)+'</td></tr>'; }).join('');
   }
   const card=document.getElementById('stat-variance');
   card.querySelector('.value').textContent=fmtSigned(String(total));
@@ -952,7 +981,7 @@ function renderBudget(){
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button></td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>'; }).join('');
 }
 
 function renderOverview(){
@@ -1431,7 +1460,7 @@ function renderPayApps(){
   const rows=allData.pay_apps||[];
   updateContractBar(rows);
   if(!rows.length){ tbody.innerHTML='<tr class="loading-row"><td colspan="6">No pay applications yet.</td></tr>'; return; }
-  tbody.innerHTML=rows.map(r=>{
+  tbody.innerHTML=rows.map((r,i)=>{
     const s=r['Status']||'Pending';
     const bg=s==='Approved'?'var(--success-bg)':s==='Rejected'?'var(--danger-bg)':'var(--khaki-100)';
     return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(r['Contractor']||'')+'</td>'
@@ -1439,7 +1468,7 @@ function renderPayApps(){
       +'<td>'+fmtMoney(r['Requested Amount']||'')+'</td>'
       +'<td><span class="pill" style="background:'+bg+'">'+esc(s)+'</span></td>'
       +'<td><button class="btn-approve" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Approved'+'\')">Approve</button>'
-      +'<button class="btn-reject" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Rejected'+'\')">Reject</button></td></tr>';
+      +'<button class="btn-reject" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Rejected'+'\')">Reject</button>'+delBtn('pay_apps',i)+'</td></tr>';
   }).join('');
 }
 
