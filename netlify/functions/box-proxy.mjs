@@ -69,6 +69,22 @@ async function addContactToProject(H, projectId, contact){
 function contactFromSnap(snap, email){
   return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
 }
+async function sendGrantEmail(email, projectName){
+  const key = process.env.SENDGRID_KEY; if(!key || !email) return;
+  const from = process.env.FROM_EMAIL || 'clymerllc@gmail.com';
+  const url = process.env.SITE_URL || 'https://venerable-piroshki-0e0dd4.netlify.app/';
+  const proj = projectName || 'a project';
+  const html = '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:8px;overflow:hidden">'
+    + '<div style="background:#515520;padding:20px 24px"><span style="color:#fff;font-size:18px;font-weight:700">Fidevia</span><span style="color:#c8b97a;margin-left:8px;font-size:13px">Construction Dashboard</span></div>'
+    + '<div style="padding:24px">'
+    + '<p style="font-size:15px;color:#1a1a1a">You have been granted access to <strong>' + proj.replace(/</g,'&lt;') + '</strong> on the Fidevia Construction Dashboard.</p>'
+    + '<p style="font-size:14px;color:#444">To view the project, sign in with your account &mdash; or create one if you do not have one yet using this same email address (' + String(email).replace(/</g,'&lt;') + ').</p>'
+    + '<p style="margin:24px 0"><a href="' + url + '" style="background:#515520;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;display:inline-block">Open the Fidevia Dashboard</a></p>'
+    + '<p style="font-size:12px;color:#999">If the button does not work, copy and paste this link: ' + url + '</p>'
+    + '</div></div>';
+  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'You have been granted access to ' + proj + ' \u2014 Fidevia Dashboard', content:[{type:'text/html',value:html}] };
+  await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+}
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 
@@ -138,6 +154,7 @@ export default async (req) => {
         if (!g.projects.some(p => String(p.id) === String(body.projectId))) g.projects.push({ id: String(body.projectId), name: body.projectName || '' });
         await store.setJSON(email, g);
         try { await addContactToProject(H, String(body.projectId), contactFromSnap(null, email)); } catch(e) {}
+        try { await sendGrantEmail(email, body.projectName||''); } catch(e) {}
         return json({ ok: true });
       }
       if (op === 'adminRevoke') {
@@ -189,6 +206,7 @@ export default async (req) => {
       // auto-add to the project's contacts with notifications ON
       const reqRec = await requestsStore().get(reqKey(projectId, email), { type: 'json' });
       try { await addContactToProject(H, projectId, contactFromSnap(reqRec && reqRec.snap, email)); } catch(e) {}
+      try { await sendGrantEmail(email, body.projectName||''); } catch(e) {}
       await requestsStore().delete(reqKey(projectId, email));
       return json({ ok: true });
     }

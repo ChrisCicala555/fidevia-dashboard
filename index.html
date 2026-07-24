@@ -328,6 +328,7 @@
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
       <span id="user-name-display"></span>
+      <button class="btn-logout" onclick="openFeedback()" style="margin-right:8px;">Report a Bug / Feedback</button>
       <button class="btn-logout admin-only" onclick="openAdmin()" style="margin-right:8px;">Manage External Access</button>
       <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
     </div>
@@ -636,6 +637,23 @@
       <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <span class="upload-progress" id="upload-progress">Saving to Box…</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="feedback-backdrop" onclick="if(event.target===this)closeFeedback()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Report a Bug / Feedback</h3>
+      <button class="modal-close" onclick="closeFeedback()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Describe the bug or share your feedback</label><textarea id="fb-message" rows="5" placeholder="What happened, or what would you like to see?"></textarea></div>
+      <div class="status-msg" id="fb-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="fb-send" onclick="sendFeedback()">Send</button>
+      <button class="btn-secondary" onclick="closeFeedback()">Cancel</button>
     </div>
   </div>
 </div>
@@ -1102,6 +1120,21 @@ function openModal(type){
 
 function closeModal(){ document.getElementById('modal-backdrop').classList.remove('open'); currentModal=null; }
 function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-backdrop')) closeModal(); }
+function openFeedback(){ const m=document.getElementById('fb-message'); if(m) m.value=''; const s=document.getElementById('fb-status'); if(s){ s.textContent=''; s.className='status-msg'; } document.getElementById('feedback-backdrop').classList.add('open'); }
+function closeFeedback(){ document.getElementById('feedback-backdrop').classList.remove('open'); }
+async function sendFeedback(){
+  const msg=(document.getElementById('fb-message').value||'').trim();
+  if(!msg){ showStatus('fb-status','Please enter a message.','error'); return; }
+  const btn=document.getElementById('fb-send'); btn.disabled=true;
+  let from=''; try{ const u=await auth0Client.getUser(); from=(u&&u.email)||''; }catch(e){}
+  const context=(currentProject&&currentProject.name)?('Project: '+currentProject.name):'Project picker';
+  try{
+    const r=await fetch('/.netlify/functions/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,from,context})});
+    if(r.ok){ showStatus('fb-status','Thanks! Your feedback was sent.','success'); setTimeout(closeFeedback,1300); }
+    else{ showStatus('fb-status','Could not send — please try again.','error'); }
+  }catch(e){ showStatus('fb-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
 
 async function submitForm(){
   if(!currentModal) return;
