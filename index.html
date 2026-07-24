@@ -1104,8 +1104,11 @@ async function submitForm(){
   try{
     const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps'};
     const key=keyMap[currentModal];
-    const folderId=currentProject.folders[key];
-    if(!folderId) throw new Error('Module folder not found — please re-open the project.');
+    let folderId=currentProject.folders[key];
+    if(!folderId){
+      if(EXTERNAL) throw new Error('This project is missing a required folder. Please contact Fidevia.');
+      folderId=await findOrCreateFolder(MODULES[key].folder, currentProject.folderId); currentProject.folders[key]=folderId;
+    }
 
     let attachId='',attachName='';
     const fi=document.getElementById('f-file');
@@ -1519,8 +1522,13 @@ async function postComment(){
   const author=(document.getElementById('comment-author').value||'').trim();
   const text=(document.getElementById('comment-text').value||'').trim();
   if(!author||!text){ alert('Enter your name and a comment.'); return; }
-  const mod=MODULES.comments, fid=currentProject.folders.comments;
-  if(!fid){ alert('Comments folder not found in this project. Re-open project or recreate it.'); return; }
+  const mod=MODULES.comments;
+  let fid=currentProject.folders.comments;
+  if(!fid){
+    if(EXTERNAL){ alert('This project is missing a required folder. Please contact Fidevia.'); return; }
+    try{ fid=await findOrCreateFolder(mod.folder, currentProject.folderId); currentProject.folders.comments=fid; }
+    catch(e){ alert('Could not create comments folder: '+e.message); return; }
+  }
   const now=new Date().toISOString().slice(0,16).replace('T',' ');
   const newRow={'Date':now,'Author':author,'Role':'Internal','Comment':text,'Parent ID':''};
   const existing=await findFile(fid,mod.log);
