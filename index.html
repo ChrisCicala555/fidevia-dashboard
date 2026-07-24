@@ -166,6 +166,8 @@
   .notify-toggle.on{background:#e6f4ea;color:#1a7f37;border-color:#a3d9b1;}
   .notify-toggle.off{background:#f3f1ec;color:#999;}
   .btn-del{margin-left:6px;}
+  .ver-link{color:#2a6fb0;cursor:pointer;font-weight:600;text-decoration:underline;}
+  .ver-link:hover{color:#1d5488;}
   body.is-external-user .viewer-toggle,
   body.is-external-user .btn-ver,
   body.is-external-user .btn-approve,
@@ -803,7 +805,7 @@ const MODULES = {
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
-  docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name']},
+  docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
   pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']}
 };
@@ -982,8 +984,23 @@ function renderBudget(){
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime')); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{
+    const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime'));
+    let hist=[]; try{ hist=JSON.parse(r['Version History']||'[]'); }catch(e){}
+    const vCell = hist.length ? '<td><span class="ver-link" onclick="toggleVerHistory('+i+')">'+esc(r['Version']||'')+' \u25be</span></td>' : '<td>'+esc(r['Version']||'')+'</td>';
+    let out='<tr'+(ext?' class="hide-external"':'')+'>'
+      +'<td>'+esc(r['Document Name'])+'</td><td>'+esc(r['Category'])+'</td>'+vCell
+      +'<td>'+esc(r['Date'])+'</td><td>'+esc(r['Visible To'])+'</td>'
+      +'<td>'+fileCell(r)+'</td>'
+      +'<td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>';
+    if(hist.length){
+      const items=hist.slice().reverse().map(h=>'<div style="padding:4px 0;font-size:13px;">Version '+esc(h.v)+' — '+(h.fileId?'<a class="attach-link" href="https://app.box.com/file/'+esc(h.fileId)+'" target="_blank" rel="noopener">'+esc(h.fileName||'View')+'</a>':esc(h.fileName||'—'))+(h.date?' <span style="color:var(--muted)">('+esc(h.date)+')</span>':'')+'</div>').join('');
+      out+='<tr class="ver-history-row'+(ext?' hide-external':'')+'" id="verhist-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-100);padding:10px 18px;"><strong style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Previous versions</strong>'+items+'</td></tr>';
+    }
+    return out;
+  }).join('');
 }
+function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
 
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[];
@@ -1049,7 +1066,7 @@ const FORMS = {
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
-    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
     <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`}
 };
 
@@ -1069,7 +1086,7 @@ function openModal(type){
   document.querySelectorAll('#modal-body input, #modal-body textarea').forEach(el=>{ if(el.type!=='file') el.value=''; });
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
-  if(ds){ if(type==='rfi'||type==='co'||type==='submittal'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
+  if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
   if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
   document.getElementById('modal-backdrop').classList.add('open');
@@ -1133,7 +1150,7 @@ async function submitForm(){
     } else if(currentModal==='document'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
-      newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':v('f-date-sub'),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
+      newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
     }
 
     prog.textContent='Updating log in Box…';
@@ -1569,12 +1586,19 @@ async function uploadNewVersion(key, rowIdx){
     const row=rows[rowIdx]; if(!row) return;
     const up=await boxUploadBinary(file,fid);
     const entry=up.entries?.[0]||up;
+    if(key==='docs'){
+      const oldFileId=row['File ID']||'', oldName=row['File Name']||'', oldV=row['Version']||'1', oldDate=row['Date']||'';
+      let hist=[]; try{ hist=JSON.parse(row['Version History']||'[]'); }catch(e){}
+      if(oldFileId||oldName) hist.push({v:oldV,fileId:oldFileId,fileName:oldName,date:oldDate});
+      row['Version History']=JSON.stringify(hist);
+    }
     if(row['File ID']!==undefined)          row['File ID']=entry.id||'';
     if(row['Attachment File ID']!==undefined)row['Attachment File ID']=entry.id||'';
     if(row['File Name']!==undefined)         row['File Name']=file.name;
     if(row['Attachment Name']!==undefined)   row['Attachment Name']=file.name;
-    const vKey=Object.keys(row).find(k=>k.toLowerCase().includes('version'));
+    const vKey=Object.keys(row).find(k=>k.toLowerCase()==='version');
     if(vKey) row[vKey]=String((parseInt(row[vKey])||1)+1);
+    if(key==='docs') row['Date']=etToday();
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
     allData[key]=rows; renderAll();
   };
