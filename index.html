@@ -277,21 +277,8 @@
       <input id="prof-company" type="text" placeholder="Acme Construction LLC" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
     </div>
     <div style="margin-bottom:12px;">
-      <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Job Title</label>
+      <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Role</label>
       <input id="prof-title" type="text" placeholder="Project Manager" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
-    </div>
-    <div style="margin-bottom:20px;">
-      <label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Type of Involvement <span style="color:#c0392b;">*</span></label>
-      <select id="prof-involvement" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;background:#fff;box-sizing:border-box;">
-        <option value="">Select your role on the project...</option>
-        <option value="owner">Owner</option>
-        <option value="architect">Architect / Designer</option>
-        <option value="gc">General Contractor</option>
-        <option value="subcontractor">Subcontractor</option>
-        <option value="owners_rep">Owner's Representative</option>
-        <option value="consultant">Consultant / Advisor</option>
-        <option value="other">Other</option>
-      </select>
     </div>
     <p id="prof-error" style="color:#c0392b;font-size:13px;margin-bottom:12px;display:none;text-align:center;"></p>
     <button id="prof-btn" onclick="saveProfile()" style="width:100%;background:#515520;border:none;color:#fff;padding:12px;border-radius:6px;font-size:15px;cursor:pointer;font-weight:600;">Continue to Dashboard &#8594;</button>
@@ -1426,9 +1413,8 @@ async function logoutAuth0(){
 async function saveProfile(){
   const first = document.getElementById('prof-first').value.trim();
   const last  = document.getElementById('prof-last').value.trim();
-  const involvement = document.getElementById('prof-involvement').value;
   const errEl = document.getElementById('prof-error');
-  if(!first||!last||!involvement){
+  if(!first||!last){
     errEl.textContent='Please fill in all required fields (*)'; errEl.style.display='block'; return;
   }
   errEl.style.display='none';
@@ -1441,7 +1427,7 @@ async function saveProfile(){
       phone:document.getElementById('prof-phone').value.trim(),
       company:document.getElementById('prof-company').value.trim(),
       title:document.getElementById('prof-title').value.trim(),
-      involvement:involvement, email:user.email||'', onboarded:true
+      involvement:'', email:user.email||'', onboarded:true
     };
     localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(profile));
     try{
