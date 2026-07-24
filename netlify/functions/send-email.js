@@ -11,14 +11,12 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         personalizations: [{ to: Array.isArray(to) ? to.map(e=>({email:e})) : [{email:to}] }],
-        from: { email: process.env.FROM_EMAIL || 'theintergalacticinvestments@gmail.com', name: 'Fidevia Dashboard' },
+        from: { email: process.env.FROM_EMAIL || 'clymerllc@gmail.com', name: 'Fidevia Dashboard' },
         subject: subject,
         content: [{ type: 'text/html', value: body }]
       })
     });
-    if (res.status === 202) return { statusCode: 202, body: 'ok' };
-    const errText = await res.text();
-    return { statusCode: res.status, body: JSON.stringify({ from: process.env.FROM_EMAIL || 'DEFAULT', sendgrid: errText }) };
+    return { statusCode: res.status === 202 ? 202 : res.status, body: 'ok' };
   } catch(e) {
     return { statusCode: 500, body: e.message };
   }
