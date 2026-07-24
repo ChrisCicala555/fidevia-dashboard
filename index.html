@@ -1071,6 +1071,10 @@ function v(id){ const el=document.getElementById(id); return el?el.value:''; }
 function today(){ return new Date().toISOString().split('T')[0]; }
 function etToday(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date()); }
 
+function contactOptions(){
+  const cts=(allData.contacts||[]).filter(c=>(c['Name']||'').trim());
+  return '<option value="">— Select contact —</option>'+cts.map(c=>{ const co=(c['Company']||'').trim(), nm=(c['Name']||'').trim(); return '<option>'+esc(co?co+' - '+nm:nm)+'</option>'; }).join('');
+}
 function openModal(type){
   const def=FORMS[type]; if(!def) return;
   currentModal=type;
@@ -1080,8 +1084,8 @@ function openModal(type){
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
-  if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel){ const cts=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean); sel.innerHTML='<option value="">— Select contact —</option>'+cts.map(n=>'<option>'+esc(n)+'</option>').join(''); } }
-  if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT'){ const cts=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean); sel.innerHTML='<option value="">— Select contact —</option>'+cts.map(n=>'<option>'+esc(n)+'</option>').join(''); } }
+  if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
+  if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
   document.getElementById('modal-submit-btn').disabled=false;
