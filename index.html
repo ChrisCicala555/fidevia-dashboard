@@ -438,15 +438,15 @@
         <div class="project-name" id="topbar-sub"></div>
       </div>
       <div class="viewer-toggle">
-        <button class="active" id="btn-internal" onclick="setViewer('internal')">Internal Viewer</button>
-        <button id="btn-external" onclick="setViewer('external')">External Viewer (Prime)</button>
+        <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
+        <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
       </div>
     </div>
 
     <div id="access-requests-banner" style="display:none;"></div>
 
     <div class="content">
-      <div class="external-banner">Viewing as: <strong>Prime Contractor</strong> &mdash; Budget, daily logs, and contact management are hidden in this view.</div>
+      <div class="external-banner">Viewing as: <strong>External</strong> &mdash; Daily logs and contact management are hidden in this view.</div>
 
       <!-- OVERVIEW -->
       <div class="section active" id="section-overview">
@@ -982,7 +982,7 @@ function renderBudget(){
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const ext=(r['Visible To']||'').toLowerCase().includes('internal'); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{ const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime')); return '<tr'+(ext?' class="hide-external"':'')+'>'+['Document Name','Category','Version','Date','Visible To'].map(h=>'<td>'+esc(r[h])+'</td>').join('')+'<td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>'; }).join('');
 }
 
 function renderOverview(){
@@ -1049,7 +1049,7 @@ const FORMS = {
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
-    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Internal + Prime">Internal + Prime</option><option value="Internal Only">Internal Only</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
     <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`}
 };
 
