@@ -500,7 +500,7 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
-          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Reviewer</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Assigned To</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -933,7 +933,7 @@ async function toggleNotify(i,f){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(status,overdue){
   if(overdue) return '<span class="pill overdue">Overdue</span>';
-  const map={'open':'open','closed':'closed','approved':'approved','under review':'review','under-review':'review','pending review':'pending','pending-review':'pending','rejected':'rejected'};
+  const map={'open':'open','closed':'closed','approved':'approved','under review':'review','under-review':'review','pending review':'pending','pending-review':'pending','revise and resubmit':'pending','rejected':'rejected'};
   const cls=map[(status||'').toLowerCase()]||'open';
   return '<span class="pill '+cls+'">'+esc(status)+'</span>';
 }
@@ -1032,10 +1032,10 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
-    <div class="field-row"><div class="field"><label>Submittal # *</label><input autocomplete="off" id="f-num" placeholder="SUB-001"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Approved</option><option>Rejected</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Submittal # *</label><input autocomplete="off" id="f-num" placeholder="SUB-001"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Reviewer</label><input autocomplete="off" id="f-reviewer" placeholder="Engineer / PM"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-reviewer"></select></div></div>
     <div class="field"><label>Submittal Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="R. Alvarez (Super)"></div></div>
@@ -1081,6 +1081,7 @@ function openModal(type){
   const ds=document.getElementById('f-date-sub');
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel){ const cts=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean); sel.innerHTML='<option value="">— Select contact —</option>'+cts.map(n=>'<option>'+esc(n)+'</option>').join(''); } }
+  if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT'){ const cts=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean); sel.innerHTML='<option value="">— Select contact —</option>'+cts.map(n=>'<option>'+esc(n)+'</option>').join(''); } }
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
   document.getElementById('modal-submit-btn').disabled=false;
