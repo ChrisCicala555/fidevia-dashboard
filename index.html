@@ -457,6 +457,8 @@
           <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">—</div></div>
           <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">—</div></div>
           <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">—</div></div>
+          <div class="stat-card" id="stat-open-subs"><div class="label">Open Submittals</div><div class="value">—</div></div>
+          <div class="stat-card" id="stat-open-payapps"><div class="label">Pending Pay Apps</div><div class="value">—</div></div>
         </div>
         <div class="panel">
           <div class="panel-header">Needs your review</div>
@@ -1003,17 +1005,21 @@ function renderDocuments(){
 function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
 
 function renderOverview(){
-  const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[];
+  const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
+  const notDone=s=>{ const st=(s||'').toLowerCase(); return st!=='approved'&&st!=='rejected'&&st!=='closed'; };
   const openR=rfis.filter(r=>(r['Status']||'').toLowerCase()==='open');
   const ovd=rfis.filter(isOverdue);
-  const openC=cos.filter(r=>(r['Status']||'').toLowerCase()!=='approved');
-  document.querySelector('#stat-open-rfis .value').textContent=openR.length;
-  document.querySelector('#stat-overdue .value').textContent=ovd.length;
-  document.querySelector('#stat-open-cos .value').textContent=openC.length;
+  const openC=cos.filter(r=>notDone(r['Status']));
+  const openS=subs.filter(r=>notDone(r['Status']));
+  const openP=pays.filter(r=>notDone(r['Status']||'Pending'));
+  const setv=(id,val)=>{ const el=document.querySelector('#'+id+' .value'); if(el) el.textContent=val; };
+  setv('stat-open-rfis',openR.length); setv('stat-overdue',ovd.length); setv('stat-open-cos',openC.length);
+  setv('stat-open-subs',openS.length); setv('stat-open-payapps',openP.length);
   const review=[
     ...openR.map(r=>({type:'RFI',item:r['RFI #']+' — '+r['Subject'],by:r['Submitted By'],due:r['Due Date'],status:r['Status'],od:isOverdue(r)})),
     ...openC.map(r=>({type:'CO',item:r['CO #']+' — '+r['Description'],by:'',due:'—',status:r['Status'],od:false})),
-    ...subs.filter(r=>(r['Status']||'').toLowerCase()==='under review').map(r=>({type:'Submittal',item:r['Submittal #']+' — '+r['Description'],by:r['Submitted By (Sub)'],due:'—',status:r['Status'],od:false}))
+    ...openS.map(r=>({type:'Submittal',item:r['Submittal #']+' — '+r['Description'],by:r['Submitted By (Sub)'],due:'—',status:r['Status'],od:false})),
+    ...openP.map(r=>({type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',due:'—',status:r['Status']||'Pending',od:false}))
   ];
   const tb=document.getElementById('tbody-review');
   tb.innerHTML=review.length?review.map(r=>'<tr><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+esc(r.due)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">Nothing outstanding — all caught up.</td></tr>';
