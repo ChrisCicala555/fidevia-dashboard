@@ -16,7 +16,9 @@ exports.handler = async (event) => {
         content: [{ type: 'text/html', value: body }]
       })
     });
-    return { statusCode: res.status === 202 ? 202 : res.status, body: 'ok' };
+    if (res.status === 202) return { statusCode: 202, body: 'ok' };
+    const errText = await res.text();
+    return { statusCode: res.status, body: JSON.stringify({ from: process.env.FROM_EMAIL || 'DEFAULT', sendgrid: errText }) };
   } catch(e) {
     return { statusCode: 500, body: e.message };
   }
