@@ -100,22 +100,6 @@ async function withinGranted(t, grantedIds, kind, id) {
 }
 
 export default async (req) => {
-  const _u = new URL(req.url);
-  if (req.method === 'GET' && _u.searchParams.get('diag2') === 'fidevia-diag-5m2') {
-    try {
-      const email = (_u.searchParams.get('email')||'').toLowerCase().trim();
-      const t = await serviceToken();
-      const H = { Authorization: 'Bearer ' + t };
-      const grants = await getGrants(email);
-      const out = { email, grants, projects: [] };
-      for (const g of grants) {
-        const r = await fetch(`https://api.box.com/2.0/folders/${g.id}/items?limit=200&fields=id,name,type`, { headers: H });
-        const d = await r.json();
-        out.projects.push({ id:g.id, name:g.name, status:r.status, subfolders:(d.entries||[]).filter(e=>e.type==='folder').map(e=>e.name) });
-      }
-      return json(out);
-    } catch(e) { return json({ error: e.message }); }
-  }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const who = await caller(req);
   if (!who) return json({ error: 'Not authenticated' }, 401);
