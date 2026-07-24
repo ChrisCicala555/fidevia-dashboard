@@ -1435,8 +1435,11 @@ async function saveProfile(){
       const r = await fetch('/api/profile',{ method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body:JSON.stringify(profile) });
       if(!r.ok) console.warn('Server profile save failed:', r.status);
     }catch(e){ console.warn('Server profile save skipped:', e.message); }
-    if(sessionStorage.getItem('box_token')){ await loadPicker(); }
-    else{ showScreen('screen-login'); }
+    // Route based on role: external users skip Box login and go to their picker
+    let isAdmin=false; try{ const w=await proxyCall('whoami',{}); isAdmin=!!w.isAdmin; }catch(e){}
+    IS_ADMIN=isAdmin; EXTERNAL=!isAdmin;
+    if(EXTERNAL){ document.body.classList.add('is-external-user'); await loadPicker(); }
+    else{ if(isAdmin) document.body.classList.add('is-admin'); if(sessionStorage.getItem('box_token')){ await loadPicker(); } else{ showScreen('screen-login'); } }
   }catch(e){
     btn.disabled=false; btn.textContent='Continue to Dashboard →';
     errEl.textContent='Error: '+e.message; errEl.style.display='block';
