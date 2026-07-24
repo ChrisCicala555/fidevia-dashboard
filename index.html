@@ -421,7 +421,6 @@
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Logs</div>
     <div class="nav-section-label">Records</div>
     <div class="nav-item nav-contacts" data-section="contacts">Contacts Directory</div>
-    <div class="nav-item nav-budget" data-section="budget">Budget</div>
     <div class="nav-item" data-section="documents">Documents</div>
     <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
     <div class="nav-item" data-section="payapps">Payment Applications</div>
@@ -456,7 +455,6 @@
           <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">—</div></div>
           <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">—</div></div>
           <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">—</div></div>
-          <div class="stat-card hide-external" id="stat-variance"><div class="label">Budget Variance</div><div class="value">—</div></div>
         </div>
         <div class="panel">
           <div class="panel-header">Needs your review</div>
@@ -543,18 +541,6 @@
       </div>
 
       <!-- BUDGET -->
-      <div class="section" id="section-budget">
-        <div class="page-title-row">
-          <h2>Budget tracker</h2>
-          <button class="btn-add" onclick="openModal('budget')">+ Add Line Item</button>
-        </div>
-        <div class="panel">
-          <div class="panel-header">Cost code summary</div>
-          <table><thead><tr><th>Cost Code</th><th>Description</th><th>Budget</th><th>Committed</th><th>Approved COs</th><th>Actual to Date</th><th>Variance</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-budget"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
-        </div>
-      </div>
-
       <!-- DOCUMENTS -->
       <div class="section" id="section-documents">
         <div class="page-title-row">
@@ -895,7 +881,7 @@ async function createProject(){
 
 // ── DASHBOARD ──
 async function loadDashboard(){
-  const allKeys=['rfi','co','sub','daily','contacts','budget','docs','comments','pay_apps'];
+  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
   const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps'] : allKeys;
   await Promise.allSettled(keys.map(k=>loadModule(k)));
@@ -982,15 +968,15 @@ function renderContacts(){
 }
 
 function renderBudget(){
-  const rows=allData.budget||[], tb=document.getElementById('tbody-budget');
+  const tb=document.getElementById('tbody-budget'); if(!tb) return;
+  const rows=allData.budget||[];
   let total=0;
   if(!rows.length){tb.innerHTML=emptyRow(7);}
   else{
     tb.innerHTML=rows.map((r,i)=>{ const v=parseFloat(String(r['Variance']||'0').replace(/[^0-9.\-]/g,''))||0; total+=v; return '<tr><td>'+esc(r['Cost Code'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Budget Amount'])+'</td><td>'+fmtMoney(r['Committed Costs'])+'</td><td>'+fmtMoney(r['Approved Change Orders'])+'</td><td>'+fmtMoney(r['Actual to Date'])+'</td><td>'+fmtSigned(r['Variance'])+'</td><td class="admin-col">'+delBtn('budget',i)+'</td></tr>'; }).join('');
   }
   const card=document.getElementById('stat-variance');
-  card.querySelector('.value').textContent=fmtSigned(String(total));
-  card.classList.toggle('neg',total<0); card.classList.toggle('pos',total>=0);
+  if(card){ card.querySelector('.value').textContent=fmtSigned(String(total)); card.classList.toggle('neg',total<0); card.classList.toggle('pos',total>=0); }
 }
 
 function renderDocuments(){
