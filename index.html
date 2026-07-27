@@ -330,14 +330,55 @@
 
 <!-- ══ NEW PROJECT ══ -->
 <div id="screen-new-project" class="screen">
-  <div class="form-card">
-    <h2>Create new project</h2>
-    <p class="form-desc">Creates a project folder in Box with all required subfolders (RFIs, Change Orders, Submittals, Daily Logs, Contacts, Budget, Documents).</p>
-    <div class="field"><label>Project Name *</label><input type="text" id="new-proj-name" placeholder="e.g. Hempfield High School Renovation"></div>
-    <div class="field"><label>Client / Owner</label><input type="text" id="new-proj-client" placeholder="e.g. Hempfield School District"></div>
-    <div class="field"><label>Description (optional)</label><textarea id="new-proj-desc" placeholder="Scope, location, key details…"></textarea></div>
-    <div class="form-actions">
-      <button class="btn-primary" onclick="createProject()" id="btn-create-proj">Create Project</button>
+  <div class="form-card" style="max-width:760px;">
+    <h2>New Project Setup</h2>
+    <div id="wiz-progress" style="display:flex;gap:6px;margin:14px 0 20px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;flex-wrap:wrap;"></div>
+
+    <!-- STEP 1: BASICS -->
+    <div class="wiz-step" data-step="1">
+      <h3 style="font-size:15px;margin:0 0 12px;">Project Basics</h3>
+      <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Lebanon Intermediate School Additions"></div>
+      <div class="field-row"><div class="field"><label>Owner / Client</label><input autocomplete="off" id="np-owner" placeholder="e.g. Lebanon School District"></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" placeholder="e.g. 24-108"></div></div>
+      <div class="field"><label>Location / Address</label><input autocomplete="off" id="np-location" placeholder="City, State"></div>
+      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" placeholder="e.g. Andre Martin"></div>
+      <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
+      <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
+    </div>
+
+    <!-- STEP 2: TEAM & CONTACTS -->
+    <div class="wiz-step" data-step="2" style="display:none;">
+      <h3 style="font-size:15px;margin:0 0 6px;">Team &amp; Contacts</h3>
+      <p class="form-desc" style="margin-bottom:10px;">Add the Fidevia team, owner, and contractor contacts. Be clear about who fills which role. These populate the Contacts Directory.</p>
+      <div id="np-contacts"></div>
+      <button type="button" class="btn-secondary" onclick="wizAddContact()" style="margin-top:6px;">+ Add Contact</button>
+    </div>
+
+    <!-- STEP 3: SCHEDULE -->
+    <div class="wiz-step" data-step="3" style="display:none;">
+      <h3 style="font-size:15px;margin:0 0 6px;">Schedule Milestones</h3>
+      <p class="form-desc" style="margin-bottom:10px;">Enter the baseline and contract dates for each milestone. The dashboard tracks deviation automatically.</p>
+      <div id="np-milestones"></div>
+    </div>
+
+    <!-- STEP 4: CONTRACTORS -->
+    <div class="wiz-step" data-step="4" style="display:none;">
+      <h3 style="font-size:15px;margin:0 0 6px;">Contractors &amp; Contracts</h3>
+      <p class="form-desc" style="margin-bottom:10px;">List each prime contractor and their original contract amount. This seeds the financial summary and the payment-application dropdown. You can add or remove contractors later.</p>
+      <div id="np-contractors"></div>
+      <button type="button" class="btn-secondary" onclick="wizAddContractor()" style="margin-top:6px;">+ Add Contractor</button>
+    </div>
+
+    <!-- STEP 5: OPTIONS -->
+    <div class="wiz-step" data-step="5" style="display:none;">
+      <h3 style="font-size:15px;margin:0 0 6px;">Options</h3>
+      <div class="field" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="np-board" style="width:auto;"><label style="margin:0;">Enable <strong>Board Reports</strong> tab for this project</label></div>
+      <p class="form-desc">If checked, a Board Reports tab appears under Activity for this project.</p>
+    </div>
+
+    <div class="form-actions" style="margin-top:18px;">
+      <button class="btn-secondary" id="wiz-back" onclick="wizNav(-1)" style="display:none;">Back</button>
+      <button class="btn-primary" id="wiz-next" onclick="wizNav(1)">Next</button>
+      <button class="btn-primary" id="wiz-create" onclick="createProject()" style="display:none;">Create Project</button>
       <button class="btn-secondary" onclick="showScreen('screen-picker')">Cancel</button>
     </div>
     <div class="status-msg" id="new-proj-status"></div>
@@ -830,7 +871,9 @@ const MODULES = {
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']}
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']},
+  meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
+  board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']}
 };
 
 // ── PICKER ──
@@ -863,7 +906,7 @@ async function loadPicker(){
     if(!EXTERNAL){
       const add=document.createElement('div'); add.className='add-project-card';
       add.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>New Project</span>';
-      add.onclick=()=>showScreen('screen-new-project');
+      add.onclick=()=>openNewProject();
       grid.appendChild(add);
     } else {
       const req=document.createElement('div'); req.className='add-project-card';
@@ -880,25 +923,134 @@ async function openProject(folderId, name){
   showScreen('screen-dashboard');
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
-  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09') } };
+  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11') } };
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
+  try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
   try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
   loadAccessRequests(folderId);
   loadDashboard();
 }
 
+// ── PROJECT CONFIG (per-project settings stored as Project Info.json in the project folder) ──
+async function readProjectConfig(folderId, items){
+  try{
+    const list = items || await boxList(folderId);
+    const f = list.find(i=>i.type==='file' && i.name==='Project Info.json');
+    if(!f) return {};
+    return JSON.parse((await boxGetText(f.id))||'{}');
+  }catch(e){ return {}; }
+}
+async function writeProjectConfig(folderId, config){
+  const items = await boxList(folderId);
+  const existing = items.find(i=>i.type==='file' && i.name==='Project Info.json');
+  await boxUploadText('Project Info.json', JSON.stringify(config,null,2), folderId, existing?existing.id:null);
+}
+
+// ── NEW PROJECT WIZARD ──
+const WIZ_MAX = 5;
+const WIZ_LABELS = ['Basics','Team','Schedule','Contractors','Options'];
+const MILESTONE_NAMES = ['Notice to Proceed','Mobilize / Start Onsite','Substantial Completion','Punchlist','Final Completion'];
+const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC','Plumbing'],['EC','Electrical'],['Other','Other']];
+let WIZ_STEP = 1;
+function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+function openNewProject(){ initWizard(); showScreen('screen-new-project'); }
+function initWizard(){
+  WIZ_STEP = 1;
+  ['np-name','np-owner','np-jobnum','np-location','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const lf=document.getElementById('np-logo'); if(lf) lf.value='';
+  const bd=document.getElementById('np-board'); if(bd) bd.checked=false;
+  document.getElementById('np-contacts').innerHTML=''; wizAddContact();
+  document.getElementById('np-contractors').innerHTML=''; wizAddContractor();
+  // milestones
+  document.getElementById('np-milestones').innerHTML = MILESTONE_NAMES.map((n,i)=>
+    '<div style="margin-bottom:12px;"><label style="font-size:12px;color:#555;font-weight:600;display:block;margin-bottom:4px;">'+esc(n)+'</label>'
+    +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Baseline Date</label><input autocomplete="off" type="date" id="np-ms-'+i+'-baseline"></div>'
+    +'<div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Contract Date</label><input autocomplete="off" type="date" id="np-ms-'+i+'-contract"></div></div></div>').join('');
+  showStatus('new-proj-status','','');
+  document.getElementById('new-proj-status').className='status-msg';
+  wizShow();
+}
+function wizAddContact(){
+  const wrap=document.getElementById('np-contacts');
+  const idx=wrap.children.length;
+  const div=document.createElement('div');
+  div.className='wiz-contact-row';
+  div.style='border:1px solid var(--khaki-300);border-radius:6px;padding:10px;margin-bottom:8px;position:relative;';
+  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:11px;">Name</label><input autocomplete="off" class="ct-name" placeholder="Full name"></div><div class="field" style="margin:0;"><label style="font-size:11px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
+    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:11px;">Company</label><input autocomplete="off" class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:11px;">Email</label><input autocomplete="off" type="email" class="ct-email"></div></div>'
+    +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:11px;">Phone</label><input autocomplete="off" type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:12px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
+    +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;">&times;</button>':'');
+  wrap.appendChild(div);
+}
+function wizAddContractor(){
+  const wrap=document.getElementById('np-contractors');
+  const idx=wrap.children.length;
+  const div=document.createElement('div');
+  div.className='wiz-contractor-row';
+  div.style='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
+  div.innerHTML='<div class="field" style="margin:0;flex:0 0 130px;"><label style="font-size:11px;">Role</label><select autocomplete="off" class="cn-role">'+CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Lobar"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:11px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="18799000"></div>'
+    +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
+  wrap.appendChild(div);
+}
+function wizShow(){
+  document.querySelectorAll('.wiz-step').forEach(el=>{ el.style.display = (parseInt(el.getAttribute('data-step'))===WIZ_STEP)?'block':'none'; });
+  document.getElementById('wiz-back').style.display = WIZ_STEP>1?'inline-block':'none';
+  document.getElementById('wiz-next').style.display = WIZ_STEP<WIZ_MAX?'inline-block':'none';
+  document.getElementById('wiz-create').style.display = WIZ_STEP===WIZ_MAX?'inline-block':'none';
+  document.getElementById('wiz-progress').innerHTML = WIZ_LABELS.map((l,i)=>{ const n=i+1; const on=n===WIZ_STEP, done=n<WIZ_STEP; return '<span style="padding:4px 10px;border-radius:4px;background:'+(on?'var(--olive-700)':done?'var(--khaki-300)':'var(--khaki-100)')+';color:'+(on?'#fff':'var(--muted)')+';">'+n+'. '+l+'</span>'; }).join('');
+}
+function wizGo(step){ WIZ_STEP=step; wizShow(); }
+function wizNav(dir){
+  if(dir>0 && WIZ_STEP===1 && !wizVal('np-name')){ showStatus('new-proj-status','Project name is required.','error'); return; }
+  showStatus('new-proj-status','',''); document.getElementById('new-proj-status').className='status-msg';
+  WIZ_STEP = Math.max(1, Math.min(WIZ_MAX, WIZ_STEP+dir));
+  wizShow();
+}
+function wizGatherContacts(){
+  return [...document.querySelectorAll('#np-contacts .wiz-contact-row')].map(row=>{
+    const g=c=>{ const el=row.querySelector(c); return el?el.value.trim():''; };
+    const notify = row.querySelector('.ct-notify')&&row.querySelector('.ct-notify').checked ? 'Yes':'No';
+    if(!g('.ct-name')) return null;
+    return {'Name':g('.ct-name'),'Company':g('.ct-company'),'Role':g('.ct-role'),'Email':g('.ct-email'),'Phone':g('.ct-phone'),'Notify - RFI':notify,'Notify - CO':notify,'Notify - Submittal':notify};
+  }).filter(Boolean);
+}
+function wizGatherContractors(){
+  return [...document.querySelectorAll('#np-contractors .wiz-contractor-row')].map(row=>{
+    const role=row.querySelector('.cn-role').value; const name=row.querySelector('.cn-name').value.trim(); const contract=parseFloat((row.querySelector('.cn-contract').value||'').replace(/[^0-9.]/g,''))||0;
+    if(!name) return null;
+    return { role, name, contract, active:true };
+  }).filter(Boolean);
+}
+function wizGatherMilestones(){
+  return MILESTONE_NAMES.map((n,i)=>({ name:n, baseline:wizVal('np-ms-'+i+'-baseline'), contract:wizVal('np-ms-'+i+'-contract'), current:wizVal('np-ms-'+i+'-contract') }));
+}
+
 async function createProject(){
-  const name = document.getElementById('new-proj-name').value.trim();
-  if(!name){ showStatus('new-proj-status','Project name is required.','error'); return; }
-  const btn = document.getElementById('btn-create-proj'); btn.disabled=true;
-  showStatus('new-proj-status','Creating folders in Box…','info');
+  const name = wizVal('np-name');
+  if(!name){ showStatus('new-proj-status','Project name is required.','error'); wizGo(1); return; }
+  const btn = document.getElementById('wiz-create'); btn.disabled=true;
+  showStatus('new-proj-status','Creating project in Box…','info');
   try{
     const rootId = sessionStorage.getItem('root_id') || await findOrCreateFolder(ROOT_NAME,'0');
     const projId = await boxCreateFolder(name, rootId);
+    const contacts = wizGatherContacts();
     for(const key of Object.keys(MODULES)){
       const fid = await boxCreateFolder(MODULES[key].folder, projId);
-      await boxUploadText(MODULES[key].log, MODULES[key].headers.join(',')+'\n', fid);
+      let content = (key==='contacts' && contacts.length) ? (toCSV(MODULES.contacts.headers, contacts)+'\n') : (MODULES[key].headers.join(',')+'\n');
+      await boxUploadText(MODULES[key].log, content, fid);
     }
+    let logoFileId='';
+    const lf=document.getElementById('np-logo');
+    if(lf&&lf.files&&lf.files[0]){ try{ const up=await boxUploadBinary(lf.files[0], projId); const e=up.entries?up.entries[0]:up; logoFileId=e.id||''; }catch(e){} }
+    const config = {
+      owner:wizVal('np-owner'), location:wizVal('np-location'), jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
+      logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
+      milestones: wizGatherMilestones(), contractors: wizGatherContractors()
+    };
+    await writeProjectConfig(projId, config);
     showStatus('new-proj-status','Project created!','success');
     setTimeout(()=>{ btn.disabled=false; showScreen('screen-picker'); loadPicker(); }, 1200);
   }catch(e){ btn.disabled=false; showStatus('new-proj-status','Error: '+e.message,'error'); }
