@@ -100,6 +100,87 @@ async function withinGranted(t, grantedIds, kind, id) {
 }
 
 export default async (req) => {
+  // TEMP v2 seeding for Lincoln. Gated. REMOVE after use.
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('seed2') === 'fidevia-v2-3q7') {
+    try {
+      const t = await serviceToken();
+      const H = { Authorization: 'Bearer ' + t };
+      const root = process.env.BOX_PROJECTS_ROOT_ID;
+      const lr = await fetch(`https://api.box.com/2.0/folders/${root}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = (await lr.json()).entries || [];
+      const proj = items.find(i => i.type === 'folder' && i.name === 'Lincoln Elementary Modernization');
+      if (!proj) return json({ ok:false, error:'Lincoln project not found' });
+      const projId = proj.id;
+      const mk = async (name, parent) => {
+        const r = await fetch('https://api.box.com/2.0/folders', { method:'POST', headers:{...H,'Content-Type':'application/json'}, body:JSON.stringify({name,parent:{id:String(parent)}}) });
+        if (r.status === 409) { const l=await fetch(`https://api.box.com/2.0/folders/${parent}/items?limit=1000&fields=id,name,type`,{headers:H}); const its=(await l.json()).entries||[]; const f=its.find(i=>i.name===name&&i.type==='folder'); return f.id; }
+        return (await r.json()).id;
+      };
+      const putFile = async (name, content, parent) => {
+        const l = await fetch(`https://api.box.com/2.0/folders/${parent}/items?limit=1000&fields=id,name,type`, { headers: H });
+        const its = (await l.json()).entries || [];
+        const ex = its.find(i => i.type==='file' && i.name===name);
+        const form = new FormData();
+        form.append('attributes', JSON.stringify(ex ? {name} : {name, parent:{id:String(parent)}}));
+        form.append('file', new Blob([new TextEncoder().encode(content)], {type:'text/plain'}), name);
+        const url = ex ? `https://upload.box.com/api/2.0/files/${ex.id}/content` : 'https://upload.box.com/api/2.0/files/content';
+        await fetch(url, { method:'POST', headers:H, body:form });
+      };
+      const csv = (headers, rows) => [headers.join(','), ...rows.map(r=>headers.map(h=>csvEsc(r[h])).join(','))].join('\n')+'\n';
+
+      // 1. Project Info.json (config)
+      const config = {
+        owner:'Lincoln School District', location:'Lincoln, PA', jobNumber:'25-114', onsiteCM:'Andre Martin',
+        scope:'Modernization and additions to Lincoln Elementary School.', logoFileId:'', boardReportsEnabled:true,
+        milestones:[
+          {name:'Notice to Proceed', baseline:'2025-01-15', contract:'2025-01-10', current:'2025-01-15'},
+          {name:'Mobilize / Start Onsite', baseline:'2025-02-01', contract:'2025-01-27', current:'2025-02-03'},
+          {name:'Substantial Completion', baseline:'2026-08-15', contract:'2026-09-25', current:'2026-10-05'},
+          {name:'Punchlist', baseline:'2026-09-15', contract:'2026-10-23', current:'2026-10-23'},
+          {name:'Final Completion', baseline:'2026-10-15', contract:'2026-11-20', current:'2026-11-20'}
+        ],
+        contractors:[
+          {role:'GC', name:'Summit Builders', contract:12000000, active:true},
+          {role:'MC', name:'Comfort Systems', contract:4500000, active:true},
+          {role:'PC', name:'AH Plumbing', contract:1800000, active:true},
+          {role:'EC', name:'Voltage Electric', contract:3200000, active:true}
+        ]
+      };
+      await putFile('Project Info.json', JSON.stringify(config, null, 2), projId);
+
+      // 2. Payment Applications (overwrite with per-contractor latest apps)
+      const payFolder = items.length ? null : null; // find below
+      const pl = await fetch(`https://api.box.com/2.0/folders/${projId}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const pits = (await pl.json()).entries || [];
+      const payF = pits.find(i => i.type==='folder' && /^09/.test(i.name));
+      const payHeaders = ['App #','Contractor','Company','Period From','Period To','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name'];
+      const pa = (num,contr,co,contract,coAmt,prev,req,status)=>({'App #':num,'Contractor':contr,'Company':contr,'Period From':'2026-06-01','Period To':'2026-06-30','Contract Amount':String(contract),'Approved Change Orders':String(coAmt),'Previously Paid':String(prev),'Requested Amount':String(req),'Remaining on Contract':String((contract+coAmt)-prev-req),'Status':status,'Reviewed By':'Fidevia PM','Review Date':'2026-07-05','Attachment File ID':'','Attachment Name':''});
+      const payRows = [
+        pa('PA-007','Summit Builders','',12000000,480000,9200000,850000,'Approved'),
+        pa('PA-005','Comfort Systems','',4500000,120000,3600000,310000,'Approved'),
+        pa('PA-006','AH Plumbing','',1800000,65000,1400000,120000,'Pending'),
+        pa('PA-006','Voltage Electric','',3200000,210000,2500000,260000,'Approved')
+      ];
+      if (payF) await putFile('Payment Applications.csv', csv(payHeaders, payRows), payF.id);
+
+      // 3. Meeting Minutes folder + csv
+      const mmId = await mk('10 - Meeting Minutes', projId);
+      await putFile('Meeting Minutes.csv', csv(['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name'], [
+        {'Date':'2026-07-08','Meeting Type':'OAC Meeting','Attendees':'Owner, Architect, GC','Summary':'Reviewed submittal log and upcoming inspections.'},
+        {'Date':'2026-06-24','Meeting Type':'Job Conference','Attendees':'GC, Subs, CM','Summary':'Coordinated MEP rough-in sequencing for east wing.'},
+        {'Date':'2026-06-10','Meeting Type':'OAC Meeting','Attendees':'Owner, Architect, CM','Summary':'Discussed CO-002 controls upgrade and schedule impact.'}
+      ]), mmId);
+
+      // 4. Board Reports folder + csv
+      const brId = await mk('11 - Board Reports', projId);
+      await putFile('Board Reports.csv', csv(['Date','Title','Summary','Attachment File ID','Attachment Name'], [
+        {'Date':'2026-07-01','Title':'June Board Report','Summary':'Project ~80% billed and on track for fall substantial completion.'},
+        {'Date':'2026-06-01','Title':'May Board Report','Summary':'Structural work complete; MEP rough-in underway across all wings.'}
+      ]), brId);
+
+      return json({ ok:true, projId });
+    } catch(e) { return json({ ok:false, error:e.message }); }
+  }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const who = await caller(req);
   if (!who) return json({ error: 'Not authenticated' }, 401);
