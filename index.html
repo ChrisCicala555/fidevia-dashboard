@@ -315,6 +315,7 @@
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
       <span id="user-name-display"></span>
+      <button class="btn-logout" onclick="openAccount()" style="margin-right:8px;">My Account</button>
       <button class="btn-logout" onclick="openFeedback()" style="margin-right:8px;">Report a Bug / Feedback</button>
       <button class="btn-logout admin-only" onclick="openAdmin()" style="margin-right:8px;">Manage External Access</button>
       <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
@@ -641,6 +642,21 @@
     <div class="modal-footer">
       <button class="btn-primary" id="fb-send" onclick="sendFeedback()">Send</button>
       <button class="btn-secondary" onclick="closeFeedback()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="account-backdrop" onclick="if(event.target===this)closeAccount()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>My Account</h3>
+      <button class="modal-close" onclick="closeAccount()">✕</button>
+    </div>
+    <div class="modal-body" id="account-body">Loading…</div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="acct-reset-btn" onclick="resetPassword()">Reset Password</button>
+      <button class="btn-secondary" onclick="closeAccount()">Close</button>
+      <span class="status-msg" id="acct-status" style="margin-left:8px;"></span>
     </div>
   </div>
 </div>
@@ -1109,6 +1125,30 @@ function closeModal(){ document.getElementById('modal-backdrop').classList.remov
 function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-backdrop')) closeModal(); }
 function openFeedback(){ const m=document.getElementById('fb-message'); if(m) m.value=''; const s=document.getElementById('fb-status'); if(s){ s.textContent=''; s.className='status-msg'; } document.getElementById('feedback-backdrop').classList.add('open'); }
 function closeFeedback(){ document.getElementById('feedback-backdrop').classList.remove('open'); }
+async function openAccount(){
+  document.getElementById('account-backdrop').classList.add('open');
+  const body=document.getElementById('account-body'); body.innerHTML='<div style="color:var(--muted)">Loading…</div>';
+  const st=document.getElementById('acct-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  let email='',prof=null;
+  try{ const u=await auth0Client.getUser(); email=u.email||''; }catch(e){}
+  try{ const tok=await auth0Client.getTokenSilently(); const r=await fetch('/api/profile',{headers:{'Authorization':'Bearer '+tok}}); if(r.ok){ const d=await r.json(); prof=d.profile; } }catch(e){}
+  if(!prof){ try{ const u=await auth0Client.getUser(); prof=JSON.parse(localStorage.getItem('fidevia_profile_'+u.sub)||'null'); }catch(e){} }
+  prof=prof||{};
+  const row=(l,v)=>'<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--khaki-100);"><span style="color:var(--muted);font-size:13px;">'+l+'</span><span style="font-weight:600;font-size:14px;text-align:right;">'+esc(v||'—')+'</span></div>';
+  body.innerHTML=row('Name',((prof.first_name||'')+' '+(prof.last_name||'')).trim())+row('Email',prof.email||email)+row('Phone',prof.phone)+row('Company',prof.company)+row('Role',prof.title);
+}
+function closeAccount(){ document.getElementById('account-backdrop').classList.remove('open'); }
+async function resetPassword(){
+  let email=''; try{ const u=await auth0Client.getUser(); email=u.email||''; }catch(e){}
+  if(!email){ showStatus('acct-status','No email on file.','error'); return; }
+  const btn=document.getElementById('acct-reset-btn'); btn.disabled=true;
+  try{
+    const r=await fetch('https://'+AUTH0_DOMAIN+'/dbconnections/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:AUTH0_CLIENT_ID,email:email,connection:'Username-Password-Authentication'})});
+    if(r.ok){ showStatus('acct-status','Password reset link sent to '+email+'.','success'); }
+    else{ showStatus('acct-status','Could not send reset email — try again.','error'); }
+  }catch(e){ showStatus('acct-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
 async function sendFeedback(){
   const msg=(document.getElementById('fb-message').value||'').trim();
   if(!msg){ showStatus('fb-status','Please enter a message.','error'); return; }
