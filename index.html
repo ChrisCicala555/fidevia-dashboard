@@ -452,6 +452,8 @@
     <div class="nav-item" data-section="rfis">RFIs</div>
     <div class="nav-item" data-section="cos">Change Orders</div>
     <div class="nav-item" data-section="submittals">Submittals</div>
+    <div class="nav-item hide-external" data-section="meetings">Meeting Minutes</div>
+    <div class="nav-item hide-external" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Logs</div>
     <div class="nav-section-label">Records</div>
     <div class="nav-item nav-contacts" data-section="contacts">Contacts Directory</div>
@@ -467,9 +469,12 @@
 
   <div class="main">
     <div class="topbar">
-      <div>
-        <h1 id="topbar-title">Project</h1>
-        <div class="project-name" id="topbar-sub"></div>
+      <div style="display:flex;align-items:center;">
+        <img id="topbar-logo" alt="" style="display:none;height:46px;width:auto;max-width:120px;margin-right:14px;border-radius:4px;object-fit:contain;">
+        <div>
+          <h1 id="topbar-title">Project</h1>
+          <div class="project-name" id="topbar-sub"></div>
+        </div>
       </div>
       <div class="viewer-toggle">
         <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
@@ -658,6 +663,32 @@
             </tr></thead>
             <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- MEETING MINUTES -->
+      <div class="section hide-external" id="section-meetings">
+        <div class="page-title-row">
+          <h2>Meeting minutes</h2>
+          <button class="btn-add" onclick="openModal('meeting')">+ Add Minutes</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Job conference &amp; OAC minutes</div>
+          <table><thead><tr><th>Date</th><th>Meeting Type</th><th>Attendees</th><th>Summary</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-meetings"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- BOARD REPORTS -->
+      <div class="section hide-external" id="section-board">
+        <div class="page-title-row">
+          <h2>Board reports</h2>
+          <button class="btn-add" onclick="openModal('board')">+ Add Report</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Board reporting</div>
+          <table><thead><tr><th>Date</th><th>Title</th><th>Summary</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-board"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -993,6 +1024,7 @@ async function openProject(folderId, name){
   try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
   try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
   loadAccessRequests(folderId);
+  toggleBoardTab(); loadLogo();
   loadDashboard();
 }
 
@@ -1123,7 +1155,7 @@ async function createProject(){
 
 // ── DASHBOARD ──
 async function loadDashboard(){
-  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps'];
+  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
   const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps'] : allKeys;
   await Promise.allSettled(keys.map(k=>loadModule(k)));
@@ -1138,7 +1170,7 @@ async function loadModule(key){
   allData[key]=(parseCSV(await boxGetText(file.id))).rows;
 }
 
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); }
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
@@ -1366,6 +1398,32 @@ async function saveSchedule(){
   btn.disabled=false;
 }
 
+function renderMeetings(){
+  const tb=document.getElementById('tbody-meetings'); if(!tb) return;
+  const rows=allData.meetings||[];
+  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(r['Date'])+'</td><td>'+esc(r['Meeting Type'])+'</td><td>'+esc(r['Attendees'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('meetings',i)+'</td></tr>').join(''):emptyRow(6);
+}
+function renderBoard(){
+  const tb=document.getElementById('tbody-board'); if(!tb) return;
+  const rows=allData.board||[];
+  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(r['Date'])+'</td><td>'+esc(r['Title'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('board',i)+'</td></tr>').join(''):emptyRow(5);
+}
+function toggleBoardTab(){
+  const on=!!(currentProject&&currentProject.config&&currentProject.config.boardReportsEnabled);
+  document.querySelectorAll('.nav-item[data-section="board"]').forEach(el=>{ el.style.display = on?'':'none'; });
+}
+async function loadLogo(){
+  const el=document.getElementById('topbar-logo'); if(!el) return;
+  el.style.display='none'; el.src='';
+  const fid=currentProject&&currentProject.config&&currentProject.config.logoFileId;
+  if(!fid) return;
+  try{
+    let url;
+    if(EXTERNAL){ const d=await proxyCall('downloadUrl',{fileId:fid}); url=d.url; }
+    else { const t=await ensureToken(); const r=await fetch('https://api.box.com/2.0/files/'+encodeURIComponent(fid)+'/content',{headers:{Authorization:'Bearer '+t}}); if(r.ok){ url=URL.createObjectURL(await r.blob()); } }
+    if(url){ el.src=url; el.style.display='inline-block'; }
+  }catch(e){}
+}
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
   const notDone=s=>{ const st=(s||'').toLowerCase(); return st!=='approved'&&st!=='rejected'&&st!=='closed'; };
@@ -1435,7 +1493,16 @@ const FORMS = {
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
-    <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`}
+    <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`},
+  meeting:{title:'Log Meeting Minutes',html:`
+    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Meeting Type</label><input autocomplete="off" id="f-mtype" placeholder="Job Conference, OAC…"></div></div>
+    <div class="field"><label>Attendees</label><input autocomplete="off" id="f-attendees" placeholder="Names / companies present"></div>
+    <div class="field"><label>Summary / Minutes</label><textarea autocomplete="off" id="f-subject" placeholder="Key discussion points, decisions, action items…"></textarea></div>
+    <div class="field"><label>Attach Minutes File</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box.</p></div>`},
+  board:{title:'Add Board Report',html:`
+    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Title</label><input autocomplete="off" id="f-title" placeholder="July Board Report"></div></div>
+    <div class="field"><label>Summary</label><textarea autocomplete="off" id="f-subject" placeholder="Summary for the board…"></textarea></div>
+    <div class="field"><label>Attach Report File</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box.</p></div>`}
 };
 
 function v(id){ const el=document.getElementById(id); return el?el.value:''; }
@@ -1510,7 +1577,7 @@ async function submitForm(){
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
   try{
-    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps'};
+    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps',meeting:'meetings',board:'board'};
     const key=keyMap[currentModal];
     let folderId=currentProject.folders[key];
     if(!folderId){
@@ -1546,6 +1613,12 @@ async function submitForm(){
 
       if(!v('f-date-sub')||!v('f-by')||!v('f-subject')) throw new Error('Date, Submitted By, and Work Performed are required.');
       newRow={'Date':v('f-date-sub'),'Submitted By':v('f-by'),'Weather':v('f-weather'),'Crew Count':v('f-crew'),'Work Performed':v('f-subject'),'Delays / Issues':v('f-delays'),'Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='meeting'){
+      if(!v('f-date-sub')) throw new Error('Date is required.');
+      newRow={'Date':v('f-date-sub'),'Meeting Type':v('f-mtype'),'Attendees':v('f-attendees'),'Summary':v('f-subject'),'Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='board'){
+      if(!v('f-title')) throw new Error('Title is required.');
+      newRow={'Date':v('f-date-sub'),'Title':v('f-title'),'Summary':v('f-subject'),'Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='contact'){
       if(!v('f-name')||!v('f-role')) throw new Error('Name and Role are required.');
       newRow={'Name':v('f-name'),'Company':v('f-company'),'Role':v('f-role'),'Email':v('f-email'),'Phone':v('f-phone'),'Notify - RFI':v('f-rfi'),'Notify - CO':v('f-co'),'Notify - Submittal':v('f-sub')};
