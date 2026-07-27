@@ -446,6 +446,7 @@
     </div>
     <div class="nav-section-label">Overview</div>
     <div class="nav-item active" data-section="overview">Dashboard</div>
+    <div class="nav-item" data-section="financials">Financial Summary</div>
     <div class="nav-section-label">Activity</div>
     <div class="nav-item" data-section="rfis">RFIs</div>
     <div class="nav-item" data-section="cos">Change Orders</div>
@@ -494,6 +495,20 @@
           <div class="panel-header">Needs your review</div>
           <table><thead><tr><th>Type</th><th>Item</th><th>Submitted By</th><th>Due</th><th>Status</th></tr></thead>
           <tbody id="tbody-review"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- FINANCIAL SUMMARY -->
+      <div class="section" id="section-financials">
+        <div class="page-title-row">
+          <h2>Financial summary</h2>
+          <button class="btn-add admin-only" onclick="openContractors()">Manage Contractors</button>
+        </div>
+        <div class="stat-grid" id="fin-kpis"></div>
+        <div class="panel">
+          <div class="panel-header">By contractor</div>
+          <table><thead><tr><th>Role</th><th>Contractor</th><th>Contract</th><th>Approved COs</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th>% Complete</th><th>CO %</th></tr></thead>
+          <tbody id="tbody-financials"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -687,6 +702,25 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="contractors-backdrop" onclick="if(event.target===this)closeContractors()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Manage Contractors</h3>
+      <button class="modal-close" onclick="closeContractors()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="form-desc" style="margin-bottom:10px;">Add, edit, or deactivate contractors. Changes update the financial summary and the payment-application options.</p>
+      <div id="contractors-list"></div>
+      <button type="button" class="btn-secondary" onclick="addContractorEditRow()" style="margin-top:6px;">+ Add Contractor</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="contractors-save" onclick="saveContractors()">Save</button>
+      <button class="btn-secondary" onclick="closeContractors()">Cancel</button>
+      <span class="status-msg" id="contractors-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="account-backdrop" onclick="if(event.target===this)closeAccount()">
   <div class="modal">
     <div class="modal-header">
@@ -871,7 +905,7 @@ const MODULES = {
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']}
 };
@@ -1073,7 +1107,7 @@ async function loadModule(key){
   allData[key]=(parseCSV(await boxGetText(file.id))).rows;
 }
 
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); }
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
@@ -1177,6 +1211,73 @@ function renderDocuments(){
 }
 function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
 
+// ── FINANCIAL SUMMARY (by contractor; driven by config + latest pay app) ──
+function renderFinancials(){
+  const tb=document.getElementById('tbody-financials'); if(!tb) return;
+  const cfg=(currentProject&&currentProject.config)||{};
+  const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  const pays=allData.pay_apps||[];
+  const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
+  const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
+  let tC=0,tCO=0,tR=0,tB=0,tRem=0;
+  const out=[];
+  contractors.forEach(c=>{
+    const pa=latestFor(c.name);
+    const contract = (pa && num(pa['Contract Amount'])) ? num(pa['Contract Amount']) : num(c.contract);
+    const co = pa ? num(pa['Approved Change Orders']) : 0;
+    const revised = contract + co;
+    const billed = pa ? (num(pa['Previously Paid'])+num(pa['Requested Amount'])) : 0;
+    const remaining = revised - billed;
+    tC+=contract; tCO+=co; tR+=revised; tB+=billed; tRem+=remaining;
+    const pct = revised>0 ? billed/revised : 0;
+    const coPct = contract>0 ? co/contract : 0;
+    out.push('<tr><td>'+esc(c.role||'')+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
+  });
+  if(!contractors.length){
+    tb.innerHTML='<tr class="empty-row"><td colspan="9">No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')+'</td></tr>';
+  } else {
+    const totalPct=tR>0?tB/tR:0;
+    out.push('<tr style="font-weight:700;background:var(--khaki-100);"><td></td><td>Total</td><td>'+fmtMoney(tC)+'</td><td>'+fmtMoney(tCO)+'</td><td>'+fmtMoney(tR)+'</td><td>'+fmtMoney(tB)+'</td><td>'+fmtMoney(tRem)+'</td><td>'+(totalPct*100).toFixed(1)+'%</td><td></td></tr>');
+    tb.innerHTML=out.join('');
+  }
+  const kp=document.getElementById('fin-kpis');
+  if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:19px;">'+v+'</div></div>';
+    kp.innerHTML=card('Revised Contract',fmtMoney(tR))+card('Billed to Date',fmtMoney(tB))+card('Remaining',fmtMoney(tRem))+card('% Billed',(tR>0?(tB/tR*100).toFixed(1):'0')+'%'); }
+}
+
+// ── MANAGE CONTRACTORS (admin) ──
+function openContractors(){ renderContractorsEditor(); const s=document.getElementById('contractors-status'); if(s){s.textContent='';s.className='status-msg';} document.getElementById('contractors-backdrop').classList.add('open'); }
+function closeContractors(){ document.getElementById('contractors-backdrop').classList.remove('open'); }
+function renderContractorsEditor(){
+  const cfg=(currentProject&&currentProject.config)||{}; const list=cfg.contractors||[];
+  document.getElementById('contractors-list').innerHTML='';
+  if(list.length){ list.forEach(c=>addContractorEditRow(c)); } else { addContractorEditRow(); }
+}
+function addContractorEditRow(c){
+  c=c||{}; const wrap=document.getElementById('contractors-list');
+  const div=document.createElement('div'); div.className='contr-edit-row'; div.style='display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;';
+  div.innerHTML='<div class="field" style="margin:0;flex:0 0 105px;"><label style="font-size:11px;">Role</label><select class="ce-role">'+CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'"'+(c.role===r[0]?' selected':'')+'>'+r[1]+'</option>').join('')+'</select></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Name</label><input class="ce-name" value="'+esc(c.name||'')+'"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 120px;"><label style="font-size:11px;">Contract ($)</label><input class="ce-contract" value="'+esc(c.contract!=null?c.contract:'')+'"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 95px;"><label style="font-size:11px;">Status</label><select class="ce-active"><option value="1"'+(c.active!==false?' selected':'')+'>Active</option><option value="0"'+(c.active===false?' selected':'')+'>Inactive</option></select></div>'
+    +'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;padding-bottom:6px;">&times;</button>';
+  wrap.appendChild(div);
+}
+async function saveContractors(){
+  const rows=[...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>{
+    const role=r.querySelector('.ce-role').value, name=r.querySelector('.ce-name').value.trim(), contract=parseFloat((r.querySelector('.ce-contract').value||'').replace(/[^0-9.]/g,''))||0, active=r.querySelector('.ce-active').value==='1';
+    return name?{role,name,contract,active}:null;
+  }).filter(Boolean);
+  const btn=document.getElementById('contractors-save'); btn.disabled=true;
+  try{
+    currentProject.config=currentProject.config||{}; currentProject.config.contractors=rows;
+    await writeProjectConfig(currentProject.folderId, currentProject.config);
+    showStatus('contractors-status','Saved.','success'); renderFinancials();
+    setTimeout(closeContractors,700);
+  }catch(e){ showStatus('contractors-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
   const notDone=s=>{ const st=(s||'').toLowerCase(); return st!=='approved'&&st!=='rejected'&&st!=='closed'; };
@@ -1236,12 +1337,12 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input autocomplete="off" id="f-budget" placeholder="185000"></div><div class="field"><label>Committed Costs ($)</label><input autocomplete="off" id="f-committed" placeholder="182500"></div></div>
     <div class="field-row"><div class="field"><label>Approved COs ($)</label><input autocomplete="off" id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input autocomplete="off" id="f-actual" placeholder="140200"></div></div>`},
   payapp:{title:'New Payment Application',html:`
-    <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" placeholder="ABC Mechanical"></div></div>
+    <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
     <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="ABC Mechanical Inc."></div>
     <div class="field-row"><div class="field"><label>Period From</label><input autocomplete="off" type="date" id="f-from"></div><div class="field"><label>Period To</label><input autocomplete="off" type="date" id="f-to"></div></div>
-    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="200000"></div></div>
-    <div class="field-row"><div class="field"><label>Requested Amount ($) *</label><input autocomplete="off" id="f-req" placeholder="45000"></div><div class="field"><label>Remaining on Contract ($)</label><input autocomplete="off" id="f-remain" placeholder="605000"></div></div>
-    <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box.</p></div>`},
+    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
+    <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="45000"></div></div>
+    <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box. Remaining is calculated automatically.</p></div>`},
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
@@ -1268,6 +1369,7 @@ function openModal(type){
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
   if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
+  if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
   document.getElementById('modal-submit-btn').disabled=false;
@@ -1365,9 +1467,9 @@ async function submitForm(){
       newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
     } else if(currentModal==='payapp'){
       if(!v('f-num')||!v('f-contr')||!v('f-req')) throw new Error('App #, Contractor, and Requested Amount are required.');
-      const contract=parseFloat(v('f-contract'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
-      const remain=contract-prev-req;
-      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':v('f-from'),'Period To':v('f-to'),'Contract Amount':v('f-contract'),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Status':'Pending','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
+      const remain=(contract+cosApp)-prev-req;
+      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':v('f-from'),'Period To':v('f-to'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Status':'Pending','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='document'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
