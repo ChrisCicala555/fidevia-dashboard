@@ -437,7 +437,7 @@
 
   <div class="sidebar">
     <div class="logo-block">
-      <img src="./Fidevia w_branch.avif" alt="Fidevia" class="sidebar-logo-img">
+      <img src="./Fidevia w_branch.avif" alt="Fidevia" class="sidebar-logo-img" onclick="goHome()" style="cursor:pointer;" title="Home">
       <div class="logo-sub">Construction Dashboard</div>
       <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
 <span id="auth0-user-name" style="color:#8bc4e8;font-size:13px;margin-left:8px;display:inline-block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
@@ -528,8 +528,8 @@
         <div class="stat-grid" id="sched-kpis"></div>
         <div class="panel">
           <div class="panel-header">Contract milestones</div>
-          <table><thead><tr><th>Milestone</th><th>Baseline Date</th><th>Contract Date</th><th>Current Date</th><th>Deviation</th></tr></thead>
-          <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Milestone</th><th>Baseline Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
+          <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -985,7 +985,7 @@ async function loadPicker(){
       if(subEl) subEl.textContent='Projects you have been granted access to.';
       projects = (await proxyCall('myProjects',{})).projects || [];
     } else {
-      try{ const me=await boxGet('users/me?fields=name'); document.getElementById('user-name-display').textContent=me.name||''; }catch(e){}
+      try{ const u=await auth0Client.getUser(); document.getElementById('user-name-display').textContent=u.name||u.email||''; }catch(e){}
       const rootItems = await boxList('0');
       let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
       const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
@@ -1025,6 +1025,7 @@ async function openProject(folderId, name){
   try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
   loadAccessRequests(folderId);
   toggleBoardTab(); loadLogo();
+  if(!EXTERNAL) loadProjectPhotos();
   loadDashboard();
 }
 
@@ -1349,7 +1350,7 @@ function scheduleStats(){
   const mob=find('mobilize'), ntp=find('notice');
   const start=(mob&&d(mob.contract))||(ntp&&d(ntp.contract))||null;
   const sc=find('substantial');
-  const end=sc?(d(sc.current)||d(sc.contract)):null;
+  const end=sc?d(sc.contract):null;
   const today=new Date();
   let duration=null,expended=null,remaining=null,pct=null;
   if(start&&end){ duration=Math.round((end-start)/86400000); expended=Math.round((today-start)/86400000); remaining=Math.round((end-today)/86400000); pct=duration>0?Math.min(1,Math.max(0,expended/duration)):0; }
@@ -1365,8 +1366,8 @@ function financialTotals(){
 function renderSchedule(){
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
-  const dev=(contract,current)=>{ const a=new Date(contract),b=new Date(current); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((b-a)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
-  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline||'—')+'</td><td>'+esc(m.contract||'—')+'</td><td>'+esc(m.current||m.contract||'—')+'</td><td>'+esc(dev(m.contract,m.current||m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="5">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
+  const dev=(baseline,contract)=>{ const a=new Date(baseline),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((b-a)/86400000); return dd===0?'On baseline':(dd>0?('+'+dd+' days'):(dd+' days')); };
+  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline||'—')+'</td><td>'+esc(m.contract||'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
   if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:19px;">'+v+'</div></div>';
     kp.innerHTML=card('Construction Duration',(s.duration!=null?s.duration+' days':'—'))+card('Days Expended',(s.expended!=null?s.expended:'—'))+card('Days Remaining',(s.remaining!=null?s.remaining:'—'))+card('% Expended',(s.pct!=null?(s.pct*100).toFixed(1)+'%':'—')); }
@@ -1388,10 +1389,10 @@ function closeSchedule(){ document.getElementById('schedule-backdrop').classList
 function renderScheduleEditor(){
   let ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   if(!ms.length) ms=MILESTONE_NAMES.map(n=>({name:n}));
-  document.getElementById('schedule-list').innerHTML=ms.map(m=>'<div style="margin-bottom:10px;" class="sch-row" data-name="'+esc(m.name)+'"><label style="font-size:12px;font-weight:600;color:#555;">'+esc(m.name)+'</label><div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:10px;color:#888;">Baseline</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:10px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:10px;color:#888;">Current</label><input type="date" class="sch-current" value="'+esc(m.current||'')+'"></div></div></div>').join('');
+  document.getElementById('schedule-list').innerHTML=ms.map(m=>'<div style="margin-bottom:10px;" class="sch-row" data-name="'+esc(m.name)+'"><label style="font-size:12px;font-weight:600;color:#555;">'+esc(m.name)+'</label><div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:10px;color:#888;">Baseline</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:10px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div></div></div>').join('');
 }
 async function saveSchedule(){
-  const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:r.getAttribute('data-name'),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value,current:r.querySelector('.sch-current').value}));
+  const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:r.getAttribute('data-name'),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value}));
   const btn=document.getElementById('schedule-save'); btn.disabled=true;
   try{ currentProject.config=currentProject.config||{}; currentProject.config.milestones=rows; await writeProjectConfig(currentProject.folderId,currentProject.config); showStatus('schedule-status','Saved.','success'); renderSchedule(); renderExec(); setTimeout(closeSchedule,700); }
   catch(e){ showStatus('schedule-status','Error: '+e.message,'error'); }
@@ -1832,6 +1833,7 @@ function setViewer(mode){
 }
 
 function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
+function goHome(){ if(EXTERNAL){ navTo('overview'); } else { showScreen('screen-picker'); loadPicker(); } }
 function showStatus(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='status-msg '+type; }
 
 // ── INIT ──
@@ -1974,6 +1976,18 @@ async function uploadPhotos(input){
   input.value='';
 }
 
+async function loadProjectPhotos(){
+  const grid=document.getElementById('photo-grid'); if(!grid) return;
+  const dailyFid=currentProject&&currentProject.folders&&currentProject.folders.daily;
+  if(!dailyFid){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; return; }
+  grid.innerHTML='<div class="photo-empty">Loading photos…</div>';
+  try{
+    const items=await boxList(dailyFid);
+    const pf=items.find(i=>i.type==='folder'&&i.name==='Photos');
+    if(!pf){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; return; }
+    await loadPhotos(pf.id);
+  }catch(e){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; }
+}
 async function loadPhotos(photosFid){
   const grid=document.getElementById('photo-grid'); if(!grid) return;
   if(!photosFid){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
