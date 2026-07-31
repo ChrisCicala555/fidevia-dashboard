@@ -229,7 +229,9 @@
   .comment-compose{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end;background:var(--cream);}
   .comment-compose textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;resize:none;height:64px;}
   .comment-author{border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;width:150px;}
-  .contract-bar{display:flex;gap:20px;padding:12px 18px;background:var(--cream);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .contract-bar{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px 20px 16px;margin-bottom:16px;}
+  .contract-bar .cb-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--olive-900);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .cb-items{display:flex;gap:32px;flex-wrap:wrap;}
   .pay-group{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;background:var(--white);}
   .pay-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;}
   .pay-group-head:hover{background:var(--khaki-50,#f7f5ef);}
@@ -660,13 +662,16 @@
           <button class="btn-add" onclick="openModal('payapp')">+ New Pay App</button>
         </div>
         <div class="contract-bar">
-          <div class="cb-item"><div class="cb-lbl">Total Contract</div><div class="cb-val" id="cb-contract">—</div></div>
-          <div class="cb-item"><div class="cb-lbl">Approved to Date</div><div class="cb-val" id="cb-paid">—</div></div>
-          <div class="cb-item"><div class="cb-lbl">Pending Requests</div><div class="cb-val" id="cb-current">—</div></div>
-          <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">—</div></div>
+          <div class="cb-head">Contract Summary</div>
+          <div class="cb-items">
+            <div class="cb-item"><div class="cb-lbl">Total Contract</div><div class="cb-val" id="cb-contract">—</div></div>
+            <div class="cb-item"><div class="cb-lbl">Approved to Date</div><div class="cb-val" id="cb-paid">—</div></div>
+            <div class="cb-item"><div class="cb-lbl">Pending Requests</div><div class="cb-val" id="cb-current">—</div></div>
+            <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">—</div></div>
+          </div>
         </div>
-        <p class="form-desc" style="margin:0 0 10px;">Grouped by prime contractor — click a contractor to see their pay applications. Contractors submit; Fidevia reviews with <strong>Take Action</strong>.</p>
         <div id="payapp-groups"><div class="loading-row" style="padding:16px;color:var(--muted)">Loading…</div></div>
+        <p class="file-hint" style="margin-top:14px;">Grouped by prime contractor — click a contractor to see their pay applications. Contractors submit; Fidevia reviews with <strong>Take Action</strong>.</p>
       </div>
 
       <!-- MEETING MINUTES -->
