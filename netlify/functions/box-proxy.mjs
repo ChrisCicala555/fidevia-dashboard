@@ -267,6 +267,28 @@ export default async (req) => {
       if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
       return json({ ok: true, file: await r.json() });
     }
+
+    if (op === 'ensureFolder') {
+      if (!await guardFolder(body.parentId)) return json({ error: 'Access denied' }, 403);
+      const name = String(body.name || '').trim();
+      if (!name) return json({ error: 'name required' }, 400);
+      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const found = items.find(i => i.type === 'folder' && i.name === name);
+      if (found) return json({ ok: true, id: found.id });
+      const cr = await fetch('https://api.box.com/2.0/folders', { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent: { id: String(body.parentId) } }) });
+      if (!cr.ok) {
+        if (cr.status === 409) {
+          const lr2 = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+          const it2 = lr2.ok ? ((await lr2.json()).entries || []) : [];
+          const f2 = it2.find(i => i.type === 'folder' && i.name === name);
+          if (f2) return json({ ok: true, id: f2.id });
+        }
+        return json({ error: 'Folder create failed ' + cr.status }, cr.status);
+      }
+      const nf = await cr.json();
+      return json({ ok: true, id: nf.id });
+    }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, headers, row } = body;

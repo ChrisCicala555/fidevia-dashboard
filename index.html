@@ -972,6 +972,21 @@ async function findOrCreateFolder(name, parentId){
   const f = items.find(i=>i.type==='folder'&&i.name===name);
   return f ? f.id : boxCreateFolder(name, parentId);
 }
+const ITEM_FOLDER_LABEL={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'Pay App'};
+function itemFolderName(key, number){
+  let n=String(number==null?'':number).replace(/[\\/]/g,'-').trim();
+  if(key==='docs') return n||'Document';
+  const lab=ITEM_FOLDER_LABEL[key]||'';
+  return (lab?lab+' #':'')+n;
+}
+async function itemFolderId(key, moduleFolderId, number){
+  const name=itemFolderName(key, number);
+  if(!name || !moduleFolderId) return moduleFolderId;
+  try{
+    if(EXTERNAL){ const d=await proxyCall('ensureFolder',{parentId:moduleFolderId, name}); return d.id||moduleFolderId; }
+    return await findOrCreateFolder(name, moduleFolderId);
+  }catch(e){ return moduleFolderId; }
+}
 
 async function findFile(folderId, filename){
   const items = await boxList(folderId);
@@ -1647,8 +1662,11 @@ async function submitForm(){
     let attachId='',attachName='';
     const fi=document.getElementById('f-file');
     if(fi&&fi.files.length>0){
+      let uploadFolderId=folderId;
+      const _num=(currentModal==='document')?v('f-name'):v('f-num');
+      if(['rfi','co','sub','docs','pay_apps'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
       prog.textContent='Uploading file to Box…';
-      const up=await boxUploadBinary(fi.files[0],folderId);
+      const up=await boxUploadBinary(fi.files[0],uploadFolderId);
       const entry=up.entries?up.entries[0]:up;
       attachId=entry.id||''; attachName=fi.files[0].name;
     }
@@ -2183,7 +2201,7 @@ async function submitPayAction(){
     const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
-    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const up=await boxUploadBinary(fileInput.files[0],fid); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await itemFolderId('pay_apps',fid,row['App #']); const up=await boxUploadBinary(fileInput.files[0],_upf); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
     const status=action==='Approve and Sign'?'Approved & Signed':action==='Modify and Sign'?'Modified & Signed':'Denied';
     const appAmt=action==='Deny'?0:amount;
     let vh=[]; try{ vh=JSON.parse(row['Version History']||'[]'); }catch(e){}
@@ -2233,7 +2251,7 @@ async function uploadNewVersion(key, rowIdx){
     const existing=await findFile(fid,mod.log);
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
     const row=rows[rowIdx]; if(!row) return;
-    const up=await boxUploadBinary(file,fid);
+    const _num=(key==='docs')?row['Document Name']:(row['RFI #']||row['CO #']||row['Submittal #']||row['App #']||''); const _upf=await itemFolderId(key,fid,_num); const up=await boxUploadBinary(file,_upf);
     const entry=up.entries?.[0]||up;
     if(key==='docs'){
       const oldFileId=row['File ID']||'', oldName=row['File Name']||'', oldV=row['Version']||'1', oldDate=row['Date']||'';
@@ -2328,7 +2346,7 @@ async function submitReply(){
     const row=rows[i]; if(!row) throw new Error('Item not found — reload and try again.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let newFid=row['Attachment File ID']||'', newName=row['Attachment Name']||'';
-    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const up=await boxUploadBinary(fileInput.files[0],fid); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const _upf=await itemFolderId(key,fid,row[REPLY_IDF[key]]); const up=await boxUploadBinary(fileInput.files[0],_upf); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
     let vs=_versions(row);
     vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, note:note});
     row['Version History']=JSON.stringify(vs);
