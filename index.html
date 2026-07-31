@@ -177,6 +177,9 @@
   body.external-mode .nav-dailylogs{display:none;}
 
   /* ── MODAL ── */
+  .thread-arrow{display:inline-block;transition:transform .15s ease;color:var(--muted);font-size:10px;margin-right:2px;}
+  .thread-main:hover{background:var(--khaki-50,#f7f5ef);}
+  .ver-status{font-weight:600;}
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;}
   .modal-backdrop.open{display:flex;}
   .modal{background:var(--white); border-radius:10px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25);}
@@ -568,7 +571,7 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
-          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Assigned To</th><th>Status</th><th>File</th><th>Action</th></tr></thead>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Assigned To</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -728,6 +731,22 @@
       <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <span class="upload-progress" id="upload-progress">Saving to Box…</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
+  <div class="modal">
+    <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Action / Status</label><select id="reply-status"></select></div>
+      <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
+      <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:12px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="reply-submit-btn" onclick="submitReply()">Submit</button>
+      <button class="btn-secondary" onclick="closeReply()">Cancel</button>
+      <span class="upload-progress" id="reply-progress" style="display:none">Saving…</span>
     </div>
   </div>
 </div>
@@ -959,9 +978,9 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
@@ -1208,7 +1227,10 @@ function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No recor
 function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('rfi',i)+'</td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>{
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
+    return main+verThreadRows('rfi',r,i,8);
+  }).join('');
   const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
   document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(r['Date Closed'])+')').join('<br>');
 }
@@ -1216,13 +1238,18 @@ function renderRFIs(){
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—'; return '<tr><td>'+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('co',i)+'</td></tr>'; }).join('');
+  tb.innerHTML=rows.map((r,i)=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
+    return main+verThreadRows('co',r,i,8); }).join('');
 }
 
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+fileCell(r)+'</td><td><button class="btn-ver" onclick="uploadNewVersion(\'sub\','+i+')">↑ New Ver.</button>'+delBtn('sub',i)+'</td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>{
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
+    return main+verThreadRows('sub',r,i,8);
+  }).join('');
 }
 
 function renderDailyLogs(){
@@ -2142,6 +2169,74 @@ async function sendEmail(toEmails, subject, body){
 function notifCfg(type, def){ const c=(currentProject&&currentProject.notif&&currentProject.notif[type])||{}; return { subject:c.subject||def.subject, intro:c.intro||def.intro }; }
 function applyVars(s, v){ return String(s||'').replace(/\{project\}/g,v.project||'').replace(/\{number\}/g,v.number||'').replace(/\{submitter\}/g,v.submitter||'').replace(/\{title\}/g,v.title||''); }
 function sendItemNotif(notifyField, type, def, vars, rows){ const c=notifCfg(type,def); notifyContacts(notifyField, applyVars(c.subject,vars), emailTemplate(applyVars(c.intro,vars), rows, currentProject.name)); }
+// ══════════════════════════════════════════════
+// VERSION THREAD (RFI / CO / Submittal)
+// ══════════════════════════════════════════════
+const REPLY_STATUS={rfi:['Open','Answered','Closed'],co:['Open','Approved','Rejected','Revise & Resubmit'],sub:['Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejected']};
+const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #'};
+const REPLY_NOTIFY={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal'};
+const REPLY_LABEL={rfi:'RFI',co:'Change Order',sub:'Submittal'};
+let REPLY_CTX=null;
+function _versions(r){
+  let h=[]; try{ h=JSON.parse(r['Version History']||'[]'); }catch(e){}
+  if(!h.length){ h=[{v:1, fileId:r['Attachment File ID']||r['File ID']||'', fileName:r['Attachment Name']||r['File Name']||'', status:r['Status']||'', date:r['Date Submitted']||r['Date']||'', by:r['Submitted By']||r['Submitted By (Sub)']||r['Contractor']||'', note:''}]; }
+  return h;
+}
+function verThreadRows(key,r,i,colspan){
+  const vs=_versions(r).slice().reverse();
+  const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:13px;">'
+    +'<strong>v'+esc(v.v)+'</strong>'
+    +(v.status?' &middot; <span class="ver-status">'+esc(v.status)+'</span>':'')
+    +(v.date?' &middot; '+esc(v.date):'')
+    +(v.by?' &middot; '+esc(v.by):'')
+    +(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')
+    +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
+    +'</div>';
+  const reply = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">Reply / New Version</button>' : '';
+  return '<tr class="thread-detail" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="'+colspan+'" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;">'
+    +'<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'
+    +vs.map(line).join('')+reply+'</td></tr>';
+}
+function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i); if(!el) return; const open=el.style.display!=='none'; el.style.display=open?'none':'table-row'; const arw=document.getElementById('arw-'+key+'-'+i); if(arw) arw.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
+function openReply(key,i){
+  REPLY_CTX={key,i};
+  const r=(allData[key]||[])[i]||{};
+  document.getElementById('reply-title').textContent='Reply — '+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
+  const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
+  if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
+  document.getElementById('reply-note').value=''; document.getElementById('reply-file').value='';
+  document.getElementById('reply-progress').style.display='none'; document.getElementById('reply-submit-btn').disabled=false;
+  document.getElementById('reply-backdrop').classList.add('open');
+}
+function closeReply(){ document.getElementById('reply-backdrop').classList.remove('open'); REPLY_CTX=null; }
+async function submitReply(){
+  if(!REPLY_CTX) return; const {key,i}=REPLY_CTX;
+  const status=document.getElementById('reply-status').value;
+  const note=document.getElementById('reply-note').value.trim();
+  const fileInput=document.getElementById('reply-file');
+  const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;
+  const prog=document.getElementById('reply-progress'); prog.style.display='inline'; prog.textContent='Saving…';
+  try{
+    const mod=MODULES[key], fid=currentProject.folders[key];
+    const existing=await findFile(fid,mod.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    const row=rows[i]; if(!row) throw new Error('Item not found — reload and try again.');
+    let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
+    let newFid=row['Attachment File ID']||'', newName=row['Attachment Name']||'';
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const up=await boxUploadBinary(fileInput.files[0],fid); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
+    let vs=_versions(row);
+    vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, note:note});
+    row['Version History']=JSON.stringify(vs);
+    row['Attachment File ID']=newFid; row['Attachment Name']=newName; row['Status']=status;
+    prog.textContent='Updating log…';
+    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    allData[key]=rows;
+    try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name)); }catch(e){}
+    renderAll(); closeReply();
+  }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
+  btn.disabled=false;
+}
+
 function notifyContacts(notifyField, subject, bodyHTML){
   const contacts = allData.contacts||[];
   const emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
