@@ -230,6 +230,13 @@
   .comment-compose textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;resize:none;height:64px;}
   .comment-author{border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;width:150px;}
   .contract-bar{display:flex;gap:20px;padding:12px 18px;background:var(--cream);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .pay-group{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;background:var(--white);}
+  .pay-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;}
+  .pay-group-head:hover{background:var(--khaki-50,#f7f5ef);}
+  .pay-group-meta{margin-left:auto;color:var(--muted);font-size:13px;}
+  .pay-sub{width:100%;border-collapse:collapse;}
+  .pay-sub th{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);text-align:left;padding:8px 12px;border-top:1px solid var(--border);background:var(--cream);}
+  .pay-sub td{padding:8px 12px;border-top:1px solid var(--border);font-size:14px;vertical-align:middle;}
   .cb-item .cb-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);}
   .cb-item .cb-val{font-size:21px;font-weight:700;color:var(--olive-900);}
   .btn-approve{background:var(--success-bg);color:var(--olive-700);border:1px solid var(--khaki-300);border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;}
@@ -653,21 +660,13 @@
           <button class="btn-add" onclick="openModal('payapp')">+ New Pay App</button>
         </div>
         <div class="contract-bar">
-          <div class="cb-item"><div class="cb-lbl">Contract Amount</div><div class="cb-val" id="cb-contract">—</div></div>
-          <div class="cb-item"><div class="cb-lbl">Previously Paid</div><div class="cb-val" id="cb-paid">—</div></div>
-          <div class="cb-item"><div class="cb-lbl">Current Request</div><div class="cb-val" id="cb-current">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Total Contract</div><div class="cb-val" id="cb-contract">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Approved to Date</div><div class="cb-val" id="cb-paid">—</div></div>
+          <div class="cb-item"><div class="cb-lbl">Pending Requests</div><div class="cb-val" id="cb-current">—</div></div>
           <div class="cb-item"><div class="cb-lbl">Remaining</div><div class="cb-val" id="cb-remaining">—</div></div>
         </div>
-        <div class="panel">
-          <div class="panel-header"><span>Pay Application Log</span></div>
-          <table>
-            <thead><tr>
-              <th>App #</th><th>Contractor</th><th>Period</th>
-              <th>Requested</th><th>Status</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="payapp-tbody"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody>
-          </table>
-        </div>
+        <p class="form-desc" style="margin:0 0 10px;">Grouped by prime contractor — click a contractor to see their pay applications. Contractors submit; Fidevia reviews with <strong>Take Action</strong>.</p>
+        <div id="payapp-groups"><div class="loading-row" style="padding:16px;color:var(--muted)">Loading…</div></div>
       </div>
 
       <!-- MEETING MINUTES -->
@@ -732,6 +731,22 @@
       <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <span class="upload-progress" id="upload-progress">Saving to Box…</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="payaction-backdrop" onclick="if(event.target===this)closePayAction()">
+  <div class="modal">
+    <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
+      <div class="field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
+      <div class="field"><label>Upload signed payment application</label><input type="file" id="pa-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">The signed / marked-up PDF is saved as a new version — the contractor's original is kept.</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="pa-submit-btn" onclick="submitPayAction()">Submit</button>
+      <button class="btn-secondary" onclick="closePayAction()">Cancel</button>
+      <span class="upload-progress" id="pa-progress" style="display:none">Saving…</span>
     </div>
   </div>
 </div>
@@ -992,7 +1007,7 @@ const MODULES = {
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Status','Reviewed By','Review Date','Attachment File ID','Attachment Name']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']}
 };
@@ -1324,7 +1339,7 @@ function renderFinancials(){
     const contract = (pa && num(pa['Contract Amount'])) ? num(pa['Contract Amount']) : num(c.contract);
     const co = pa ? num(pa['Approved Change Orders']) : 0;
     const revised = contract + co;
-    const billed = pa ? (num(pa['Previously Paid'])+num(pa['Requested Amount'])) : 0;
+    const billed = pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(c.name||'').trim().toLowerCase()).reduce((s,p)=>s+payApproved(p),0);
     const remaining = revised - billed;
     tC+=contract; tCO+=co; tR+=revised; tB+=billed; tRem+=remaining;
     const pct = revised>0 ? billed/revised : 0;
@@ -1461,7 +1476,7 @@ async function loadLogo(){
 }
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
-  const notDone=s=>{ const st=(s||'').toLowerCase(); return st!=='approved'&&st!=='rejected'&&st!=='closed'; };
+  const notDone=s=>{ const st=(s||'').toLowerCase(); return !(st.indexOf('approv')>=0||st.indexOf('reject')>=0||st.indexOf('den')>=0||st.indexOf('closed')>=0||st.indexOf('signed')>=0); };
   const openR=rfis.filter(r=>(r['Status']||'').toLowerCase()==='open');
   const ovd=rfis.filter(isOverdue);
   const openC=cos.filter(r=>notDone(r['Status']));
@@ -1520,10 +1535,10 @@ const FORMS = {
   payapp:{title:'New Payment Application',html:`
     <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
     <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="ABC Mechanical Inc."></div>
-    <div class="field-row"><div class="field"><label>Period From</label><input autocomplete="off" type="date" id="f-from"></div><div class="field"><label>Period To</label><input autocomplete="off" type="date" id="f-to"></div></div>
+    <div class="field-row"><div class="field"><label>Period (DD/MM/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (DD/MM/YYYY)</label><input autocomplete="off" type="date" id="f-due"></div></div>
     <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
     <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="45000"></div></div>
-    <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF — uploaded directly to Box. Remaining is calculated automatically.</p></div>`},
+    <div class="field"><label>Payment Application Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The pay application PDF, uploaded to Box. Remaining is calculated automatically. Fidevia will review and sign.</p></div>`},
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
@@ -1665,7 +1680,7 @@ async function submitForm(){
       if(!v('f-num')||!v('f-contr')||!v('f-req')) throw new Error('App #, Contractor, and Requested Amount are required.');
       const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
       const remain=(contract+cosApp)-prev-req;
-      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':v('f-from'),'Period To':v('f-to'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Status':'Pending','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
     } else if(currentModal==='document'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
@@ -2085,32 +2100,99 @@ async function postComment(){
 // ══════════════════════════════════════════════
 // PAYMENT APPLICATIONS
 // ══════════════════════════════════════════════
+function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[3]+'/'+m[2]+'/'+m[1]):String(v); }
+function payNum(x){ return parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0; }
+function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
+function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 function renderPayApps(){
-  const tbody=document.getElementById('payapp-tbody'); if(!tbody) return;
+  const wrap=document.getElementById('payapp-groups'); if(!wrap) return;
   const rows=allData.pay_apps||[];
   updateContractBar(rows);
-  if(!rows.length){ tbody.innerHTML='<tr class="loading-row"><td colspan="6">No pay applications yet.</td></tr>'; return; }
-  tbody.innerHTML=rows.map((r,i)=>{
-    const s=r['Status']||'Pending';
-    const bg=s==='Approved'?'var(--success-bg)':s==='Rejected'?'var(--danger-bg)':'var(--khaki-100)';
-    return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(r['Contractor']||'')+'</td>'
-      +'<td>'+esc((r['Period From']||'')+(r['Period To']?' – '+r['Period To']:''))+'</td>'
-      +'<td>'+fmtMoney(r['Requested Amount']||'')+'</td>'
-      +'<td><span class="pill" style="background:'+bg+'">'+esc(s)+'</span></td>'
-      +'<td><button class="btn-approve" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Approved'+'\')">Approve</button>'
-      +'<button class="btn-reject" onclick="setPayStatus(\''+esc(r['App #']||'')+'\',' +'\''+'Rejected'+'\')">Reject</button>'+delBtn('pay_apps',i)+'</td></tr>';
+  const cfg=(currentProject&&currentProject.config)||{};
+  const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  const norm=s=>(s||'').trim().toLowerCase();
+  const groups=contractors.map(c=>({name:c.name,role:c.role||'',rows:rows.filter(r=>norm(r['Contractor'])===norm(c.name))}));
+  const known=new Set(contractors.map(c=>norm(c.name)));
+  const other=rows.filter(r=>!known.has(norm(r['Contractor'])));
+  if(other.length) groups.push({name:'Other / Unassigned',role:'',rows:other});
+  if(!groups.length){ wrap.innerHTML='<div style="padding:16px;color:var(--muted);font-size:14px;">No contractors set up yet'+(IS_ADMIN?' — add them under Financial Summary → Manage Contractors.':'.')+'</div>'; return; }
+  wrap.innerHTML=groups.map((g,gi)=>{
+    const approved=g.rows.reduce((s,r)=>s+payApproved(r),0);
+    const pending=g.rows.filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;}).length;
+    const head='<div class="pay-group-head" onclick="togglePayGroup('+gi+')"><span class="thread-arrow" id="pg-arw-'+gi+'">&#9656;</span><strong>'+esc(g.name)+'</strong>'+(g.role?' <span style="color:var(--muted);font-size:12px;">('+esc(g.role)+')</span>':'')+'<span class="pay-group-meta">'+g.rows.length+' pay app'+(g.rows.length===1?'':'s')+' &middot; '+fmtMoney(approved)+' approved'+(pending?' &middot; '+pending+' pending':'')+'</span></div>';
+    let body;
+    if(!g.rows.length){ body='<div id="pg-body-'+gi+'" style="display:none;"><div style="padding:12px 16px;color:var(--muted);font-size:14px;">No pay applications submitted yet.</div></div>'; }
+    else {
+      const trs=g.rows.map(r=>{
+        const idx=rows.indexOf(r);
+        const s=r['Status']||'Submitted';
+        const doc=r['Attachment File ID']?'<a class="attach-link" href="https://app.box.com/file/'+esc(r['Attachment File ID'])+'" target="_blank" rel="noopener">Pay App</a>':'—';
+        const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(r['Signed File ID'])+'" target="_blank" rel="noopener">Signed</a>':'';
+        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">Take Action</button>'+delBtn('pay_apps',idx):'';
+        return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
+      }).join('');
+      body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="admin-col">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
+    }
+    return '<div class="pay-group">'+head+body+'</div>';
   }).join('');
+}
+function togglePayGroup(gi){ const b=document.getElementById('pg-body-'+gi); if(!b) return; const open=b.style.display!=='none'; b.style.display=open?'none':'block'; const a=document.getElementById('pg-arw-'+gi); if(a) a.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
+let PAY_CTX=null;
+function openPayAction(idx){
+  PAY_CTX={idx};
+  const r=(allData.pay_apps||[])[idx]||{};
+  document.getElementById('payaction-title').textContent='Take Action — '+(r['App #']||'')+' ('+(r['Contractor']||'')+')';
+  document.getElementById('pa-action').selectedIndex=0;
+  document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';
+  document.getElementById('pa-file').value='';
+  document.getElementById('pa-progress').style.display='none';
+  document.getElementById('pa-submit-btn').disabled=false;
+  payActionChanged();
+  document.getElementById('payaction-backdrop').classList.add('open');
+}
+function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ amt.value='0'; amt.disabled=true; } else { amt.disabled=false; } }
+function closePayAction(){ document.getElementById('payaction-backdrop').classList.remove('open'); PAY_CTX=null; }
+async function submitPayAction(){
+  if(!PAY_CTX) return; const {idx}=PAY_CTX;
+  const action=document.getElementById('pa-action').value;
+  const amount=payNum(document.getElementById('pa-amount').value);
+  const fileInput=document.getElementById('pa-file');
+  const btn=document.getElementById('pa-submit-btn'); btn.disabled=true;
+  const prog=document.getElementById('pa-progress'); prog.style.display='inline'; prog.textContent='Saving…';
+  try{
+    const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
+    const existing=await findFile(fid,mod.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
+    let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
+    let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const up=await boxUploadBinary(fileInput.files[0],fid); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
+    const status=action==='Approve and Sign'?'Approved & Signed':action==='Modify and Sign'?'Modified & Signed':'Denied';
+    const appAmt=action==='Deny'?0:amount;
+    let vh=[]; try{ vh=JSON.parse(row['Version History']||'[]'); }catch(e){}
+    if(!vh.length){ vh=[{v:1,fileId:row['Attachment File ID']||'',fileName:row['Attachment Name']||'',status:row['Status']||'Submitted',date:row['Date']||row['Review Date']||'',by:row['Contractor']||'',note:'Submitted'}]; }
+    vh.push({v:vh.length+1,fileId:(sfid||row['Attachment File ID']||''),fileName:(sname||row['Attachment Name']||''),status:status,date:etToday(),by:by,note:action+' · '+fmtMoney(appAmt)});
+    row['Version History']=JSON.stringify(vh);
+    row['Status']=status; row['Action']=action; row['Approved Amount']=String(appAmt); row['Reviewed By']=by; row['Review Date']=etToday(); row['Signed File ID']=sfid; row['Signed File Name']=sname;
+    prog.textContent='Updating log…';
+    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    allData.pay_apps=rows;
+    renderAll(); closePayAction();
+  }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
+  btn.disabled=false;
 }
 
 function updateContractBar(rows){
   const el=id=>document.getElementById(id);
-  const fmt=v=>{ const n=parseFloat((v||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?'—':'$'+n.toLocaleString(); };
-  if(!rows.length){ ['cb-contract','cb-paid','cb-current','cb-remaining'].forEach(id=>{ if(el(id)) el(id).textContent='—'; }); return; }
-  const last=rows[rows.length-1];
-  if(el('cb-contract')) el('cb-contract').textContent=fmt(last['Contract Amount']||'');
-  if(el('cb-paid'))     el('cb-paid').textContent    =fmt(last['Previously Paid']||'');
-  if(el('cb-current'))  el('cb-current').textContent =fmt(last['Requested Amount']||'');
-  if(el('cb-remaining'))el('cb-remaining').textContent=fmt(last['Remaining on Contract']||'');
+  const cfg=(currentProject&&currentProject.config)||{};
+  const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  const totalContract=contractors.reduce((s,c)=>s+payNum(c.contract),0);
+  const approved=(rows||[]).reduce((s,r)=>s+payApproved(r),0);
+  const pending=(rows||[]).filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;}).reduce((s,r)=>s+payNum(r['Requested Amount']),0);
+  if(el('cb-contract')) el('cb-contract').textContent=fmtMoney(totalContract);
+  if(el('cb-paid'))     el('cb-paid').textContent    =fmtMoney(approved);
+  if(el('cb-current'))  el('cb-current').textContent =fmtMoney(pending);
+  if(el('cb-remaining'))el('cb-remaining').textContent=fmtMoney(totalContract-approved);
 }
 
 async function setPayStatus(appNum, status){
