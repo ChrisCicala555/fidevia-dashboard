@@ -632,7 +632,7 @@
         </div>
         <div class="panel">
           <div class="panel-header">Drawings, specs &amp; contracts</div>
-          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th>Actions</th></tr></thead>
+          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -1308,23 +1308,27 @@ function renderBudget(){
   if(card){ card.querySelector('.value').textContent=fmtSigned(String(total)); card.classList.toggle('neg',total<0); card.classList.toggle('pos',total>=0); }
 }
 
+function _docVersions(r){
+  let pri=[]; try{ pri=JSON.parse(r['Version History']||'[]'); }catch(e){}
+  const cur={ v:r['Version']||String(pri.length+1), fileId:r['File ID']||r['Attachment File ID']||'', fileName:r['File Name']||r['Attachment Name']||'', date:r['Date']||'' };
+  return [cur].concat(pri.slice().reverse());
+}
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=rows.map((r,i)=>{
     const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime'));
-    let hist=[]; try{ hist=JSON.parse(r['Version History']||'[]'); }catch(e){}
-    const vCell = hist.length ? '<td><span class="ver-link" onclick="toggleVerHistory('+i+')">'+esc(r['Version']||'')+' \u25be</span></td>' : '<td>'+esc(r['Version']||'')+'</td>';
-    let out='<tr'+(ext?' class="hide-external"':'')+'>'
-      +'<td>'+esc(r['Document Name'])+'</td><td>'+esc(r['Category'])+'</td>'+vCell
+    const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\'docs\','+i+')">'
+      +'<td><span class="thread-arrow" id="arw-docs-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
+      +'<td>'+esc(r['Category'])+'</td><td>'+esc(r['Version']||'')+'</td>'
       +'<td>'+esc(r['Date'])+'</td><td>'+esc(r['Visible To'])+'</td>'
-      +'<td>'+fileCell(r)+'</td>'
-      +'<td><button class="btn-ver" onclick="uploadNewVersion(\'docs\','+i+')">↑ New Version</button>'+delBtn('docs',i)+'</td></tr>';
-    if(hist.length){
-      const items=hist.slice().reverse().map(h=>'<div style="padding:4px 0;font-size:14px;">Version '+esc(h.v)+' — '+(h.fileId?'<a class="attach-link" href="https://app.box.com/file/'+esc(h.fileId)+'" target="_blank" rel="noopener">'+esc(h.fileName||'View')+'</a>':esc(h.fileName||'—'))+(h.date?' <span style="color:var(--muted)">('+esc(h.date)+')</span>':'')+'</div>').join('');
-      out+='<tr class="ver-history-row'+(ext?' hide-external':'')+'" id="verhist-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-100);padding:10px 18px;"><strong style="font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Previous versions</strong>'+items+'</td></tr>';
-    }
-    return out;
+      +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn('docs',i)+'</td></tr>';
+    const vs=_docVersions(r);
+    const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')+'</div>';
+    const newBtn = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();uploadNewVersion(\'docs\','+i+')">Upload New Version</button>' : '';
+    const detail='<tr class="thread-detail'+(ext?' hide-external':'')+'" id="td-docs-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'+vs.map(line).join('')+newBtn+'</td></tr>';
+    return main+detail;
   }).join('');
 }
 function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
