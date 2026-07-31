@@ -993,6 +993,7 @@ const MODULES = {
 
 // ── PICKER ──
 async function loadPicker(){
+  armHistoryGuard();
   showScreen('screen-picker');
   const grid = document.getElementById('project-grid');
   grid.innerHTML = '<div class="loading-state">Loading projects…</div>';
@@ -1861,6 +1862,15 @@ function setViewer(mode){
 
 function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
 function goHome(){ if(EXTERNAL){ navTo('overview'); } else { showScreen('screen-picker'); loadPicker(); } }
+let _histGuard=false;
+function armHistoryGuard(){
+  if(_histGuard) return; _histGuard=true;
+  try{ history.pushState({app:1},'',location.pathname); }catch(e){}
+  window.addEventListener('popstate', function(){
+    try{ history.pushState({app:1},'',location.pathname); }catch(e){}
+    try{ goHome(); }catch(e){}
+  });
+}
 function showStatus(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='status-msg '+type; }
 
 // ── INIT ──
