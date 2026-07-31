@@ -717,6 +717,17 @@
           <div style="margin-top:20px;"><button class="btn-primary" onclick="saveNotifSettings()" id="btn-notif-save">Save Settings</button></div>
           <div class="status-msg" id="notif-status"></div>
         </div>
+        <div class="panel" style="padding:20px;max-width:680px;margin-top:20px;">
+          <h3 style="font-size:16px;margin:0 0 6px;">Automated Reminders</h3>
+          <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Send a periodic email digest of outstanding items to the contacts who have notifications turned on for this project.</p>
+          <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-enabled" style="margin-right:8px;">Enable reminders for this project</label>
+          <div class="field" style="max-width:260px;"><label>Frequency</label><select id="rem-frequency"><option value="weekly">Weekly (Mondays)</option><option value="daily">Daily</option></select></div>
+          <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-overdue" style="margin-right:8px;">Include overdue items (past their due date)</label>
+          <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-aging" style="margin-right:8px;">Include open items older than <input type="number" id="rem-aging-days" value="7" min="1" style="width:56px;padding:3px 6px;">days</label>
+          <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-payapps" style="margin-right:8px;">Include pending payment applications</label>
+          <div style="margin-top:16px;"><button class="btn-primary" onclick="saveReminderSettings()" id="btn-rem-save">Save Reminders</button></div>
+          <div class="status-msg" id="rem-status"></div>
+        </div>
       </div>
 
     </div>
@@ -1825,6 +1836,26 @@ function loadNotifSettings(){
   document.getElementById('nt-co-intro').value=g('co','intro');
   document.getElementById('nt-sub-subject').value=g('sub','subject');
   document.getElementById('nt-sub-intro').value=g('sub','intro');
+  loadReminderSettings();
+}
+async function loadReminderSettings(){
+  let s={}; try{ s=(await proxyCall('getReminderSettings',{projectId:currentProject.folderId})).settings||{}; }catch(e){}
+  const el=id=>document.getElementById(id);
+  if(!el('rem-enabled')) return;
+  el('rem-enabled').checked=!!s.enabled;
+  el('rem-frequency').value=s.frequency||'weekly';
+  el('rem-overdue').checked=(s.overdue!==false);
+  el('rem-aging').checked=(s.aging!==false);
+  el('rem-aging-days').value=s.agingDays||7;
+  el('rem-payapps').checked=(s.payapps!==false);
+}
+async function saveReminderSettings(){
+  const el=id=>document.getElementById(id);
+  const s={ enabled:el('rem-enabled').checked, frequency:el('rem-frequency').value, overdue:el('rem-overdue').checked, aging:el('rem-aging').checked, agingDays:parseInt(el('rem-aging-days').value)||7, payapps:el('rem-payapps').checked };
+  const btn=el('btn-rem-save'); btn.disabled=true;
+  try{ await proxyCall('saveReminderSettings',{projectId:currentProject.folderId, settings:s}); showStatus('rem-status','Reminder settings saved.','success'); }
+  catch(e){ showStatus('rem-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
 }
 async function saveNotifSettings(){
   const val=id=>document.getElementById(id).value.trim();

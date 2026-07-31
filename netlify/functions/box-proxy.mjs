@@ -51,6 +51,7 @@ async function caller(req) {
 const grantsStore = () => getStore('access-grants');
 const requestsStore = () => getStore('access-requests');
 const notifStore = () => getStore('notif-templates');
+const reminderStore = () => getStore('reminder-settings');
 const adminListStore = () => getStore('admin-list');
 async function getBlobAdmins(){ try{ const d=await adminListStore().get('emails',{type:'json'}); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
 const PANEL_PW = () => process.env.ADMIN_PANEL_PASSWORD || '';
@@ -367,6 +368,16 @@ export default async (req) => {
     if (op === 'saveNotifTemplates') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       await notifStore().setJSON(String(body.projectId), body.templates || {});
+      return json({ ok: true });
+    }
+
+    if (op === 'getReminderSettings') {
+      const d = await reminderStore().get(String(body.projectId), { type: 'json' });
+      return json({ settings: d || null });
+    }
+    if (op === 'saveReminderSettings') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      await reminderStore().setJSON(String(body.projectId), body.settings || {});
       return json({ ok: true });
     }
 
