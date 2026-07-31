@@ -1649,10 +1649,17 @@ async function submitForm(){
       attachId=entry.id||''; attachName=fi.files[0].name;
     }
 
+    let _senderEmail=''; try{ const u=await auth0Client.getUser(); _senderEmail=u.email||''; }catch(e){}
+    _NOTIF_OPTS={ replyTo:_senderEmail||undefined, extraTo:(_senderEmail?[_senderEmail]:[]) };
+    if(fi&&fi.files&&fi.files[0] && fi.files[0].size < 9*1024*1024){
+      try{ const b64=await fileToB64(fi.files[0]); _NOTIF_OPTS.attachments=[{filename:fi.files[0].name, content:b64, type:fi.files[0].type||'application/octet-stream'}]; }catch(e){}
+    }
+
     let newRow={};
     if(currentModal==='rfi'){
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('RFI #, Subject, and Submitted By are required.');
       newRow={'RFI #':v('f-num'),'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]]);
     } else if(currentModal==='co'){
 
@@ -1663,6 +1670,7 @@ async function submitForm(){
 
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('Submittal #, Description, and Submitted By are required.');
       newRow={'Submittal #':v('f-num'),'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName};
+      { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]]);
     } else if(currentModal==='daily'){
 
@@ -2246,34 +2254,22 @@ async function uploadNewVersion(key, rowIdx){
 // ══════════════════════════════════════════════
 // SENDGRID EMAIL NOTIFICATIONS
 // ══════════════════════════════════════════════
-async function sendEmail(toEmails, subject, body){
+async function sendEmail(toEmails, subject, body, opts){
+  opts=opts||{};
   if(!toEmails||!toEmails.length) return;
   try{
-    const isNetlify = window.location.hostname.includes('netlify.app') || !window.location.hostname.includes('github.io');
-    if(isNetlify){
-      await fetch('/.netlify/functions/send-email',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({to:toEmails,subject,body})
-      });
-      return;
-    }
-    await fetch('https://api.sendgrid.com/v3/mail/send',{
+    await fetch('/.netlify/functions/send-email',{
       method:'POST',
-      headers:{'Authorization':'Bearer '+SG_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        personalizations:[{to:toEmails.map(e=>({email:e}))}],
-        from:{email:FROM_EMAIL,name:FROM_NAME},
-        subject:subject,
-        content:[{type:'text/html',value:body}]
-      })
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:toEmails, subject, body, attachments:opts.attachments, replyTo:opts.replyTo})
     });
   }catch(e){ console.warn('Email notification failed:',e.message); }
 }
 
 function notifCfg(type, def){ const c=(currentProject&&currentProject.notif&&currentProject.notif[type])||{}; return { subject:c.subject||def.subject, intro:c.intro||def.intro }; }
 function applyVars(s, v){ return String(s||'').replace(/\{project\}/g,v.project||'').replace(/\{number\}/g,v.number||'').replace(/\{submitter\}/g,v.submitter||'').replace(/\{title\}/g,v.title||''); }
-function sendItemNotif(notifyField, type, def, vars, rows){ const c=notifCfg(type,def); notifyContacts(notifyField, applyVars(c.subject,vars), emailTemplate(applyVars(c.intro,vars), rows, currentProject.name)); }
+let _NOTIF_OPTS=null;
+function sendItemNotif(notifyField, type, def, vars, rows, opts){ const c=notifCfg(type,def); notifyContacts(notifyField, applyVars(c.subject,vars), emailTemplate(applyVars(c.intro,vars), rows, currentProject.name), opts||_NOTIF_OPTS); }
 // ══════════════════════════════════════════════
 // VERSION THREAD (RFI / CO / Submittal)
 // ══════════════════════════════════════════════
@@ -2336,16 +2332,25 @@ async function submitReply(){
     prog.textContent='Updating log…';
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
     allData[key]=rows;
-    try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name)); }catch(e){}
+    let _rEmail=''; try{ const u=await auth0Client.getUser(); _rEmail=u.email||''; }catch(e){}
+    const _rOpts={ replyTo:_rEmail||undefined, extraTo:(_rEmail?[_rEmail]:[]) };
+    if(fileInput.files&&fileInput.files[0] && fileInput.files[0].size < 9*1024*1024){
+      try{ const b64=await fileToB64(fileInput.files[0]); _rOpts.attachments=[{filename:fileInput.files[0].name, content:b64, type:fileInput.files[0].type||'application/octet-stream'}]; }catch(e){}
+    }
+    try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name), _rOpts); }catch(e){}
     renderAll(); closeReply();
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
 }
 
-function notifyContacts(notifyField, subject, bodyHTML){
+function notifyContacts(notifyField, subject, bodyHTML, opts){
+  opts=opts||{};
   const contacts = allData.contacts||[];
-  const emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
-  if(emails.length) sendEmail(emails, subject, bodyHTML);
+  let emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
+  if(opts.extraTo){ (Array.isArray(opts.extraTo)?opts.extraTo:[opts.extraTo]).forEach(e=>{ if(e) emails.push(e); }); }
+  const seen=new Set();
+  emails=emails.filter(e=>{ const k=(e||'').trim().toLowerCase(); if(!k||seen.has(k)) return false; seen.add(k); return true; });
+  if(emails.length) sendEmail(emails, subject, bodyHTML, {attachments:opts.attachments, replyTo:opts.replyTo});
 }
 
 function emailTemplate(title, rows, projectName){
