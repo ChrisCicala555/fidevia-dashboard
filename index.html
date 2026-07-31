@@ -760,7 +760,7 @@
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
     <div class="modal-body">
-      <div class="field"><label>Action / Status</label><select id="reply-status"></select></div>
+      <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status"></select></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
     </div>
@@ -2315,7 +2315,7 @@ function verThreadRows(key,r,i,colspan){
     +(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
-  const reply = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">Reply / New Version</button>' : '';
+  const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
   return '<tr class="thread-detail" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="'+colspan+'" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'
     +vs.map(line).join('')+reply+'</td></tr>';
@@ -2326,6 +2326,7 @@ function openReply(key,i){
   const r=(allData[key]||[])[i]||{};
   document.getElementById('reply-title').textContent='Reply — '+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
   const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
+  { const sf=document.getElementById('reply-status-field'); if(sf) sf.style.display=EXTERNAL?'none':''; }
   if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
   document.getElementById('reply-note').value=''; document.getElementById('reply-file').value='';
   document.getElementById('reply-progress').style.display='none'; document.getElementById('reply-submit-btn').disabled=false;
@@ -2334,7 +2335,7 @@ function openReply(key,i){
 function closeReply(){ document.getElementById('reply-backdrop').classList.remove('open'); REPLY_CTX=null; }
 async function submitReply(){
   if(!REPLY_CTX) return; const {key,i}=REPLY_CTX;
-  const status=document.getElementById('reply-status').value;
+  const status=EXTERNAL?'Resubmitted':document.getElementById('reply-status').value;
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;

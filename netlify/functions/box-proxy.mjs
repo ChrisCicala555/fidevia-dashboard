@@ -5,6 +5,15 @@ const ADMIN_DOMAIN = 'fidevia.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 const csvEsc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+function parseCSVServer(text){
+  if(!text || !text.trim()) return { headers:[], rows:[] };
+  const lines = text.replace(/\r/g,'').split('\n').filter(l=>l.length);
+  const parseLine = (line)=>{ const res=[]; let cur='', inQ=false; for(let i=0;i<line.length;i++){ const c=line[i]; if(c==='"'){ if(inQ&&line[i+1]==='"'){cur+='"';i++;} else inQ=!inQ; } else if(c===','&&!inQ){ res.push(cur.trim()); cur=''; } else cur+=c; } res.push(cur.trim()); return res; };
+  const headers = parseLine(lines[0]);
+  const rows = lines.slice(1).map(l=>{ const v=parseLine(l), o={}; headers.forEach((h,i)=>o[h]=v[i]!==undefined?v[i]:''); return o; });
+  return { headers, rows };
+}
+function toCSVServer(headers, rows){ return headers.join(',') + '\n' + rows.map(r=>headers.map(h=>csvEsc(r[h])).join(',')).join('\n') + '\n'; }
 
 // --- Service-account (Client Credentials Grant) token, cached across warm invocations ---
 let _svc = { token: null, exp: 0 };
@@ -288,6 +297,40 @@ export default async (req) => {
       }
       const nf = await cr.json();
       return json({ ok: true, id: nf.id });
+    }
+
+    if (op === 'addVersion') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      const { folderId, filename, idField, idValue } = body;
+      if (!folderId || !filename || !idField) return json({ error: 'missing fields' }, 400);
+      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const logFile = items.find(i => i.type === 'file' && i.name === filename);
+      if (!logFile) return json({ error: 'log not found' }, 404);
+      const cr = await fetch(`https://api.box.com/2.0/files/${logFile.id}/content`, { headers: H });
+      const text = cr.ok ? await cr.text() : '';
+      const parsed = parseCSVServer(text);
+      const headers = parsed.headers, rows = parsed.rows;
+      const idx = rows.findIndex(r => String(r[idField] || '') === String(idValue || ''));
+      if (idx < 0) return json({ error: 'item not found' }, 404);
+      const row = rows[idx];
+      let vh = []; try { vh = JSON.parse(row['Version History'] || '[]'); } catch (e) {}
+      if (!vh.length) vh = [{ v:1, fileId:(row['Attachment File ID']||row['File ID']||''), fileName:(row['Attachment Name']||row['File Name']||''), status:(row['Status']||''), date:(row['Date Submitted']||row['Date']||''), by:(row['Submitted By']||row['Submitted By (Sub)']||row['Contractor']||''), note:'' }];
+      vh.push({ v:vh.length+1, fileId:String(body.newFileId||''), fileName:String(body.newFileName||''), status:String(body.status||''), date:String(body.date||''), by:String(body.by||''), note:String(body.note||'') });
+      if (!headers.includes('Version History')) headers.push('Version History');
+      row['Version History'] = JSON.stringify(vh);
+      if (headers.includes('Attachment File ID')) row['Attachment File ID'] = String(body.newFileId || row['Attachment File ID'] || '');
+      if (headers.includes('File ID')) row['File ID'] = String(body.newFileId || row['File ID'] || '');
+      if (headers.includes('Attachment Name')) row['Attachment Name'] = String(body.newFileName || row['Attachment Name'] || '');
+      if (headers.includes('File Name')) row['File Name'] = String(body.newFileName || row['File Name'] || '');
+      if (body.status && headers.includes('Status')) row['Status'] = String(body.status);
+      const out = toCSVServer(headers, rows);
+      const form = new FormData();
+      form.append('attributes', JSON.stringify({ name: filename }));
+      form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+      const ur = await fetch(`https://upload.box.com/api/2.0/files/${logFile.id}/content`, { method: 'POST', headers: H, body: form });
+      if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
+      return json({ ok: true });
     }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
