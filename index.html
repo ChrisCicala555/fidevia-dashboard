@@ -1500,7 +1500,7 @@ function financialTotals(){
   const cfg=(currentProject&&currentProject.config)||{}; const contractors=(cfg.contractors||[]).filter(c=>c.active!==false); const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
   const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
-  let tR=0,tB=0; contractors.forEach(c=>{ const pa=latestFor(c.name); const contract=(pa&&num(pa['Contract Amount']))?num(pa['Contract Amount']):num(c.contract); const co=pa?num(pa['Approved Change Orders']):0; tR+=contract+co; tB+=pa?(num(pa['Previously Paid'])+num(pa['Requested Amount'])):0; });
+  const norm=s=>(s||'').trim().toLowerCase(); let tR=0,tB=0; contractors.forEach(c=>{ const pa=latestFor(c.name); const contract=(pa&&num(pa['Contract Amount']))?num(pa['Contract Amount']):num(c.contract); const co=pa?num(pa['Approved Change Orders']):0; tR+=contract+co; tB+=pays.filter(p=>norm(p['Contractor'])===norm(c.name)).reduce((s,p)=>s+payApproved(p),0); });
   return {revised:tR, billed:tB, remaining:tR-tB, pctBilled:tR>0?tB/tR:0};
 }
 function renderSchedule(){
