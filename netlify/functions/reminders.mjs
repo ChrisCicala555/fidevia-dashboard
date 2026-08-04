@@ -54,13 +54,25 @@ const notDone = s => { const st = (s || '').toLowerCase(); return !(st.indexOf('
 const ageDays = (d, now) => { const t = Date.parse(d); return isNaN(t) ? 0 : Math.floor((now - t) / 86400000); };
 
 function digestHTML(project, items) {
-  const rows = items.map(it => `<tr><td style="padding:6px 12px;font-size:13px;font-weight:600;color:#3d3a2f">${it.type} ${it.id || ''}</td><td style="padding:6px 12px;font-size:13px">${it.title || ''}</td><td style="padding:6px 12px;font-size:13px;color:#a1552b">${it.reason}</td></tr>`).join('');
-  return `<div style="font-family:Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:8px;overflow:hidden">
-    <div style="background:#3d3a2f;padding:18px 24px"><span style="color:#fff;font-size:18px;font-weight:700">Fidevia</span><span style="color:#c8b97a;margin-left:8px;font-size:13px">Construction Dashboard</span></div>
-    <div style="padding:20px 24px"><p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#1a1a1a">Outstanding items — ${project}</p>
-    <p style="margin:0 0 14px;font-size:13px;color:#888">These items are still open and may need attention.</p>
-    <table style="width:100%;border-collapse:collapse;background:#faf9f6;border:1px solid #e2ddd5;border-radius:6px">${rows}</table>
-    <p style="margin:18px 0 0;font-size:12px;color:#aaa">Automated reminder from the Fidevia Dashboard. Log in to review and respond.</p></div></div>`;
+  const origin = 'https://venerable-piroshki-0e0dd4.netlify.app';
+  const serif = "Georgia,'Times New Roman',Times,serif";
+  const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const rows = items.map((it, i) => `<tr style="background:${i%2?'#ffffff':'#faf9f6'}"><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#515520;font-family:${sans};border-bottom:1px solid #ece8df;white-space:nowrap">${it.type} ${it.id || ''}</td><td style="padding:10px 16px;font-size:13px;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${it.title || ''}</td><td style="padding:10px 16px;font-size:13px;color:#a1552b;font-family:${sans};border-bottom:1px solid #ece8df;white-space:nowrap">${it.reason}</td></tr>`).join('');
+  return `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
+    <tr><td style="padding:26px 24px 12px;text-align:center">
+      <img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto">
+      <div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>
+    <tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>
+    <tr><td style="padding:22px 24px 6px">
+      <div style="font-family:${serif};font-size:20px;color:#515520;font-weight:700;margin:0 0 4px">Outstanding items</div>
+      <div style="font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Project: ${project}</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rows}</table>
+      <div style="text-align:center;margin:22px 0 4px"><a href="${origin}" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Review in Dashboard</a></div>
+    </td></tr>
+    <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">
+      <div style="font-size:11px;color:#b3b0a4;line-height:1.6">Automated reminder from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
+    </table></div>`;
 }
 
 export default async () => {
