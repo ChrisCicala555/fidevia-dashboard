@@ -117,6 +117,9 @@
   .content{padding:24px 20px; flex:1; overflow-y:auto;}
   .section{display:none;}
   .section.active{display:block;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;}}
+  .fade-seq{opacity:0;}
+  .fade-seq.go{animation:fadeUp .42s ease both;}
   .external-banner{background:var(--warn-bg); border:1px solid var(--khaki-300); color:var(--olive-900); font-size:14px; padding:10px 16px; border-radius:6px; margin-bottom:20px; display:none;}
   body.external-mode .external-banner{display:block;}
   .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;}
@@ -511,18 +514,16 @@
       <!-- OVERVIEW -->
       <div class="section active" id="section-overview">
         <h2 class="page-title">Project Overview</h2>
-        <div class="stat-grid" id="exec-kpis" style="margin-bottom:14px;display:none;"></div>
-        <div class="stat-grid">
-          <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">—</div></div>
-          <div class="stat-card alert" id="stat-overdue"><div class="label">Overdue Items</div><div class="value">—</div></div>
-          <div class="stat-card" id="stat-open-cos"><div class="label">Open Change Orders</div><div class="value">—</div></div>
-          <div class="stat-card" id="stat-open-subs"><div class="label">Open Submittals</div><div class="value">—</div></div>
-          <div class="stat-card" id="stat-open-payapps"><div class="label">Pending Pay Apps</div><div class="value">—</div></div>
+        <div class="stat-grid" id="exec-kpis" style="margin-bottom:18px;display:none;"></div>
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header">Recent Items &amp; Tasks</div>
+          <table><thead><tr><th>Category</th><th style="text-align:right;">Outstanding</th></tr></thead>
+          <tbody id="tbody-summary"><tr class="loading-row"><td colspan="2">Loading…</td></tr></tbody></table>
         </div>
         <div class="panel">
-          <div class="panel-header">Needs your review</div>
-          <table><thead><tr><th>Type</th><th>Item</th><th>Submitted By</th><th>Due</th><th>Status</th></tr></thead>
-          <tbody id="tbody-review"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
+          <div class="panel-header">Activity Feed</div>
+          <table><thead><tr><th>Date</th><th>Type</th><th>Item</th><th>Submitted By</th><th>Status</th></tr></thead>
+          <tbody id="tbody-feed"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1519,22 +1520,36 @@ async function loadLogo(){
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
   const notDone=s=>{ const st=(s||'').toLowerCase(); return !(st.indexOf('approv')>=0||st.indexOf('reject')>=0||st.indexOf('den')>=0||st.indexOf('closed')>=0||st.indexOf('signed')>=0); };
-  const openR=rfis.filter(r=>(r['Status']||'').toLowerCase()==='open');
+  const openR=rfis.filter(r=>notDone(r['Status']));
   const ovd=rfis.filter(isOverdue);
   const openC=cos.filter(r=>notDone(r['Status']));
   const openS=subs.filter(r=>notDone(r['Status']));
-  const openP=pays.filter(r=>notDone(r['Status']||'Pending'));
-  const setv=(id,val)=>{ const el=document.querySelector('#'+id+' .value'); if(el) el.textContent=val; };
-  setv('stat-open-rfis',openR.length); setv('stat-overdue',ovd.length); setv('stat-open-cos',openC.length);
-  setv('stat-open-subs',openS.length); setv('stat-open-payapps',openP.length);
-  const review=[
-    ...openR.map(r=>({type:'RFI',item:r['RFI #']+' — '+r['Subject'],by:r['Submitted By'],due:r['Due Date'],status:r['Status'],od:isOverdue(r)})),
-    ...openC.map(r=>({type:'CO',item:r['CO #']+' — '+r['Description'],by:'',due:'—',status:r['Status'],od:false})),
-    ...openS.map(r=>({type:'Submittal',item:r['Submittal #']+' — '+r['Description'],by:r['Submitted By (Sub)'],due:'—',status:r['Status'],od:false})),
-    ...openP.map(r=>({type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',due:'—',status:r['Status']||'Pending',od:false}))
+  const openP=pays.filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;});
+  // ---- Recent Items & Tasks summary ----
+  const summary=[
+    ['RFIs',openR.length,'rfis',false],
+    ['Overdue',ovd.length,'rfis',true],
+    ['Change Orders',openC.length,'cos',false],
+    ['Submittals',openS.length,'submittals',false],
+    ['Payment Applications (pending)',openP.length,'payapps',false]
   ];
-  const tb=document.getElementById('tbody-review');
-  tb.innerHTML=review.length?review.map(r=>'<tr><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+esc(r.due)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">Nothing outstanding — all caught up.</td></tr>';
+  const st=document.getElementById('tbody-summary');
+  if(st){ st.innerHTML=summary.map(([lbl,n,sec,danger])=>{
+    const color=n>0?(danger?'var(--danger)':'var(--olive-900)'):'var(--muted)';
+    return '<tr style="cursor:pointer;" onclick="navTo(\''+sec+'\')"><td>'+esc(lbl)+'</td><td style="text-align:right;font-weight:700;font-size:16px;color:'+color+'">'+n+'</td></tr>';
+  }).join(''); }
+  // ---- Activity Feed (most recent first) ----
+  const feed=[
+    ...rfis.map(r=>({date:r['Date Submitted']||'',type:'RFI',item:(r['RFI #']||'')+' — '+(r['Subject']||''),by:r['Submitted By']||'',status:r['Status']||'',od:isOverdue(r)})),
+    ...cos.map(r=>({date:r['Date Submitted']||'',type:'Change Order',item:(r['CO #']||'')+' — '+(r['Description']||''),by:'',status:r['Status']||'',od:false})),
+    ...subs.map(r=>({date:r['Date Submitted']||'',type:'Submittal',item:(r['Submittal #']||'')+' — '+(r['Description']||''),by:r['Submitted By (Sub)']||'',status:r['Status']||'',od:false})),
+    ...pays.map(r=>({date:r['Review Date']||r['Period']||'',type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',status:r['Status']||'',od:false}))
+  ].filter(x=>x.item.replace(/^ — /,'').trim());
+  feed.sort((a,b)=>(Date.parse(b.date)||0)-(Date.parse(a.date)||0));
+  const fb=document.getElementById('tbody-feed');
+  if(fb){ const recent=feed.slice(0,15);
+    fb.innerHTML=recent.length?recent.map(r=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">No activity yet.</td></tr>';
+  }
 }
 
 // ── MODAL FORMS ──
@@ -1936,9 +1951,15 @@ async function revokeAccess(email,projectId){
 }
 
 // ── NAV + VIEWER ──
+function animateSection(el){
+  if(!el) return;
+  const kids=[...el.children];
+  kids.forEach((k,i)=>{ k.classList.add('fade-seq'); k.classList.remove('go'); void k.offsetWidth; k.style.animationDelay=(i*0.055)+'s'; k.classList.add('go'); });
+}
 function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
+  const active=document.getElementById('section-'+sec); animateSection(active);
   if(sec==='notifsettings') loadNotifSettings();
 }
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
