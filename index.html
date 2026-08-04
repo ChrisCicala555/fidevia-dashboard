@@ -599,8 +599,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All RFIs</span><span class="src">Box · 01 - RFIs</span></div>
-          <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
           <div class="note" id="note-rfis"></div>
         </div>
       </div>
@@ -613,8 +613,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
-          <table><thead><tr><th>CO #</th><th>Description</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted On</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -626,8 +626,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
-          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Assigned To</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1336,10 +1336,10 @@ function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No recor
 // ── RENDERERS ──
 function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
-  if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
+  if(!rows.length){tb.innerHTML=emptyRow(8);document.getElementById('note-rfis').textContent='';return;}
   tb.innerHTML=rows.map((r,i)=>{
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
-    return main+verThreadRows('rfi',r,i,8);
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
+    return main+verThreadRows('rfi',r,i,9);
   }).join('');
   const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
   document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(fmtDMY(r['Date Closed']))+')').join('<br>');
@@ -1349,16 +1349,16 @@ function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=rows.map((r,i)=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
-    return main+verThreadRows('co',r,i,8); }).join('');
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
+    return main+verThreadRows('co',r,i,9); }).join('');
 }
 
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
   tb.innerHTML=rows.map((r,i)=>{
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
-    return main+verThreadRows('sub',r,i,8);
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
+    return main+verThreadRows('sub',r,i,9);
   }).join('');
 }
 
