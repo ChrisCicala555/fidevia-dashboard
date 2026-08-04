@@ -102,12 +102,10 @@
   .btn-switch-project{display:block; width:100%; text-align:center; background:rgba(255,255,255,0.08); color:var(--khaki-200); border:1px solid rgba(255,255,255,0.2); border-radius:5px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .btn-switch-project:hover{background:rgba(255,255,255,0.15);}
   .main{flex:1; display:flex; flex-direction:column;}
-  .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:14px 20px; display:flex; align-items:center; gap:12px; min-height:64px;}
-  .tb-side{flex:1 1 0; min-width:0; display:flex; align-items:center;}
-  .tb-left{justify-content:flex-start;}
-  .tb-right{justify-content:flex-end; gap:12px;}
-  .tb-center{flex:0 1 auto; min-width:0; display:flex; align-items:center; justify-content:center;}
-  .tb-center h1{font-family:'Times New Roman',Times,serif; font-size:24px; color:var(--olive-900); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:14px 20px; display:flex; align-items:center; gap:16px; min-height:64px;}
+  .tb-titlegroup{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:12px;}
+  .tb-titlegroup h1{font-family:'Times New Roman',Times,serif; font-size:24px; color:var(--olive-900); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
+  .tb-right{flex:0 0 auto; display:flex; align-items:center; gap:12px;}
   .account-chip{display:flex; align-items:center; gap:8px; cursor:pointer; padding:5px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .account-chip:hover{background:var(--cream);}
   .account-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -211,6 +209,9 @@
   .hamburger{display:none;background:none;border:none;color:var(--khaki-200);cursor:pointer;padding:6px 14px;font-size:23px;line-height:1;}
   @media(max-width:900px){
     .app{flex-direction:column;}
+    .sidebar-logo-img{height:38px;}
+    .topbar{flex-wrap:wrap;}
+    .tb-titlegroup{flex:1 1 100%;}
     .hamburger{display:block;}
     .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;max-height:56px;overflow:hidden;transition:max-height 0.3s;}
     .sidebar.open{max-height:900px;}
@@ -504,12 +505,11 @@
 
   <div class="main">
     <div class="topbar">
-      <div class="tb-side tb-left"></div>
-      <div class="tb-center">
+      <div class="tb-titlegroup">
         <img id="topbar-logo" alt="" style="display:none;height:44px;width:auto;max-width:120px;margin-right:12px;border-radius:4px;object-fit:contain;">
         <h1 id="topbar-title">Project</h1>
       </div>
-      <div class="tb-side tb-right">
+      <div class="tb-right">
         <div class="viewer-toggle">
           <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
           <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
