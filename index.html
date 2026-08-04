@@ -605,7 +605,7 @@
         <div class="stat-grid" id="sched-kpis"></div>
         <div class="panel">
           <div class="panel-header">Contract milestones</div>
-          <table><thead><tr><th>Milestone</th><th>Baseline Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
+          <table><thead><tr><th>Milestone</th><th>Actual Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
           <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -1634,7 +1634,7 @@ function financialTotals(){
 function renderSchedule(){
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
-  const dev=(baseline,contract)=>{ const a=new Date(baseline),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((b-a)/86400000); return dd===0?'On baseline':(dd>0?('+'+dd+' days'):(dd+' days')); };
+  const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
   tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td><td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
   if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
@@ -1657,7 +1657,7 @@ function closeSchedule(){ document.getElementById('schedule-backdrop').classList
 function renderScheduleEditor(){
   let ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   if(!ms.length) ms=MILESTONE_NAMES.map(n=>({name:n}));
-  document.getElementById('schedule-list').innerHTML=ms.map(m=>'<div style="margin-bottom:10px;" class="sch-row" data-name="'+esc(m.name)+'"><label style="font-size:13px;font-weight:600;color:#555;">'+esc(m.name)+'</label><div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Baseline</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div></div></div>').join('');
+  document.getElementById('schedule-list').innerHTML=ms.map(m=>'<div style="margin-bottom:10px;" class="sch-row" data-name="'+esc(m.name)+'"><label style="font-size:13px;font-weight:600;color:#555;">'+esc(m.name)+'</label><div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Actual</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div></div></div>').join('');
 }
 async function saveSchedule(){
   const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:r.getAttribute('data-name'),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value}));
