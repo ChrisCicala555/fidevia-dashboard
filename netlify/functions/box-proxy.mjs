@@ -384,6 +384,18 @@ export default async (req) => {
       return json({ ok: true });
     }
 
+    if (op === 'accountEmails') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const store = getStore('profiles');
+      let emails = [];
+      try {
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) emails.push(String(pr.email).trim().toLowerCase()); } catch (e) {}
+        }
+      } catch (e) {}
+      return json({ emails: [...new Set(emails)] });
+    }
     if (op === 'getArchived') {
       return json({ ids: await getArchivedIds() });
     }

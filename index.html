@@ -682,8 +682,8 @@
         </div>
         <div class="panel">
           <div class="panel-header">Project contacts &amp; notification routing</div>
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th class="hide-external">Notify - RFI</th><th class="hide-external">Notify - CO</th><th class="hide-external">Notify - Submittal</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th class="hide-external">Notify - RFI</th><th class="hide-external">Notify - CO</th><th class="hide-external">Notify - Submittal</th><th class="hide-external">Account</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1233,6 +1233,7 @@ async function openProject(folderId, name){
   loadAccessRequests(folderId);
   toggleBoardTab(); loadLogo();
   if(!EXTERNAL) loadProjectPhotos();
+  if(!EXTERNAL) loadAccountEmails();
   loadDashboard();
 }
 
@@ -1458,9 +1459,20 @@ function renderDailyLogs(){
 
 function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
-  if(!rows.length){tb.innerHTML=emptyRow(8);return;}
+  if(!rows.length){tb.innerHTML=emptyRow(9);return;}
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>').join('');
+}
+let ACCOUNT_EMAILS=new Set();
+function accountCell(r){
+  const em=String(r['Email']||'').trim().toLowerCase();
+  const has = em && ACCOUNT_EMAILS.has(em);
+  return '<td class="hide-external" style="text-align:center">'+(has
+    ? '<span title="Has a dashboard account" style="color:#3b6d11;font-weight:700;font-size:15px">\u2713</span>'
+    : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
+}
+async function loadAccountEmails(){
+  try{ const d=await proxyCall('accountEmails',{}); ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase())); renderContacts(); }catch(e){}
 }
 function contactInvite(r,i){
   const em=String(r['Email']||'').trim().toLowerCase();
