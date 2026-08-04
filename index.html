@@ -193,6 +193,7 @@
   /* ── MODAL ── */
   .thread-arrow{display:inline-block;transition:transform .15s ease;color:var(--muted);font-size:11px;margin-right:2px;}
   .thread-main:hover{background:var(--khaki-50,#f7f5ef);}
+  #tbody-feed tr[onclick]:hover, #tbody-summary tr[onclick]:hover{background:var(--khaki-50,#f7f5ef);}
   .ver-status{font-weight:600;}
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;}
   .modal-backdrop.open{display:flex;}
@@ -1595,11 +1596,14 @@ function renderOverview(){
   feed.sort((a,b)=>(Date.parse(b.date)||0)-(Date.parse(a.date)||0));
   const fb=document.getElementById('tbody-feed');
   if(fb){ const recent=feed.slice(0,15);
+    const secMap={'RFI':'rfis','Change Order':'cos','Submittal':'submittals','Pay App':'payapps'};
     fb.innerHTML=recent.length?recent.map(r=>{
       const itemCell = r.od
         ? '<td style="color:var(--danger);font-weight:600;">'+esc(r.item)+' <span style="font-size:11px;font-weight:700;letter-spacing:.3px;">• OVERDUE</span></td>'
         : '<td>'+esc(r.item)+'</td>';
-      return '<tr><td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td>'+itemCell+'<td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>';
+      const sec=secMap[r.type];
+      const click=sec?' style="cursor:pointer;" onclick="navTo(\''+sec+'\')"':'';
+      return '<tr'+click+'>'+'<td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td>'+itemCell+'<td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>';
     }).join(''):'<tr class="empty-row"><td colspan="5">No activity yet.</td></tr>';
   }
 }
