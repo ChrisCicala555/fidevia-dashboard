@@ -178,6 +178,8 @@
   .daily-log-list .no-link{color:var(--muted); font-size:13px; font-style:italic; white-space:nowrap;}
   .attach-link{display:inline-block; max-width:200px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; color:var(--olive-700); text-decoration:none; font-weight:600; border:1px solid var(--olive-700); padding:3px 8px; border-radius:4px; font-size:13px; white-space:nowrap;}
   .attach-link:hover{background:var(--olive-700); color:#fff;}
+  .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
+  .btn-invite:hover{background:var(--olive-700);color:#fff;}
   .note{color:var(--muted); font-size:13px; padding:14px 18px; border-top:1px solid var(--border); background:var(--cream);}
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
@@ -1459,7 +1461,37 @@ function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+'<td class="admin-col">'+delBtn('contacts',i)+'</td></tr>').join('');
+  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>').join('');
+}
+function contactInvite(r,i){
+  const em=String(r['Email']||'').trim().toLowerCase();
+  const isExt = em && !em.endsWith('@fidevia.com');
+  return isExt ? '<button class="btn-invite" onclick="inviteContact('+i+')" title="Email a dashboard invite">Invite</button> ' : '';
+}
+function inviteEmailHTML(name, projectName){
+  const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://venerable-piroshki-0e0dd4.netlify.app';
+  const serif="Georgia,'Times New Roman',Times,serif"; const sans="'Helvetica Neue',Helvetica,Arial,sans-serif";
+  return '<div style="background:#f4f2ec;padding:28px 16px;font-family:'+sans+'">'
+   +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">'
+   +'<tr><td style="padding:26px 24px 12px;text-align:center"><img src="'+origin+'/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>'
+   +'<tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>'
+   +'<tr><td style="padding:24px 24px 8px">'
+   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019re invited to the Fidevia Dashboard</div>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Hi'+(name?' '+esc(name):'')+',</p>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been added as a contact on <strong>'+esc(projectName)+'</strong>. Create a free account on the Fidevia Construction Dashboard to view project documents, RFIs, submittals, payment applications, and more \u2014 all in one place.</p>'
+   +'<div style="text-align:center;margin:22px 0 8px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Create Your Account</a></div>'
+   +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">After you create an account, request access to this project from your project list \u2014 a Fidevia administrator will approve it. Already have an account? Just sign in.</p>'
+   +'</td></tr>'
+   +'<tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>'
+   +'</table></div>';
+}
+async function inviteContact(i){
+  const r=(allData.contacts||[])[i]; if(!r||!r['Email']){ alert('This contact has no email address.'); return; }
+  if(!confirm('Send a dashboard invitation email to '+(r['Name']||r['Email'])+' ('+r['Email']+')?')) return;
+  try{
+    await sendEmail([r['Email']], 'You\u2019re invited to the Fidevia Construction Dashboard', inviteEmailHTML(r['Name']||'', (currentProject&&currentProject.name)||'a Fidevia project'));
+    alert('Invitation sent to '+r['Email']+'.');
+  }catch(e){ alert('Could not send invite: '+e.message); }
 }
 
 function renderBudget(){
