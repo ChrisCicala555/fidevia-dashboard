@@ -101,13 +101,20 @@
   .btn-switch-project{display:block; width:100%; text-align:center; background:rgba(255,255,255,0.08); color:var(--khaki-200); border:1px solid rgba(255,255,255,0.2); border-radius:5px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .btn-switch-project:hover{background:rgba(255,255,255,0.15);}
   .main{flex:1; display:flex; flex-direction:column;}
-  .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:16px 32px; display:flex; align-items:center; justify-content:space-between;}
+  .topbar{position:relative; background:var(--white); border-bottom:2px solid var(--khaki-300); padding:14px 20px; display:flex; align-items:center; min-height:64px;}
+  .tb-center{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; align-items:center;}
+  .tb-center h1{font-family:'Times New Roman',Times,serif; font-size:24px; color:var(--olive-900); margin:0; white-space:nowrap;}
+  .tb-right{margin-left:auto; display:flex; align-items:center; gap:12px; z-index:1;}
+  .account-chip{display:flex; align-items:center; gap:8px; cursor:pointer; padding:5px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .account-chip:hover{background:var(--cream);}
+  .account-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .tb-signout{background:none; border:1px solid var(--border); border-radius:5px; padding:5px 12px; font-size:12px; color:var(--muted); cursor:pointer;}
   .topbar h1{font-size:21px; margin:0; color:var(--olive-900); font-weight:600;}
   .topbar .project-name{font-size:14px; color:var(--muted); margin-top:2px;}
   .viewer-toggle{display:flex; align-items:center; gap:10px; background:var(--khaki-100); padding:6px 8px; border-radius:6px;}
   .viewer-toggle button{border:none; background:transparent; padding:7px 14px; font-size:13px; font-weight:600; border-radius:5px; cursor:pointer; color:var(--muted); letter-spacing:0.3px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .viewer-toggle button.active{background:var(--olive-700); color:#fff;}
-  .content{padding:28px 32px; flex:1; overflow-y:auto;}
+  .content{padding:24px 20px; flex:1; overflow-y:auto;}
   .section{display:none;}
   .section.active{display:block;}
   .external-banner{background:var(--warn-bg); border:1px solid var(--khaki-300); color:var(--olive-900); font-size:14px; padding:10px 16px; border-radius:6px; margin-bottom:20px; display:none;}
@@ -121,7 +128,7 @@
   .stat-card.neg .value{color:var(--danger);}
   .stat-card.pos .value{color:var(--olive-700);}
   .panel{background:var(--white); border:1px solid var(--border); border-radius:6px; margin-bottom:24px; overflow:hidden;}
-  .panel-header{background:var(--olive-600); color:#fff; padding:10px 18px; font-size:14px; font-weight:600; letter-spacing:0.4px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center;}
+  .panel-header{background:var(--olive-600); color:#fff; padding:10px 18px; font-size:15px; font-weight:600; letter-spacing:0.3px; text-transform:capitalize; display:flex; justify-content:space-between; align-items:center;}
   .panel-header .src{font-size:11px; text-transform:none; font-weight:600; color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); padding:3px 8px; border-radius:4px;}
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th{background:var(--khaki-100); color:var(--olive-900); text-align:left; padding:10px 14px; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--border);}
@@ -135,9 +142,9 @@
   .pill.review{background:var(--khaki-100); color:var(--olive-700);}
   .pill.pending{background:var(--warn-bg); color:#6B5A0E;}
   .pill.rejected{background:var(--danger-bg); color:var(--danger);}
-  h2.page-title{font-size:19px; color:var(--olive-900); margin:0 0 18px; font-weight:600;}
+  h2.page-title{font-size:24px; color:var(--olive-900); margin:0 0 18px; font-weight:600;}
   .page-title-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
-  .page-title-row h2{font-size:19px; color:var(--olive-900); font-weight:600; margin:0;}
+  .page-title-row h2{font-size:24px; color:var(--olive-900); font-weight:600; margin:0;}
   .btn-add{background:var(--olive-700); color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; letter-spacing:0.2px;}
   .btn-add:hover{background:var(--olive-900);}
   .daily-log-list{list-style:none; margin:0; padding:0;}
@@ -335,7 +342,7 @@
     </div>
   </div>
   <h2 class="picker-heading">Select a project</h2>
-  <p class="picker-sub">Projects load from your Box account. Select one to open its dashboard.</p>
+  <p class="picker-sub"></p>
   <div class="project-grid" id="project-grid">
     <div class="loading-state">Loading projects from Box…</div>
   </div>
@@ -453,9 +460,6 @@
       <img src="./Fidevia w_branch.avif" alt="Fidevia" class="sidebar-logo-img" onclick="goHome()" style="cursor:pointer;" title="Home">
       <div class="logo-sub">Construction Dashboard</div>
       <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
-<span id="auth0-user-name" style="color:#8bc4e8;font-size:14px;margin-left:8px;display:inline-block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-<img id="auth0-user-avatar" src="" style="display:none;width:24px;height:24px;border-radius:50%;margin-left:6px;vertical-align:middle">
-<button onclick="logoutAuth0()" style="margin-left:8px;font-size:12px;padding:3px 8px;background:#1e3a5f;color:#8bc4e8;border:1px solid #2a5080;border-radius:4px;cursor:pointer">Sign Out</button>
     </div>
     <div class="nav-section-label">Overview</div>
     <div class="nav-item active" data-section="overview">Dashboard</div>
@@ -482,16 +486,20 @@
 
   <div class="main">
     <div class="topbar">
-      <div style="display:flex;align-items:center;">
-        <img id="topbar-logo" alt="" style="display:none;height:46px;width:auto;max-width:120px;margin-right:14px;border-radius:4px;object-fit:contain;">
-        <div>
-          <h1 id="topbar-title">Project</h1>
-          <div class="project-name" id="topbar-sub"></div>
-        </div>
+      <div class="tb-center">
+        <img id="topbar-logo" alt="" style="display:none;height:44px;width:auto;max-width:120px;margin-right:12px;border-radius:4px;object-fit:contain;">
+        <h1 id="topbar-title">Project</h1>
       </div>
-      <div class="viewer-toggle">
-        <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
-        <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+      <div class="tb-right">
+        <div class="viewer-toggle">
+          <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
+          <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+        </div>
+        <div class="account-chip" onclick="openAccount()" title="My Account">
+          <img id="auth0-user-avatar" src="" style="display:none;width:26px;height:26px;border-radius:50%;">
+          <span id="auth0-user-name"></span>
+        </div>
+        <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
       </div>
     </div>
 
@@ -502,7 +510,7 @@
 
       <!-- OVERVIEW -->
       <div class="section active" id="section-overview">
-        <h2 class="page-title">Project overview</h2>
+        <h2 class="page-title">Project Overview</h2>
         <div class="stat-grid" id="exec-kpis" style="margin-bottom:14px;display:none;"></div>
         <div class="stat-grid">
           <div class="stat-card alert" id="stat-open-rfis"><div class="label">Open RFIs</div><div class="value">—</div></div>
@@ -1087,7 +1095,6 @@ async function loadPicker(){
 
 async function openProject(folderId, name){
   document.getElementById('topbar-title').textContent = name;
-  document.getElementById('topbar-sub').textContent = 'Box · '+ROOT_NAME;
   showScreen('screen-dashboard');
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
