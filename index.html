@@ -866,7 +866,7 @@
 <div id="photo-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2000;flex-direction:column;">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;color:#fff;">
     <div><strong id="pv-date" style="font-size:16px;"></strong><span id="pv-count" style="color:#bbb;margin-left:12px;font-size:13px;"></span></div>
-    <div><button id="pv-cover" onclick="pvSetCover()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">☆ Set as cover</button><button onclick="closePhotoViewer()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;">Close ✕</button></div>
+    <div><button id="pv-download" onclick="pvDownload()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">⬇ Download</button><button id="pv-cover" onclick="pvSetCover()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">☆ Set as cover</button><button onclick="closePhotoViewer()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;">Close ✕</button></div>
   </div>
   <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:0 20px;overflow:hidden;">
     <button onclick="pvNav(-1)" class="pv-arrow" style="left:20px;">‹</button>
@@ -2216,6 +2216,16 @@ function populateOverviewPhotos(){
 }
 function openPhotoViewer(date){ const d=PHOTO_DATA[date]; if(!d) return; VIEWER_STATE={date, idx:0}; renderViewer(); document.getElementById('photo-viewer').style.display='flex'; }
 function closePhotoViewer(){ document.getElementById('photo-viewer').style.display='none'; }
+async function pvDownload(){
+  const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; const img=d.images[VIEWER_STATE.idx]; if(!img) return;
+  const btn=document.getElementById('pv-download'); const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Downloading…'; }
+  try{
+    const t=await ensureToken();
+    const r=await fetch('https://api.box.com/2.0/files/'+img.id+'/content',{headers:{Authorization:'Bearer '+t}});
+    if(r.ok){ const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=img.name||'photo.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); }
+  }catch(e){}
+  if(btn){ btn.disabled=false; btn.textContent=orig||'⬇ Download'; }
+}
 function pvGo(i){ VIEWER_STATE.idx=i; renderViewer(); }
 function pvNav(step){ const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; VIEWER_STATE.idx=(VIEWER_STATE.idx+step+d.images.length)%d.images.length; renderViewer(); }
 function renderViewer(){
