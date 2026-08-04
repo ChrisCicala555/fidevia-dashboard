@@ -1385,6 +1385,7 @@ function wrapTables(){
     t.parentNode.insertBefore(w,t); w.appendChild(t);
   });
 }
+function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
 function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); wrapTables(); }
 
 // ── HELPERS ──
@@ -1422,7 +1423,7 @@ function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No recor
 function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(8);document.getElementById('note-rfis').textContent='';return;}
-  tb.innerHTML=rows.map((r,i)=>{
+  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
     const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
@@ -1433,7 +1434,7 @@ function renderRFIs(){
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{ const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—';
+  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx; const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—';
     const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,9); }).join('');
 }
@@ -1441,7 +1442,7 @@ function renderCOs(){
 function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=rows.map((r,i)=>{
+  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
     const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
     return main+verThreadRows('sub',r,i,9);
   }).join('');
@@ -1525,7 +1526,7 @@ function _docVersions(r){
 function renderDocuments(){
   const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=rows.map((r,i)=>{
+  tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
     const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime'));
     const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\'docs\','+i+')">'
       +'<td><span class="thread-arrow" id="arw-docs-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
@@ -1669,12 +1670,12 @@ async function saveSchedule(){
 function renderMeetings(){
   const tb=document.getElementById('tbody-meetings'); if(!tb) return;
   const rows=allData.meetings||[];
-  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Meeting Type'])+'</td><td>'+esc(r['Attendees'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('meetings',i)+'</td></tr>').join(''):emptyRow(6);
+  tb.innerHTML=rows.length?withIdxSorted(rows,'Date').map(({r,idx})=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Meeting Type'])+'</td><td>'+esc(r['Attendees'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('meetings',idx)+'</td></tr>').join(''):emptyRow(6);
 }
 function renderBoard(){
   const tb=document.getElementById('tbody-board'); if(!tb) return;
   const rows=allData.board||[];
-  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Title'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('board',i)+'</td></tr>').join(''):emptyRow(5);
+  tb.innerHTML=rows.length?withIdxSorted(rows,'Date').map(({r,idx})=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Title'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('board',idx)+'</td></tr>').join(''):emptyRow(5);
 }
 function toggleBoardTab(){
   const on=!!(currentProject&&currentProject.config&&currentProject.config.boardReportsEnabled);
@@ -2463,7 +2464,7 @@ function renderPayApps(){
     let body;
     if(!g.rows.length){ body='<div id="pg-body-'+gi+'" style="display:none;"><div style="padding:12px 16px;color:var(--muted);font-size:14px;">No pay applications submitted yet.</div></div>'; }
     else {
-      const trs=g.rows.map(r=>{
+      const trs=g.rows.slice().sort((a,b)=>(Date.parse(b['Period']||b['Review Date']||'')||0)-(Date.parse(a['Period']||a['Review Date']||'')||0)).map(r=>{
         const idx=rows.indexOf(r);
         const s=r['Status']||'Submitted';
         const doc=r['Attachment File ID']?'<a class="attach-link" href="https://app.box.com/file/'+esc(r['Attachment File ID'])+'" target="_blank" rel="noopener">Pay App</a>':'—';
