@@ -58,9 +58,14 @@
   .picker-view-toggle{display:inline-flex; align-self:center; background:var(--khaki-100); border-radius:8px; padding:3px; margin:0 auto 26px; gap:2px;}
   .picker-view-toggle button{border:none; background:none; padding:7px 18px; font-size:13px; font-weight:600; color:var(--muted); cursor:pointer; border-radius:6px; font-family:inherit;}
   .picker-view-toggle button.active{background:var(--olive-700); color:#fff;}
-  .proj-archive-btn{position:absolute; top:12px; right:12px; background:none; border:1px solid var(--border); border-radius:5px; padding:3px 10px; font-size:11px; font-weight:600; color:var(--muted); cursor:pointer; font-family:inherit;}
-  .proj-archive-btn:hover{background:var(--cream); color:var(--olive-900);}
   .project-card{position:relative;}
+  .proj-menu{position:absolute; top:10px; right:10px;}
+  .proj-menu-btn{background:none; border:none; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; padding:2px 8px; border-radius:5px;}
+  .proj-menu-btn:hover{background:var(--cream); color:var(--olive-900);}
+  .proj-menu-dd{display:none; position:absolute; top:30px; right:0; background:var(--white); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.15); min-width:130px; z-index:30; padding:4px;}
+  .proj-menu-dd.open{display:block;}
+  .proj-menu-dd button{display:block; width:100%; text-align:left; background:none; border:none; padding:8px 12px; font-size:13px; color:var(--ink); cursor:pointer; border-radius:5px; font-family:inherit;}
+  .proj-menu-dd button:hover{background:var(--cream);}
   .project-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px; width:100%; max-width:800px;}
   .project-card{background:var(--white); border:1px solid var(--border); border-top:5px solid var(--olive-700); border-radius:8px; padding:22px; cursor:pointer; transition:box-shadow 0.15s,transform 0.15s;}
   .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
@@ -1151,7 +1156,7 @@ function renderPickerGrid(){
   list.forEach(p=>{
     const card=document.createElement('div'); card.className='project-card';
     let html='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
-    if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'"); html+='<button class="proj-archive-btn" onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>'; }
+    if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'"); html+='<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\''+esc(p.id)+'\')" aria-label="Options">\u22EE</button><div class="proj-menu-dd" id="pm-'+esc(p.id)+'"><button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button></div></div>'; }
     card.innerHTML=html;
     card.onclick=()=>openProject(p.id,p.name);
     grid.appendChild(card);
@@ -1168,6 +1173,8 @@ function renderPickerGrid(){
     req.innerHTML=ADD_SVG+'<span>Request Project Access</span>'; req.onclick=()=>openRequest(); grid.appendChild(req);
   }
 }
+function toggleProjMenu(e, id){ e.stopPropagation(); const dd=document.getElementById('pm-'+id); document.querySelectorAll('.proj-menu-dd.open').forEach(x=>{ if(x!==dd) x.classList.remove('open'); }); if(dd) dd.classList.toggle('open'); }
+document.addEventListener('click',function(e){ if(!e.target.closest('.proj-menu')){ document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open')); } });
 async function archiveProject(id, name, archive){
   if(!confirm((archive?'Archive':'Unarchive')+' \u201c'+name+'\u201d?\n'+(archive?'It moves to Archived Projects. All data is kept in Box and it can be unarchived anytime.':'It returns to Current Projects.'))) return;
   try{
