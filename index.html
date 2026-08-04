@@ -188,7 +188,6 @@
   body.is-external-user .btn-approve,
   body.is-external-user .btn-reject{display:none !important;}
   body.external-mode .nav-budget,
-  body.external-mode .nav-contacts,
   body.external-mode .nav-dailylogs{display:none;}
 
   /* ── MODAL ── */
@@ -659,11 +658,11 @@
       <div class="section" id="section-contacts">
         <div class="page-title-row">
           <h2>Job contacts directory</h2>
-          <button class="btn-add" onclick="openModal('contact')">+ Add Contact</button>
+          <button class="btn-add hide-external" onclick="openModal('contact')">+ Add Contact</button>
         </div>
         <div class="panel">
           <div class="panel-header">Project contacts &amp; notification routing</div>
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th>Notify - RFI</th><th>Notify - CO</th><th>Notify - Submittal</th><th class="admin-col">Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th class="hide-external">Notify - RFI</th><th class="hide-external">Notify - CO</th><th class="hide-external">Notify - Submittal</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -1287,7 +1286,7 @@ async function createProject(){
 async function loadDashboard(){
   const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
-  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps'] : allKeys;
+  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps','contacts'] : allKeys;
   await Promise.allSettled(keys.map(k=>loadModule(k)));
   renderAll();
 }
@@ -1375,7 +1374,7 @@ function renderDailyLogs(){
 function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td>'+esc(v)+'</td>'; };
+  const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
   tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+'<td class="admin-col">'+delBtn('contacts',i)+'</td></tr>').join('');
 }
 
