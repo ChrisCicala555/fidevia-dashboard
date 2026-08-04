@@ -106,6 +106,9 @@
   .tb-titlegroup{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:12px;}
   .tb-titlegroup h1{font-family:'Times New Roman',Times,serif; font-size:24px; color:var(--olive-900); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
   .tb-right{flex:0 0 auto; display:flex; align-items:center; gap:12px;}
+  .tb-actions{display:flex; align-items:center; gap:12px;}
+  .picker-actions{display:flex; align-items:center; gap:10px;}
+  .tb-menu-btn,.picker-menu-btn{display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:20px; line-height:1; cursor:pointer; color:var(--olive-900);}
   .account-chip{display:flex; align-items:center; gap:8px; cursor:pointer; padding:5px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .account-chip:hover{background:var(--cream);}
   .account-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -210,8 +213,15 @@
   @media(max-width:900px){
     .app{flex-direction:column;}
     .sidebar-logo-img{height:44px;}
-    .topbar{flex-wrap:wrap;}
-    .tb-titlegroup{flex:1 1 100%;}
+    .tb-titlegroup{flex:1 1 auto; min-width:0;}
+    .tb-menu-btn,.picker-menu-btn{display:block;}
+    .topbar{position:relative;}
+    .picker-topbar{position:relative;}
+    .tb-actions,.picker-actions{display:none; position:absolute; top:100%; right:8px; margin-top:6px; background:var(--white); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,0.18); flex-direction:column; align-items:stretch; gap:10px; padding:14px; z-index:200; min-width:230px;}
+    .tb-actions.open,.picker-actions.open{display:flex;}
+    .tb-actions .viewer-toggle{width:100%;}
+    .tb-actions .account-chip{width:100%; max-width:none; justify-content:center;}
+    .tb-actions .tb-signout,.picker-actions .btn-logout{width:100%; text-align:center; padding:9px 12px;}
     .hamburger{display:block;}
     .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;max-height:76px;overflow:hidden;transition:max-height 0.3s;padding:0;align-items:center;}
     .sidebar.open{max-height:900px;align-items:flex-start;padding:8px 0;}
@@ -219,7 +229,7 @@
     .logo-sub{display:none;}
     .nav-section-label,.sidebar-footer{width:100%;}
     .stat-grid{grid-template-columns:repeat(2,1fr);}
-    .topbar{flex-wrap:wrap;gap:8px;padding:12px 16px;}
+    .topbar{flex-wrap:nowrap;gap:10px;padding:12px 16px;}
     table{display:block;overflow-x:auto;}
     .content{padding:16px;}
   }
@@ -354,10 +364,13 @@
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
       <span id="user-name-display"></span>
-      <button class="btn-logout" onclick="openAccount()" style="margin-right:8px;">My Account</button>
-      <button class="btn-logout" onclick="openFeedback()" style="margin-right:8px;">Report a Bug / Feedback</button>
-      <button class="btn-logout admin-only" onclick="openAdmin()" style="margin-right:8px;">Manage External Access</button>
-      <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
+      <button class="picker-menu-btn" onclick="toggleMenu(event,'picker-actions')" aria-label="Menu">&#9776;</button>
+      <div class="picker-actions" id="picker-actions">
+        <button class="btn-logout" onclick="openAccount()">My Account</button>
+        <button class="btn-logout" onclick="openFeedback()">Report a Bug / Feedback</button>
+        <button class="btn-logout admin-only" onclick="openAdmin()">Manage External Access</button>
+        <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
+      </div>
     </div>
   </div>
   <h2 class="picker-heading">Select a project</h2>
@@ -510,15 +523,18 @@
         <h1 id="topbar-title">Project</h1>
       </div>
       <div class="tb-right">
-        <div class="viewer-toggle">
-          <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
-          <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+        <button class="tb-menu-btn" onclick="toggleMenu(event,'tb-actions')" aria-label="Menu">&#9776;</button>
+        <div class="tb-actions" id="tb-actions">
+          <div class="viewer-toggle">
+            <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
+            <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+          </div>
+          <div class="account-chip" onclick="openAccount()" title="My Account">
+            <img id="auth0-user-avatar" src="" style="display:none;width:26px;height:26px;border-radius:50%;">
+            <span id="auth0-user-name"></span>
+          </div>
+          <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
         </div>
-        <div class="account-chip" onclick="openAccount()" title="My Account">
-          <img id="auth0-user-avatar" src="" style="display:none;width:26px;height:26px;border-radius:50%;">
-          <span id="auth0-user-name"></span>
-        </div>
-        <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
       </div>
     </div>
 
@@ -2010,6 +2026,11 @@ function setViewer(mode){
 
 function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
 function goHome(){ if(EXTERNAL){ navTo('overview'); } else { showScreen('screen-picker'); loadPicker(); } }
+function toggleMenu(e,id){ if(e){ e.stopPropagation(); } const el=document.getElementById(id); if(el) el.classList.toggle('open'); }
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.tb-right')){ const a=document.getElementById('tb-actions'); if(a) a.classList.remove('open'); }
+  if(!e.target.closest('.picker-user')){ const p=document.getElementById('picker-actions'); if(p) p.classList.remove('open'); }
+});
 let _histGuard=false;
 function armHistoryGuard(){
   if(_histGuard) return; _histGuard=true;
