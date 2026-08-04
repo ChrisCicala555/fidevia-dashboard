@@ -1577,7 +1577,6 @@ function renderOverview(){
   // ---- Recent Items & Tasks summary ----
   const summary=[
     ['RFIs',openR.length,'rfis',false],
-    ['Overdue',ovd.length,'rfis',true],
     ['Change Orders',openC.length,'cos',false],
     ['Submittals',openS.length,'submittals',false],
     ['Payment Applications (pending)',openP.length,'payapps',false]
@@ -1592,12 +1591,17 @@ function renderOverview(){
     ...rfis.map(r=>({date:r['Date Submitted']||'',type:'RFI',item:(r['RFI #']||'')+' — '+(r['Subject']||''),by:r['Submitted By']||'',status:r['Status']||'',od:isOverdue(r)})),
     ...cos.map(r=>({date:r['Date Submitted']||'',type:'Change Order',item:(r['CO #']||'')+' — '+(r['Description']||''),by:'',status:r['Status']||'',od:false})),
     ...subs.map(r=>({date:r['Date Submitted']||'',type:'Submittal',item:(r['Submittal #']||'')+' — '+(r['Description']||''),by:r['Submitted By (Sub)']||'',status:r['Status']||'',od:false})),
-    ...pays.map(r=>({date:r['Review Date']||r['Period']||'',type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',status:r['Status']||'',od:false}))
+    ...pays.map(r=>{ const _st=(r['Status']||'').toLowerCase(); const _pend=_st.indexOf('submit')>=0||_st.indexOf('pending')>=0; return {date:r['Review Date']||r['Period']||'',type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',status:r['Status']||'',od:!!(_pend && r['Due Date'] && Date.parse(r['Due Date'])<Date.now())}; })
   ].filter(x=>x.item.replace(/^ — /,'').trim());
   feed.sort((a,b)=>(Date.parse(b.date)||0)-(Date.parse(a.date)||0));
   const fb=document.getElementById('tbody-feed');
   if(fb){ const recent=feed.slice(0,15);
-    fb.innerHTML=recent.length?recent.map(r=>'<tr><td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="5">No activity yet.</td></tr>';
+    fb.innerHTML=recent.length?recent.map(r=>{
+      const itemCell = r.od
+        ? '<td style="color:var(--danger);font-weight:600;">'+esc(r.item)+' <span style="font-size:11px;font-weight:700;letter-spacing:.3px;">• OVERDUE</span></td>'
+        : '<td>'+esc(r.item)+'</td>';
+      return '<tr><td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td>'+itemCell+'<td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>';
+    }).join(''):'<tr class="empty-row"><td colspan="5">No activity yet.</td></tr>';
   }
 }
 
