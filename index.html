@@ -1322,11 +1322,11 @@ function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(7);document.getElementById('note-rfis').textContent='';return;}
   tb.innerHTML=rows.map((r,i)=>{
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(r['Due Date'])+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,8);
   }).join('');
   const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
-  document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(r['Date Closed'])+')').join('<br>');
+  document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(fmtDMY(r['Date Closed']))+')').join('<br>');
 }
 
 function renderCOs(){
@@ -1352,7 +1352,7 @@ function renderDailyLogs(){
   ul.innerHTML=rows.slice().reverse().map(r=>{
     const fid=r['Attachment File ID'],fn=r['Attachment Name'];
     const link=fid?'<a href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">Open in Box</a>':'<span class="no-link">No file attached</span>';
-    return '<li><span class="date">'+esc(r['Date'])+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
+    return '<li><span class="date">'+esc(fmtDMY(r['Date']))+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
   }).join('');
 }
 
@@ -1388,7 +1388,7 @@ function renderDocuments(){
     const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\'docs\','+i+')">'
       +'<td><span class="thread-arrow" id="arw-docs-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
       +'<td>'+esc(r['Category'])+'</td><td>'+esc(r['Version']||'')+'</td>'
-      +'<td>'+esc(r['Date'])+'</td><td>'+esc(r['Visible To'])+'</td>'
+      +'<td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Visible To'])+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn('docs',i)+'</td></tr>';
     const vs=_docVersions(r);
@@ -1492,7 +1492,7 @@ function renderSchedule(){
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const dev=(baseline,contract)=>{ const a=new Date(baseline),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((b-a)/86400000); return dd===0?'On baseline':(dd>0?('+'+dd+' days'):(dd+' days')); };
-  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline||'—')+'</td><td>'+esc(m.contract||'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
+  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td><td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
   if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
     kp.innerHTML=card('Construction Duration',(s.duration!=null?s.duration+' days':'—'))+card('Days Expended',(s.expended!=null?s.expended:'—'))+card('Days Remaining',(s.remaining!=null?s.remaining:'—'))+card('% Expended',(s.pct!=null?(s.pct*100).toFixed(1)+'%':'—')); }
@@ -1527,12 +1527,12 @@ async function saveSchedule(){
 function renderMeetings(){
   const tb=document.getElementById('tbody-meetings'); if(!tb) return;
   const rows=allData.meetings||[];
-  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(r['Date'])+'</td><td>'+esc(r['Meeting Type'])+'</td><td>'+esc(r['Attendees'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('meetings',i)+'</td></tr>').join(''):emptyRow(6);
+  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Meeting Type'])+'</td><td>'+esc(r['Attendees'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('meetings',i)+'</td></tr>').join(''):emptyRow(6);
 }
 function renderBoard(){
   const tb=document.getElementById('tbody-board'); if(!tb) return;
   const rows=allData.board||[];
-  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(r['Date'])+'</td><td>'+esc(r['Title'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('board',i)+'</td></tr>').join(''):emptyRow(5);
+  tb.innerHTML=rows.length?rows.map((r,i)=>'<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Title'])+'</td><td>'+esc(r['Summary'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('board',i)+'</td></tr>').join(''):emptyRow(5);
 }
 function toggleBoardTab(){
   const on=!!(currentProject&&currentProject.config&&currentProject.config.boardReportsEnabled);
@@ -1625,7 +1625,7 @@ const FORMS = {
   payapp:{title:'New Payment Application',html:`
     <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
     <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="ABC Mechanical Inc."></div>
-    <div class="field-row"><div class="field"><label>Period (DD/MM/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (DD/MM/YYYY)</label><input autocomplete="off" type="date" id="f-due"></div></div>
+    <div class="field-row"><div class="field"><label>Period (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-due"></div></div>
     <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
     <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="45000"></div></div>
     <div class="field"><label>Payment Application Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The pay application PDF, uploaded to Box. Remaining is calculated automatically. Fidevia will review and sign.</p></div>`},
@@ -2276,7 +2276,7 @@ async function postComment(){
 // ══════════════════════════════════════════════
 // PAYMENT APPLICATIONS
 // ══════════════════════════════════════════════
-function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[3]+'/'+m[2]+'/'+m[1]):String(v); }
+function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[2]+'/'+m[3]+'/'+m[1]):String(v); }
 function payNum(x){ return parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0; }
 function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
