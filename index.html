@@ -66,6 +66,8 @@
   .proj-menu-dd.open{display:block;}
   .proj-menu-dd button{display:block; width:100%; text-align:left; background:none; border:none; padding:8px 12px; font-size:13px; color:var(--ink); cursor:pointer; border-radius:5px; font-family:inherit;}
   .proj-menu-dd button:hover{background:var(--cream);}
+  .proj-menu-dd button.danger{color:var(--danger);}
+  .proj-menu-dd button.danger:hover{background:var(--danger-bg);}
   .project-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px; width:100%; max-width:800px;}
   .project-card{background:var(--white); border:1px solid var(--border); border-top:5px solid var(--olive-700); border-radius:8px; padding:22px; cursor:pointer; transition:box-shadow 0.15s,transform 0.15s;}
   .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
@@ -827,6 +829,22 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="delete-backdrop" onclick="if(event.target===this)closeDeleteModal()">
+  <div class="modal">
+    <div class="modal-header"><h3>Delete Project</h3><button class="modal-close" onclick="closeDeleteModal()">✕</button></div>
+    <div class="modal-body">
+      <p style="color:var(--danger);font-weight:600;margin:0 0 8px;">This permanently deletes the project and all of its files and records in Box. This cannot be undone.</p>
+      <p id="delete-proj-name" style="font-weight:600;margin:0 0 14px;"></p>
+      <div class="field"><label>Admin password</label><input type="password" id="delete-pw" autocomplete="off" placeholder="Enter admin password"></div>
+      <div class="status-msg" id="delete-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-reject" id="delete-confirm-btn" onclick="confirmDeleteProject()">Delete Permanently</button>
+      <button class="btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
@@ -1156,7 +1174,10 @@ function renderPickerGrid(){
   list.forEach(p=>{
     const card=document.createElement('div'); card.className='project-card';
     let html='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
-    if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'"); html+='<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\''+esc(p.id)+'\')" aria-label="Options">\u22EE</button><div class="proj-menu-dd" id="pm-'+esc(p.id)+'"><button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button></div></div>'; }
+    if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'");
+      let items='<button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>';
+      if(archivedView){ items+='<button class="danger" onclick="event.stopPropagation();openDeleteModal(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Delete Project</button>'; }
+      html+='<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\''+esc(p.id)+'\')" aria-label="Options">\u22EE</button><div class="proj-menu-dd" id="pm-'+esc(p.id)+'">'+items+'</div></div>'; }
     card.innerHTML=html;
     card.onclick=()=>openProject(p.id,p.name);
     grid.appendChild(card);
@@ -1182,6 +1203,20 @@ async function archiveProject(id, name, archive){
     if(archive) PICKER_ARCHIVED.add(String(id)); else PICKER_ARCHIVED.delete(String(id));
     renderPickerGrid();
   }catch(e){ alert('Error: '+e.message); }
+}
+let DELETE_CTX=null;
+function openDeleteModal(id,name){ DELETE_CTX={id,name}; document.getElementById('delete-proj-name').textContent='\u201c'+name+'\u201d'; document.getElementById('delete-pw').value=''; const s=document.getElementById('delete-status'); s.textContent=''; s.className='status-msg'; document.getElementById('delete-confirm-btn').disabled=false; document.getElementById('delete-backdrop').classList.add('open'); document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open')); }
+function closeDeleteModal(){ document.getElementById('delete-backdrop').classList.remove('open'); DELETE_CTX=null; }
+async function confirmDeleteProject(){
+  if(!DELETE_CTX) return; const {id,name}=DELETE_CTX;
+  const pw=document.getElementById('delete-pw').value;
+  if(!pw){ showStatus('delete-status','Password required.','error'); return; }
+  const btn=document.getElementById('delete-confirm-btn'); btn.disabled=true; showStatus('delete-status','Deleting…','info');
+  try{
+    await proxyCall('deleteProject',{projectId:id, password:pw});
+    PICKER_PROJECTS=PICKER_PROJECTS.filter(p=>String(p.id)!==String(id)); PICKER_ARCHIVED.delete(String(id));
+    closeDeleteModal(); renderPickerGrid();
+  }catch(e){ showStatus('delete-status', e.message||'Error', 'error'); btn.disabled=false; }
 }
 
 async function openProject(folderId, name){

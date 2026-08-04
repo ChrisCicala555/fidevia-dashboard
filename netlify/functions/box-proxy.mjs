@@ -398,6 +398,20 @@ export default async (req) => {
       return json({ ok: true });
     }
 
+    if (op === 'deleteProject') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      const id = String(body.projectId || '');
+      if (!id) return json({ error: 'projectId required' }, 400);
+      const archived = await getArchivedIds();
+      if (!archived.includes(id)) return json({ error: 'Project must be archived before it can be deleted.' }, 400);
+      const r = await fetch(`https://api.box.com/2.0/folders/${id}?recursive=true`, { method: 'DELETE', headers: H });
+      if (!r.ok && r.status !== 404) return json({ error: 'Delete failed ' + r.status }, r.status);
+      await archivedStore().setJSON('ids', archived.filter(x => x !== id));
+      return json({ ok: true });
+    }
+
     return json({ error: 'Unknown or unpermitted op: ' + op }, 400);
   } catch (e) {
     return json({ error: e.message }, 500);
