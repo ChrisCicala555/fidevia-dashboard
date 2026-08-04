@@ -90,7 +90,7 @@
   /* ── DASHBOARD (original design) ── */
   #screen-dashboard{min-height:100vh;}
   .app{display:flex; min-height:100vh;}
-  .sidebar{width:230px; background:var(--olive-900); color:var(--khaki-200); padding:24px 0; flex-shrink:0; display:flex; flex-direction:column;}
+  .sidebar{width:230px; background:var(--olive-900); color:var(--khaki-200); padding:24px 0; flex-shrink:0; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; align-self:flex-start; overflow-y:auto;}
   .logo-block{text-align:center; padding:0 16px 20px; border-bottom:1px solid rgba(255,255,255,0.15); margin-bottom:16px;}
   .logo-script{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:31px; color:var(--khaki-200); letter-spacing:0.5px;}
   .logo-sub{font-size:10px; letter-spacing:1.5px; color:var(--khaki-300); margin-top:4px; text-transform:uppercase;}
@@ -223,7 +223,7 @@
     .tb-actions .account-chip{width:100%; max-width:none; justify-content:center;}
     .tb-actions .tb-signout,.picker-actions .btn-logout{width:100%; text-align:center; padding:9px 12px;}
     .hamburger{display:block;}
-    .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;max-height:76px;overflow:hidden;transition:max-height 0.3s;padding:0;align-items:center;}
+    .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;max-height:76px;overflow:hidden;transition:max-height 0.3s;padding:0;align-items:center;position:static;height:auto;}
     .sidebar.open{max-height:900px;align-items:flex-start;padding:8px 0;}
     .logo-block{flex:1;padding:14px 16px;border-bottom:none;display:flex;align-items:center;justify-content:space-between;margin-bottom:0;}
     .logo-sub{display:none;}
