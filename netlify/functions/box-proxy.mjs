@@ -52,6 +52,8 @@ const grantsStore = () => getStore('access-grants');
 const requestsStore = () => getStore('access-requests');
 const notifStore = () => getStore('notif-templates');
 const reminderStore = () => getStore('reminder-settings');
+const archivedStore = () => getStore('archived-projects');
+async function getArchivedIds(){ try{ const d=await archivedStore().get('ids',{type:'json'}); return Array.isArray(d)?d.map(String):[]; }catch(e){ return []; } }
 const adminListStore = () => getStore('admin-list');
 async function getBlobAdmins(){ try{ const d=await adminListStore().get('emails',{type:'json'}); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
 const PANEL_PW = () => process.env.ADMIN_PANEL_PASSWORD || '';
@@ -233,7 +235,8 @@ export default async (req) => {
       const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
       const d = await r.json();
       const existing = new Map((d.entries || []).filter(e => e.type === 'folder').map(e => [String(e.id), e.name]));
-      const mine = grants.filter(g => existing.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name }));
+      const archived = new Set(await getArchivedIds());
+      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name }));
       return json({ projects: mine });
     }
 
@@ -378,6 +381,20 @@ export default async (req) => {
     if (op === 'saveReminderSettings') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       await reminderStore().setJSON(String(body.projectId), body.settings || {});
+      return json({ ok: true });
+    }
+
+    if (op === 'getArchived') {
+      return json({ ids: await getArchivedIds() });
+    }
+    if (op === 'setArchived') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      let d = await getArchivedIds();
+      const id = String(body.projectId || '');
+      if (!id) return json({ error: 'projectId required' }, 400);
+      if (body.archived) { if (!d.includes(id)) d.push(id); }
+      else { d = d.filter(x => x !== id); }
+      await archivedStore().setJSON('ids', d);
       return json({ ok: true });
     }
 
