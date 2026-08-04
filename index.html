@@ -222,7 +222,19 @@
   @media(max-width:540px){.stat-grid{grid-template-columns:1fr;}}
   .photo-section-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px solid var(--border);background:var(--cream);margin-top:8px;}
   .photo-section-hdr h4{font-size:13px;font-weight:700;color:var(--olive-900);text-transform:uppercase;letter-spacing:0.5px;}
-  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;padding:16px;}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;padding:16px;}
+  .photo-date-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--white);transition:box-shadow .15s;}
+  .photo-date-card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.14);}
+  .pdc-thumb{height:140px;background:var(--khaki-100) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:34px;color:var(--khaki-300);}
+  .pdc-thumb.loaded .pdc-load{display:none;}
+  .pdc-meta{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;}
+  .pdc-date{font-weight:700;font-size:13px;color:var(--olive-900);}
+  .pdc-count{font-size:12px;color:var(--muted);}
+  .pv-arrow{background:rgba(255,255,255,0.14);color:#fff;border:none;font-size:30px;line-height:1;width:48px;height:48px;border-radius:50%;cursor:pointer;position:absolute;top:50%;transform:translateY(-50%);}
+  .pv-arrow:hover{background:rgba(255,255,255,0.3);}
+  .pv-thumb{width:58px;height:44px;border-radius:4px;background:#333 center/cover no-repeat;cursor:pointer;opacity:0.55;border:2px solid transparent;flex-shrink:0;}
+  .pv-thumb.active{opacity:1;border-color:#fff;}
+  .ovp-thumb{width:96px;height:72px;border-radius:6px;background:var(--khaki-100) center/cover no-repeat;cursor:pointer;flex-shrink:0;border:1px solid var(--border);}
   .photo-card{border-radius:5px;overflow:hidden;border:1px solid var(--border);}
   .photo-card img{width:100%;height:90px;object-fit:cover;display:block;}
   .photo-card .pdate{font-size:11px;color:var(--muted);padding:4px 8px;font-weight:600;background:var(--white);}
@@ -524,6 +536,10 @@
           <div class="panel-header">Activity Feed</div>
           <table><thead><tr><th>Date</th><th>Type</th><th>Item</th><th>Submitted By</th><th>Status</th></tr></thead>
           <tbody id="tbody-feed"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
+        </div>
+        <div class="panel hide-external" id="overview-photos-panel" style="display:none;margin-top:24px;">
+          <div class="panel-header">Recent Photos</div>
+          <div id="overview-photos" style="display:flex;gap:8px;padding:14px;overflow-x:auto;"></div>
         </div>
       </div>
 
@@ -841,6 +857,19 @@
       <span class="status-msg" id="schedule-status" style="margin-left:8px;"></span>
     </div>
   </div>
+</div>
+
+<div id="photo-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2000;flex-direction:column;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;color:#fff;">
+    <div><strong id="pv-date" style="font-size:16px;"></strong><span id="pv-count" style="color:#bbb;margin-left:12px;font-size:13px;"></span></div>
+    <div><button id="pv-cover" onclick="pvSetCover()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">☆ Set as cover</button><button onclick="closePhotoViewer()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;">Close ✕</button></div>
+  </div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:0 20px;overflow:hidden;">
+    <button onclick="pvNav(-1)" class="pv-arrow" style="left:20px;">‹</button>
+    <div id="pv-stage" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"></div>
+    <button onclick="pvNav(1)" class="pv-arrow" style="right:20px;">›</button>
+  </div>
+  <div id="pv-thumbs" style="display:flex;gap:6px;padding:12px 20px;overflow-x:auto;justify-content:center;"></div>
 </div>
 
 <div class="modal-backdrop" id="account-backdrop" onclick="if(event.target===this)closeAccount()">
@@ -2142,21 +2171,70 @@ async function loadProjectPhotos(){
     await loadPhotos(pf.id);
   }catch(e){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; }
 }
+let PHOTO_DATA={};
+let VIEWER_STATE={date:null,idx:0};
+async function boxImageURL(fileId, dim){
+  try{ const t=await ensureToken();
+    try{ const r=await fetch('https://api.box.com/2.0/files/'+fileId+'/thumbnail.jpg?min_height='+dim+'&min_width='+dim,{headers:{Authorization:'Bearer '+t}}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return URL.createObjectURL(b); } }catch(e){}
+    const r2=await fetch('https://api.box.com/2.0/files/'+fileId+'/content',{headers:{Authorization:'Bearer '+t}}); if(r2.ok){ return URL.createObjectURL(await r2.blob()); }
+  }catch(e){}
+  return '';
+}
 async function loadPhotos(photosFid){
   const grid=document.getElementById('photo-grid'); if(!grid) return;
   if(!photosFid){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
   const dateFolders=(await boxList(photosFid)).filter(i=>i.type==='folder').sort((a,b)=>b.name.localeCompare(a.name));
-  if(!dateFolders.length){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
-  grid.innerHTML='';
+  grid.innerHTML=''; PHOTO_DATA={};
+  const covers=(currentProject.config&&currentProject.config.photoCovers)||{};
   for(const df of dateFolders){
     const imgs=(await boxList(df.id)).filter(i=>i.type==='file');
-    imgs.forEach(img=>{
-      const card=document.createElement('div'); card.className='photo-card';
-      card.innerHTML='<div style="height:90px;background:var(--khaki-100);display:flex;align-items:center;justify-content:center;font-size:29px;cursor:pointer;" onclick="window.open(\'https://app.box.com/file/'+esc(img.id)+'\',\'_blank\')">🖼</div><div class="pdate">'+esc(df.name)+'</div>';
-      grid.appendChild(card);
-    });
+    if(!imgs.length) continue;
+    PHOTO_DATA[df.name]={folderId:df.id, images:imgs};
+    const coverId=(covers[df.name] && imgs.some(i=>i.id===covers[df.name])) ? covers[df.name] : imgs[0].id;
+    const card=document.createElement('div'); card.className='photo-date-card';
+    card.innerHTML='<div class="pdc-thumb"><span class="pdc-load">🖼</span></div><div class="pdc-meta"><span class="pdc-date">'+esc(fmtDMY(df.name))+'</span><span class="pdc-count">'+imgs.length+' photo'+(imgs.length>1?'s':'')+'</span></div>';
+    const dn=df.name; card.onclick=()=>openPhotoViewer(dn);
+    grid.appendChild(card);
+    boxImageURL(coverId,320).then(u=>{ if(u){ const th=card.querySelector('.pdc-thumb'); th.style.backgroundImage='url('+u+')'; th.classList.add('loaded'); } });
   }
-  if(!grid.children.length) grid.innerHTML='<div class="photo-empty">No photos yet.</div>';
+  if(!grid.children.length){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; }
+  populateOverviewPhotos();
+}
+function populateOverviewPhotos(){
+  const strip=document.getElementById('overview-photos'); const panel=document.getElementById('overview-photos-panel');
+  if(!strip||!panel) return;
+  const dates=Object.keys(PHOTO_DATA).sort((a,b)=>b.localeCompare(a));
+  if(!dates.length){ panel.style.display='none'; return; }
+  const recent=[]; for(const d of dates){ for(const im of PHOTO_DATA[d].images){ recent.push({date:d, img:im}); if(recent.length>=8) break; } if(recent.length>=8) break; }
+  strip.innerHTML=recent.map((r,i)=>'<div class="ovp-thumb" id="ovp-'+i+'" title="'+esc(fmtDMY(r.date))+'"></div>').join('');
+  recent.forEach((r,i)=>{ const el=document.getElementById('ovp-'+i); if(el){ el.onclick=()=>openPhotoViewer(r.date); boxImageURL(r.img.id,200).then(u=>{ if(u) el.style.backgroundImage='url('+u+')'; }); } });
+  panel.style.display='';
+}
+function openPhotoViewer(date){ const d=PHOTO_DATA[date]; if(!d) return; VIEWER_STATE={date, idx:0}; renderViewer(); document.getElementById('photo-viewer').style.display='flex'; }
+function closePhotoViewer(){ document.getElementById('photo-viewer').style.display='none'; }
+function pvGo(i){ VIEWER_STATE.idx=i; renderViewer(); }
+function pvNav(step){ const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; VIEWER_STATE.idx=(VIEWER_STATE.idx+step+d.images.length)%d.images.length; renderViewer(); }
+function renderViewer(){
+  const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; const imgs=d.images, i=VIEWER_STATE.idx, img=imgs[i];
+  document.getElementById('pv-date').textContent=fmtDMY(VIEWER_STATE.date);
+  document.getElementById('pv-count').textContent=(i+1)+' / '+imgs.length;
+  const stage=document.getElementById('pv-stage'); stage.innerHTML='<div style="color:#ccc;">Loading…</div>';
+  boxImageURL(img.id,1024).then(u=>{ stage.innerHTML=u?'<img src="'+u+'" style="max-width:100%;max-height:78vh;object-fit:contain;border-radius:4px;">':'<div style="color:#ccc;">Could not load image</div>'; });
+  const covers=(currentProject.config&&currentProject.config.photoCovers)||{};
+  const isCover=((covers[VIEWER_STATE.date]||imgs[0].id)===img.id);
+  const cb=document.getElementById('pv-cover'); if(cb){ cb.textContent=isCover?'★ Cover photo':'☆ Set as cover'; cb.disabled=isCover; cb.style.opacity=isCover?'0.6':'1'; }
+  const strip=document.getElementById('pv-thumbs');
+  if(strip){ strip.innerHTML=imgs.map((im,idx)=>'<div class="pv-thumb'+(idx===i?' active':'')+'" onclick="pvGo('+idx+')"></div>').join('');
+    imgs.forEach((im,idx)=>{ boxImageURL(im.id,120).then(u=>{ const el=strip.children[idx]; if(el&&u) el.style.backgroundImage='url('+u+')'; }); }); }
+}
+async function pvSetCover(){
+  const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; const img=d.images[VIEWER_STATE.idx];
+  if(!currentProject.config) currentProject.config={};
+  if(!currentProject.config.photoCovers) currentProject.config.photoCovers={};
+  currentProject.config.photoCovers[VIEWER_STATE.date]=img.id;
+  const cb=document.getElementById('pv-cover'); if(cb){ cb.disabled=true; cb.textContent='Saving…'; }
+  try{ await writeProjectConfig(currentProject.folderId, currentProject.config); }catch(e){}
+  renderViewer(); loadProjectPhotos();
 }
 
 // ══════════════════════════════════════════════
