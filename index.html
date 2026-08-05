@@ -1151,15 +1151,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']}
@@ -1445,6 +1445,7 @@ function pill(status,overdue){
 function isOverdue(r){ if((r['Status']||'').toLowerCase()!=='open') return false; const d=new Date(r['Due Date']); return !isNaN(d)&&d<new Date(); }
 function fmtMoney(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function fmtSigned(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); if(isNaN(n)) return s; return (n>=0?'+':'-')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function impFlag(r){ return (r&&r['Importance']==='High')?'<span title="High importance" style="color:var(--danger);font-weight:800;margin-right:5px">!</span>':''; }
 function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" title="'+esc(fn||'View')+'" href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">'+esc(fn||'View')+'</a>':'—'; }
 function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
 
@@ -1453,7 +1454,7 @@ function renderRFIs(){
   const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
   if(!rows.length){tb.innerHTML=emptyRow(8);document.getElementById('note-rfis').textContent='';return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
   const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
@@ -1464,7 +1465,7 @@ function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,8); }).join('');
 }
 
@@ -1472,7 +1473,7 @@ function renderSubmittals(){
   const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
     return main+verThreadRows('sub',r,i,9);
   }).join('');
 }
@@ -1844,6 +1845,7 @@ function openModal(type){
   currentModal=type;
   document.getElementById('modal-title').textContent=def.title;
   document.getElementById('modal-body').innerHTML=def.html;
+  if(['rfi','co','submittal','payapp'].includes(type)){ document.getElementById('modal-body').insertAdjacentHTML('beforeend','<label style="display:block;margin-top:10px;font-size:14px;font-weight:600;color:var(--danger)"><input type="checkbox" id="f-high" style="margin-right:8px;">Mark as High Importance</label>'); }
   document.querySelectorAll('#modal-body input, #modal-body textarea').forEach(el=>{ if(el.type!=='file') el.value=''; });
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
@@ -1974,6 +1976,7 @@ async function submitForm(){
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
     }
 
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
     if(EXTERNAL){
@@ -2506,7 +2509,7 @@ function renderPayApps(){
         const doc=r['Attachment File ID']?'<a class="attach-link" href="https://app.box.com/file/'+esc(r['Attachment File ID'])+'" target="_blank" rel="noopener">Pay App</a>':'—';
         const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(r['Signed File ID'])+'" target="_blank" rel="noopener">Signed</a>':'';
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">Take Action</button>'+delBtn('pay_apps',idx):'';
-        return '<tr><td>'+esc(r['App #']||'')+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
+        return '<tr><td>'+impFlag(r)+esc(r['App #']||'')+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
       }).join('');
       body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="admin-col">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
     }
