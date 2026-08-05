@@ -403,11 +403,15 @@ export default async (req) => {
     }
     if (op === 'setContactMeta') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
       const sub = String(body.sub || ''); if (!sub) return json({ error: 'sub required' }, 400);
       const store = getStore('profiles');
       const pr = await store.get(sub, { type: 'json' }); if (!pr) return json({ error: 'not found' }, 404);
       if (body.company !== undefined) pr.company = String(body.company).slice(0, 200);
       if (body.role !== undefined) pr.title = String(body.role).slice(0, 200);
+      if (body.phone !== undefined) pr.phone = String(body.phone).slice(0, 60);
+      if (body.email !== undefined) pr.email = String(body.email).slice(0, 200);
       await store.setJSON(sub, pr);
       return json({ ok: true });
     }
