@@ -1887,7 +1887,7 @@ function openModal(type){
   currentModal=type;
   document.getElementById('modal-title').textContent=def.title;
   document.getElementById('modal-body').innerHTML=def.html;
-  if(['rfi','co','submittal','payapp'].includes(type)){ document.getElementById('modal-body').insertAdjacentHTML('beforeend','<label style="display:block;margin-top:10px;font-size:14px;font-weight:600;color:var(--danger)"><input type="checkbox" id="f-high" style="margin-right:8px;">Mark as High Importance</label>'); }
+  if(['rfi','co','submittal','payapp'].includes(type)){ document.getElementById('modal-body').insertAdjacentHTML('beforeend','<label style="display:block;margin-top:10px;font-size:14px;font-weight:600;color:var(--danger)"><input type="checkbox" id="f-high" style="margin-right:8px;">High Importance</label>'); }
   document.querySelectorAll('#modal-body input, #modal-body textarea').forEach(el=>{ if(el.type!=='file') el.value=''; });
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
