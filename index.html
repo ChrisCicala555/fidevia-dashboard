@@ -1298,9 +1298,7 @@ function initWizard(){
   document.getElementById('np-contacts').innerHTML=''; wizAddContact();
   document.getElementById('np-contractors').innerHTML=''; wizAddContractor();
   // milestones
-  document.getElementById('np-milestones').innerHTML = MILESTONE_NAMES.map((n,i)=>
-    '<div style="margin-bottom:12px;"><div class="field-row" style="margin:0;align-items:center;"><div class="field" style="margin:0;flex:1;"><label style="font-size:13px;color:#555;font-weight:600;">'+esc(n)+'</label></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;color:#888;">Contract Date</label><input autocomplete="off" type="date" id="np-ms-'+i+'-contract"></div></div></div>').join('');
+  renderWizMilestones(MILESTONE_NAMES.slice());
   showStatus('new-proj-status','','');
   document.getElementById('new-proj-status').className='status-msg';
   wizShow();
@@ -1358,8 +1356,15 @@ function wizGatherContractors(){
     return { role, name, contract, active:true };
   }).filter(Boolean);
 }
+function wizMsRow(name,contract){
+  return '<div class="ms-row" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px;"><div class="field" style="flex:1.4;margin:0;"><label style="font-size:12px;color:#888;">Milestone</label><input class="ms-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Milestone name"></div><div class="field" style="flex:1;margin:0;"><label style="font-size:12px;color:#888;">Contract Date</label><input class="ms-contract" autocomplete="off" type="date" value="'+esc(contract||'')+'"></div><button type="button" class="btn-secondary" style="padding:9px 12px;" title="Remove" onclick="this.closest(\'.ms-row\').remove()">\u00d7</button></div>';
+}
+function renderWizMilestones(names){
+  document.getElementById('np-milestones').innerHTML='<div id="np-ms-rows">'+(names||[]).map(n=>wizMsRow(n,'')).join('')+'</div><button type="button" class="btn-secondary" style="margin-top:4px;padding:6px 12px;" onclick="addWizMilestone()">+ Add Milestone</button>';
+}
+function addWizMilestone(){ document.getElementById('np-ms-rows').insertAdjacentHTML('beforeend', wizMsRow('','')); }
 function wizGatherMilestones(){
-  return MILESTONE_NAMES.map((n,i)=>({ name:n, baseline:'', contract:wizVal('np-ms-'+i+'-contract') }));
+  return [...document.querySelectorAll('#np-ms-rows .ms-row')].map(r=>({ name:(r.querySelector('.ms-name').value||'').trim(), baseline:'', contract:r.querySelector('.ms-contract').value })).filter(m=>m.name);
 }
 
 async function createProject(){
@@ -1689,10 +1694,12 @@ function closeSchedule(){ document.getElementById('schedule-backdrop').classList
 function renderScheduleEditor(){
   let ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   if(!ms.length) ms=MILESTONE_NAMES.map(n=>({name:n}));
-  document.getElementById('schedule-list').innerHTML=ms.map(m=>'<div style="margin-bottom:10px;" class="sch-row" data-name="'+esc(m.name)+'"><label style="font-size:13px;font-weight:600;color:#555;">'+esc(m.name)+'</label><div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Actual</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="margin:0;"><label style="font-size:11px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div></div></div>').join('');
+  document.getElementById('schedule-list').innerHTML='<div id="sch-rows">'+ms.map(m=>schRow(m)).join('')+'</div><button type="button" class="btn-secondary" style="margin-top:4px;padding:6px 12px;" onclick="addSchRow()">+ Add Milestone</button>';
 }
+function schRow(m){ m=m||{}; return '<div class="sch-row" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px;"><div class="field" style="flex:1.4;margin:0;"><label style="font-size:11px;color:#888;">Milestone</label><input class="sch-name" autocomplete="off" value="'+esc(m.name||'')+'"></div><div class="field" style="flex:1;margin:0;"><label style="font-size:11px;color:#888;">Actual</label><input type="date" class="sch-baseline" value="'+esc(m.baseline||'')+'"></div><div class="field" style="flex:1;margin:0;"><label style="font-size:11px;color:#888;">Contract</label><input type="date" class="sch-contract" value="'+esc(m.contract||'')+'"></div><button type="button" class="btn-secondary" style="padding:9px 12px;" title="Remove" onclick="this.closest(\'.sch-row\').remove()">\u00d7</button></div>'; }
+function addSchRow(){ document.getElementById('sch-rows').insertAdjacentHTML('beforeend', schRow({})); }
 async function saveSchedule(){
-  const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:r.getAttribute('data-name'),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value}));
+  const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:(r.querySelector('.sch-name').value||'').trim(),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value})).filter(m=>m.name);
   const btn=document.getElementById('schedule-save'); btn.disabled=true;
   try{ currentProject.config=currentProject.config||{}; currentProject.config.milestones=rows; await writeProjectConfig(currentProject.folderId,currentProject.config); showStatus('schedule-status','Saved.','success'); renderSchedule(); renderExec(); setTimeout(closeSchedule,700); }
   catch(e){ showStatus('schedule-status','Error: '+e.message,'error'); }
