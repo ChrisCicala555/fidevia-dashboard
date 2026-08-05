@@ -632,8 +632,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
-          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted On</th><th>Cost Impact</th><th>Schedule Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted On</th><th>Cost Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -847,6 +847,17 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="session-backdrop">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-body" style="padding:28px 26px;text-align:center;">
+      <div style="font-family:'Times New Roman',Times,serif;font-size:21px;color:var(--olive-900);font-weight:700;margin-bottom:10px;">Session Expired</div>
+      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 20px;">Your login couldn't be verified — this usually means your session timed out. Please sign in again to continue.</p>
+      <button class="btn-primary" onclick="logoutAuth0()" style="margin-right:8px;">Sign In Again</button>
+      <button class="btn-secondary" onclick="location.reload()">Reload Page</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
@@ -1009,6 +1020,8 @@ function logout(){ sessionStorage.clear(); currentProject=null; showScreen('scre
 // ── EXTERNAL (service-account proxy) ──
 let EXTERNAL = false;
 let IS_ADMIN = false;
+let _sessionShown=false;
+function showSessionExpired(){ if(_sessionShown) return; _sessionShown=true; const el=document.getElementById('session-backdrop'); if(el) el.classList.add('open'); }
 async function proxyCall(op, body){
   async function attempt(fresh){
     const tok = await auth0Client.getTokenSilently(fresh?{cacheMode:'off'}:undefined);
@@ -1018,6 +1031,7 @@ async function proxyCall(op, body){
   }
   let {r,d}=await attempt(false);
   if(r.status===401){ try{ ({r,d}=await attempt(true)); }catch(e){} }
+  if(r.status===401){ showSessionExpired(); throw new Error('Session expired — please sign in again.'); }
   if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
   return d;
 }
@@ -1027,7 +1041,7 @@ function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReade
 async function boxGet(path){
   const t = await ensureToken();
   const r = await fetch('https://api.box.com/2.0/'+path, { headers:{Authorization:'Bearer '+t} });
-  if(r.status===401){ logout(); throw new Error('Unauthorized'); }
+  if(r.status===401){ showSessionExpired(); throw new Error('Unauthorized'); }
   if(!r.ok) throw new Error('Box API '+r.status+': '+path);
   return r.json();
 }
@@ -1434,9 +1448,9 @@ function renderRFIs(){
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
-  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx; const d=r['Schedule Impact (Days)']; const dl=d?(parseFloat(d)>=0?'+'+d:d)+' days':'—';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+esc(dl)+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
-    return main+verThreadRows('co',r,i,9); }).join('');
+  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
+    return main+verThreadRows('co',r,i,8); }).join('');
 }
 
 function renderSubmittals(){
@@ -1747,7 +1761,7 @@ const FORMS = {
   co:{title:'Submit New Change Order',html:`
     <div class="field-row"><div class="field"><label>CO # *</label><input autocomplete="off" id="f-num" placeholder="CO-001"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
-    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div><div class="field"><label>Anticipated Schedule Impact (Days)</label><input autocomplete="off" type="number" id="f-sched" placeholder="2"></div></div>
+    <div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
@@ -1902,8 +1916,8 @@ async function submitForm(){
     } else if(currentModal==='co'){
 
       if(!v('f-num')||!v('f-subject')) throw new Error('CO # and Description are required.');
-      newRow={'CO #':v('f-num'),'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':v('f-sched'),'Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName};
-      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Schedule Impact',newRow['Schedule Impact (Days)']+' days'],['Status',newRow['Status']]]);
+      newRow={'CO #':v('f-num'),'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName};
+      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]]);
     } else if(currentModal==='submittal'){
 
       if(!v('f-num')||!v('f-subject')||!v('f-by')) throw new Error('Submittal #, Description, and Submitted By are required.');
