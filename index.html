@@ -525,7 +525,8 @@
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Logs</div>
     <div class="nav-section-label">Records</div>
     <div class="nav-item nav-contacts" data-section="contacts">Contacts Directory</div>
-    <div class="nav-item" data-section="documents">Documents</div>
+    <div class="nav-item" data-section="documents">Drawings &amp; Specifications</div>
+    <div class="nav-item" data-section="gendocs">Documents</div>
     <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
     <div class="nav-item" data-section="payapps">Payment Applications</div>
     <div class="nav-section-label admin-only">Admin</div>
@@ -691,13 +692,26 @@
       <!-- DOCUMENTS -->
       <div class="section" id="section-documents">
         <div class="page-title-row">
-          <h2>Document index</h2>
+          <h2>Drawings &amp; Specifications</h2>
           <button class="btn-add" onclick="openModal('document')">+ Upload Document</button>
         </div>
         <div class="panel">
           <div class="panel-header">Drawings, specs &amp; contracts</div>
           <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- DOCUMENTS (general) -->
+      <div class="section" id="section-gendocs">
+        <div class="page-title-row">
+          <h2>Documents</h2>
+          <button class="btn-add" onclick="openModal('gendocument')">+ Upload Document</button>
+        </div>
+        <div class="panel">
+          <div class="panel-header">Project documents</div>
+          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-gendocs"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1093,7 +1107,7 @@ async function findOrCreateFolder(name, parentId){
 const ITEM_FOLDER_LABEL={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'Pay App'};
 function itemFolderName(key, number){
   let n=String(number==null?'':number).replace(/[\\/]/g,'-').trim();
-  if(key==='docs') return n||'Document';
+  if(key==='docs'||key==='gendocs') return n||'Document';
   const lab=ITEM_FOLDER_LABEL[key]||'';
   return (lab?lab+' #':'')+n;
 }
@@ -1147,7 +1161,8 @@ const MODULES = {
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
   pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
-  board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']}
+  board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
+  gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']}
 };
 
 // ── PICKER ──
@@ -1240,7 +1255,7 @@ async function openProject(folderId, name){
   showScreen('screen-dashboard');
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
-  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11') } };
+  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12') } };
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
   try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
   try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
@@ -1377,9 +1392,9 @@ async function createProject(){
 
 // ── DASHBOARD ──
 async function loadDashboard(){
-  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board'];
+  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board','gendocs'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
-  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps','contacts'] : allKeys;
+  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps','contacts','gendocs'] : allKeys;
   await Promise.allSettled(keys.map(k=>loadModule(k)));
   renderAll();
 }
@@ -1400,7 +1415,7 @@ function wrapTables(){
   });
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); wrapTables(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); wrapTables(); }
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
@@ -1537,21 +1552,23 @@ function _docVersions(r){
   const cur={ v:r['Version']||String(pri.length+1), fileId:r['File ID']||r['Attachment File ID']||'', fileName:r['File Name']||r['Attachment Name']||'', date:r['Date']||'' };
   return [cur].concat(pri.slice().reverse());
 }
-function renderDocuments(){
-  const rows=allData.docs||[], tb=document.getElementById('tbody-documents');
+function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
+function renderGenDocs(){ renderDocsTable('gendocs','tbody-gendocs'); }
+function renderDocsTable(key, tbodyId){
+  const rows=allData[key]||[], tb=document.getElementById(tbodyId); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
     const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime'));
-    const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\'docs\','+i+')">'
-      +'<td><span class="thread-arrow" id="arw-docs-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
+    const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\''+key+'\','+i+')">'
+      +'<td><span class="thread-arrow" id="arw-'+key+'-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
       +'<td>'+esc(r['Category'])+'</td><td>'+esc(r['Version']||'')+'</td>'
       +'<td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Visible To'])+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
-      +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn('docs',i)+'</td></tr>';
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn(key,i)+'</td></tr>';
     const vs=_docVersions(r);
     const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')+'</div>';
-    const newBtn = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();uploadNewVersion(\'docs\','+i+')">Upload New Version</button>' : '';
-    const detail='<tr class="thread-detail'+(ext?' hide-external':'')+'" id="td-docs-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'+vs.map(line).join('')+newBtn+'</td></tr>';
+    const newBtn = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();uploadNewVersion(\''+key+'\','+i+')">Upload New Version</button>' : '';
+    const detail='<tr class="thread-detail'+(ext?' hide-external':'')+'" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'+vs.map(line).join('')+newBtn+'</td></tr>';
     return main+detail;
   }).join('');
 }
@@ -1798,6 +1815,11 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
     <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`},
+  gendocument:{title:'Upload Document',html:`
+    <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Permit set, RFI response packet…"></div>
+    <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>General</option><option>Permits</option><option>Reports</option><option>Correspondence</option><option>Closeout</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 1"></div></div>
+    <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
+    <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`},
   meeting:{title:'Log Meeting Minutes',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Meeting Type</label><input autocomplete="off" id="f-mtype" placeholder="Job Conference, OAC…"></div></div>
     <div class="field"><label>Attendees</label><input autocomplete="off" id="f-attendees" placeholder="Names / companies present"></div>
@@ -1825,7 +1847,7 @@ function openModal(type){
   document.querySelectorAll('#modal-body input, #modal-body textarea').forEach(el=>{ if(el.type!=='file') el.value=''; });
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
-  if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
+  if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
   if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
   if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
@@ -1881,7 +1903,7 @@ async function submitForm(){
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
   try{
-    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',payapp:'pay_apps',meeting:'meetings',board:'board'};
+    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',gendocument:'gendocs',payapp:'pay_apps',meeting:'meetings',board:'board'};
     const key=keyMap[currentModal];
     let folderId=currentProject.folders[key];
     if(!folderId){
@@ -1894,7 +1916,7 @@ async function submitForm(){
     if(fi&&fi.files.length>0){
       let uploadFolderId=folderId;
       const _num=(currentModal==='document')?v('f-name'):v('f-num');
-      if(['rfi','co','sub','docs','pay_apps'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
+      if(['rfi','co','sub','docs','pay_apps','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
       prog.textContent='Uploading file to Box…';
       const up=await boxUploadBinary(fi.files[0],uploadFolderId);
       const entry=up.entries?up.entries[0]:up;
@@ -1946,7 +1968,7 @@ async function submitForm(){
       const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
       const remain=(contract+cosApp)-prev-req;
       newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
-    } else if(currentModal==='document'){
+    } else if(currentModal==='document'||currentModal==='gendocument'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
@@ -2571,7 +2593,7 @@ async function uploadNewVersion(key, rowIdx){
     const existing=await findFile(fid,mod.log);
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
     const row=rows[rowIdx]; if(!row) return;
-    const _num=(key==='docs')?row['Document Name']:(row['RFI #']||row['CO #']||row['Submittal #']||row['App #']||''); const _upf=await itemFolderId(key,fid,_num); const up=await boxUploadBinary(file,_upf);
+    const _num=(key==='docs'||key==='gendocs')?row['Document Name']:(row['RFI #']||row['CO #']||row['Submittal #']||row['App #']||''); const _upf=await itemFolderId(key,fid,_num); const up=await boxUploadBinary(file,_upf);
     const entry=up.entries?.[0]||up;
     if(key==='docs'){
       const oldFileId=row['File ID']||'', oldName=row['File Name']||'', oldV=row['Version']||'1', oldDate=row['Date']||'';
