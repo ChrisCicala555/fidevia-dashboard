@@ -388,6 +388,29 @@ export default async (req) => {
       return json({ ok: true });
     }
 
+    if (op === 'allContacts') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const store = getStore('profiles');
+      const out = [];
+      try {
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '' }); } catch (e) {}
+        }
+      } catch (e) {}
+      out.sort((a, b) => a.name.localeCompare(b.name));
+      return json({ contacts: out });
+    }
+    if (op === 'setContactMeta') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const sub = String(body.sub || ''); if (!sub) return json({ error: 'sub required' }, 400);
+      const store = getStore('profiles');
+      const pr = await store.get(sub, { type: 'json' }); if (!pr) return json({ error: 'not found' }, 404);
+      if (body.company !== undefined) pr.company = String(body.company).slice(0, 200);
+      if (body.role !== undefined) pr.title = String(body.role).slice(0, 200);
+      await store.setJSON(sub, pr);
+      return json({ ok: true });
+    }
     if (op === 'accountEmails') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');

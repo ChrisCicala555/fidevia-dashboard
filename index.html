@@ -180,6 +180,7 @@
   .attach-link:hover{background:var(--olive-700); color:#fff;}
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
   .btn-invite:hover{background:var(--olive-700);color:#fff;}
+  .cd-inp{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;font-family:inherit;width:130px;color:var(--ink);background:var(--white);}
   .note{color:var(--muted); font-size:13px; padding:14px 18px; border-top:1px solid var(--border); background:var(--cream);}
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
@@ -384,6 +385,7 @@
         <button class="btn-logout" onclick="openAccount()">My Account</button>
         <button class="btn-logout" onclick="openFeedback()">Report a Bug / Feedback</button>
         <button class="btn-logout admin-only" onclick="openAdmin()">Manage External Access</button>
+        <button class="btn-logout admin-only" onclick="openContactDir()">Contact Directory</button>
         <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
       </div>
     </div>
@@ -951,6 +953,17 @@
     <button onclick="pvNav(1)" class="pv-arrow" style="right:20px;">›</button>
   </div>
   <div id="pv-thumbs" style="display:flex;gap:6px;padding:12px 20px;overflow-x:auto;justify-content:center;"></div>
+</div>
+
+<div class="modal-backdrop" id="contactdir-backdrop" onclick="if(event.target===this)closeContactDir()">
+  <div class="modal" style="max-width:840px;">
+    <div class="modal-header"><h3>Contact Directory</h3><button class="modal-close" onclick="closeContactDir()">✕</button></div>
+    <div class="modal-body">
+      <p class="form-desc" style="margin:0 0 12px;">Everyone who has created a dashboard account, alphabetical by name. Company and role are editable and save automatically.</p>
+      <input id="cd-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContactDir()" style="width:100%;margin-bottom:12px;">
+      <div id="cd-list"><div style="color:var(--muted)">Loading…</div></div>
+    </div>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="account-backdrop" onclick="if(event.target===this)closeAccount()">
@@ -1906,6 +1919,34 @@ function closeModal(){ document.getElementById('modal-backdrop').classList.remov
 function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-backdrop')) closeModal(); }
 function openFeedback(){ const m=document.getElementById('fb-message'); if(m) m.value=''; const s=document.getElementById('fb-status'); if(s){ s.textContent=''; s.className='status-msg'; } document.getElementById('feedback-backdrop').classList.add('open'); }
 function closeFeedback(){ document.getElementById('feedback-backdrop').classList.remove('open'); }
+let CONTACT_DIR=[];
+async function openContactDir(){
+  document.querySelectorAll('.picker-actions.open').forEach(x=>x.classList.remove('open'));
+  document.getElementById('contactdir-backdrop').classList.add('open');
+  const list=document.getElementById('cd-list'); list.innerHTML='<div style="color:var(--muted)">Loading…</div>';
+  document.getElementById('cd-search').value='';
+  try{ const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir(); }
+  catch(e){ list.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
+}
+function closeContactDir(){ document.getElementById('contactdir-backdrop').classList.remove('open'); }
+function renderContactDir(){
+  const q=(document.getElementById('cd-search').value||'').trim().toLowerCase();
+  let list=CONTACT_DIR;
+  if(q) list=list.filter(c=>((c.name||'')+' '+(c.company||'')+' '+(c.email||'')+' '+(c.role||'')).toLowerCase().includes(q));
+  const el=document.getElementById('cd-list');
+  if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">'+(q?'No contacts match your search.':'No accounts yet.')+'</div>'; return; }
+  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
+    +list.map(c=>{ const idx=CONTACT_DIR.indexOf(c);
+      return '<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:6px;font-weight:600;">'+esc(c.name)+'</td>'
+        +'<td style="padding:6px;"><input class="cd-inp" value="'+esc(c.company||'')+'" onchange="saveContactMeta('+idx+',\'company\',this.value)"></td>'
+        +'<td style="padding:6px;"><input class="cd-inp" value="'+esc(c.role||'')+'" onchange="saveContactMeta('+idx+',\'role\',this.value)"></td>'
+        +'<td style="padding:6px;">'+esc(c.email)+'</td><td style="padding:6px;white-space:nowrap;">'+esc(c.phone||'')+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+async function saveContactMeta(idx, field, val){
+  const c=CONTACT_DIR[idx]; if(!c) return; c[field]=val;
+  try{ await proxyCall('setContactMeta',{sub:c.sub, [field]:val}); }catch(e){ alert('Could not save: '+e.message); }
+}
 async function openAccount(){
   document.getElementById('account-backdrop').classList.add('open');
   const body=document.getElementById('account-body'); body.innerHTML='<div style="color:var(--muted)">Loading…</div>';
