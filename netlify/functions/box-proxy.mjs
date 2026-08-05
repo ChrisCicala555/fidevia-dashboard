@@ -161,11 +161,15 @@ export default async (req) => {
       if (op === 'adminGrant') {
         const email = (body.email || '').toLowerCase().trim();
         if (!email || !body.projectId) return json({ error: 'email and projectId required' }, 400);
+        const company = (body.company || '').trim();
+        const role = (body.role || '').trim();
         const store = grantsStore();
         const g = (await store.get(email, { type: 'json' })) || { projects: [] };
-        if (!g.projects.some(p => String(p.id) === String(body.projectId))) g.projects.push({ id: String(body.projectId), name: body.projectName || '' });
+        const ex = g.projects.find(p => String(p.id) === String(body.projectId));
+        if (ex) { ex.name = body.projectName || ex.name; ex.company = company || ex.company || ''; ex.role = role || ex.role || ''; }
+        else { g.projects.push({ id: String(body.projectId), name: body.projectName || '', company, role }); }
         await store.setJSON(email, g);
-        try { await addContactToProject(H, String(body.projectId), contactFromSnap(null, email)); } catch(e) {}
+        try { const c = contactFromSnap(null, email); if (company) c['Company'] = company; if (role) c['Role'] = role; await addContactToProject(H, String(body.projectId), c); } catch(e) {}
         try { await sendGrantEmail(email, body.projectName||''); } catch(e) {}
         return json({ ok: true });
       }
@@ -236,7 +240,7 @@ export default async (req) => {
       const d = await r.json();
       const existing = new Map((d.entries || []).filter(e => e.type === 'folder').map(e => [String(e.id), e.name]));
       const archived = new Set(await getArchivedIds());
-      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name }));
+      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: g.role || '' }));
       return json({ projects: mine });
     }
 
@@ -395,6 +399,19 @@ export default async (req) => {
         }
       } catch (e) {}
       return json({ emails: [...new Set(emails)] });
+    }
+    if (op === 'projectCompanies') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pid = String(body.projectId || ''); if (!pid) return json({ companies: [] });
+      const companies = new Set();
+      try {
+        const items = (await (await fetch(`https://api.box.com/2.0/folders/${pid}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+        const cfgFile = items.find(e => e.type === 'file' && e.name === 'Project Info.json');
+        if (cfgFile) { try { const cfg = JSON.parse(await (await fetch(`https://api.box.com/2.0/files/${cfgFile.id}/content`, { headers: H })).text()); (cfg.contractors || []).forEach(c => { if (c.name) companies.add(String(c.name).trim()); }); } catch(e) {} }
+        const contF = items.find(e => e.type === 'folder' && e.name.startsWith('05'));
+        if (contF) { const cit = (await (await fetch(`https://api.box.com/2.0/folders/${contF.id}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || []; const csv = cit.find(e => e.type === 'file' && e.name.toLowerCase().endsWith('.csv')); if (csv) { const parsed = parseCSVServer(await (await fetch(`https://api.box.com/2.0/files/${csv.id}/content`, { headers: H })).text()); parsed.rows.forEach(r => { if (r['Company']) companies.add(String(r['Company']).trim()); }); } }
+      } catch(e) {}
+      return json({ companies: [...companies].filter(Boolean) });
     }
     if (op === 'getArchived') {
       return json({ ids: await getArchivedIds() });
