@@ -1419,8 +1419,43 @@ function wrapTables(){
     t.parentNode.insertBefore(w,t); w.appendChild(t);
   });
 }
+function makeSortableTables(){
+  document.querySelectorAll('.panel table thead th').forEach(function(th){
+    if(th._sortWired) return; th._sortWired=true;
+    if(th.classList.contains('admin-col')) return;
+    if(/^(actions|file|docs?)$/i.test((th.textContent||'').trim()) && /actions/i.test(th.textContent||'')) return;
+    th.style.cursor='pointer'; th.title='Click to sort';
+    th.addEventListener('click', function(){ sortByHeader(th); });
+  });
+}
+function sortByHeader(th){
+  const headRow=th.parentElement; const col=[...headRow.children].indexOf(th);
+  const table=th.closest('table'); const tbody=table&&table.querySelector('tbody'); if(!tbody) return;
+  const groups=[]; let cur=null;
+  [...tbody.children].forEach(function(row){
+    if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
+    else { cur=[row]; groups.push(cur); }
+  });
+  const sortable=groups.filter(g=>!g[0].classList.contains('empty-row')&&!g[0].classList.contains('loading-row'));
+  if(sortable.length<2){ return; }
+  const dir = th._dir==='asc' ? 'desc' : 'asc'; th._dir=dir;
+  const cellText=g=>{ const c=g[0].children[col]; return c?c.textContent.trim():''; };
+  const asNum=s=>{ const n=parseFloat(String(s).replace(/[^0-9.\-]/g,'')); return (String(s).match(/[0-9]/)&&!isNaN(n))?n:null; };
+  const asDate=s=>{ if(!/\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}/.test(s)) return null; const t=Date.parse(s); return isNaN(t)?null:t; };
+  sortable.sort(function(a,b){
+    const va=cellText(a), vb=cellText(b);
+    const da=asDate(va), db=asDate(vb); let cmp;
+    if(da!=null&&db!=null) cmp=da-db;
+    else { const na=asNum(va), nb=asNum(vb); if(na!=null&&nb!=null) cmp=na-nb; else cmp=va.localeCompare(vb, undefined, {numeric:true}); }
+    return dir==='asc'?cmp:-cmp;
+  });
+  [...headRow.children].forEach(h=>{ const a=h.querySelector('.sort-arrow'); if(a) a.remove(); });
+  const arw=document.createElement('span'); arw.className='sort-arrow'; arw.textContent=dir==='asc'?' \u25b2':' \u25bc'; arw.style.fontSize='9px';
+  th.appendChild(arw);
+  sortable.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
+}
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); wrapTables(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); wrapTables(); makeSortableTables(); }
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
