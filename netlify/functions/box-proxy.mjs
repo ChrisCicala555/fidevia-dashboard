@@ -100,6 +100,7 @@ async function sendGrantEmail(email, projectName){
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
+const SYSTEM_FOLDERS = ['Contact Directory Snapshots'];
 async function callerCompanyFor(t, grants, kind, id) {
   const gidset = new Set(grants.map(g => String(g.id)));
   let pid = null;
@@ -162,7 +163,7 @@ export default async (req) => {
       if (op === 'adminListProjects') {
         const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
         const d = await r.json();
-        return json({ projects: (d.entries || []).filter(e => e.type === 'folder').map(e => ({ id: e.id, name: e.name })) });
+        return json({ projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
       }
       if (op === 'adminListGrants') {
         const store = grantsStore();
@@ -200,7 +201,7 @@ export default async (req) => {
     if (op === 'listAllProjectNames') {
       const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
       const d = await r.json();
-      return json({ projects: (d.entries || []).filter(e => e.type === 'folder').map(e => ({ id: e.id, name: e.name })) });
+      return json({ projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
     }
 
     // ---- REQUEST ACCESS to a project (any authenticated user) ----
@@ -251,7 +252,7 @@ export default async (req) => {
       const grants = await getGrants(who.email);
       const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
       const d = await r.json();
-      const existing = new Map((d.entries || []).filter(e => e.type === 'folder').map(e => [String(e.id), e.name]));
+      const existing = new Map((d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => [String(e.id), e.name]));
       const archived = new Set(await getArchivedIds());
       const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: g.role || '' }));
       return json({ projects: mine });

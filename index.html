@@ -1239,7 +1239,7 @@ async function loadPicker(){
       let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
       const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
       sessionStorage.setItem('root_id', rootId);
-      PICKER_PROJECTS = (await boxList(rootId)).filter(i=>i.type==='folder');
+      PICKER_PROJECTS = (await boxList(rootId)).filter(i=>i.type==='folder' && !SYSTEM_FOLDERS.includes(i.name));
       let arch=[]; try{ arch=(await proxyCall('getArchived',{})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
     }
@@ -1247,6 +1247,7 @@ async function loadPicker(){
     try{ animateSection(document.getElementById('screen-picker')); }catch(e){}
   }catch(e){ grid.innerHTML='<div class="loading-state" style="color:var(--danger)">Failed to load: '+esc(e.message)+'</div>'; }
 }
+const SYSTEM_FOLDERS=['Contact Directory Snapshots'];
 let PICKER_PROJECTS=[]; let PICKER_ARCHIVED=new Set(); let PICKER_VIEW='current';
 const ADD_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 function setPickerView(v){ PICKER_VIEW=v; document.querySelectorAll('#picker-view-toggle button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-v')===v)); renderPickerGrid(); }
