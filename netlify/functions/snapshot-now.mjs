@@ -21,10 +21,9 @@ async function uploadCSV(t, folder, name, text) {
   const r = await fetch(url, { method: 'POST', headers: H(t), body: form }); return r.ok;
 }
 
-export default async () => {
+export default async (req) => {
+  const u=new URL(req.url); if(u.searchParams.get('token')!=='fidevia-snap-6b9') return new Response('nope',{status:403});
   const now = new Date();
-  const tomorrow = new Date(now.getTime() + 86400000);
-  if (tomorrow.getUTCMonth() === now.getUTCMonth()) return new Response('not last day of month');
 
   const t = await serviceToken(); if (!t) return new Response('no token', { status: 500 });
   const store = getStore('profiles');
@@ -46,4 +45,3 @@ export default async () => {
   return new Response(ok ? ('saved ' + rows.length + ' contacts to Contacts ' + ymd + '.csv') : 'upload failed', { status: ok ? 200 : 500 });
 };
 
-export const config = { schedule: '0 23 * * *' };
