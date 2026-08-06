@@ -99,6 +99,19 @@ async function sendGrantEmail(email, projectName){
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
+const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
+async function callerCompanyFor(t, grants, kind, id) {
+  const gidset = new Set(grants.map(g => String(g.id)));
+  let pid = null;
+  if (gidset.has(String(id))) pid = String(id);
+  else {
+    const path = kind === 'folder' ? `folders/${id}?fields=path_collection` : `files/${id}?fields=path_collection`;
+    const r = await fetch('https://api.box.com/2.0/' + path, { headers: { Authorization: 'Bearer ' + t } });
+    if (r.ok) { const d = await r.json(); const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id)); pid = ids.find(x => gidset.has(x)); }
+  }
+  const g = grants.find(x => String(x.id) === String(pid));
+  return g ? (g.company || '') : '';
+}
 
 // --- Verify a folder/file lives inside one of the granted project folders ---
 async function withinGranted(t, grantedIds, kind, id) {
@@ -245,7 +258,8 @@ export default async (req) => {
     }
 
     // ---- DATA OPS: enforce grant scope for non-admins ----
-    const grantedIds = who.isAdmin ? null : new Set((await getGrants(who.email)).map(p => String(p.id)));
+    const _grants = who.isAdmin ? [] : await getGrants(who.email);
+    const grantedIds = who.isAdmin ? null : new Set(_grants.map(p => String(p.id)));
     const guardFolder = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'folder', fid));
     const guardFile = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'file', fid));
 
@@ -257,8 +271,18 @@ export default async (req) => {
     }
     if (op === 'readText') {
       if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
+      let fname = '';
+      try { const fi = await (await fetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}?fields=name`, { headers: H })).json(); fname = fi.name || ''; } catch (e) {}
       const r = await fetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H });
-      return json({ text: r.ok ? await r.text() : '' });
+      let text = r.ok ? await r.text() : '';
+      const field = PRIVATE_CSV[fname];
+      if (field && !who.isAdmin) {
+        const company = (await callerCompanyFor(t, _grants, 'file', body.fileId)).trim().toLowerCase();
+        const parsed = parseCSVServer(text);
+        const rows = company ? parsed.rows.filter(row => String(row[field] || '').trim().toLowerCase() === company) : [];
+        text = toCSVServer(parsed.headers, rows);
+      }
+      return json({ text });
     }
     if (op === 'downloadUrl') {
       if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
@@ -344,6 +368,12 @@ export default async (req) => {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, headers, row } = body;
       if (!Array.isArray(headers) || typeof row !== 'object') return json({ error: 'headers[] and row{} required' }, 400);
+      const pfield = PRIVATE_CSV[filename];
+      if (pfield && !who.isAdmin) {
+        const company = await callerCompanyFor(t, _grants, 'folder', folderId);
+        if (!company) return json({ error: 'Your access is not assigned to a company for this project.' }, 403);
+        row[pfield] = company;
+      }
       const rowLine = headers.map(h => csvEsc(row[h])).join(',');
       const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       const items = lr.ok ? ((await lr.json()).entries || []) : [];
