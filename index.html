@@ -55,6 +55,10 @@
   .btn-logout:hover{background:var(--khaki-100);}
   .picker-heading{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:22px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:var(--olive-900); margin-bottom:6px; text-align:center;}
   .picker-sub{font-size:14px; color:var(--muted); margin-bottom:20px; text-align:center;}
+  .picker-crest{display:flex; align-items:center; justify-content:center; gap:12px; margin:2px 0 4px;}
+  .picker-crest::before,.picker-crest::after{content:""; height:1px; width:46px; background:var(--khaki-300);}
+  .picker-leaf{color:var(--olive-700); font-size:14px; line-height:1;}
+  .picker-tag{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:var(--khaki-300); text-align:center; margin:0 0 24px;}
   .picker-view-toggle{display:inline-flex; align-self:center; background:var(--khaki-100); border-radius:8px; padding:3px; margin:0 auto 26px; gap:2px;}
   .picker-view-toggle button{border:none; background:none; padding:7px 18px; font-size:13px; font-weight:600; color:var(--muted); cursor:pointer; border-radius:6px; font-family:inherit;}
   .picker-view-toggle button.active{background:var(--olive-700); color:#fff;}
@@ -73,7 +77,8 @@
   .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
   .project-card .pname{font-size:16px; font-weight:700; color:var(--olive-900); margin-bottom:4px;}
   .project-card .psub{font-size:13px; color:var(--muted); margin-bottom:16px;}
-  .project-card .popen{display:inline-block; background:var(--olive-700); color:#fff; font-size:12px; font-weight:600; padding:6px 14px; border-radius:4px;}
+  .project-card .popen{display:inline-block; background:var(--olive-700); color:#fff; font-size:12px; font-weight:600; padding:6px 14px; border-radius:4px; transition:background .15s;}
+  .project-card:hover .popen{background:var(--olive-900);}
   .add-project-card{background:var(--white); border:2px dashed var(--border); border-radius:8px; padding:22px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:14px; font-weight:600; gap:8px; min-height:130px; transition:background 0.15s,border-color 0.15s;}
   .add-project-card:hover{background:var(--khaki-100); border-color:var(--khaki-300);}
   .loading-state{color:var(--muted); font-size:15px; text-align:center; padding:40px;}
@@ -394,6 +399,8 @@
     </div>
   </div>
   <h2 class="picker-heading">Select a project</h2>
+  <div class="picker-crest"><span class="picker-leaf">❦</span></div>
+  <p class="picker-tag">Construction Management &amp; Consulting</p>
   <p class="picker-sub"></p>
   <div id="picker-view-toggle" class="picker-view-toggle" style="display:none;">
     <button class="active" data-v="current" onclick="setPickerView('current')">Current Projects</button>
