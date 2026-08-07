@@ -577,6 +577,7 @@
           <div class="viewer-toggle">
             <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
             <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+            <select id="viewer-company" style="display:none;max-width:170px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);" onchange="setViewerCompany(this.value)"></select>
           </div>
           <div class="account-chip" onclick="openAccount()" title="My Account">
             <img id="auth0-user-avatar" src="" style="display:none;width:26px;height:26px;border-radius:50%;">
@@ -1601,7 +1602,31 @@ function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
   if(!rows.length){tb.innerHTML=emptyRow(9);return;}
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
-  tb.innerHTML=rows.map((r,i)=>'<tr><td>'+esc(r['Name'])+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Role'])+'</td><td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>').join('');
+  const editCell=(i,f,v,w)=> IS_ADMIN
+    ? '<td><input class="cd-inp" style="width:'+w+'px" value="'+esc(v||'')+'" onchange="saveContactField('+i+',\''+f+'\',this.value)"></td>'
+    : '<td>'+esc(v||'')+'</td>';
+  // group indexes by company (preserve original index for actions)
+  const groups={};
+  rows.forEach((r,i)=>{ const c=(r['Company']||'').trim()||'— No Company —'; (groups[c]=groups[c]||[]).push(i); });
+  const companies=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+  const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
+  let html='';
+  if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
+  companies.forEach(c=>{
+    html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;padding:10px 14px 5px;">'+esc(c)+'</td></tr>';
+    groups[c].forEach(i=>{ const r=rows[i];
+      html+='<tr><td>'+esc(r['Name'])+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
+    });
+  });
+  tb.innerHTML=html;
+}
+async function saveContactField(i, field, val){
+  const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
+  const cur=allData.contacts[i]; if(!cur) return;
+  cur[field]=val;
+  const existing=await findFile(fid,mod.log);
+  await boxUploadText(mod.log,toCSV(mod.headers,allData.contacts),fid,existing?existing.id:null);
+  renderContacts();
 }
 let ACCOUNT_EMAILS=new Set();
 function accountCell(r){
@@ -1665,14 +1690,14 @@ function _docVersions(r){
 function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
 function renderGenDocs(){ renderDocsTable('gendocs','tbody-gendocs'); }
 function renderContractorDaily(){
-  const rows=allData.contractor_daily||[], tb=document.getElementById('tbody-cdaily'); if(!tb) return;
+  const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
   tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Weather'])+'</td><td>'+esc(r['Crew Count'])+'</td><td>'+esc(r['Work Performed'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
   }).join('');
 }
 function renderPayrolls(){
-  const rows=allData.payrolls||[], tb=document.getElementById('tbody-payrolls'); if(!tb) return;
+  const rows=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(6);return;}
   tb.innerHTML=withIdxSorted(rows,'Week Ending').map(({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Week Ending']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Payroll #'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('payrolls',i)+'</td></tr>';
@@ -2395,15 +2420,30 @@ function navTo(sec){
 }
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
+let VIEWER_COMPANY='';
 function setViewer(mode){
   if(EXTERNAL) mode='external';
   document.body.classList.toggle('external-mode',mode==='external');
   document.getElementById('btn-internal').classList.toggle('active',mode==='internal');
   document.getElementById('btn-external').classList.toggle('active',mode==='external');
+  const vc=document.getElementById('viewer-company');
+  if(vc && !EXTERNAL){
+    if(mode==='external'){
+      const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
+      vc.innerHTML='<option value="">All companies</option>'+cts.map(c=>'<option value="'+esc(c.name)+'"'+(VIEWER_COMPANY===c.name?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+      vc.style.display='inline-block';
+    } else { vc.style.display='none'; VIEWER_COMPANY=''; }
+  }
   if(mode==='external'){
     const a=document.querySelector('.nav-item.active');
     if(a&&(a.classList.contains('nav-budget')||a.classList.contains('nav-contacts')||a.classList.contains('nav-dailylogs'))) navTo('overview');
   }
+  renderAll();
+}
+function setViewerCompany(v){ VIEWER_COMPANY=v||''; renderAll(); }
+function viewerFilter(rows, field){
+  if(EXTERNAL || !document.body.classList.contains('external-mode') || !VIEWER_COMPANY) return rows;
+  return rows.filter(r=>String(r[field]||'').trim().toLowerCase()===VIEWER_COMPANY.trim().toLowerCase());
 }
 
 function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
@@ -2700,7 +2740,8 @@ function renderPayApps(){
   const cfg=(currentProject&&currentProject.config)||{};
   const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
   const norm=s=>(s||'').trim().toLowerCase();
-  const groups=contractors.map(c=>({name:c.name,role:c.role||'',rows:rows.filter(r=>norm(r['Contractor'])===norm(c.name))}));
+  let groups=contractors.map(c=>({name:c.name,role:c.role||'',rows:rows.filter(r=>norm(r['Contractor'])===norm(c.name))}));
+  if(!EXTERNAL && document.body.classList.contains('external-mode') && VIEWER_COMPANY){ groups=groups.filter(g=>norm(g.name)===norm(VIEWER_COMPANY)); }
   const known=new Set(contractors.map(c=>norm(c.name)));
   const other=rows.filter(r=>!known.has(norm(r['Contractor'])));
   if(other.length) groups.push({name:'Other / Unassigned',role:'',rows:other});
