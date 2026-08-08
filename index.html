@@ -1416,7 +1416,7 @@ function wizShow(){
   document.getElementById('wiz-progress').innerHTML = WIZ_LABELS.map((l,i)=>{ const n=i+1; const on=n===WIZ_STEP, done=n<WIZ_STEP; return '<span style="padding:4px 10px;border-radius:4px;background:'+(on?'var(--olive-700)':done?'var(--khaki-300)':'var(--khaki-100)')+';color:'+(on?'#fff':'var(--muted)')+';">'+n+'. '+l+'</span>'; }).join('');
 }
 function wizGo(step){ WIZ_STEP=step; wizShow(); }
-function wfSyncWizardPeople(){ try{ const names=wizGatherContacts().map(c=>c['Name']).filter(Boolean); const dl=document.getElementById('npwf-people'); if(dl) dl.innerHTML=names.map(n=>'<option value="'+esc(n)+'">').join(''); }catch(e){} }
+function wfSyncWizardPeople(){ try{ const cs=wizGatherContacts().filter(c=>c['Name']); const dl=document.getElementById('npwf-people'); if(dl) dl.innerHTML=cs.map(c=>'<option value="'+esc(c['Name'])+'"'+(c['Company']?' label="'+esc(c['Name']+' — '+c['Company'])+'"':'')+'>').join(''); }catch(e){} }
 function wizNav(dir){
   if(dir>0 && WIZ_STEP===1 && !wizVal('np-name')){ showStatus('new-proj-status','Project name is required.','error'); return; }
   showStatus('new-proj-status','',''); document.getElementById('new-proj-status').className='status-msg';
@@ -1457,7 +1457,7 @@ function wfBlock(prefix,key,label,steps){
 function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false)); }
 function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
-  const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>'<option value="'+esc(p)+'">').join('')+'</datalist>';
+  const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
   el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,(workflows&&workflows[k])||(WF_DEFAULTS[k]||[]).map(n=>({name:n,person:'',parallel:false})))).join('');
 }
 function wfGather(prefix){
@@ -1469,7 +1469,7 @@ function wfGather(prefix){
 }
 function loadWorkflowSettings(){
   const wf=(currentProject&&currentProject.config&&currentProject.config.workflows)||null;
-  const people=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean);
+  const people=(allData.contacts||[]).filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||''}));
   wfRenderAll('wfs','wf-settings-body',wf,people);
 }
 async function saveWorkflowSettings(){
@@ -2966,6 +2966,11 @@ function _versions(r){
   return h;
 }
 const WF_KEYMAP={rfi:'rfi',co:'co',sub:'sub',pay_apps:'payapp'};
+function wfCompanyOf(person){
+  if(!person) return '';
+  const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===String(person).trim().toLowerCase());
+  return (c&&c['Company'])?c['Company']:'';
+}
 function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
 function wfIsDone(r){ return String(r['Workflow Status']||'').toLowerCase()==='complete'; }
@@ -2984,12 +2989,12 @@ function wfProgressHTML(key,r,i){
     const mark = isDone?'\u2713':(isCur?'\u25cf':'\u25cb');
     return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
-      +(s.person?'<span style="color:var(--muted);">— '+esc(s.person)+'</span>':'')
+      +(s.person?'<span style="color:var(--muted);">— '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +'</div>';
   }).join('');
   const status = done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
-    : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>s.person||s.name).join(', '))+'</span>';
+    : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
   const btn = (!done && !EXTERNAL) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();wfAdvance(\''+key+'\','+i+')">Approve Step &rarr;</button>' : '';
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
