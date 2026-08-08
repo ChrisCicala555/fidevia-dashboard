@@ -453,6 +453,12 @@
 
     <!-- STEP 5: OPTIONS -->
     <div class="wiz-step" data-step="5" style="display:none;">
+      <h3 style="font-size:16px;margin:0 0 6px;">Review Workflows</h3>
+      <p class="form-desc" style="margin-bottom:10px;">Define who reviews each item type, in order. Mark a step “parallel” to notify it at the same time as the step above it. Editable later in Workflow Settings.</p>
+      <div id="np-workflows"></div>
+    </div>
+
+    <div class="wiz-step" data-step="6" style="display:none;">
       <h3 style="font-size:16px;margin:0 0 6px;">Options</h3>
       <div class="field" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="np-board" style="width:auto;"><label style="margin:0;">Enable <strong>Board Reports</strong> tab for this project</label></div>
       <p class="form-desc">If checked, a Board Reports tab appears under Activity for this project.</p>
@@ -559,6 +565,7 @@
     <div class="nav-item hide-external" data-section="qa">Q &amp; A</div>
     <div class="nav-item" data-section="payapps">Payment Applications</div>
     <div class="nav-section-label admin-only">Admin</div>
+    <div class="nav-item admin-only" data-section="workflows">Workflow Settings</div>
     <div class="nav-item admin-only" data-section="notifsettings">Notification Settings</div>
     <div class="sidebar-footer">
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
@@ -837,6 +844,16 @@
       </div>
 
       <!-- NOTIFICATION SETTINGS (admin) -->
+      <div class="section" id="section-workflows">
+        <h2 class="page-title">Workflow Settings</h2>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;max-width:680px;">Define the review chain for each item type on this project. Steps run in order; check <strong>Parallel</strong> to notify a step at the same time as the one above it. Assignees come from this project's Contacts Directory.</p>
+        <div style="max-width:720px;">
+          <div id="wf-settings-body"></div>
+          <div style="margin-top:14px;"><button class="btn-primary" id="btn-wf-save" onclick="saveWorkflowSettings()">Save Workflows</button></div>
+          <div class="status-msg" id="wf-status"></div>
+        </div>
+      </div>
+
       <div class="section" id="section-notifsettings">
         <h2 class="page-title">Notification Settings</h2>
         <p style="color:var(--muted);font-size:14px;margin-bottom:16px;max-width:640px;">Customize the email that goes out when items are submitted on this project. Available placeholders: <code>{project}</code>, <code>{number}</code>, <code>{title}</code>, <code>{submitter}</code>.</p>
@@ -1345,8 +1362,8 @@ async function writeProjectConfig(folderId, config){
 }
 
 // ── NEW PROJECT WIZARD ──
-const WIZ_MAX = 5;
-const WIZ_LABELS = ['Basics','Team','Schedule','Contractors','Options'];
+const WIZ_MAX = 6;
+const WIZ_LABELS = ['Basics','Team','Schedule','Contractors','Workflows','Options'];
 const MILESTONE_NAMES = ['Notice to Proceed','Mobilize / Start Onsite','Substantial Completion','Punchlist','Final Completion'];
 const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC','Plumbing'],['EC','Electrical'],['Other','Other']];
 let WIZ_STEP = 1;
@@ -1362,6 +1379,7 @@ function initWizard(){
   document.getElementById('np-contractors').innerHTML=''; wizAddContractor();
   // milestones
   renderWizMilestones(MILESTONE_NAMES.slice());
+  wfRenderAll('npwf','np-workflows',null,[]);
   showStatus('new-proj-status','','');
   document.getElementById('new-proj-status').className='status-msg';
   wizShow();
@@ -1398,10 +1416,12 @@ function wizShow(){
   document.getElementById('wiz-progress').innerHTML = WIZ_LABELS.map((l,i)=>{ const n=i+1; const on=n===WIZ_STEP, done=n<WIZ_STEP; return '<span style="padding:4px 10px;border-radius:4px;background:'+(on?'var(--olive-700)':done?'var(--khaki-300)':'var(--khaki-100)')+';color:'+(on?'#fff':'var(--muted)')+';">'+n+'. '+l+'</span>'; }).join('');
 }
 function wizGo(step){ WIZ_STEP=step; wizShow(); }
+function wfSyncWizardPeople(){ try{ const names=wizGatherContacts().map(c=>c['Name']).filter(Boolean); const dl=document.getElementById('npwf-people'); if(dl) dl.innerHTML=names.map(n=>'<option value="'+esc(n)+'">').join(''); }catch(e){} }
 function wizNav(dir){
   if(dir>0 && WIZ_STEP===1 && !wizVal('np-name')){ showStatus('new-proj-status','Project name is required.','error'); return; }
   showStatus('new-proj-status','',''); document.getElementById('new-proj-status').className='status-msg';
   WIZ_STEP = Math.max(1, Math.min(WIZ_MAX, WIZ_STEP+dir));
+  if(WIZ_STEP===5) wfSyncWizardPeople();
   wizShow();
 }
 function wizGatherContacts(){
@@ -1418,6 +1438,49 @@ function wizGatherContractors(){
     if(!name) return null;
     return { role, name, contract, active:true };
   }).filter(Boolean);
+}
+const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],['payapp','Payment Applications']];
+const WF_DEFAULTS={rfi:['Fidevia CM','Architect'],co:['Fidevia CM','Owner'],sub:['Fidevia CM','Architect'],payapp:['Fidevia CM']};
+function wfStepRow(prefix,key,name,person,parallel){
+  return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
+    +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
+    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" list="'+prefix+'-people" value="'+esc(person||'')+'" placeholder="Person"></div>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;"><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
+}
+function wfBlock(prefix,key,label,steps){
+  return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">'
+    +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(label)+'</div>'
+    +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel)).join('')+'</div>'
+    +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;" onclick="wfAddStep(\''+prefix+'\',\''+key+'\')">+ Add Step</button></div>';
+}
+function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false)); }
+function wfRenderAll(prefix, containerId, workflows, peopleList){
+  const el=document.getElementById(containerId); if(!el) return;
+  const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>'<option value="'+esc(p)+'">').join('')+'</datalist>';
+  el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,(workflows&&workflows[k])||(WF_DEFAULTS[k]||[]).map(n=>({name:n,person:'',parallel:false})))).join('');
+}
+function wfGather(prefix){
+  const out={};
+  WF_TYPES.forEach(([k])=>{ const el=document.getElementById(prefix+'-'+k+'-rows'); if(!el) return;
+    out[k]=[...el.querySelectorAll('.wf-row')].map(r=>({name:(r.querySelector('.wf-name').value||'').trim(),person:(r.querySelector('.wf-person').value||'').trim(),parallel:r.querySelector('.wf-par').checked})).filter(s=>s.name||s.person);
+  });
+  return out;
+}
+function loadWorkflowSettings(){
+  const wf=(currentProject&&currentProject.config&&currentProject.config.workflows)||null;
+  const people=(allData.contacts||[]).map(c=>c['Name']).filter(Boolean);
+  wfRenderAll('wfs','wf-settings-body',wf,people);
+}
+async function saveWorkflowSettings(){
+  const btn=document.getElementById('btn-wf-save'); btn.disabled=true;
+  try{
+    currentProject.config=currentProject.config||{};
+    currentProject.config.workflows=wfGather('wfs');
+    await writeProjectConfig(currentProject.folderId,currentProject.config);
+    showStatus('wf-status','Workflows saved.','success');
+  }catch(e){ showStatus('wf-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
 }
 function wizMsRow(name,contract){
   return '<div class="ms-row" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px;"><div class="field" style="flex:1.4;margin:0;"><label style="font-size:12px;color:#888;">Milestone</label><input class="ms-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Milestone name"></div><div class="field" style="flex:1;margin:0;"><label style="font-size:12px;color:#888;">Contract Date</label><input class="ms-contract" autocomplete="off" type="date" value="'+esc(contract||'')+'"></div><button type="button" class="btn-secondary" style="padding:9px 12px;" title="Remove" onclick="this.closest(\'.ms-row\').remove()">\u00d7</button></div>';
@@ -1450,7 +1513,7 @@ async function createProject(){
     const config = {
       owner:wizVal('np-owner'), location:wizVal('np-location'), jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
-      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com'
+      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf')
     };
     await writeProjectConfig(projId, config);
     showStatus('new-proj-status','Project created!','success');
@@ -2417,6 +2480,7 @@ function navTo(sec){
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
   const active=document.getElementById('section-'+sec); animateSection(active);
   if(sec==='notifsettings') loadNotifSettings();
+  if(sec==='workflows') loadWorkflowSettings();
 }
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
