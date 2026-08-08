@@ -1444,7 +1444,7 @@ const WF_DEFAULTS={rfi:['Fidevia CM','Architect'],co:['Fidevia CM','Owner'],sub:
 function wfStepRow(prefix,key,name,person,parallel){
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
-    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" list="'+prefix+'-people" value="'+esc(person||'')+'" placeholder="Person"></div>'
+    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" list="'+prefix+'-people" value="'+esc(person||'')+'" placeholder="Person" oninput="wfUpdateCo(this)" onchange="wfUpdateCo(this)"><div class="wf-co" style="font-size:11px;color:var(--olive-700);font-weight:600;margin-top:3px;display:none;"></div></div>'
     +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;"><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
     +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
 }
@@ -1459,6 +1459,7 @@ function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
   const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
   el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,(workflows&&workflows[k])||(WF_DEFAULTS[k]||[]).map(n=>({name:n,person:'',parallel:false})))).join('');
+  el.querySelectorAll('.wf-person').forEach(inp=>wfUpdateCo(inp));
 }
 function wfGather(prefix){
   const out={};
@@ -2968,9 +2969,12 @@ function _versions(r){
 const WF_KEYMAP={rfi:'rfi',co:'co',sub:'sub',pay_apps:'payapp'};
 function wfCompanyOf(person){
   if(!person) return '';
-  const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===String(person).trim().toLowerCase());
+  const key=String(person).trim().toLowerCase();
+  let c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===key);
+  if(!c){ try{ c=wizGatherContacts().find(x=>(x['Name']||'').trim().toLowerCase()===key); }catch(e){} }
   return (c&&c['Company'])?c['Company']:'';
 }
+function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; const co=wfCompanyOf(inp.value); el.textContent=co?co:''; el.style.display=co?'block':'none'; }
 function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
 function wfIsDone(r){ return String(r['Workflow Status']||'').toLowerCase()==='complete'; }
