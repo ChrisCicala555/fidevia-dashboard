@@ -1444,7 +1444,7 @@ const WF_DEFAULTS={rfi:['Fidevia CM','Architect'],co:['Fidevia CM','Owner'],sub:
 function wfStepRow(prefix,key,name,person,parallel){
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
-    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" list="'+prefix+'-people" value="'+esc(person||'')+'" placeholder="Person" oninput="wfUpdateCo(this)" onchange="wfUpdateCo(this)"></div>'
+    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'" placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Company</label><input class="wf-co" autocomplete="off" readonly placeholder="—" style="background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;"></div>'
     +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;"><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
     +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
@@ -2975,6 +2975,32 @@ function wfCompanyOf(person){
   if(!c){ try{ c=wizGatherContacts().find(x=>(x['Name']||'').trim().toLowerCase()===key); }catch(e){} }
   return (c&&c['Company'])?c['Company']:'';
 }
+function wfPeopleList(){
+  let list=(allData.contacts||[]).filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''}));
+  if(!list.length){ try{ list=wizGatherContacts().filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''})); }catch(e){} }
+  const seen=new Set();
+  return list.filter(p=>{ const k=p.name.trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
+             .sort((a,b)=>a.name.localeCompare(b.name));
+}
+function wfCloseAC(){ document.querySelectorAll('.wf-ac').forEach(el=>el.remove()); }
+function wfShowAC(inp){
+  wfCloseAC();
+  const q=(inp.value||'').trim().toLowerCase();
+  const people=wfPeopleList();
+  const matches=q ? people.filter(p=>p.name.toLowerCase().startsWith(q)) : people;
+  if(!matches.length) return;
+  const box=document.createElement('div');
+  box.className='wf-ac';
+  box.style.cssText='position:absolute;z-index:1200;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 26px rgba(0,0,0,0.16);max-height:230px;overflow-y:auto;min-width:220px;margin-top:2px;';
+  box.innerHTML=matches.map(p=>'<div class="wf-ac-item" data-name="'+esc(p.name)+'" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--khaki-100);"><div style="font-weight:600;color:var(--ink);">'+esc(p.name)+'</div>'+(p.company?'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+esc(p.company)+(p.role?' · '+esc(p.role):'')+'</div>':'')+'</div>').join('');
+  const wrap=inp.parentElement; wrap.style.position='relative'; wrap.appendChild(box);
+  box.querySelectorAll('.wf-ac-item').forEach(it=>{
+    it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-name'); wfUpdateCo(inp); wfCloseAC(); });
+    it.addEventListener('mouseenter',function(){ it.style.background='var(--cream)'; });
+    it.addEventListener('mouseleave',function(){ it.style.background=''; });
+  });
+}
+document.addEventListener('click',function(e){ if(!e.target.closest('.wf-row')) wfCloseAC(); });
 function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value)||''; }
 function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
