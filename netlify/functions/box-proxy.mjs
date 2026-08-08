@@ -365,6 +365,62 @@ export default async (req) => {
       if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
       return json({ ok: true });
     }
+    if (op === 'advanceWorkflow') {
+      const { projectId, moduleFolderId, filename, wfKey, idField, idValue } = body;
+      if (!await guardFolder(moduleFolderId)) return json({ error: 'Access denied' }, 403);
+      if (!projectId || !moduleFolderId || !filename || !wfKey || !idField) return json({ error: 'missing fields' }, 400);
+      // --- load project config (workflows) ---
+      const pitems = (await (await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+      const cfgFile = pitems.find(e => e.type === 'file' && e.name === 'Project Info.json');
+      let cfg = {}; if (cfgFile) { try { cfg = JSON.parse(await (await fetch(`https://api.box.com/2.0/files/${cfgFile.id}/content`, { headers: H })).text()) || {}; } catch (e) {} }
+      const steps = ((cfg.workflows || {})[wfKey]) || [];
+      if (!steps.length) return json({ error: 'No workflow configured' }, 400);
+      // --- contacts: name -> email ---
+      const emailByName = {};
+      try {
+        const contF = pitems.find(e => e.type === 'folder' && e.name.startsWith('05'));
+        if (contF) {
+          const cit = (await (await fetch(`https://api.box.com/2.0/folders/${contF.id}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+          const ccsv = cit.find(e => e.type === 'file' && e.name.toLowerCase().endsWith('.csv'));
+          if (ccsv) { const cp = parseCSVServer(await (await fetch(`https://api.box.com/2.0/files/${ccsv.id}/content`, { headers: H })).text()); cp.rows.forEach(r => { if (r['Name']) emailByName[String(r['Name']).trim().toLowerCase()] = String(r['Email'] || '').trim().toLowerCase(); }); }
+        }
+      } catch (e) {}
+      // --- load the log CSV ---
+      const mitems = (await (await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(moduleFolderId)}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+      const logFile = mitems.find(e => e.type === 'file' && e.name === filename);
+      if (!logFile) return json({ error: 'log not found' }, 404);
+      const parsed = parseCSVServer(await (await fetch(`https://api.box.com/2.0/files/${logFile.id}/content`, { headers: H })).text());
+      const headers = parsed.headers, rows = parsed.rows;
+      const row = rows.find(r => String(r[idField] || '') === String(idValue || ''));
+      if (!row) return json({ error: 'item not found' }, 404);
+      if (String(row['Workflow Status'] || '').toLowerCase() === 'complete') return json({ error: 'Workflow already complete' }, 400);
+      // --- current parallel group ---
+      let cur = parseInt(row['Workflow Step']); if (isNaN(cur)) cur = 0;
+      let gs = cur; while (gs > 0 && steps[gs] && steps[gs].parallel) gs--;
+      let ge = gs; while (ge + 1 < steps.length && steps[ge + 1] && steps[ge + 1].parallel) ge++;
+      // --- authorize: caller must be an assignee of the current group (admins always allowed) ---
+      const me = String(who.email || '').toLowerCase();
+      const allowed = steps.slice(gs, ge + 1).some(s => {
+        const direct = String(s.email || '').trim().toLowerCase();
+        const viaName = emailByName[String(s.person || '').trim().toLowerCase()] || '';
+        return (direct && direct === me) || (viaName && viaName === me);
+      });
+      if (!who.isAdmin && !allowed) return json({ error: 'This step is not assigned to you.' }, 403);
+      // --- advance ---
+      if (!headers.includes('Workflow Step')) headers.push('Workflow Step');
+      if (!headers.includes('Workflow Status')) headers.push('Workflow Status');
+      const next = ge + 1;
+      if (next >= steps.length) { row['Workflow Step'] = String(steps.length - 1); row['Workflow Status'] = 'Complete'; }
+      else { row['Workflow Step'] = String(next); row['Workflow Status'] = 'In Review'; }
+      const out = headers.join(',') + '\n' + rows.map(r => headers.map(h => csvEsc(r[h])).join(',')).join('\n') + '\n';
+      const form = new FormData();
+      form.append('attributes', JSON.stringify({ name: filename }));
+      form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+      const ur = await fetch(`https://upload.box.com/api/2.0/files/${logFile.id}/content`, { method: 'POST', headers: H, body: form });
+      if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
+      const nextNames = next >= steps.length ? [] : steps.slice(next, next + 1).map(s => s.person || s.name);
+      return json({ ok: true, complete: next >= steps.length, nextStep: nextNames });
+    }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, headers, row } = body;

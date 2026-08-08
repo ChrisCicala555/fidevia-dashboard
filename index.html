@@ -2275,7 +2275,8 @@ async function submitForm(){
     }
 
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
-    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfSteps(key); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(c['Email']); }); } } }catch(e){}
+    let _wfFirst=[];
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfSteps(key); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
     if(EXTERNAL){
@@ -2289,6 +2290,9 @@ async function submitForm(){
       await boxUploadText(MODULES[key].log, toCSV(headers,rows), folderId, existing?existing.id:null);
       allData[key]=rows;
     }
+    try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]; 
+      sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
+        emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—']], currentProject.name)); } }catch(e){}
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
@@ -2495,6 +2499,8 @@ function navTo(sec){
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
 let VIEWER_COMPANY='';
+let ME_EMAIL='';
+(async()=>{ try{ const u=await auth0Client.getUser(); ME_EMAIL=String(u.email||'').toLowerCase(); }catch(e){} })();
 function setViewer(mode){
   if(EXTERNAL) mode='external';
   document.body.classList.toggle('external-mode',mode==='external');
@@ -3045,6 +3051,15 @@ function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel gr
   let end=start; while(end+1<steps.length && steps[end+1] && steps[end+1].parallel) end++;
   return [start,end];
 }
+function wfEmailOf(person){
+  const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===String(person||'').trim().toLowerCase());
+  return c ? String(c['Email']||'').trim().toLowerCase() : '';
+}
+function wfCanAdvance(steps, gs, ge){
+  if(IS_ADMIN) return true;
+  if(!ME_EMAIL) return false;
+  return steps.slice(gs,ge+1).some(s=>{ const e=String(s.email||'').trim().toLowerCase()||wfEmailOf(s.person); return e && e===ME_EMAIL; });
+}
 function wfProgressHTML(key,r,i){
   const steps=wfSteps(key); if(!steps.length) return '';
   const done=wfIsDone(r); const cur=wfActiveIdx(r);
@@ -3061,7 +3076,7 @@ function wfProgressHTML(key,r,i){
   }).join('');
   const status = done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
-  const btn = (!done && !EXTERNAL) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();wfAdvance(\''+key+'\','+i+')">Approve Step &rarr;</button>' : '';
+  const btn = (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();wfAdvance(\''+key+'\','+i+')">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
@@ -3069,6 +3084,17 @@ function wfProgressHTML(key,r,i){
 async function wfAdvance(key, i){
   const steps=wfSteps(key); if(!steps.length) return;
   const mod=MODULES[key], fid=currentProject.folders[key];
+  if(EXTERNAL){
+    const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+    const row0=(allData[key]||[])[i]; if(!row0) return;
+    try{
+      const res=await proxyCall('advanceWorkflow',{projectId:currentProject.folderId, moduleFolderId:fid, filename:mod.log, wfKey:(WF_KEYMAP[key]||key), idField:idf, idValue:row0[idf]});
+      const cur=parseInt(row0['Workflow Step'])||0; const [a,b]=wfGroupAt(steps,cur);
+      row0['Workflow Step']=res.complete?String(steps.length-1):String(b+1); row0['Workflow Status']=res.complete?'Complete':'In Review';
+      renderAll();
+    }catch(e){ alert(e.message||'Could not advance this step.'); }
+    return;
+  }
   const existing=await findFile(fid,mod.log);
   let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
   const row=rows[i]; if(!row) return;
