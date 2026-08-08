@@ -1226,15 +1226,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
@@ -2266,6 +2266,7 @@ async function submitForm(){
     }
 
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfSteps(key); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(c['Email']); }); } } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
     if(EXTERNAL){
@@ -2964,6 +2965,60 @@ function _versions(r){
   if(!h.length){ h=[{v:1, fileId:r['Attachment File ID']||r['File ID']||'', fileName:r['Attachment Name']||r['File Name']||'', status:r['Status']||'', date:r['Date Submitted']||r['Date']||'', by:r['Submitted By']||r['Submitted By (Sub)']||r['Contractor']||'', note:''}]; }
   return h;
 }
+const WF_KEYMAP={rfi:'rfi',co:'co',sub:'sub',pay_apps:'payapp'};
+function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
+function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
+function wfIsDone(r){ return String(r['Workflow Status']||'').toLowerCase()==='complete'; }
+function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel group containing idx
+  let start=idx; while(start>0 && steps[start] && steps[start].parallel) start--;
+  let end=start; while(end+1<steps.length && steps[end+1] && steps[end+1].parallel) end++;
+  return [start,end];
+}
+function wfProgressHTML(key,r,i){
+  const steps=wfSteps(key); if(!steps.length) return '';
+  const done=wfIsDone(r); const cur=wfActiveIdx(r);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  const items=steps.map((s,n)=>{
+    const isDone = done || n<gs; const isCur = !done && n>=gs && n<=ge;
+    const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
+    const mark = isDone?'\u2713':(isCur?'\u25cf':'\u25cb');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';">'
+      +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
+      +(s.person?'<span style="color:var(--muted);">— '+esc(s.person)+'</span>':'')
+      +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
+      +'</div>';
+  }).join('');
+  const status = done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
+    : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>s.person||s.name).join(', '))+'</span>';
+  const btn = (!done && !EXTERNAL) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();wfAdvance(\''+key+'\','+i+')">Approve Step &rarr;</button>' : '';
+  return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
+    +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
+    +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
+}
+async function wfAdvance(key, i){
+  const steps=wfSteps(key); if(!steps.length) return;
+  const mod=MODULES[key], fid=currentProject.folders[key];
+  const existing=await findFile(fid,mod.log);
+  let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+  const row=rows[i]; if(!row) return;
+  const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
+  const next=ge+1;
+  let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
+  if(next>=steps.length){ row['Workflow Step']=String(steps.length-1); row['Workflow Status']='Complete'; }
+  else { row['Workflow Step']=String(next); row['Workflow Status']='In Review'; }
+  await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+  allData[key]=rows;
+  try{
+    const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
+    const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+    const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - CO'}[key];
+    const nextNames = next>=steps.length ? 'Complete' : steps.slice(...wfGroupAt(steps,next)).map(s=>s.person||s.name).join(', ');
+    const extra=[]; if(next<steps.length){ const [ns,ne]=wfGroupAt(steps,next); steps.slice(ns,ne+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) extra.push(c['Email']); }); }
+    notifyContacts(notifyField, '[Fidevia] '+label+' '+(row[idf]||'')+' — '+(next>=steps.length?'Workflow complete':'Ready for your review'),
+      emailTemplate(label+' Workflow Update', [[label+' #',row[idf]||''],['Advanced By',by||'—'],['Next Step',nextNames]], currentProject.name), {extraTo:extra});
+  }catch(e){}
+  renderAll();
+}
 function verThreadRows(key,r,i,colspan){
   const vs=_versions(r).slice().reverse();
   const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;">'
@@ -2977,7 +3032,7 @@ function verThreadRows(key,r,i,colspan){
   const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
   return '<tr class="thread-detail" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="'+colspan+'" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'
-    +vs.map(line).join('')+reply+'</td></tr>';
+    +vs.map(line).join('')+reply+wfProgressHTML(key,r,i)+'</td></tr>';
 }
 function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i); if(!el) return; const open=el.style.display!=='none'; el.style.display=open?'none':'table-row'; const arw=document.getElementById('arw-'+key+'-'+i); if(arw) arw.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
 function openReply(key,i){
