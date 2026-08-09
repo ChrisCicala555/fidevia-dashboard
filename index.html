@@ -528,7 +528,7 @@
   <div class="cd-page">
     <div class="cd-page-head">
       <h2 class="picker-heading" style="margin:0;text-align:left;">Contact Directory</h2>
-      <button class="btn-secondary" onclick="showScreen('screen-picker')">← Back</button>
+      <div><button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="margin-right:8px;">Export to Box</button><button class="btn-secondary" onclick="showScreen('screen-picker')">← Back</button></div>
     </div>
     <p class="form-desc">All dashboard accounts, grouped alphabetically. Enter the password to edit company, role, phone, or email.</p>
     <div id="cd-lockbar" style="margin-bottom:14px;"></div>
@@ -1288,6 +1288,7 @@ function renderPickerGrid(){
     let html='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
     if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'");
       let items='<button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>';
+      if(!archivedView){ items+='<button onclick="event.stopPropagation();scheduleArchive(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Archive in 30 Days</button>'; }
       if(archivedView){ items+='<button class="danger" onclick="event.stopPropagation();openDeleteModal(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Delete Project</button>'; }
       html+='<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\''+esc(p.id)+'\')" aria-label="Options">\u22EE</button><div class="proj-menu-dd" id="pm-'+esc(p.id)+'">'+items+'</div></div>'; }
     card.innerHTML=html;
@@ -1308,6 +1309,15 @@ function renderPickerGrid(){
 }
 function toggleProjMenu(e, id){ e.stopPropagation(); const dd=document.getElementById('pm-'+id); document.querySelectorAll('.proj-menu-dd.open').forEach(x=>{ if(x!==dd) x.classList.remove('open'); }); if(dd) dd.classList.toggle('open'); }
 document.addEventListener('click',function(e){ if(!e.target.closest('.proj-menu')){ document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open')); } });
+async function scheduleArchive(id, name){
+  if(!confirm('Schedule \u201c'+name+'\u201d to archive in 30 days?\n\nExternal users on this project will be emailed that their access ends in 30 days. You can cancel by archiving or re-saving before then.')) return;
+  const when=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+  try{
+    await proxyCall('scheduleArchive',{projectId:id, projectName:name, date:when});
+    alert('Scheduled. \u201c'+name+'\u201d will archive on '+fmtDMY(when)+' and external users have been notified.');
+    document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open'));
+  }catch(e){ alert('Error: '+e.message); }
+}
 async function archiveProject(id, name, archive){
   if(!confirm((archive?'Archive':'Unarchive')+' \u201c'+name+'\u201d?\n'+(archive?'It moves to Archived Projects. All data is kept in Box and it can be unarchived anytime.':'It returns to Current Projects.'))) return;
   try{
@@ -2198,6 +2208,12 @@ async function unlockContactDir(){
   catch(e){ const m=document.getElementById('cd-lock-msg'); if(m) m.textContent='Incorrect password.'; }
 }
 function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; renderCdLockBar(); renderContactDir(); }
+async function exportContactsNow(){
+  const btn=document.getElementById('btn-cd-export'); const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Exporting…'; }
+  try{ const d=await proxyCall('exportContacts',{}); alert('Saved '+(d.count||0)+' contacts to Box as '+(d.file||'a snapshot')+'.'); }
+  catch(e){ alert('Export failed: '+e.message); }
+  if(btn){ btn.disabled=false; btn.textContent=orig||'Export to Box'; }
+}
 async function openContactDir(){
   document.querySelectorAll('.picker-actions.open').forEach(x=>x.classList.remove('open'));
   showScreen('screen-contactdir');
@@ -2289,8 +2305,12 @@ async function submitForm(){
     const fi=document.getElementById('f-file');
     if(fi&&fi.files.length>0){
       let uploadFolderId=folderId;
+      if(['pay_apps','contractor_daily','payrolls'].includes(key)){
+        const _co = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (v('f-company')||v('f-contr')||'');
+        if(_co){ prog.textContent='Preparing company folder…'; try{ uploadFolderId=await (EXTERNAL ? proxyCall('ensureFolder',{parentId:folderId,name:_co}).then(d=>d.id||folderId) : findOrCreateFolder(_co, folderId)); }catch(e){} }
+      }
       const _num=(currentModal==='document')?v('f-name'):v('f-num');
-      if(['rfi','co','sub','docs','pay_apps','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
+      if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
       prog.textContent='Uploading file to Box…';
       const up=await boxUploadBinary(fi.files[0],uploadFolderId);
       const entry=up.entries?up.entries[0]:up;

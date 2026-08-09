@@ -527,6 +527,52 @@ export default async (req) => {
       } catch(e) {}
       return json({ companies: [...companies].filter(Boolean) });
     }
+    if (op === 'exportContacts') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const store = getStore('profiles');
+      const rows = [];
+      try { const { blobs } = await store.list(); for (const b of (blobs || [])) { try { const p2 = await store.get(b.key, { type: 'json' }); if (p2 && p2.email) rows.push([(((p2.first_name || '') + ' ' + (p2.last_name || '')).trim()) || p2.email, p2.company || '', p2.title || '', p2.email, p2.phone || '']); } catch (e) {} } } catch (e) {}
+      rows.sort((a, b) => a[0].localeCompare(b[0]));
+      const csv = ['Name','Company','Role','Email','Phone'].join(',') + '\n' + rows.map(r => r.map(csvEsc).join(',')).join('\n') + '\n';
+      const parent = process.env.BOX_PROJECTS_ROOT_ID;
+      const pit = (await (await fetch(`https://api.box.com/2.0/folders/${parent}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+      let snap = pit.find(e => e.type === 'folder' && e.name === 'Contact Directory Snapshots');
+      let snapId = snap ? snap.id : null;
+      if (!snapId) { const cr = await fetch('https://api.box.com/2.0/folders', { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Contact Directory Snapshots', parent: { id: String(parent) } }) }); if (cr.ok) snapId = (await cr.json()).id; }
+      if (!snapId) return json({ error: 'Could not create snapshot folder' }, 500);
+      const name = 'Contacts ' + new Date().toISOString().slice(0, 10) + '.csv';
+      const items = (await (await fetch(`https://api.box.com/2.0/folders/${snapId}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+      const ex = items.find(e => e.type === 'file' && e.name === name);
+      const form = new FormData();
+      form.append('attributes', JSON.stringify(ex ? { name } : { name, parent: { id: String(snapId) } }));
+      form.append('file', new Blob([new TextEncoder().encode(csv)], { type: 'text/csv' }), name);
+      const url = ex ? `https://upload.box.com/api/2.0/files/${ex.id}/content` : 'https://upload.box.com/api/2.0/files/content';
+      const r = await fetch(url, { method: 'POST', headers: H, body: form });
+      if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
+      return json({ ok: true, count: rows.length, file: name });
+    }
+    if (op === 'scheduleArchive') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pid = String(body.projectId || ''); const when = String(body.date || '');
+      if (!pid || !when) return json({ error: 'projectId and date required' }, 400);
+      const store = getStore('archive-scheduled');
+      await store.setJSON(pid, { projectId: pid, projectName: body.projectName || '', date: when, notified: true });
+      // notify external users granted to this project
+      let sent = 0;
+      try {
+        const gstore = grantsStore();
+        const { blobs } = await gstore.list();
+        const emails = [];
+        for (const b of blobs) { const g = await gstore.get(b.key, { type: 'json' }); if (g && (g.projects || []).some(p2 => String(p2.id) === pid)) emails.push(b.key); }
+        if (emails.length) {
+          const origin = 'https://venerable-piroshki-0e0dd4.netlify.app';
+          const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden"><tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr><tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr><tr><td style="padding:24px"><div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;margin:0 0 12px"><span style="color:#515520">Project closing:</span> <span style="color:#2f2f2f">${body.projectName || 'Project'}</span></div><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">This project will be archived on <strong>${when}</strong>. After that date it will no longer appear in your project list and you will not be able to access its records.</p><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">If you need copies of any documents, please download them before then.</p><div style="text-align:center;margin:22px 0 4px"><a href="${origin}" style="display:inline-block;background:#515520;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Open the Dashboard</a></div></td></tr><tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.</div></td></tr></table></div>`;
+          await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ personalizations: [{ to: emails.map(e => ({ email: e })) }], from: { email: process.env.FROM_EMAIL || 'clymerllc@gmail.com', name: 'Fidevia Dashboard' }, subject: '[Fidevia] ' + (body.projectName || 'Project') + ' will be archived on ' + when, content: [{ type: 'text/html', value: html }] }) });
+          sent = emails.length;
+        }
+      } catch (e) {}
+      return json({ ok: true, notified: sent });
+    }
     if (op === 'getArchived') {
       return json({ ids: await getArchivedIds() });
     }
