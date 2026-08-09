@@ -527,6 +527,18 @@ export default async (req) => {
       } catch(e) {}
       return json({ companies: [...companies].filter(Boolean) });
     }
+    if (op === 'renameProject') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pid = String(body.projectId || ''); const name = String(body.name || '').trim();
+      if (!pid || !name) return json({ error: 'projectId and name required' }, 400);
+      const r = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(pid)}`, { method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (!r.ok) return json({ error: r.status === 409 ? 'A project with that name already exists.' : ('Rename failed ' + r.status) }, r.status);
+      try { const gstore = grantsStore(); const { blobs } = await gstore.list();
+        for (const b of blobs) { const g = await gstore.get(b.key, { type: 'json' }); if (!g) continue; let ch = false;
+          (g.projects || []).forEach(p2 => { if (String(p2.id) === pid) { p2.name = name; ch = true; } });
+          if (ch) await gstore.setJSON(b.key, g); } } catch (e) {}
+      return json({ ok: true, name });
+    }
     if (op === 'exportContacts') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');

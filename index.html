@@ -1288,6 +1288,7 @@ function renderPickerGrid(){
     let html='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
     if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'");
       let items='<button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>';
+      items+='<button onclick="event.stopPropagation();renameProject(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Rename Project</button>';
       if(!archivedView){ items+='<button onclick="event.stopPropagation();scheduleArchive(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Archive in 30 Days</button>'; }
       if(archivedView){ items+='<button class="danger" onclick="event.stopPropagation();openDeleteModal(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Delete Project</button>'; }
       html+='<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\''+esc(p.id)+'\')" aria-label="Options">\u22EE</button><div class="proj-menu-dd" id="pm-'+esc(p.id)+'">'+items+'</div></div>'; }
@@ -1309,6 +1310,19 @@ function renderPickerGrid(){
 }
 function toggleProjMenu(e, id){ e.stopPropagation(); const dd=document.getElementById('pm-'+id); document.querySelectorAll('.proj-menu-dd.open').forEach(x=>{ if(x!==dd) x.classList.remove('open'); }); if(dd) dd.classList.toggle('open'); }
 document.addEventListener('click',function(e){ if(!e.target.closest('.proj-menu')){ document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open')); } });
+async function renameProject(id, name){
+  const next=prompt('Rename project:', name);
+  if(next===null) return;
+  const trimmed=String(next).trim();
+  if(!trimmed || trimmed===name) return;
+  try{
+    await proxyCall('renameProject',{projectId:id, name:trimmed});
+    const p=PICKER_PROJECTS.find(x=>String(x.id)===String(id)); if(p) p.name=trimmed;
+    if(currentProject && String(currentProject.folderId)===String(id)){ currentProject.name=trimmed; const t=document.getElementById('topbar-title'); if(t) t.textContent=trimmed; }
+    renderPickerGrid();
+    document.querySelectorAll('.proj-menu-dd.open').forEach(x=>x.classList.remove('open'));
+  }catch(e){ alert('Error: '+e.message); }
+}
 async function scheduleArchive(id, name){
   if(!confirm('Schedule \u201c'+name+'\u201d to archive in 30 days?\n\nExternal users on this project will be emailed that their access ends in 30 days. You can cancel by archiving or re-saving before then.')) return;
   const when=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
