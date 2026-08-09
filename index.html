@@ -1708,9 +1708,13 @@ async function deleteRow(key,i){
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
   auditLog('Deleted', key, removed, '');
   try{
-    const nf={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal'}[key]||'Notify - RFI';
-    notifyContacts(nf, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
-      emailTemplate('A record was deleted', [['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'—'],['Project',currentProject.name],['When',fmtDMY(etToday())]], currentProject.name));
+    // Deletion notices go to Fidevia (internal) contacts only — never external parties.
+    const internal=(allData.contacts||[]).map(c=>String(c['Email']||'').trim()).filter(e=>e && e.toLowerCase().endsWith('@fidevia.com'));
+    const seen=new Set(); const to=internal.filter(e=>{ const k=e.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
+    if(to.length){
+      sendEmail(to, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
+        emailTemplate('A record was deleted', [['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'—'],['Project',currentProject.name],['When',fmtDMY(etToday())]], currentProject.name));
+    }
   }catch(e){}
 }
 async function toggleNotify(i,f){
