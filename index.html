@@ -422,7 +422,9 @@
       <h3 style="font-size:16px;margin:0 0 12px;">Project Basics</h3>
       <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Lebanon Intermediate School Additions"></div>
       <div class="field-row"><div class="field"><label>Owner / Client</label><input autocomplete="off" id="np-owner" placeholder="e.g. Lebanon School District"></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" placeholder="e.g. 24-108"></div></div>
-      <div class="field"><label>Location / Address</label><input autocomplete="off" id="np-location" placeholder="City, State"></div>
+      <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
+      <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
+      <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
       <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" placeholder="e.g. Andre Martin"></div>
       <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
       <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
@@ -1372,7 +1374,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 function openNewProject(){ initWizard(); showScreen('screen-new-project'); }
 function initWizard(){
   WIZ_STEP = 1;
-  ['np-name','np-owner','np-jobnum','np-location','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['np-name','np-owner','np-jobnum','np-addr1','np-addr2','np-city','np-state','np-zip','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const lf=document.getElementById('np-logo'); if(lf) lf.value='';
   const bd=document.getElementById('np-board'); if(bd) bd.checked=false;
   document.getElementById('np-contacts').innerHTML=''; wizAddContact();
@@ -1513,7 +1515,7 @@ async function createProject(){
     const lf=document.getElementById('np-logo');
     if(lf&&lf.files&&lf.files[0]){ try{ const up=await boxUploadBinary(lf.files[0], projId); const e=up.entries?up.entries[0]:up; logoFileId=e.id||''; }catch(e){} }
     const config = {
-      owner:wizVal('np-owner'), location:wizVal('np-location'), jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
+      owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
       milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf')
     };
@@ -1547,6 +1549,63 @@ function wrapTables(){
     t.parentNode.insertBefore(w,t); w.appendChild(t);
   });
 }
+function fmtMoneyInput(el){
+  if(!el) return;
+  const raw=String(el.value||'').replace(/[^0-9.]/g,'');
+  if(!raw){ el.value=''; return; }
+  const parts=raw.split('.');
+  const whole=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  el.value = parts.length>1 ? whole+'.'+parts[1].slice(0,2) : whole;
+}
+function wireMoneyInputs(){
+  ['f-cost','f-contract','f-cos-approved','f-prev','f-req','pa-amount'].forEach(function(id){
+    const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
+    el.addEventListener('blur',function(){ fmtMoneyInput(el); });
+    el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
+  });
+}
+function makeFilterBars(){
+  document.querySelectorAll('.panel').forEach(function(panel){
+    const table=panel.querySelector('table'); if(!table) return;
+    const tbody=table.querySelector('tbody'); if(!tbody) return;
+    if(panel._filterWired) return; panel._filterWired=true;
+    const bar=document.createElement('div');
+    bar.className='filter-bar';
+    bar.style.cssText='padding:8px 14px;border-bottom:1px solid var(--border);background:var(--cream);display:flex;align-items:center;gap:8px;';
+    bar.innerHTML='<span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;">Filter</span>'
+      +'<input class="filter-input" placeholder="Type to filter these rows…" style="flex:1;max-width:340px;padding:5px 10px;font-size:13px;border:1px solid var(--border);border-radius:5px;font-family:inherit;">'
+      +'<span class="filter-count" style="font-size:12px;color:var(--muted);"></span>';
+    const hdr=panel.querySelector('.panel-header');
+    if(hdr && hdr.nextSibling) panel.insertBefore(bar, hdr.nextSibling); else panel.insertBefore(bar, panel.firstChild);
+    const inp=bar.querySelector('.filter-input');
+    inp.addEventListener('input',function(){ applyFilter(panel); });
+  });
+}
+function applyFilter(panel){
+  const inp=panel.querySelector('.filter-input'); if(!inp) return;
+  const q=(inp.value||'').trim().toLowerCase();
+  const tbody=panel.querySelector('table tbody'); if(!tbody) return;
+  let shown=0, total=0;
+  let groups=[], cur=null;
+  [...tbody.children].forEach(function(row){
+    if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
+    else { cur=[row]; groups.push(cur); }
+  });
+  groups.forEach(function(g){
+    const head=g[0];
+    if(head.classList.contains('empty-row')||head.classList.contains('loading-row')) return;
+    total++;
+    const match = !q || head.textContent.toLowerCase().includes(q);
+    if(match) shown++;
+    g.forEach(function(row,idx){
+      if(idx===0) row.style.display = match ? '' : 'none';
+      else if(!match) row.style.display='none';
+    });
+  });
+  const cnt=panel.querySelector('.filter-count');
+  if(cnt) cnt.textContent = q ? (shown+' of '+total+' shown') : '';
+}
+function reapplyFilters(){ document.querySelectorAll('.panel').forEach(p=>{ const i=p.querySelector('.filter-input'); if(i&&i.value.trim()) applyFilter(p); }); }
 function makeSortableTables(){
   document.querySelectorAll('.panel table thead th').forEach(function(th){
     if(th._sortWired) return; th._sortWired=true;
@@ -1590,7 +1649,7 @@ function nextItemNumber(key, comp){
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); wrapTables(); makeSortableTables(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
@@ -2088,6 +2147,7 @@ function openModal(type){
   if(type==='rfi'||type==='co'||type==='submittal'){ const dl=document.getElementById('subco-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-subco'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
   if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
+  wireMoneyInputs();
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
   document.getElementById('modal-submit-btn').disabled=false;
@@ -2858,6 +2918,7 @@ function openPayAction(idx){
   document.getElementById('pa-progress').style.display='none';
   document.getElementById('pa-submit-btn').disabled=false;
   payActionChanged();
+  wireMoneyInputs();
   document.getElementById('payaction-backdrop').classList.add('open');
 }
 function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ amt.value='0'; amt.disabled=true; } else { amt.disabled=false; } }
