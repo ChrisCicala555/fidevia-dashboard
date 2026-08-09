@@ -1653,13 +1653,41 @@ function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDaily
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
+const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
+const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
+function itemLabel(key,row){
+  if(!row) return '';
+  const f=['RFI #','CO #','Submittal #','App #','Document Name','Name','Cost Code','Date','Week Ending'];
+  for(const k of f){ if(row[k]) return String(row[k]); }
+  return '(item)';
+}
+async function auditLog(action, key, row, details){
+  try{
+    const fid=currentProject.folderId; if(!fid) return;
+    let by=''; try{ const u=await auth0Client.getUser(); by=u.email||u.name||''; }catch(e){}
+    const entry={'Timestamp':new Date().toISOString(),'Action':action,'Module':MODULE_LABEL[key]||key,'Item':itemLabel(key,row),'Details':details||'','By':by};
+    const items=await boxList(fid);
+    const f=items.find(i=>i.type==='file'&&i.name==='Audit Log.csv');
+    let rows=[]; if(f){ try{ rows=(parseCSV(await boxGetText(f.id))).rows; }catch(e){} }
+    rows.push(entry);
+    await boxUploadText('Audit Log.csv', toCSV(AUDIT_HEADERS,rows), fid, f?f.id:null);
+  }catch(e){ console.warn('audit log failed', e.message); }
+}
 async function deleteRow(key,i){
   if(!confirm('Delete this item permanently? This cannot be undone.')) return;
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
+  const removed=(allData[key]||[])[i];
   const existing=await findFile(fid,mod.log);
   const rows=(allData[key]||[]).slice(); rows.splice(i,1);
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
   allData[key]=rows; renderAll();
+  let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
+  auditLog('Deleted', key, removed, '');
+  try{
+    const nf={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal'}[key]||'Notify - RFI';
+    notifyContacts(nf, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
+      emailTemplate('A record was deleted', [['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'—'],['Project',currentProject.name],['When',fmtDMY(etToday())]], currentProject.name));
+  }catch(e){}
 }
 async function toggleNotify(i,f){
   const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
@@ -2948,6 +2976,13 @@ async function submitPayAction(){
     prog.textContent='Updating log…';
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
     allData.pay_apps=rows;
+    try{
+      const _contact=(allData.contacts||[]).find(c=>String(c['Company']||'').trim().toLowerCase()===String(row['Contractor']||'').trim().toLowerCase());
+      const _extra=_contact&&_contact['Email']?[_contact['Email']]:[];
+      notifyContacts('Notify - CO', '[Fidevia] Payment Application '+(row['App #']||'')+' — '+status,
+        emailTemplate('Payment Application '+status, [['App #',row['App #']||''],['Contractor',row['Contractor']||''],['Action',action],['Approved Amount',fmtMoney(appAmt)],['Reviewed By',by||'—']], currentProject.name), {extraTo:_extra});
+    }catch(e){}
+    auditLog(action, 'pay_apps', row, status+' · '+fmtMoney(appAmt));
     renderAll(); closePayAction();
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
