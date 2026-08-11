@@ -1618,6 +1618,7 @@ function applyFilter(panel){
   groups.forEach(function(g){
     const head=g[0];
     if(head.classList.contains('empty-row')||head.classList.contains('loading-row')) return;
+    if(head.classList.contains('total-row')){ g.forEach(r=>r.style.display=''); return; }
     total++;
     const match = !q || head.textContent.toLowerCase().includes(q);
     if(match) shown++;
@@ -1647,7 +1648,8 @@ function sortByHeader(th){
     if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
     else { cur=[row]; groups.push(cur); }
   });
-  const sortable=groups.filter(g=>!g[0].classList.contains('empty-row')&&!g[0].classList.contains('loading-row'));
+  const totals=groups.filter(g=>g[0].classList.contains('total-row'));
+  const sortable=groups.filter(g=>!g[0].classList.contains('empty-row')&&!g[0].classList.contains('loading-row')&&!g[0].classList.contains('total-row'));
   if(sortable.length<2){ return; }
   const dir = th._dir==='asc' ? 'desc' : 'asc'; th._dir=dir;
   const cellText=g=>{ const c=g[0].children[col]; return c?c.textContent.trim():''; };
@@ -1664,6 +1666,7 @@ function sortByHeader(th){
   const arw=document.createElement('span'); arw.className='sort-arrow'; arw.textContent=dir==='asc'?' \u25b2':' \u25bc'; arw.style.fontSize='9px';
   th.appendChild(arw);
   sortable.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
+  totals.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
 }
 function nextItemNumber(key, comp){
   const label={rfi:'RFI',co:'CO',sub:'Submittal'}[key];
@@ -1929,7 +1932,7 @@ function renderFinancials(){
     tb.innerHTML='<tr class="empty-row"><td colspan="9">No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')+'</td></tr>';
   } else {
     const totalPct=tR>0?tB/tR:0;
-    out.push('<tr style="font-weight:700;background:var(--khaki-100);"><td></td><td>Total</td><td>'+fmtMoney(tC)+'</td><td>'+fmtMoney(tCO)+'</td><td>'+fmtMoney(tR)+'</td><td>'+fmtMoney(tB)+'</td><td>'+fmtMoney(tRem)+'</td><td>'+(totalPct*100).toFixed(1)+'%</td><td></td></tr>');
+    out.push('<tr class="total-row" style="font-weight:700;background:var(--khaki-100);"><td></td><td>Total</td><td>'+fmtMoney(tC)+'</td><td>'+fmtMoney(tCO)+'</td><td>'+fmtMoney(tR)+'</td><td>'+fmtMoney(tB)+'</td><td>'+fmtMoney(tRem)+'</td><td>'+(totalPct*100).toFixed(1)+'%</td><td></td></tr>');
     tb.innerHTML=out.join('');
   }
   const kp=document.getElementById('fin-kpis');
