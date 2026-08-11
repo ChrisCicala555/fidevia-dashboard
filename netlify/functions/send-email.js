@@ -6,7 +6,7 @@ exports.handler = async (event) => {
     const toArr = Array.isArray(to) ? to : [to];
     const payload = {
       personalizations: [{ to: toArr.map(e => ({ email: e })) }],
-      from: { email: process.env.FROM_EMAIL || 'clymerllc@gmail.com', name: 'Fidevia Dashboard' },
+      from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' },
       subject: subject,
       content: [{ type: 'text/html', value: body }]
     };

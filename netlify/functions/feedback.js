@@ -3,7 +3,7 @@ exports.handler = async (event) => {
   try {
     const { message, from, context } = JSON.parse(event.body);
     if(!message || !String(message).trim()) return { statusCode: 400, body: 'Missing message' };
-    const to = process.env.FEEDBACK_EMAIL || process.env.FROM_EMAIL || 'clymerllc@gmail.com';
+    const to = process.env.FEEDBACK_EMAIL || process.env.FROM_EMAIL || 'dashboard@fidevia.com';
     const esc = s => String(s==null?'':s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
     const html = '<div style="font-family:Arial,sans-serif;max-width:600px">'
       + '<h3 style="color:#515520">Fidevia Dashboard — Feedback / Bug Report</h3>'
@@ -13,7 +13,7 @@ exports.handler = async (event) => {
       + '<p style="white-space:pre-wrap;background:#faf9f6;border:1px solid #e2ddd5;border-radius:6px;padding:12px">'+esc(message)+'</p></div>';
     const payload = {
       personalizations: [{ to: [{ email: to }] }],
-      from: { email: process.env.FROM_EMAIL || 'clymerllc@gmail.com', name: 'Fidevia Dashboard' },
+      from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' },
       subject: '[Fidevia Dashboard] Feedback / Bug Report',
       content: [{ type: 'text/html', value: html }]
     };
