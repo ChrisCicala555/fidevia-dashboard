@@ -54,7 +54,7 @@ const notDone = s => { const st = (s || '').toLowerCase(); return !(st.indexOf('
 const ageDays = (d, now) => { const t = Date.parse(d); return isNaN(t) ? 0 : Math.floor((now - t) / 86400000); };
 
 function digestHTML(project, items) {
-  const origin = 'https://venerable-piroshki-0e0dd4.netlify.app';
+  const origin = 'https://dashboard.fidevia.com';
   const serif = "Georgia,'Times New Roman',Times,serif";
   const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
   const rows = items.map((it, i) => `<tr style="background:${i%2?'#ffffff':'#faf9f6'}"><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#515520;font-family:${sans};border-bottom:1px solid #ece8df;white-space:nowrap">${it.type} ${it.id || ''}</td><td style="padding:10px 16px;font-size:13px;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${it.title || ''}</td><td style="padding:10px 16px;font-size:13px;color:#a1552b;font-family:${sans};border-bottom:1px solid #ece8df;white-space:nowrap">${it.reason}</td></tr>`).join('');
