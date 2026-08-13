@@ -1,6 +1,6 @@
 import { getStore } from '@netlify/blobs';
 
-const AUTH0_DOMAIN = 'dev-477eis4yqjwd6d4g.us.auth0.com';
+const AUTH0_DOMAIN = 'login.fidevia.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 
