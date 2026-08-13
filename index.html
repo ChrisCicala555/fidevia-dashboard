@@ -2316,6 +2316,13 @@ async function submitForm(){
   try{
     const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',gendocument:'gendocs',payapp:'pay_apps',cdaily:'contractor_daily',payroll:'payrolls',meeting:'meetings',board:'board'};
     const key=keyMap[currentModal];
+    let _wfNextLabel='';
+    try{
+      const _s=wfSteps(key);
+      if(_s.length){ const [a,b]=wfGroupAt(_s,0);
+        _wfNextLabel=_s.slice(a,b+1).map(s=>{ const co=wfCompanyOf(s.person); return (s.person||s.name)+(co?' ('+co+')':'')+(s.name&&s.person?' — '+s.name:''); }).join(', ');
+      }
+    }catch(e){}
     let folderId=currentProject.folders[key];
     if(!folderId){
       if(EXTERNAL) throw new Error('This project is missing a required folder. Please contact Fidevia.');
@@ -2353,7 +2360,7 @@ async function submitForm(){
       const _rnum = nextItemNumber('rfi', _rc);
       newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
-      sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]]);
+      sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',fmtDMY(newRow['Due Date'])],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='co'){
 
       await resolveMe();
@@ -2361,7 +2368,7 @@ async function submitForm(){
       if(!v('f-subject')) throw new Error('Description is required.');
       const _cnum = nextItemNumber('co', _cc);
       newRow={'CO #':_cnum,'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
-      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]]);
+      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='submittal'){
 
       await resolveMe();
@@ -2370,7 +2377,7 @@ async function submitForm(){
       const _snum = nextItemNumber('sub', _sc);
       newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
-      sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]]);
+      sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='daily'){
 
       if(!v('f-date-sub')||!v('f-by')||!v('f-subject')) throw new Error('Date, Submitted By, and Work Performed are required.');
@@ -2427,7 +2434,7 @@ async function submitForm(){
     }
     try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]; 
       sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
-        emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—']], currentProject.name)); } }catch(e){}
+        emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],['Due Date',fmtDMY(newRow['Due Date']||'')||'—']], currentProject.name)); } }catch(e){}
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
