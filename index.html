@@ -3272,6 +3272,10 @@ function dgGather(){
   return {crews,notes};
 }
 
+async function urlToDataURL(url){
+  const r=await fetch(url); const b=await r.blob();
+  return await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(b); });
+}
 function fileToDataURL(f){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); }); }
 
 async function dgBuildPDF(){
@@ -3289,22 +3293,31 @@ async function dgBuildPDF(){
 
   // ---- header ----
   doc.setFillColor(...OLIVE); doc.rect(0,0,W,6,'F');
-  doc.setFont('times','bold'); doc.setFontSize(20); doc.setTextColor(...OLIVE);
-  doc.text('Fidevia', 40, 44);
+  let logoOK=false;
+  try{
+    const lg=await urlToDataURL('./fidevia-email-logo.png');
+    doc.addImage(lg,'PNG',40,20,104,65,undefined,'FAST');
+    logoOK=true;
+  }catch(e){}
+  if(!logoOK){
+    doc.setFont('times','bold'); doc.setFontSize(20); doc.setTextColor(...OLIVE);
+    doc.text('Fidevia', 40, 44);
+  }
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...KHAKI);
-  doc.text('CONSTRUCTION MANAGEMENT & CONSULTING', 40, 58);
+  doc.text('CONSTRUCTION MANAGEMENT & CONSULTING', 40, logoOK?92:58);
   doc.setFontSize(9); doc.setTextColor(...INK);
   const a=cfg.address||{};
   const right=[currentProject.name, cfg.jobNumber?('Job #'+cfg.jobNumber):'', [a.line1,a.city&&(a.city+', '+(a.state||'')),a.zip].filter(Boolean).join(' · ')||cfg.location||''].filter(Boolean);
-  right.forEach((t,i)=>doc.text(String(t), W-40, 44+(i*12), {align:'right'}));
+  right.forEach((t,i)=>doc.text(String(t), W-40, 40+(i*12), {align:'right'}));
 
-  doc.setDrawColor(...KHAKI); doc.setLineWidth(1); doc.line(40,74,W-40,74);
+  const ruleY = logoOK?104:74;
+  doc.setDrawColor(...KHAKI); doc.setLineWidth(1); doc.line(40,ruleY,W-40,ruleY);
   doc.setFont('times','bold'); doc.setFontSize(15); doc.setTextColor(...OLIVE);
-  doc.text('Daily Report: '+dayName+' '+fmtDMY(date), 40, 96);
+  doc.text('Daily Report: '+dayName+' '+fmtDMY(date), 40, ruleY+22);
   doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(120,120,110);
-  doc.text('Prepared by '+by, 40, 110);
+  doc.text('Prepared by '+by, 40, ruleY+36);
 
-  let y=128;
+  let y=ruleY+54;
   const sect=(t)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...OLIVE); doc.text(t.toUpperCase(), 40, y); y+=6; };
 
   // ---- weather ----
