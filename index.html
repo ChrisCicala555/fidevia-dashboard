@@ -2202,16 +2202,7 @@ function openModal(type){
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
   if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
-  if(['rfi','submittal','daily'].includes(type)){
-    const by=document.getElementById('f-by');
-    if(by){
-      const nm = ME_NAME || ME_EMAIL || '';
-      by.value = nm;
-      by.readOnly = true;
-      by.title = 'Automatically set to your account';
-      by.style.background='#f0efe9'; by.style.color='#555'; by.style.cursor='not-allowed';
-    }
-  }
+  if(['rfi','submittal','daily'].includes(type)){ fillSubmittedBy(); }
   if(type==='contact'){ cdPickLoad(); }
   if(type==='rfi'||type==='co'||type==='submittal'){ const dl=document.getElementById('subco-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-subco'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
@@ -2413,7 +2404,7 @@ async function submitForm(){
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
     }
 
-    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } }catch(e){}
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     let _wfFirst=[];
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfSteps(key); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
@@ -2639,7 +2630,34 @@ function navTo(sec){
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
 let VIEWER_COMPANY='';
-let ME_EMAIL=''; let ME_NAME='';
+let ME_EMAIL=''; let ME_NAME=''; let ME_COMPANY='';
+async function resolveMe(){
+  if(!ME_EMAIL || !ME_NAME){
+    try{ const u=await auth0Client.getUser(); ME_EMAIL=String(u.email||'').toLowerCase(); ME_NAME=u.name||u.email||'';
+      // prefer the saved profile's real name if Auth0 only has the email
+      try{ const p=JSON.parse(localStorage.getItem('fidevia_profile_'+u.sub)||'null');
+        if(p){ const full=((p.first_name||'')+' '+(p.last_name||'')).trim(); if(full) ME_NAME=full; if(p.company) ME_COMPANY=p.company; }
+      }catch(e){}
+    }catch(e){}
+  }
+  if(!ME_COMPANY){
+    if(EXTERNAL && currentProject && currentProject.userCompany){ ME_COMPANY=currentProject.userCompany; }
+    else {
+      const c=(allData.contacts||[]).find(x=>String(x['Email']||'').trim().toLowerCase()===ME_EMAIL);
+      if(c && c['Company']) ME_COMPANY=c['Company'];
+      else if(ME_EMAIL.endsWith('@fidevia.com')) ME_COMPANY='Fidevia';
+    }
+  }
+  return {name:ME_NAME, email:ME_EMAIL, company:ME_COMPANY};
+}
+async function fillSubmittedBy(){
+  const by=document.getElementById('f-by'); if(!by) return;
+  by.readOnly=true; by.title='Automatically set to your account';
+  by.style.background='#f0efe9'; by.style.color='#555'; by.style.cursor='not-allowed';
+  by.value='Loading…';
+  const me=await resolveMe();
+  by.value = me.company ? (me.name+' ('+me.company+')') : (me.name||me.email||'');
+}
 (async()=>{ try{ const u=await auth0Client.getUser(); ME_EMAIL=String(u.email||'').toLowerCase(); ME_NAME=u.name||u.email||''; }catch(e){} })();
 function setViewer(mode){
   if(EXTERNAL) mode='external';
