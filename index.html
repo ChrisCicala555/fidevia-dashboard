@@ -315,6 +315,8 @@
   .btn-remove{background:none;border:none;color:var(--danger);font-size:21px;cursor:pointer;line-height:1;padding:2px;}
 </style>
 <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -694,7 +696,7 @@
       <div class="section" id="section-dailylogs">
         <div class="page-title-row">
           <h2>Daily logs</h2>
-          <button class="btn-add" onclick="openModal('daily')">+ Upload Daily Report</button>
+          <div><button class="btn-add" onclick="openDailyGen()" style="margin-right:8px;">Generate Daily Report</button><button class="btn-add" onclick="openModal('daily')">+ Upload Daily Report</button></div>
         </div>
         <div class="panel">
           <div class="panel-header">Box-linked daily reports</div>
@@ -945,6 +947,50 @@
       <p style="color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 20px;">Your login couldn't be verified — this usually means your session timed out. Please sign in again to continue.</p>
       <button class="btn-primary" onclick="logoutAuth0()" style="margin-right:8px;">Sign In Again</button>
       <button class="btn-secondary" onclick="location.reload()">Reload Page</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="dgen-backdrop" onclick="if(event.target===this)closeDailyGen()">
+  <div class="modal" style="max-width:900px;">
+    <div class="modal-header"><h3>Generate Daily Report</h3><button class="modal-close" onclick="closeDailyGen()">✕</button></div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field"><label>Report Date *</label><input type="date" id="dg-date" onchange="dgFetchWeather()"></div>
+        <div class="field"><label>Prepared By</label><input id="dg-by" readonly style="background:#f0efe9;color:#555;"></div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <strong style="color:var(--olive-900);">Weather</strong>
+          <button type="button" class="btn-secondary" style="padding:4px 10px;" onclick="dgFetchWeather()">Refresh</button>
+        </div>
+        <div id="dg-weather-status" style="font-size:12px;color:var(--muted);margin-bottom:8px;">Pick a date to fetch conditions.</div>
+        <div class="field-row">
+          <div class="field"><label style="font-size:11px;">Low (°F)</label><input id="dg-w-low"></div>
+          <div class="field"><label style="font-size:11px;">High (°F)</label><input id="dg-w-high"></div>
+          <div class="field"><label style="font-size:11px;">Precip (in)</label><input id="dg-w-precip"></div>
+          <div class="field"><label style="font-size:11px;">Wind max (mph)</label><input id="dg-w-wind"></div>
+        </div>
+        <div id="dg-snapshot" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+
+      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Manpower &amp; Work Performed</strong></div>
+      <div id="dg-crew-rows"></div>
+      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddCrew()">+ Add Company</button>
+
+      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Notes / Issues</strong></div>
+      <div id="dg-note-rows"></div>
+      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddNote()">+ Add Note</button>
+
+      <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple><p class="file-hint">Included in the report, grouped after the work summary.</p></div>
+      <div class="field"><label>Copies To</label><input id="dg-copies" placeholder="Names or distribution list"></div>
+      <div class="status-msg" id="dg-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="dg-submit" onclick="dgGenerate()">Generate &amp; Save to Box</button>
+      <button class="btn-secondary" onclick="closeDailyGen()">Cancel</button>
+      <span class="upload-progress" id="dg-progress" style="display:none">Working…</span>
     </div>
   </div>
 </div>
@@ -3124,6 +3170,256 @@ async function uploadNewVersion(key, rowIdx){
   input.click();
 }
 
+
+
+// ══════════════════════════════════════════════
+// DAILY REPORT GENERATOR
+// ══════════════════════════════════════════════
+let DG_SNAPSHOT=[];
+function dgCrewRow(){
+  return '<div class="dg-crew" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
+    +'<div class="field-row" style="margin:0 0 6px;">'
+    +'<div class="field" style="margin:0;flex:1.4;"><label style="font-size:11px;">Company</label><input class="dg-co" list="contr-list-dg" placeholder="Contractor"></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Trade</label><input class="dg-trade" placeholder="Masonry, Electrical…"></div>'
+    +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Workers</label><input class="dg-workers" type="number" min="0"></div>'
+    +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Hours</label><input class="dg-hours" type="number" min="0" step="0.5"></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 11px;align-self:flex-end;" onclick="this.closest(\'.dg-crew\').remove()">×</button></div>'
+    +'<div class="field" style="margin:0;"><label style="font-size:11px;">Work Performed</label><textarea class="dg-work" rows="2" placeholder="Describe the work completed"></textarea></div></div>';
+}
+function dgAddCrew(){ document.getElementById('dg-crew-rows').insertAdjacentHTML('beforeend', dgCrewRow()); }
+function dgNoteRow(){
+  return '<div class="dg-note" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">'
+    +'<div class="field" style="margin:0;width:110px;"><label style="font-size:11px;">Issue?</label><select class="dg-issue"><option>No</option><option>Yes</option></select></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Location</label><input class="dg-loc"></div>'
+    +'<div class="field" style="margin:0;flex:2;"><label style="font-size:11px;">Comments</label><input class="dg-note-text"></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.dg-note\').remove()">×</button></div>';
+}
+function dgAddNote(){ document.getElementById('dg-note-rows').insertAdjacentHTML('beforeend', dgNoteRow()); }
+
+async function openDailyGen(){
+  document.getElementById('dg-date').value = etToday();
+  document.getElementById('dg-crew-rows').innerHTML=''; dgAddCrew();
+  document.getElementById('dg-note-rows').innerHTML=''; dgAddNote();
+  document.getElementById('dg-photos').value='';
+  document.getElementById('dg-copies').value='';
+  showStatus('dg-status','','');
+  document.getElementById('dg-progress').style.display='none';
+  document.getElementById('dg-submit').disabled=false;
+  const me=await resolveMe();
+  document.getElementById('dg-by').value = me.company ? (me.name+' ('+me.company+')') : (me.name||me.email||'');
+  if(!document.getElementById('contr-list-dg')){
+    const dl=document.createElement('datalist'); dl.id='contr-list-dg'; document.body.appendChild(dl);
+  }
+  const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
+  document.getElementById('contr-list-dg').innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join('');
+  document.getElementById('dgen-backdrop').classList.add('open');
+  dgFetchWeather();
+}
+function closeDailyGen(){ document.getElementById('dgen-backdrop').classList.remove('open'); }
+
+async function dgFetchWeather(){
+  const st=document.getElementById('dg-weather-status'); const date=document.getElementById('dg-date').value;
+  DG_SNAPSHOT=[];
+  if(!date){ st.textContent='Pick a date to fetch conditions.'; return; }
+  const cfg=(currentProject&&currentProject.config)||{};
+  const a=cfg.address||{};
+  const place=[a.city,a.state].filter(Boolean).join(', ') || cfg.location || '';
+  if(!place){ st.textContent='No project location set — enter weather manually.'; return; }
+  st.textContent='Fetching weather for '+place+'…';
+  try{
+    const g=await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name='+encodeURIComponent(place))).json();
+    const loc=(g.results||[])[0];
+    if(!loc) throw new Error('Location not found');
+    const base = (date < etToday()) ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+    const url = base+'?latitude='+loc.latitude+'&longitude='+loc.longitude
+      +'&start_date='+date+'&end_date='+date
+      +'&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max'
+      +'&hourly=temperature_2m,weathercode&temperature_unit=fahrenheit&precipitation_unit=inch&windspeed_unit=mph&timezone=auto';
+    const d=await (await fetch(url)).json();
+    const dd=d.daily||{};
+    const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null) el.value=(typeof v==='number'?Math.round(v*10)/10:v); };
+    set('dg-w-low',(dd.temperature_2m_min||[])[0]);
+    set('dg-w-high',(dd.temperature_2m_max||[])[0]);
+    set('dg-w-precip',(dd.precipitation_sum||[])[0]);
+    set('dg-w-wind',(dd.windspeed_10m_max||[])[0]);
+    const codes={0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Fog',51:'Light drizzle',53:'Drizzle',55:'Drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm'};
+    const hrs=(d.hourly&&d.hourly.time)||[];
+    [6,9,12,15,18,21].forEach(h=>{
+      const idx=hrs.findIndex(t=>t.endsWith(String(h).padStart(2,'0')+':00'));
+      if(idx>=0){ const t=Math.round(d.hourly.temperature_2m[idx]); const c=codes[d.hourly.weathercode[idx]]||'—';
+        DG_SNAPSHOT.push({time:(h%12||12)+(h<12?' AM':' PM'), cond:c, temp:t+'°F'}); }
+    });
+    document.getElementById('dg-snapshot').innerHTML = DG_SNAPSHOT.length
+      ? DG_SNAPSHOT.map(s=>'<span style="display:inline-block;margin-right:14px;"><strong>'+esc(s.time)+'</strong> '+esc(s.cond)+' '+esc(s.temp)+'</span>').join('')
+      : '';
+    st.textContent='Weather loaded for '+place+' — edit if needed.';
+  }catch(e){ st.textContent='Could not fetch weather ('+e.message+') — enter manually.'; }
+}
+
+function dgGather(){
+  const crews=[...document.querySelectorAll('#dg-crew-rows .dg-crew')].map(r=>({
+    company:(r.querySelector('.dg-co').value||'').trim(),
+    trade:(r.querySelector('.dg-trade').value||'').trim(),
+    workers:(r.querySelector('.dg-workers').value||'').trim(),
+    hours:(r.querySelector('.dg-hours').value||'').trim(),
+    work:(r.querySelector('.dg-work').value||'').trim()
+  })).filter(c=>c.company||c.work);
+  const notes=[...document.querySelectorAll('#dg-note-rows .dg-note')].map(r=>({
+    issue:r.querySelector('.dg-issue').value,
+    loc:(r.querySelector('.dg-loc').value||'').trim(),
+    text:(r.querySelector('.dg-note-text').value||'').trim()
+  })).filter(n=>n.text||n.loc);
+  return {crews,notes};
+}
+
+function fileToDataURL(f){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); }); }
+
+async function dgBuildPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'pt', format:'letter'});
+  const W = doc.internal.pageSize.getWidth();
+  const OLIVE=[81,85,32], KHAKI=[138,133,80], INK=[47,47,47], LIGHT=[245,244,239];
+  const cfg=(currentProject&&currentProject.config)||{};
+  const date=document.getElementById('dg-date').value;
+  const by=document.getElementById('dg-by').value;
+  const copies=document.getElementById('dg-copies').value;
+  const {crews,notes}=dgGather();
+  const dObj=new Date(date+'T12:00:00');
+  const dayName=dObj.toLocaleDateString('en-US',{weekday:'long'});
+
+  // ---- header ----
+  doc.setFillColor(...OLIVE); doc.rect(0,0,W,6,'F');
+  doc.setFont('times','bold'); doc.setFontSize(20); doc.setTextColor(...OLIVE);
+  doc.text('Fidevia', 40, 44);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...KHAKI);
+  doc.text('CONSTRUCTION MANAGEMENT & CONSULTING', 40, 58);
+  doc.setFontSize(9); doc.setTextColor(...INK);
+  const a=cfg.address||{};
+  const right=[currentProject.name, cfg.jobNumber?('Job #'+cfg.jobNumber):'', [a.line1,a.city&&(a.city+', '+(a.state||'')),a.zip].filter(Boolean).join(' · ')||cfg.location||''].filter(Boolean);
+  right.forEach((t,i)=>doc.text(String(t), W-40, 44+(i*12), {align:'right'}));
+
+  doc.setDrawColor(...KHAKI); doc.setLineWidth(1); doc.line(40,74,W-40,74);
+  doc.setFont('times','bold'); doc.setFontSize(15); doc.setTextColor(...OLIVE);
+  doc.text('Daily Report: '+dayName+' '+fmtDMY(date), 40, 96);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(120,120,110);
+  doc.text('Prepared by '+by, 40, 110);
+
+  let y=128;
+  const sect=(t)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...OLIVE); doc.text(t.toUpperCase(), 40, y); y+=6; };
+
+  // ---- weather ----
+  sect('Weather');
+  const wv=id=>document.getElementById(id).value||'—';
+  doc.autoTable({
+    startY:y, margin:{left:40,right:40},
+    head:[['Low','High','Precipitation','Max Wind']],
+    body:[[wv('dg-w-low')+'°F', wv('dg-w-high')+'°F', wv('dg-w-precip')+' in', wv('dg-w-wind')+' mph']],
+    theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8}, bodyStyles:{fontSize:9,textColor:INK}, styles:{cellPadding:5}
+  });
+  y=doc.lastAutoTable.finalY+14;
+  if(DG_SNAPSHOT.length){
+    doc.autoTable({ startY:y, margin:{left:40,right:40},
+      head:[DG_SNAPSHOT.map(s=>s.time)],
+      body:[DG_SNAPSHOT.map(s=>s.cond+'\n'+s.temp)],
+      theme:'grid', headStyles:{fillColor:KHAKI,textColor:255,fontSize:8}, bodyStyles:{fontSize:8,textColor:INK,halign:'center'}, styles:{cellPadding:4}
+    });
+    y=doc.lastAutoTable.finalY+18;
+  }
+
+  // ---- manpower / work ----
+  sect('Manpower & Work Performed');
+  const totW=crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0);
+  const totH=crews.reduce((s,c)=>s+(parseFloat(c.hours)||0),0);
+  doc.autoTable({
+    startY:y, margin:{left:40,right:40},
+    head:[['#','Company','Trade','Workers','Hours','Work Performed']],
+    body:crews.map((c,i)=>[i+1,c.company,c.trade,c.workers||'—',c.hours||'—',c.work]),
+    foot:[['','Total','',String(totW),String(totH),'']],
+    theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8},
+    footStyles:{fillColor:LIGHT,textColor:INK,fontStyle:'bold',fontSize:8},
+    bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
+    columnStyles:{0:{cellWidth:22},3:{cellWidth:48,halign:'center'},4:{cellWidth:44,halign:'center'},5:{cellWidth:180}}
+  });
+  y=doc.lastAutoTable.finalY+18;
+
+  // ---- notes ----
+  if(notes.length){
+    if(y>640){ doc.addPage(); y=60; }
+    sect('Notes & Issues');
+    doc.autoTable({
+      startY:y, margin:{left:40,right:40},
+      head:[['#','Issue?','Location','Comments']],
+      body:notes.map((n,i)=>[i+1,n.issue,n.loc,n.text]),
+      theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8}, bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
+      columnStyles:{0:{cellWidth:22},1:{cellWidth:50},2:{cellWidth:100}}
+    });
+    y=doc.lastAutoTable.finalY+18;
+  }
+
+  // ---- photos ----
+  const files=[...(document.getElementById('dg-photos').files||[])];
+  if(files.length){
+    doc.addPage(); y=60;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...OLIVE);
+    doc.text('SITE PHOTOS', 40, y); y+=16;
+    let x=40; const pw=(W-80-16)/2, ph=150;
+    for(const f of files){
+      if(y+ph>700){ doc.addPage(); y=60; x=40; }
+      try{ const url=await fileToDataURL(f);
+        doc.addImage(url, 'JPEG', x, y, pw, ph, undefined, 'FAST');
+        doc.setFontSize(7); doc.setTextColor(130,130,120); doc.text(f.name.slice(0,40), x, y+ph+9);
+      }catch(e){}
+      if(x===40){ x=40+pw+16; } else { x=40; y+=ph+22; }
+    }
+    if(x!==40) y+=ph+22;
+  }
+
+  // ---- signature footer ----
+  if(y>620){ doc.addPage(); y=60; }
+  y+=10;
+  doc.setDrawColor(...KHAKI); doc.line(40,y,W-40,y); y+=22;
+  doc.setFontSize(9); doc.setTextColor(...INK); doc.setFont('helvetica','normal');
+  doc.text('By: '+by, 40, y);
+  doc.text('Date: '+fmtDMY(date), 300, y);
+  doc.text('Copies To: '+(copies||'—'), 40, y+18);
+
+  // ---- page footers ----
+  const pages=doc.internal.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    doc.setPage(p);
+    doc.setFontSize(7); doc.setTextColor(150,150,140);
+    doc.text('Fidevia · '+currentProject.name, 40, 760);
+    doc.text('Page '+p+' of '+pages, W-40, 760, {align:'right'});
+  }
+  return doc;
+}
+
+async function dgGenerate(){
+  const btn=document.getElementById('dg-submit'), prog=document.getElementById('dg-progress');
+  const date=document.getElementById('dg-date').value;
+  if(!date){ showStatus('dg-status','Report date is required.','error'); return; }
+  const {crews}=dgGather();
+  if(!crews.length){ showStatus('dg-status','Add at least one company / work entry.','error'); return; }
+  btn.disabled=true; prog.style.display='inline'; prog.textContent='Building PDF…';
+  try{
+    const doc=await dgBuildPDF();
+    const blob=doc.output('blob');
+    const fname='Daily Report '+date+'.pdf';
+    const file=new File([blob], fname, {type:'application/pdf'});
+    prog.textContent='Uploading to Box…';
+    const fid=currentProject.folders.daily;
+    const up=await boxUploadBinary(file, fid);
+    const entry=up.entries?up.entries[0]:up;
+    prog.textContent='Updating log…';
+    const mod=MODULES.daily;
+    const row={'Date':date,'Submitted By':document.getElementById('dg-by').value,'Submitted By Email':ME_EMAIL||'','Weather':(document.getElementById('dg-w-low').value||'')+'–'+(document.getElementById('dg-w-high').value||'')+'°F','Crew Count':String(crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0)),'Work Performed':crews.map(c=>c.company+': '+c.work).join(' | ').slice(0,300),'Delays / Issues':'','Attachment File ID':entry.id||'','Attachment Name':fname};
+    if(EXTERNAL){ await proxyCall('appendRow',{folderId:fid, filename:mod.log, headers:mod.headers, row}); allData.daily=(allData.daily||[]).concat([row]); }
+    else { const ex=await findFile(fid,mod.log); let rows=ex?(parseCSV(await boxGetText(ex.id))).rows:[]; rows.push(row); await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,ex?ex.id:null); allData.daily=rows; }
+    doc.save(fname);
+    renderAll(); closeDailyGen();
+  }catch(e){ showStatus('dg-status','Error: '+e.message,'error'); }
+  btn.disabled=false; prog.style.display='none';
+}
 
 // ══════════════════════════════════════════════
 // SENDGRID EMAIL NOTIFICATIONS
