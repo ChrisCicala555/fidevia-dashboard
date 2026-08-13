@@ -672,8 +672,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
-          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted On</th><th>Cost Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1229,7 +1229,7 @@ function toCSV(headers, rows){
 // ── MODULE DEFS ──
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Submitted By','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
@@ -1758,8 +1758,8 @@ function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
-    return main+verThreadRows('co',r,i,8); }).join('');
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By']||'')+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
+    return main+verThreadRows('co',r,i,9); }).join('');
 }
 
 function renderSubmittals(){
@@ -2367,8 +2367,8 @@ async function submitForm(){
       const _cc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
       const _cnum = nextItemNumber('co', _cc);
-      newRow={'CO #':_cnum,'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
-      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
+      newRow={'CO #':_cnum,'Description':v('f-subject'),'Submitted By':(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||'')),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
+      sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:newRow['Submitted By']||''},[['CO #',newRow['CO #']],['Submitted By',newRow['Submitted By']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='submittal'){
 
       await resolveMe();
