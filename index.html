@@ -2103,20 +2103,20 @@ function renderOverview(){
 // ── MODAL FORMS ──
 const FORMS = {
   rfi:{title:'Submit New RFI',html:`
-    <div class="field-row"><div class="field"><label>Submitting Company *</label><input autocomplete="off" id="f-subco" list="subco-list" placeholder="Company"><datalist id="subco-list"></datalist></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-assigned"></select></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="f-due"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'Submit New Change Order',html:`
-    <div class="field-row"><div class="field"><label>Submitting Company *</label><input autocomplete="off" id="f-subco" list="subco-list" placeholder="Company"><datalist id="subco-list"></datalist></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
     <div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
-    <div class="field-row"><div class="field"><label>Submitting Company *</label><input autocomplete="off" id="f-subco" list="subco-list" placeholder="Company"><datalist id="subco-list"></datalist></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-reviewer"></select></div></div>
@@ -2204,7 +2204,6 @@ function openModal(type){
   if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
   if(['rfi','submittal','daily'].includes(type)){ fillSubmittedBy(); }
   if(type==='contact'){ cdPickLoad(); }
-  if(type==='rfi'||type==='co'||type==='submittal'){ const dl=document.getElementById('subco-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-subco'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
   if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
   wireMoneyInputs();
@@ -2347,23 +2346,26 @@ async function submitForm(){
 
     let newRow={};
     if(currentModal==='rfi'){
-      const _rc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-subco');
-      if(!_rc||!v('f-subject')||!v('f-by')) throw new Error('Submitting Company, Subject, and Submitted By are required.');
+      await resolveMe();
+      const _rc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+      if(!v('f-subject')) throw new Error('Subject is required.');
       const _rnum = nextItemNumber('rfi', _rc);
       newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',newRow['Due Date']],['Status',newRow['Status']]]);
     } else if(currentModal==='co'){
 
-      const _cc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-subco');
-      if(!_cc||!v('f-subject')) throw new Error('Submitting Company and Description are required.');
+      await resolveMe();
+      const _cc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+      if(!v('f-subject')) throw new Error('Description is required.');
       const _cnum = nextItemNumber('co', _cc);
       newRow={'CO #':_cnum,'Description':v('f-subject'),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
       sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:''},[['CO #',newRow['CO #']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]]);
     } else if(currentModal==='submittal'){
 
-      const _sc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-subco');
-      if(!_sc||!v('f-subject')||!v('f-by')) throw new Error('Submitting Company, Description, and Submitted By are required.');
+      await resolveMe();
+      const _sc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+      if(!v('f-subject')) throw new Error('Description is required.');
       const _snum = nextItemNumber('sub', _sc);
       newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
