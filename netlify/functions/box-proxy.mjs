@@ -1,6 +1,13 @@
 import { getStore } from '@netlify/blobs';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
+const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
+async function auth0Userinfo(auth){
+  for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
+    try { const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } }); if (r.ok) return await r.json(); } catch (e) {}
+  }
+  return null;
+}
 const ADMIN_DOMAIN = 'fidevia.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
@@ -37,9 +44,8 @@ async function serviceToken() {
 async function caller(req) {
   const auth = req.headers.get('authorization') || '';
   if (!auth.startsWith('Bearer ')) return null;
-  const r = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, { headers: { Authorization: auth } });
-  if (!r.ok) return null;
-  const u = await r.json();
+  const u = await auth0Userinfo(auth);
+  if (!u) return null;
   const email = (u.email || '').toLowerCase();
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const blobAdmins = await getBlobAdmins();

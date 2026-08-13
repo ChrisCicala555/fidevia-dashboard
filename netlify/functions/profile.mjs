@@ -1,6 +1,7 @@
 import { getStore } from '@netlify/blobs';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
+const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -9,9 +10,11 @@ export default async (req) => {
   if (!auth.startsWith('Bearer ')) return json({ error: 'Missing token' }, 401);
 
   // Validate the caller's Auth0 session and get their identity
-  const uiRes = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, { headers: { Authorization: auth } });
-  if (!uiRes.ok) return json({ error: 'Invalid token' }, 401);
-  const userinfo = await uiRes.json();
+  let userinfo = null;
+  for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
+    try { const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } }); if (r.ok) { userinfo = await r.json(); break; } } catch (e) {}
+  }
+  if (!userinfo) return json({ error: 'Invalid token' }, 401);
   const sub = userinfo.sub;
 
   const store = getStore('profiles');
