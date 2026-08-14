@@ -3,14 +3,27 @@ import { getStore } from '@netlify/blobs';
 const AUTH0_DOMAIN = 'login.fidevia.com';
 const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
 let LAST_AUTH_DIAG = '';
+// Cache userinfo per token so a burst of parallel requests doesn't hammer (and get
+// rate-limited by) Auth0's /userinfo endpoint. Survives across warm invocations.
+const _uiCache = new Map();
+const UI_TTL = 5 * 60 * 1000;
+function _uiGet(tok){ const e = _uiCache.get(tok); if (e && Date.now() < e.exp) return e.user; if (e) _uiCache.delete(tok); return null; }
+function _uiSet(tok, user){ if (_uiCache.size > 500) _uiCache.clear(); _uiCache.set(tok, { user, exp: Date.now() + UI_TTL }); }
 async function auth0Userinfo(auth){
+  const tok = String(auth || '').slice(7);
+  if (!tok) { LAST_AUTH_DIAG = 'no token'; return null; }
+  const cached = _uiGet(tok);
+  if (cached) return cached;
   const diag = [];
-  for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
-    try {
-      const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
-      diag.push(d.split('.')[0] + ':' + r.status);
-      if (r.ok) { LAST_AUTH_DIAG = ''; return await r.json(); }
-    } catch (e) { diag.push(d.split('.')[0] + ':err'); }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
+      try {
+        const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
+        if (attempt === 0) diag.push(d.split('.')[0] + ':' + r.status);
+        if (r.ok) { const u = await r.json(); _uiSet(tok, u); LAST_AUTH_DIAG = ''; return u; }
+        if (r.status === 429) { await new Promise(s => setTimeout(s, 350)); }
+      } catch (e) { if (attempt === 0) diag.push(d.split('.')[0] + ':err'); }
+    }
   }
   LAST_AUTH_DIAG = diag.join(' ');
   return null;
