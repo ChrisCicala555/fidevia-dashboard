@@ -1168,7 +1168,7 @@ async function proxyCall(op, body){
   }
   let {r,d}=await attempt(false);
   if(r.status===401){ try{ ({r,d}=await attempt(true)); }catch(e){} }
-  if(r.status===401){ showSessionExpired(); throw new Error('Session expired — please sign in again.'); }
+  if(r.status===401){ showSessionExpired(); throw new Error((d&&d.error)||'Session expired — please sign in again.'); }
   if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
   return d;
 }

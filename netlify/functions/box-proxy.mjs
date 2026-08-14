@@ -2,10 +2,17 @@ import { getStore } from '@netlify/blobs';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
 const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
+let LAST_AUTH_DIAG = '';
 async function auth0Userinfo(auth){
+  const diag = [];
   for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
-    try { const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } }); if (r.ok) return await r.json(); } catch (e) {}
+    try {
+      const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
+      diag.push(d.split('.')[0] + ':' + r.status);
+      if (r.ok) { LAST_AUTH_DIAG = ''; return await r.json(); }
+    } catch (e) { diag.push(d.split('.')[0] + ':err'); }
   }
+  LAST_AUTH_DIAG = diag.join(' ');
   return null;
 }
 const ADMIN_DOMAIN = 'fidevia.com';
@@ -134,7 +141,7 @@ async function withinGranted(t, grantedIds, kind, id) {
 export default async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const who = await caller(req);
-  if (!who) return json({ error: 'Not authenticated' }, 401);
+  if (!who) return json({ error: 'Not authenticated (' + (LAST_AUTH_DIAG || 'no token') + ')' }, 401);
 
   let body; try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
   const op = body.op;
