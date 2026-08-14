@@ -1159,16 +1159,20 @@ let EXTERNAL = false;
 let IS_ADMIN = false;
 let _sessionShown=false;
 function showSessionExpired(){ if(_sessionShown) return; _sessionShown=true; const el=document.getElementById('session-backdrop'); if(el) el.classList.add('open'); }
-async function proxyCall(op, body){
+async function proxyCall(op, body, opts){
+  opts=opts||{};
   async function attempt(fresh){
     const tok = await auth0Client.getTokenSilently(fresh?{cacheMode:'off'}:undefined);
     const r = await fetch('/api/box-proxy', { method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({op}, body||{})) });
     let d={}; try{ d=await r.json(); }catch(e){}
     return {r,d};
   }
-  let {r,d}=await attempt(false);
-  if(r.status===401){ try{ ({r,d}=await attempt(true)); }catch(e){} }
-  if(r.status===401){ showSessionExpired(); throw new Error((d&&d.error)||'Session expired — please sign in again.'); }
+  let r,d;
+  try{ ({r,d}=await attempt(false)); }
+  catch(e){ try{ ({r,d}=await attempt(true)); }catch(e2){ throw e2; } }
+  if(r && r.status===401){ try{ ({r,d}=await attempt(true)); }catch(e){} }
+  if(r && r.status===401){ try{ await new Promise(s=>setTimeout(s,400)); ({r,d}=await attempt(true)); }catch(e){} }
+  if(r.status===401){ if(!opts.quiet) showSessionExpired(); throw new Error((d&&d.error)||'Session expired — please sign in again.'); }
   if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
   return d;
 }
@@ -1313,7 +1317,7 @@ async function loadPicker(){
       const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
       sessionStorage.setItem('root_id', rootId);
       PICKER_PROJECTS = (await boxList(rootId)).filter(i=>i.type==='folder' && !SYSTEM_FOLDERS.includes(i.name));
-      let arch=[]; try{ arch=(await proxyCall('getArchived',{})).ids||[]; }catch(e){}
+      let arch=[]; try{ arch=(await proxyCall('getArchived',{},{quiet:true})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
     }
     renderPickerGrid();
@@ -1410,7 +1414,7 @@ async function openProject(folderId, name){
   if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; }
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
   try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
-  try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId})).templates||{}; }catch(e){ currentProject.notif={}; }
+  try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId},{quiet:true})).templates||{}; }catch(e){ currentProject.notif={}; }
   loadAccessRequests(folderId);
   toggleBoardTab(); loadLogo();
   if(!EXTERNAL) loadProjectPhotos();
@@ -1866,7 +1870,7 @@ function accountCell(r){
     : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
 }
 async function loadAccountEmails(){
-  try{ const d=await proxyCall('accountEmails',{}); ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase())); renderContacts(); }catch(e){}
+  try{ const d=await proxyCall('accountEmails',{},{quiet:true}); ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase())); renderContacts(); }catch(e){}
 }
 function contactInvite(r,i){
   const em=String(r['Email']||'').trim().toLowerCase();
@@ -2574,7 +2578,7 @@ function loadNotifSettings(){
   loadReminderSettings();
 }
 async function loadReminderSettings(){
-  let s={}; try{ s=(await proxyCall('getReminderSettings',{projectId:currentProject.folderId})).settings||{}; }catch(e){}
+  let s={}; try{ s=(await proxyCall('getReminderSettings',{projectId:currentProject.folderId},{quiet:true})).settings||{}; }catch(e){}
   const el=id=>document.getElementById(id);
   if(!el('rem-enabled')) return;
   el('rem-enabled').checked=!!s.enabled;
@@ -2651,7 +2655,7 @@ async function renderGrants(){
 async function loadGrantCompanies(){
   const sel=document.getElementById('grant-project'); const dl=document.getElementById('grant-company-list'); if(!dl) return; dl.innerHTML='';
   const pid=sel.value; if(!pid) return;
-  try{ const d=await proxyCall('projectCompanies',{projectId:pid}); dl.innerHTML=(d.companies||[]).map(c=>'<option value="'+esc(c)+'">').join(''); }catch(e){}
+  try{ const d=await proxyCall('projectCompanies',{projectId:pid},{quiet:true}); dl.innerHTML=(d.companies||[]).map(c=>'<option value="'+esc(c)+'">').join(''); }catch(e){}
 }
 async function grantAccess(){
   const email=(document.getElementById('grant-email').value||'').trim();
@@ -2854,8 +2858,8 @@ async function saveProfile(){
   }
   // Determine role from server (single source of truth): admins = @fidevia.com or allowlisted.
   let _whoami = { isAdmin:false };
-  try{ _whoami = await proxyCall('whoami',{}); }
-  catch(e){ try{ _whoami = await proxyCall('whoami',{}); }catch(e2){} }
+  try{ _whoami = await proxyCall('whoami',{},{quiet:true}); }
+  catch(e){ try{ _whoami = await proxyCall('whoami',{},{quiet:true}); }catch(e2){} }
   const _emailAdmin = !!(user && (user.email||'').toLowerCase().endsWith('@fidevia.com'));
   IS_ADMIN = !!_whoami.isAdmin || _emailAdmin;
   EXTERNAL = !IS_ADMIN;
@@ -3480,7 +3484,7 @@ async function cdPickLoad(){
   if(inp) inp.value=''; if(box){ box.style.display='none'; box.innerHTML=''; }
   if(EXTERNAL) { const w=document.getElementById('f-dirsearch'); if(w&&w.parentElement) w.parentElement.style.display='none'; return; }
   if(CD_PICK.length) return;
-  try{ const d=await proxyCall('allContacts',{}); CD_PICK=d.contacts||[]; }catch(e){ CD_PICK=[]; }
+  try{ const d=await proxyCall('allContacts',{},{quiet:true}); CD_PICK=d.contacts||[]; }catch(e){ CD_PICK=[]; }
 }
 function cdPickSearch(){
   const inp=document.getElementById('f-dirsearch'), box=document.getElementById('f-dirresults');
