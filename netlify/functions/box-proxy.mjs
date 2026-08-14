@@ -107,20 +107,36 @@ async function addContactToProject(H, projectId, contact){
 function contactFromSnap(snap, email){
   return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
 }
-async function sendGrantEmail(email, projectName){
+async function sendGrantEmail(email, projectName, company, role){
   const key = process.env.SENDGRID_KEY; if(!key || !email) return;
   const from = process.env.FROM_EMAIL || 'dashboard@fidevia.com';
-  const url = process.env.SITE_URL || 'https://dashboard.fidevia.com/';
-  const proj = projectName || 'a project';
-  const html = '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:8px;overflow:hidden">'
-    + '<div style="background:#515520;padding:20px 24px"><span style="color:#fff;font-size:18px;font-weight:700">Fidevia</span><span style="color:#c8b97a;margin-left:8px;font-size:13px">Construction Dashboard</span></div>'
-    + '<div style="padding:24px">'
-    + '<p style="font-size:15px;color:#1a1a1a">You have been granted access to <strong>' + proj.replace(/</g,'&lt;') + '</strong> on the Fidevia Construction Dashboard.</p>'
-    + '<p style="font-size:14px;color:#444">To view the project, sign in with your account &mdash; or create one if you do not have one yet using this same email address (' + String(email).replace(/</g,'&lt;') + ').</p>'
-    + '<p style="margin:24px 0"><a href="' + url + '" style="background:#515520;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;display:inline-block">Open the Fidevia Dashboard</a></p>'
-    + '<p style="font-size:12px;color:#999">If the button does not work, copy and paste this link: ' + url + '</p>'
-    + '</div></div>';
-  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'You have been granted access to ' + proj + ' \u2014 Fidevia Dashboard', content:[{type:'text/html',value:html}] };
+  const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/,'');
+  const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
+  const proj = esc(projectName || 'a project');
+  const serif = "Georgia,'Times New Roman',Times,serif";
+  const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const rows = [['Project', proj], ['Your Sign-in Email', esc(email)]];
+  if (company) rows.push(['Company', esc(company)]);
+  if (role) rows.push(['Role', esc(role)]);
+  const rowsHTML = rows.map(([k, v], i) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:170px;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
+  const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
+    <tr><td style="padding:26px 24px 12px;text-align:center;background:#ffffff">
+      <img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto">
+      <div style="font-family:${sans};font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>
+    <tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520;">&nbsp;</div></td></tr>
+    <tr><td style="padding:22px 24px 6px">
+      <div style="font-family:${serif};font-size:20px;font-weight:700;margin:0 0 4px"><span style="color:#515520">Access granted:</span> <span style="color:#2f2f2f">${proj}</span></div>
+      <div style="font-family:${sans};font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Fidevia Construction Dashboard</div>
+      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You now have access to this project. Sign in with your account &mdash; or create one using this same email address if you haven't yet.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rowsHTML}</table>
+      <div style="text-align:center;margin:22px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:${sans};font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open in Dashboard</a></div>
+      <p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">If the button doesn't work, copy and paste this link: ${origin}/</p>
+    </td></tr>
+    <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">
+      <div style="font-family:${sans};font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
+    </table></div>`;
+  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'[Fidevia] You have access to ' + (projectName || 'a project'), content:[{type:'text/html',value:html}] };
   await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
@@ -210,7 +226,7 @@ export default async (req) => {
         else { g.projects.push({ id: String(body.projectId), name: body.projectName || '', company, role }); }
         await store.setJSON(email, g);
         try { const c = contactFromSnap(null, email); if (company) c['Company'] = company; if (role) c['Role'] = role; await addContactToProject(H, String(body.projectId), c); } catch(e) {}
-        try { await sendGrantEmail(email, body.projectName||''); } catch(e) {}
+        try { await sendGrantEmail(email, body.projectName||'', company, role); } catch(e) {}
         return json({ ok: true });
       }
       if (op === 'adminRevoke') {
@@ -262,7 +278,7 @@ export default async (req) => {
       // auto-add to the project's contacts with notifications ON
       const reqRec = await requestsStore().get(reqKey(projectId, email), { type: 'json' });
       try { await addContactToProject(H, projectId, contactFromSnap(reqRec && reqRec.snap, email)); } catch(e) {}
-      try { await sendGrantEmail(email, body.projectName||''); } catch(e) {}
+      try { await sendGrantEmail(email, body.projectName||'', company, role); } catch(e) {}
       await requestsStore().delete(reqKey(projectId, email));
       return json({ ok: true });
     }
