@@ -993,9 +993,9 @@
       <div id="dg-crew-rows"></div>
       <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddCrew()">+ Add Company</button>
 
-      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Notes / Issues</strong></div>
+      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Notable Events</strong></div>
       <div id="dg-note-rows"></div>
-      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddNote()">+ Add Note</button>
+      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddNote()">+ Add Event</button>
 
       <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple onchange="dgPhotosPicked()"><p class="file-hint">Included in the report, grouped after the work summary. Add a description to each and it prints as the caption.</p></div>
       <div id="dg-photo-list" style="display:none;margin-top:4px;"></div>
@@ -3395,10 +3395,9 @@ function dgCrewRow(){
 function dgAddCrew(){ document.getElementById('dg-crew-rows').insertAdjacentHTML('beforeend', dgCrewRow()); }
 function dgNoteRow(){
   return '<div class="dg-note" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">'
-    +'<div class="field" style="margin:0;width:110px;"><label style="font-size:11px;">Issue?</label><select class="dg-issue"><option>No</option><option>Yes</option></select></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Location</label><input class="dg-loc"></div>'
-    +'<div class="field" style="margin:0;flex:2;"><label style="font-size:11px;">Comments</label><input class="dg-note-text"></div>'
-    +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.dg-note\').remove()">×</button></div>';
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Event</label><input class="dg-event" placeholder="What happened"></div>'
+    +'<div class="field" style="margin:0;flex:2;"><label style="font-size:11px;">Comments</label><input class="dg-note-text" placeholder="Detail, impact, follow-up"></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 0;flex:0 0 auto;width:42px;text-align:center;" title="Remove this event" onclick="this.closest(\'.dg-note\').remove()">×</button></div>';
 }
 function dgAddNote(){ document.getElementById('dg-note-rows').insertAdjacentHTML('beforeend', dgNoteRow()); }
 
@@ -3530,10 +3529,9 @@ function dgGather(){
     work:(r.querySelector('.dg-work').value||'').trim()
   })).filter(c=>c.company||c.work);
   const notes=[...document.querySelectorAll('#dg-note-rows .dg-note')].map(r=>({
-    issue:r.querySelector('.dg-issue').value,
-    loc:(r.querySelector('.dg-loc').value||'').trim(),
+    event:(r.querySelector('.dg-event').value||'').trim(),
     text:(r.querySelector('.dg-note-text').value||'').trim()
-  })).filter(n=>n.text||n.loc);
+  })).filter(n=>n.event||n.text);
   return {crews,notes};
 }
 
@@ -3623,13 +3621,13 @@ async function dgBuildPDF(){
   // ---- notes ----
   if(notes.length){
     if(y>640){ doc.addPage(); y=60; }
-    sect('Notes & Issues');
+    sect('Notable Events');
     doc.autoTable({
       startY:y, margin:{left:40,right:40},
-      head:[['#','Issue?','Location','Comments']],
-      body:notes.map((n,i)=>[i+1,n.issue,n.loc,n.text]),
+      head:[['#','Event','Comments']],
+      body:notes.map((n,i)=>[i+1,n.event,n.text]),
       theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8}, bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
-      columnStyles:{0:{cellWidth:22},1:{cellWidth:50},2:{cellWidth:100}}
+      columnStyles:{0:{cellWidth:22},1:{cellWidth:150}}
     });
     y=doc.lastAutoTable.finalY+18;
   }
