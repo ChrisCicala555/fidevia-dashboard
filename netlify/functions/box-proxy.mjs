@@ -226,7 +226,41 @@ async function sendGrantEmail(email, projectName, company, role){
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
+// Documents carry a per-row "Visible To" setting. This was only ever enforced in
+// the browser, so external users received internal-only rows (and their file IDs)
+// in the payload and simply did not see them rendered.
+const VISIBILITY_CSV = { 'Document Index.csv': 'Visible To', 'Documents.csv': 'Visible To' };
+function rowVisibleToExternal(v) {
+  const t = String(v || '').toLowerCase();
+  return t.includes('external') || t.includes('prime');
+}
+// Every column that can hold a Box file id, including inside version history.
+function fileIdsInRow(row) {
+  const out = [];
+  for (const k of ['Attachment File ID', 'File ID', 'Signed File ID']) {
+    const v = String(row[k] || '').trim(); if (v) out.push(v);
+  }
+  const vh = String(row['Version History'] || '');
+  for (const m of vh.matchAll(/\b(\d{6,})\b/g)) out.push(m[1]);
+  return out;
+}
 const SYSTEM_FOLDERS = ['Contact Directory Snapshots'];
+// Apply the same row-level rules everywhere a CSV is handed to a caller.
+function filterCsvForCaller(filename, text, isAdmin, company) {
+  if (isAdmin) return text;
+  const priv = PRIVATE_CSV[filename];
+  const vis = VISIBILITY_CSV[filename];
+  if (!priv && !vis) return text;
+  const parsed = parseCSVServer(text);
+  let rows = parsed.rows;
+  if (priv) {
+    const c = String(company || '').trim().toLowerCase();
+    rows = c ? rows.filter(r => String(r[priv] || '').trim().toLowerCase() === c) : [];
+  }
+  if (vis) rows = rows.filter(r => rowVisibleToExternal(r[vis]));
+  return toCSVServer(parsed.headers, rows);
+}
+
 async function callerCompanyFor(t, grants, kind, id) {
   const gidset = new Set(grants.map(g => String(g.id)));
   let pid = null;
@@ -249,6 +283,52 @@ async function withinGranted(t, grantedIds, kind, id) {
   const d = await r.json();
   const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
   return ids.some(x => grantedIds.has(x));
+}
+
+
+// Collect every file id referenced by rows this caller is permitted to see in a
+// project, applying the same company and visibility filters as the CSV reads.
+const _allowCache = new Map();
+const ALLOW_TTL = 60 * 1000;
+async function allowedFileIds(H, t, grants, who, projectId) {
+  const key = (who.email || '') + '|' + projectId;
+  const hit = _allowCache.get(key);
+  if (hit && Date.now() < hit.exp) return hit.set;
+
+  const ids = new Set();
+  try {
+    const fr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+    const folders = fr.ok ? ((await fr.json()).entries || []).filter(e => e.type === 'folder') : [];
+    const company = await callerCompanyFor(t, grants, 'folder', projectId);
+    await Promise.all(folders.map(async f => {
+      const lr = await boxFetch(`https://api.box.com/2.0/folders/${f.id}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const files = lr.ok ? ((await lr.json()).entries || []).filter(e => e.type === 'file' && e.name.endsWith('.csv')) : [];
+      await Promise.all(files.map(async csv => {
+        const cr = await boxFetch(`https://api.box.com/2.0/files/${csv.id}/content`, { headers: H });
+        if (!cr.ok) return;
+        const filtered = filterCsvForCaller(csv.name, await cr.text(), false, company);
+        for (const row of parseCSVServer(filtered).rows) for (const id of fileIdsInRow(row)) ids.add(id);
+      }));
+    }));
+  } catch (e) { /* fall through: empty set denies, which is the safe default */ }
+
+  if (_allowCache.size > 200) _allowCache.clear();
+  _allowCache.set(key, { set: ids, exp: Date.now() + ALLOW_TTL });
+  return ids;
+}
+
+async function callerMayReadFile(H, t, grants, who, fileId) {
+  // Locate the granted project this file sits under.
+  const gidset = new Set(grants.map(g => String(g.id)));
+  let projectId = null;
+  const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=path_collection`, { headers: H });
+  if (!r.ok) return false;
+  const d = await r.json();
+  const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
+  projectId = ids.find(x => gidset.has(x));
+  if (!projectId) return false;
+  const allowed = await allowedFileIds(H, t, grants, who, projectId);
+  return allowed.has(String(fileId));
 }
 
 export default async (req) => {
@@ -454,13 +534,13 @@ export default async (req) => {
             r = await boxFetch(`https://api.box.com/2.0/files/${hit2.id}/content`, { headers: H });
           }
           let text = r.ok ? await r.text() : '';
-          const field = PRIVATE_CSV[m.filename];
-          if (field && !who.isAdmin) {
-            if (companyCache[fid] === undefined) companyCache[fid] = (await callerCompanyFor(t, _grants, 'folder', fid)).trim().toLowerCase();
-            const company = companyCache[fid];
-            const parsed = parseCSVServer(text);
-            const rows = company ? parsed.rows.filter(row => String(row[field] || '').trim().toLowerCase() === company) : [];
-            text = toCSVServer(parsed.headers, rows);
+          if (!who.isAdmin && (PRIVATE_CSV[m.filename] || VISIBILITY_CSV[m.filename])) {
+            let company = '';
+            if (PRIVATE_CSV[m.filename]) {
+              if (companyCache[fid] === undefined) companyCache[fid] = await callerCompanyFor(t, _grants, 'folder', fid);
+              company = companyCache[fid];
+            }
+            text = filterCsvForCaller(m.filename, text, false, company);
           }
           data[m.key] = text;
         } catch (e) {}
@@ -474,17 +554,20 @@ export default async (req) => {
       try { const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}?fields=name`, { headers: H })).json(); fname = fi.name || ''; } catch (e) {}
       const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H });
       let text = r.ok ? await r.text() : '';
-      const field = PRIVATE_CSV[fname];
-      if (field && !who.isAdmin) {
-        const company = (await callerCompanyFor(t, _grants, 'file', body.fileId)).trim().toLowerCase();
-        const parsed = parseCSVServer(text);
-        const rows = company ? parsed.rows.filter(row => String(row[field] || '').trim().toLowerCase() === company) : [];
-        text = toCSVServer(parsed.headers, rows);
+      if (!who.isAdmin && (PRIVATE_CSV[fname] || VISIBILITY_CSV[fname])) {
+        const company = PRIVATE_CSV[fname] ? await callerCompanyFor(t, _grants, 'file', body.fileId) : '';
+        text = filterCsvForCaller(fname, text, false, company);
       }
       return json({ text });
     }
     if (op === 'downloadUrl') {
       if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
+      // Project membership is not enough. A file is only fetchable if it appears
+      // in a row this caller is allowed to see — otherwise an external user with
+      // a file id could pull another company's pay app or an internal-only drawing.
+      if (!who.isAdmin && !(await callerMayReadFile(H, t, _grants, who, body.fileId))) {
+        return json({ error: 'Access denied' }, 403);
+      }
       const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H, redirect: 'manual' });
       const loc = r.headers.get('location');
       return loc ? json({ url: loc }) : json({ error: 'No download URL' }, 502);

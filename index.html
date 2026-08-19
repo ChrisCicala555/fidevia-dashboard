@@ -1967,7 +1967,29 @@ function isOverdue(r){ if((r['Status']||'').toLowerCase()!=='open') return false
 function fmtMoney(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function fmtSigned(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); if(isNaN(n)) return s; return (n>=0?'+':'-')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function impFlag(r){ return (r&&r['Importance']==='High')?'<span title="High importance" style="color:var(--danger);font-weight:800;margin-right:5px">!</span>':''; }
-function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" title="'+esc(fn||'View')+'" href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">'+esc(fn||'View')+'</a>':'—'; }
+// External contractors have no Box account, so app.box.com links are a dead end
+// for them. Fetch a short-lived pre-authenticated URL through the proxy instead;
+// guardFile still restricts this to files inside a project they were granted.
+async function openBoxFile(fileId, ev){
+  if(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){} }
+  // Open the tab synchronously — doing it after the await trips popup blockers.
+  let w=null;
+  try{
+    w=window.open('','_blank');
+    if(w&&w.document){ w.document.title='Opening file…'; w.document.body.style.cssText='font-family:Helvetica,Arial,sans-serif;padding:40px;color:#515520'; w.document.body.textContent='Opening file…'; }
+  }catch(e){}
+  try{
+    const d=await proxyCall('downloadUrl',{fileId:String(fileId)});
+    if(!d||!d.url) throw new Error('No link was returned for this file.');
+    if(w) w.location.href=d.url; else window.location.href=d.url;
+  }catch(e){
+    if(w){ try{ w.close(); }catch(_){} }
+    alert('Could not open that file.\n\n'+(e.message||'Unknown error'));
+  }
+  return false;
+}
+
+function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" title="'+esc(fn||'View')+'" href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">'+esc(fn||'View')+'</a>':'—'; }
 function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
 
 // ── RENDERERS ──
@@ -2004,7 +2026,7 @@ function renderDailyLogs(){
   if(!rows.length){ul.innerHTML='<li><span class="desc" style="color:var(--muted);font-style:italic;">No daily logs yet.</span></li>';return;}
   ul.innerHTML=rows.slice().reverse().map(r=>{
     const fid=r['Attachment File ID'],fn=r['Attachment Name'];
-    const link=fid?'<a href="https://app.box.com/file/'+esc(fid)+'" target="_blank" rel="noopener">Open in Box</a>':'<span class="no-link">No file attached</span>';
+    const link=fid?'<a href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">Open file</a>':'<span class="no-link">No file attached</span>';
     return '<li><span class="date">'+esc(fmtDMY(r['Date']))+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
   }).join('');
 }
@@ -2126,7 +2148,7 @@ function renderDocsTable(key, tbodyId){
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn(key,i)+'</td></tr>';
     const vs=_docVersions(r);
-    const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')+'</div>';
+    const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>':'')+'</div>';
     const newBtn = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();uploadNewVersion(\''+key+'\','+i+')">Upload New Version</button>' : '';
     const detail='<tr class="thread-detail'+(ext?' hide-external':'')+'" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'+vs.map(line).join('')+newBtn+'</td></tr>';
     return main+detail;
@@ -3270,8 +3292,8 @@ function renderPayApps(){
       const trs=g.rows.slice().sort((a,b)=>(Date.parse(b['Period']||b['Review Date']||'')||0)-(Date.parse(a['Period']||a['Review Date']||'')||0)).map(r=>{
         const idx=rows.indexOf(r);
         const s=r['Status']||'Submitted';
-        const doc=r['Attachment File ID']?'<a class="attach-link" href="https://app.box.com/file/'+esc(r['Attachment File ID'])+'" target="_blank" rel="noopener">Pay App</a>':'—';
-        const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(r['Signed File ID'])+'" target="_blank" rel="noopener">Signed</a>':'';
+        const doc=r['Attachment File ID']?'<a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Attachment File ID'])+'\',event);return false;">Pay App</a>':'—';
+        const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>':'';
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">Take Action</button>'+delBtn('pay_apps',idx):'';
         return '<tr><td>'+impFlag(r)+esc(r['App #']||'')+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
       }).join('');
@@ -3904,7 +3926,7 @@ function verThreadRows(key,r,i,colspan){
     +(v.status?' &middot; <span class="ver-status">'+esc(v.status)+'</span>':'')
     +(v.date?' &middot; '+esc(v.date):'')
     +(v.by?' &middot; '+esc(v.by):'')
-    +(v.fileId?' &middot; <a class="attach-link" href="https://app.box.com/file/'+esc(v.fileId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+esc(v.fileName||'View file')+'</a>':'')
+    +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>':'')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
   const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
