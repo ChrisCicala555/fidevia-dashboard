@@ -1284,12 +1284,12 @@ const MODULES = {
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
-  docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
+  docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
   pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
-  gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History']},
+  gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
   contractor_daily: {folder:'13 - Contractor Daily Reports', log:'Contractor Daily Reports.csv', headers:['Date','Company','Submitted By','Weather','Crew Count','Work Performed','Notes','Attachment File ID','Attachment Name']},
   payrolls: {folder:'14 - Certified Payrolls', log:'Certified Payrolls.csv', headers:['Week Ending','Company','Payroll #','Submitted By','Notes','Attachment File ID','Attachment Name']}
 };
@@ -2463,7 +2463,8 @@ async function submitForm(){
     } else if(currentModal==='document'||currentModal==='gendocument'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
-      newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName};
+      await resolveMe();
+      newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName,'Submitted By':(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||'')),'Submitted By Email':ME_EMAIL||''};
     }
 
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
@@ -2486,6 +2487,7 @@ async function submitForm(){
     try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]; 
       sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
         emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],['Due Date',fmtDMY(newRow['Due Date']||'')||'—']], currentProject.name)); } }catch(e){}
+    try{ auditLog('Created', key, newRow, (newRow['Attachment Name']||newRow['File Name']||'')); }catch(e){}
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }
@@ -3172,7 +3174,9 @@ async function uploadNewVersion(key, rowIdx){
     if(vKey) row[vKey]=String((parseInt(row[vKey])||1)+1);
     if(key==='docs') row['Date']=etToday();
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
-    allData[key]=rows; renderAll();
+    allData[key]=rows;
+    try{ auditLog('New version', key, row, file.name); }catch(e){}
+    renderAll();
   };
   input.click();
 }
@@ -3598,6 +3602,7 @@ async function wfAdvance(key, i){
   else { row['Workflow Step']=String(next); row['Workflow Status']='In Review'; }
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
   allData[key]=rows;
+  try{ auditLog('Workflow advanced', key, row, (row['Workflow Status']==='Complete'?'Completed':'Step '+(parseInt(row['Workflow Step'])+1))); }catch(e){}
   try{
     const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
     const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
