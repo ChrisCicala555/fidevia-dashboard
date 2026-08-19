@@ -112,7 +112,6 @@
   .logo-script{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:31px; color:var(--khaki-200); letter-spacing:0.5px;}
   .logo-sub{font-size:10px; letter-spacing:1.5px; color:var(--khaki-300); margin-top:4px; text-transform:uppercase;}
   .nav-item{display:flex; align-items:center; gap:10px; padding:11px 24px; font-size:14px; font-weight:500; color:var(--khaki-200); cursor:pointer; border-left:3px solid transparent;}
-  .nav-ico{display:inline-block;width:18px;text-align:center;font-size:13px;opacity:.85;flex-shrink:0;}
   .att-card{background:var(--white);border:1px solid var(--border);border-left:4px solid var(--danger);border-radius:8px;padding:14px 18px;}
   .att-card.clear{border-left-color:var(--olive-700);}
   .att-head{display:flex;align-items:center;gap:8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--olive-900);margin-bottom:8px;}
@@ -122,7 +121,6 @@
   .att-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--danger-bg);color:var(--danger);white-space:nowrap;}
   .att-badge.wf{background:var(--khaki-100);color:var(--olive-900);}
   .nailed{display:flex;align-items:center;gap:12px;}
-  .nailed .emoji{font-size:26px;}
   .nailed .txt strong{font-family:'Times New Roman',Times,serif;font-size:17px;color:var(--olive-900);}
   .nav-item:hover{background:rgba(255,255,255,0.06);}
   .nav-item.active{background:rgba(255,255,255,0.1); border-left:3px solid var(--khaki-300); color:#fff;}
@@ -551,24 +549,24 @@
       <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
     </div>
     <div class="nav-section-label">Overview</div>
-    <div class="nav-item active" data-section="overview"><span class="nav-ico">&#8962;</span>Home</div>
-    <div class="nav-item nav-contacts" data-section="contacts"><span class="nav-ico">&#128100;</span>Directory</div>
-    <div class="nav-item hide-external" data-section="qa"><span class="nav-ico">&#128172;</span>Project Message Board</div>
+    <div class="nav-item active" data-section="overview">Home</div>
+    <div class="nav-item nav-contacts" data-section="contacts">Directory</div>
+    <div class="nav-item hide-external" data-section="qa">Project Message Board</div>
     <div class="nav-section-label">Project Management</div>
-    <div class="nav-item" data-section="schedule"><span class="nav-ico">&#128197;</span>Schedule</div>
-    <div class="nav-item" data-section="rfis"><span class="nav-ico">&#10067;</span>RFIs</div>
-    <div class="nav-item" data-section="submittals"><span class="nav-ico">&#128203;</span>Submittals</div>
-    <div class="nav-item" data-section="documents"><span class="nav-ico">&#128208;</span>Drawings &amp; Specifications</div>
-    <div class="nav-item" data-section="gendocs"><span class="nav-ico">&#128193;</span>Documents</div>
-    <div class="nav-item nav-dailylogs" data-section="dailylogs"><span class="nav-ico">&#9997;</span>Daily Reports</div>
-    <div class="nav-item" data-section="cdaily"><span class="nav-ico">&#128679;</span>Contractor Daily Reports</div>
-    <div class="nav-item hide-external" data-section="meetings"><span class="nav-ico">&#128221;</span>Meeting Minutes</div>
-    <div class="nav-item hide-external" data-section="board" style="display:none;"><span class="nav-ico">&#128202;</span>Board Reports</div>
+    <div class="nav-item" data-section="schedule">Schedule</div>
+    <div class="nav-item" data-section="rfis">RFIs</div>
+    <div class="nav-item" data-section="submittals">Submittals</div>
+    <div class="nav-item" data-section="documents">Drawings &amp; Specifications</div>
+    <div class="nav-item" data-section="gendocs">Documents</div>
+    <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Reports</div>
+    <div class="nav-item" data-section="cdaily">Contractor Daily Reports</div>
+    <div class="nav-item hide-external" data-section="meetings">Meeting Minutes</div>
+    <div class="nav-item hide-external" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-section-label">Financial Management</div>
-    <div class="nav-item" data-section="financials"><span class="nav-ico">&#128176;</span>Financial Summary</div>
-    <div class="nav-item" data-section="cos"><span class="nav-ico">&#128260;</span>Change Orders</div>
-    <div class="nav-item" data-section="payapps"><span class="nav-ico">&#9999;</span>Payment Applications</div>
-    <div class="nav-item" data-section="payrolls"><span class="nav-ico">&#128181;</span>Certified Payrolls</div>
+    <div class="nav-item" data-section="financials">Financial Summary</div>
+    <div class="nav-item" data-section="cos">Change Orders</div>
+    <div class="nav-item" data-section="payapps">Payment Applications</div>
+    <div class="nav-item" data-section="payrolls">Certified Payrolls</div>
     <div class="nav-section-label admin-only">Admin</div>
     <div class="nav-item admin-only" data-section="workflows">Workflow Settings</div>
     <div class="nav-item admin-only" data-section="notifsettings">Notification Settings</div>
@@ -2070,10 +2068,10 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   el.style.display='';
   if(!list.length){
     const nothingOpen=!(openR.length||openC.length||openS.length||openP.length);
-    el.innerHTML='<div class="att-card clear"><div class="nailed"><span class="emoji">'+(nothingOpen?'\u{1F528}':'\u2705')+'</span><div class="txt"><strong>'+(nothingOpen?'Nailed it!':'Nothing needs you right now')+'</strong><div style="font-size:13px;color:var(--muted);">'+(nothingOpen?'No outstanding items on this project.':'Open items are with other people.')+'</div></div></div></div>';
+    el.innerHTML='<div class="att-card clear"><div class="nailed"><div class="txt"><strong>'+(nothingOpen?'Nailed it!':'Nothing needs you right now')+'</strong><div style="font-size:13px;color:var(--muted);">'+(nothingOpen?'No outstanding items on this project.':'Open items are with other people.')+'</div></div></div></div>';
     return;
   }
-  el.innerHTML='<div class="att-card"><div class="att-head">\u{1F514} Needs your attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
+  el.innerHTML='<div class="att-card"><div class="att-head">Needs your attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
     +list.slice(0,8).map(i=>'<div class="att-item" onclick="navTo(\''+i.sec+'\')"><span class="att-badge '+i.cls+'">'+esc(i.badge)+'</span><span>'+esc(i.label)+'</span></div>').join('')
     +(list.length>8?'<div style="font-size:12px;color:var(--muted);padding-top:8px;">+'+(list.length-8)+' more</div>':'')
     +'</div>';
