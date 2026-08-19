@@ -1,4 +1,5 @@
 import { getStore } from '@netlify/blobs';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
 const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
@@ -6,6 +7,15 @@ let LAST_AUTH_DIAG = '';
 let LAST_AUTH_RATELIMITED = false;
 // Cache userinfo per token so a burst of parallel requests doesn't hammer (and get
 // rate-limited by) Auth0's /userinfo endpoint. Survives across warm invocations.
+// folderId|filename -> fileId. Halves the Box calls per project load by
+// skipping the folder listing needed to resolve a CSV's file ID. All dashboard
+// traffic now shares ONE service-account rate limit (1000 req/min), so this
+// matters more than it did when each user had their own budget.
+const _fidCache = new Map();
+const FID_TTL = 10 * 60 * 1000;
+function _fidGet(k){ const e=_fidCache.get(k); if(e && Date.now()<e.exp) return e.id; if(e) _fidCache.delete(k); return null; }
+function _fidSet(k,id){ if(_fidCache.size>2000) _fidCache.clear(); _fidCache.set(k,{id,exp:Date.now()+FID_TTL}); }
+
 const _uiCache = new Map();
 const UI_TTL = 5 * 60 * 1000;
 function _uiGet(tok){ const e = _uiCache.get(tok); if (e && Date.now() < e.exp) return e.user; if (e) _uiCache.delete(tok); return null; }
@@ -67,10 +77,42 @@ async function serviceToken() {
 }
 
 // --- Identify the caller from their Auth0 token ---
+// ── LOCAL TOKEN VERIFICATION (JWKS) ──
+// Auth0 rate-limits /userinfo to roughly 10 calls per minute PER USER, which a
+// single project load can exhaust on its own. Verifying the ID token's RS256
+// signature against Auth0's published keys is local CPU work: no network call,
+// no rate limit, and a stronger guarantee than trusting an HTTP response.
+// Keys are fetched once per container and cached by jose.
+const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID || 'LkuCVdAYFVpDljYze05RL1OCY3aCboxB';
+const _jwks = {};
+function jwksFor(domain){
+  if (!_jwks[domain]) _jwks[domain] = createRemoteJWKSet(new URL(`https://${domain}/.well-known/jwks.json`), { cacheMaxAge: 12 * 60 * 60 * 1000 });
+  return _jwks[domain];
+}
+async function verifyIdToken(idToken){
+  if (!idToken) return null;
+  for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
+    try {
+      const { payload } = await jwtVerify(idToken, jwksFor(d), {
+        issuer: `https://${d}/`,
+        audience: AUTH0_CLIENT_ID,
+        clockTolerance: 60
+      });
+      if (payload && payload.email) return payload;
+    } catch (e) { /* try the other issuer */ }
+  }
+  return null;
+}
+
 async function caller(req) {
   const auth = req.headers.get('authorization') || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  const u = await auth0Userinfo(auth);
+  // Fast path: verify the ID token locally. Falls back to /userinfo so older
+  // clients (and anything the verification cannot handle) keep working.
+  let u = await verifyIdToken(req.headers.get('x-id-token') || '');
+  if (!u) {
+    if (!auth.startsWith('Bearer ')) return null;
+    u = await auth0Userinfo(auth);
+  }
   if (!u) return null;
   const email = (u.email || '').toLowerCase();
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
@@ -332,13 +374,20 @@ export default async (req) => {
       const okFolder = {};
       await Promise.all(folderIds.map(async fid => { okFolder[fid] = await guardFolder(fid); }));
 
-      // One listing per distinct folder, shared across modules in that folder
+      // Resolve each module's file ID from cache where possible; only list the
+      // folders we still have unknowns for.
+      const need = new Set();
+      for (const m of mods) {
+        const fid = String(m.folderId || '');
+        if (fid && okFolder[fid] && _fidGet(fid + '|' + m.filename) === null) need.add(fid);
+      }
       const listing = {};
-      await Promise.all(folderIds.map(async fid => {
-        if (!okFolder[fid]) { listing[fid] = []; return; }
+      await Promise.all([...need].map(async fid => {
         try {
           const r = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(fid)}/items?limit=1000&fields=id,name,type`, { headers: H });
-          listing[fid] = r.ok ? ((await r.json()).entries || []) : [];
+          const entries = r.ok ? ((await r.json()).entries || []) : [];
+          listing[fid] = entries;
+          for (const e of entries) if (e.type === 'file') _fidSet(fid + '|' + e.name, e.id);
         } catch (e) { listing[fid] = []; }
       }));
 
@@ -348,10 +397,24 @@ export default async (req) => {
         const fid = String(m.folderId || '');
         data[m.key] = '';
         if (!fid || !okFolder[fid]) return;
-        const hit = (listing[fid] || []).find(i => i.type === 'file' && i.name === m.filename);
-        if (!hit) return;
+        let fileId = _fidGet(fid + '|' + m.filename);
+        if (!fileId) {
+          const hit = (listing[fid] || []).find(i => i.type === 'file' && i.name === m.filename);
+          if (!hit) return;
+          fileId = hit.id;
+        }
         try {
-          const r = await fetch(`https://api.box.com/2.0/files/${hit.id}/content`, { headers: H });
+          let r = await fetch(`https://api.box.com/2.0/files/${fileId}/content`, { headers: H });
+          // Stale cache entry (file replaced or deleted) — re-resolve once.
+          if (r.status === 404 || r.status === 410) {
+            _fidCache.delete(fid + '|' + m.filename);
+            const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(fid)}/items?limit=1000&fields=id,name,type`, { headers: H });
+            const entries = lr.ok ? ((await lr.json()).entries || []) : [];
+            const hit2 = entries.find(i => i.type === 'file' && i.name === m.filename);
+            if (!hit2) return;
+            _fidSet(fid + '|' + m.filename, hit2.id);
+            r = await fetch(`https://api.box.com/2.0/files/${hit2.id}/content`, { headers: H });
+          }
           let text = r.ok ? await r.text() : '';
           const field = PRIVATE_CSV[m.filename];
           if (field && !who.isAdmin) {

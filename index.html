@@ -1115,7 +1115,13 @@ async function proxyCall(op, body, opts){
   opts=opts||{};
   async function attempt(fresh){
     const tok = await auth0Client.getTokenSilently(fresh?{cacheMode:'off'}:undefined);
-    const r = await fetch('/api/box-proxy', { method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({op}, body||{})) });
+    // Send the ID token too: the proxy verifies it locally against Auth0's JWKS
+    // instead of calling /userinfo, which is rate-limited to ~10/min per user.
+    let idTok='';
+    try{ const c=await auth0Client.getIdTokenClaims(); idTok=(c&&c.__raw)||''; }catch(e){}
+    const headers={'Authorization':'Bearer '+tok,'Content-Type':'application/json'};
+    if(idTok) headers['X-Id-Token']=idTok;
+    const r = await fetch('/api/box-proxy', { method:'POST', headers, body: JSON.stringify(Object.assign({op}, body||{})) });
     let d={}; try{ d=await r.json(); }catch(e){}
     return {r,d};
   }
