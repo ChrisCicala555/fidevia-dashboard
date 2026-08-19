@@ -3386,10 +3386,10 @@ function dgCrewRow(){
   return '<div class="dg-crew" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
     +'<div class="field-row" style="margin:0 0 6px;">'
     +'<div class="field" style="margin:0;flex:1.4;"><label style="font-size:11px;">Company</label><input class="dg-co" list="contr-list-dg" placeholder="Contractor"></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Trade</label><input class="dg-trade" placeholder="Masonry, Electrical…"></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Subcontractor</label><input class="dg-sub" placeholder="Subcontractor on site"></div>'
     +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Workers</label><input class="dg-workers" type="number" min="0"></div>'
     +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Hours</label><input class="dg-hours" type="number" min="0" step="0.5"></div>'
-    +'<button type="button" class="btn-secondary" style="padding:9px 11px;align-self:flex-end;" onclick="this.closest(\'.dg-crew\').remove()">×</button></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 0;align-self:flex-end;flex:0 0 auto;width:42px;text-align:center;" title="Remove this row" onclick="this.closest(\'.dg-crew\').remove()">×</button></div>'
     +'<div class="field" style="margin:0;"><label style="font-size:11px;">Work Performed</label><textarea class="dg-work" rows="2" placeholder="Describe the work completed"></textarea></div></div>';
 }
 function dgAddCrew(){ document.getElementById('dg-crew-rows').insertAdjacentHTML('beforeend', dgCrewRow()); }
@@ -3524,7 +3524,7 @@ async function dgFetchWeather(){
 function dgGather(){
   const crews=[...document.querySelectorAll('#dg-crew-rows .dg-crew')].map(r=>({
     company:(r.querySelector('.dg-co').value||'').trim(),
-    trade:(r.querySelector('.dg-trade').value||'').trim(),
+    sub:(r.querySelector('.dg-sub').value||'').trim(),
     workers:(r.querySelector('.dg-workers').value||'').trim(),
     hours:(r.querySelector('.dg-hours').value||'').trim(),
     work:(r.querySelector('.dg-work').value||'').trim()
@@ -3610,8 +3610,8 @@ async function dgBuildPDF(){
   const totH=crews.reduce((s,c)=>s+(parseFloat(c.hours)||0),0);
   doc.autoTable({
     startY:y, margin:{left:40,right:40},
-    head:[['#','Company','Trade','Workers','Hours','Work Performed']],
-    body:crews.map((c,i)=>[i+1,c.company,c.trade,c.workers||'—',c.hours||'—',c.work]),
+    head:[['#','Company','Subcontractor','Workers','Hours','Work Performed']],
+    body:crews.map((c,i)=>[i+1,c.company,c.sub,c.workers||'—',c.hours||'—',c.work]),
     foot:[['','Total','',String(totW),String(totH),'']],
     theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8},
     footStyles:{fillColor:LIGHT,textColor:INK,fontStyle:'bold',fontSize:8},
