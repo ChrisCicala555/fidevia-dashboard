@@ -214,7 +214,17 @@
   .cd-inp{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;font-family:inherit;width:130px;color:var(--ink);background:var(--white);}
   .cd-page{width:100%;max-width:900px;margin:0 auto;padding:40px 24px;align-self:flex-start;}
   .cd-page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
-  .cd-letter-cell{font-family:'Times New Roman',Times,serif;font-size:19px;font-weight:700;color:var(--olive-900);background:var(--cream);padding:12px 8px 6px;border-bottom:1px solid var(--khaki-300);}
+  /* Alphabet / group bands in the directories. Sticky so the letter you are
+     currently reading under stays visible while scrolling a long list. */
+  .cd-letter-cell{font-family:'Times New Roman',Times,serif; font-size:17px; font-weight:700;
+    color:var(--olive-900); background:var(--khaki-200);
+    padding:7px 14px; border-top:1px solid var(--khaki-300); border-bottom:1px solid var(--khaki-300);
+    border-left:4px solid var(--olive-700); letter-spacing:0.5px;
+    position:sticky; top:0; z-index:2;}
+  .cd-letter-cell .cd-letter-count{float:right; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:11px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+    color:var(--olive-700); background:var(--cream); border:1px solid var(--khaki-300);
+    border-radius:10px; padding:1px 9px; margin-top:2px;}
   .note{color:var(--muted); font-size:13px; padding:14px 18px; border-top:1px solid var(--border); background:var(--cream);}
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
   /* Skeleton placeholders: show the shape of the page while it loads rather
@@ -2083,7 +2093,7 @@ function renderContacts(){
   let html='';
   if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
   companies.forEach(c=>{
-    html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;padding:10px 14px 5px;">'+esc(c)+'</td></tr>';
+    html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;">'+esc(c)+'<span class="cd-letter-count">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td>'+esc(r['Name'])+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
@@ -2607,7 +2617,7 @@ function renderContactDir(){
       +'<td style="padding:6px;">'+fld(idx,'email',c.email,190)+'</td>'
       +'<td style="padding:6px;white-space:nowrap;">'+fld(idx,'phone',c.phone,120)+'</td></tr>'; };
   el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
-    +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell">'+esc(L)+'</td></tr>'+groups[L].map(rowHtml).join('')).join('')
+    +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell">'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table>';
 }
 async function saveContactMeta(idx, field, val){
