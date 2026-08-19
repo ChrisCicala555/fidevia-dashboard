@@ -394,6 +394,29 @@ export default async (req) => {
       if (!r.ok) return json({ error: 'Box file ' + r.status }, r.status);
       return json(await r.json());
     }
+    // Mint a short-lived Box token scoped to ONE folder, upload-only, so the
+    // browser can PUT large files straight to Box. Going through this function
+    // caps uploads at ~4.4MB (Netlify 6MB body limit + base64 inflation).
+    if (op === 'uploadToken') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      try {
+        const r = await fetch('https://api.box.com/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+            subject_token: t,
+            subject_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+            scope: 'item_upload',
+            resource: `https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}`
+          })
+        });
+        if (!r.ok) return json({ error: 'Token exchange failed ' + r.status }, 502);
+        const d = await r.json();
+        return json({ token: d.access_token, expiresIn: d.expires_in || 3600 });
+      } catch (e) { return json({ error: 'Token exchange error' }, 502); }
+    }
+
     if (op === 'upload') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const chk = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });

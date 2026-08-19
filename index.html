@@ -1149,10 +1149,42 @@ async function boxUploadText(filename, content, parentId, existingId=null){
   const d=await proxyCall('uploadText',{folderId:parentId, filename, content}); return d.file||{};
 }
 
-async function boxUploadBinary(file, parentId){
+// Netlify caps function bodies at ~6MB and base64 adds ~33%, so routing every
+// upload through the proxy would fail on anything over ~4.4MB. Preferred path:
+// ask the proxy for a folder-scoped, upload-only Box token and PUT straight to
+// Box (no size ceiling). Falls back to the proxy for small files.
+const PROXY_UPLOAD_MAX = 4*1024*1024;
+
+async function boxUploadDirect(file, parentId){
+  const tk = await proxyCall('uploadToken',{folderId:parentId});
+  if(!tk || !tk.token) throw new Error('no-scoped-token');
+  const form=new FormData();
+  form.append('attributes', JSON.stringify({name:file.name, parent:{id:String(parentId)}}));
+  form.append('file', file, file.name);
+  const r=await fetch('https://upload.box.com/api/2.0/files/content',{ method:'POST', headers:{Authorization:'Bearer '+tk.token}, body:form });
+  if(r.status===409) throw new Error('A file with that name already exists.');
+  if(!r.ok) throw new Error('upload-failed-'+r.status);
+  return r.json();
+}
+
+async function boxUploadViaProxy(file, parentId){
   const b64=await fileToB64(file);
   const d=await proxyCall('upload',{folderId:parentId, filename:file.name, contentBase64:b64, mime:file.type});
   return d.file;
+}
+
+async function boxUploadBinary(file, parentId){
+  try{
+    return await boxUploadDirect(file, parentId);
+  }catch(e){
+    // Surface real Box rejections; only fall back on transport/setup problems.
+    if(/already exists/i.test(e.message)) throw e;
+    if(file.size > PROXY_UPLOAD_MAX){
+      throw new Error('Upload failed. Files over 4 MB need direct Box upload to be enabled — please tell Fidevia. ('+e.message+')');
+    }
+    console.warn('Direct Box upload unavailable, using proxy:', e.message);
+    return await boxUploadViaProxy(file, parentId);
+  }
 }
 
 async function boxList(folderId){
