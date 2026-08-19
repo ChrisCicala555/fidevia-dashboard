@@ -208,6 +208,10 @@
         background-size:1000px 100%; animation:skelShimmer 1.5s linear infinite;}
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
+  .dg-photo-x{flex:0 0 auto; width:26px; height:26px; line-height:1; border-radius:50%;
+              border:1px solid var(--border); background:var(--white); color:var(--muted);
+              font-size:17px; cursor:pointer; transition:background .15s,color .15s,border-color .15s;}
+  .dg-photo-x:hover{background:var(--danger,#b3402f); border-color:var(--danger,#b3402f); color:#fff;}
   @media(prefers-reduced-motion:reduce){ .skel{animation:none;} }
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
@@ -993,7 +997,7 @@
       <div id="dg-note-rows"></div>
       <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddNote()">+ Add Note</button>
 
-      <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple onchange="dgRenderPhotoList()"><p class="file-hint">Included in the report, grouped after the work summary. Add a description to each and it prints as the caption.</p></div>
+      <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple onchange="dgPhotosPicked()"><p class="file-hint">Included in the report, grouped after the work summary. Add a description to each and it prints as the caption.</p></div>
       <div id="dg-photo-list" style="display:none;margin-top:4px;"></div>
       <div class="field"><label>Copies To</label><input id="dg-copies" placeholder="Names or distribution list"></div>
       <div class="status-msg" id="dg-status"></div>
@@ -3403,7 +3407,7 @@ async function openDailyGen(){
   document.getElementById('dg-crew-rows').innerHTML=''; dgAddCrew();
   document.getElementById('dg-note-rows').innerHTML=''; dgAddNote();
   document.getElementById('dg-photos').value='';
-  DG_CAPTIONS={}; dgRenderPhotoList();
+  DG_FILES=[]; DG_CAPTIONS={}; dgRenderPhotoList();
   document.getElementById('dg-copies').value='';
   showStatus('dg-status','','');
   document.getElementById('dg-progress').style.display='none';
@@ -3423,21 +3427,47 @@ function closeDailyGen(){ document.getElementById('dgen-backdrop').classList.rem
 // Descriptions are keyed by name+size+lastModified so re-picking files keeps
 // whatever has already been typed.
 let DG_CAPTIONS={};
+let DG_FILES=[];
 function dgPhotoKey(f){ return f.name+'|'+f.size+'|'+f.lastModified; }
+function dgPhotosPicked(){
+  DG_FILES=[...((document.getElementById('dg-photos')||{}).files||[])];
+  dgRenderPhotoList();
+}
+// Mirror DG_FILES back onto the input so the picker's own state stays honest.
+function dgSyncPhotoInput(){
+  const inp=document.getElementById('dg-photos'); if(!inp) return;
+  try{
+    const dt=new DataTransfer();
+    DG_FILES.forEach(f=>dt.items.add(f));
+    inp.files=dt.files;
+  }catch(e){ /* older browsers: DG_FILES still drives the report */ }
+}
+function dgRemovePhoto(i){
+  const f=DG_FILES[i];
+  if(f) delete DG_CAPTIONS[dgPhotoKey(f)];
+  DG_FILES.splice(i,1);
+  dgSyncPhotoInput();
+  dgRenderPhotoList();
+}
 function dgRenderPhotoList(){
   const wrap=document.getElementById('dg-photo-list');
-  const files=[...((document.getElementById('dg-photos')||{}).files||[])];
+  const files=DG_FILES;
   if(!wrap) return;
   if(!files.length){ wrap.style.display='none'; wrap.innerHTML=''; return; }
   wrap.style.display='';
-  wrap.innerHTML=files.map((f,i)=>{
+  const head='<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 6px;">'
+    +'<span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);">'+files.length+' photo'+(files.length===1?'':'s')+'</span>'
+    +'<button type="button" class="btn-secondary" style="padding:3px 10px;font-size:12px;" onclick="dgClearPhotos()">Remove all</button></div>';
+  wrap.innerHTML=head+files.map((f,i)=>{
     const k=dgPhotoKey(f);
     return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">'
       +'<img id="dg-thumb-'+i+'" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:4px;background:#eceade;flex:0 0 auto;">'
       +'<div style="flex:1 1 auto;min-width:0;">'
       +'<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(f.name)+'</div>'
       +'<input type="text" data-photokey="'+esc(k)+'" oninput="dgCaptionInput(this)" placeholder="Describe this photo…" value="'+esc(DG_CAPTIONS[k]||'')+'" style="width:100%;margin-top:3px;padding:5px 8px;font-size:13px;">'
-      +'</div></div>';
+      +'</div>'
+      +'<button type="button" class="dg-photo-x" onclick="dgRemovePhoto('+i+')" title="Remove this photo" aria-label="Remove '+esc(f.name)+'">&times;</button>'
+      +'</div>';
   }).join('');
   files.forEach((f,i)=>{
     const img=document.getElementById('dg-thumb-'+i); if(!img) return;
@@ -3446,6 +3476,7 @@ function dgRenderPhotoList(){
   });
 }
 function dgCaptionInput(el){ DG_CAPTIONS[el.getAttribute('data-photokey')]=el.value; }
+function dgClearPhotos(){ DG_FILES=[]; DG_CAPTIONS={}; dgSyncPhotoInput(); dgRenderPhotoList(); }
 
 async function dgFetchWeather(){
   const st=document.getElementById('dg-weather-status'); const date=document.getElementById('dg-date').value;
@@ -3604,7 +3635,7 @@ async function dgBuildPDF(){
   }
 
   // ---- photos ----
-  const files=[...(document.getElementById('dg-photos').files||[])];
+  const files=DG_FILES.slice();
   if(files.length){
     doc.addPage(); y=60;
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...OLIVE);
