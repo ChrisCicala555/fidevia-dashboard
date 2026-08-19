@@ -192,14 +192,20 @@ function contactFromSnap(snap, email){
   return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
 }
 async function sendGrantEmail(email, projectName, company, role){
+  return sendGrantEmailMany(email, [projectName], company, role);
+}
+async function sendGrantEmailMany(email, projectNames, company, role){
   const key = process.env.SENDGRID_KEY; if(!key || !email) return;
   const from = process.env.FROM_EMAIL || 'dashboard@fidevia.com';
   const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/,'');
   const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
-  const proj = esc(projectName || 'a project');
+  const names = (projectNames || []).map(n => String(n || '').trim()).filter(Boolean);
+  const multi = names.length > 1;
+  const projectName = names[0] || '';
+  const proj = multi ? esc(names.length + ' projects') : esc(projectName || 'a project');
   const serif = "Georgia,'Times New Roman',Times,serif";
   const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
-  const rows = [['Project', proj], ['Your Sign-in Email', esc(email)]];
+  const rows = [[multi ? 'Projects' : 'Project', multi ? names.map(esc).join('<br>') : proj], ['Your Sign-in Email', esc(email)]];
   if (company) rows.push(['Company', esc(company)]);
   if (role) rows.push(['Role', esc(role)]);
   const rowsHTML = rows.map(([k, v], i) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:170px;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
@@ -212,7 +218,7 @@ async function sendGrantEmail(email, projectName, company, role){
     <tr><td style="padding:22px 24px 6px">
       <div style="font-family:${serif};font-size:20px;font-weight:700;margin:0 0 4px"><span style="color:#515520">Access granted:</span> <span style="color:#2f2f2f">${proj}</span></div>
       <div style="font-family:${sans};font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Fidevia Construction Dashboard</div>
-      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You now have access to this project. Sign in with your account &mdash; or create one using this same email address if you haven't yet.</p>
+      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You now have access to ${multi ? 'these projects' : 'this project'}. Sign in with your account &mdash; or create one using this same email address if you haven't yet.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rowsHTML}</table>
       <div style="text-align:center;margin:22px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:${sans};font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open in Dashboard</a></div>
       <p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">If the button doesn't work, copy and paste this link: ${origin}/</p>
@@ -220,7 +226,7 @@ async function sendGrantEmail(email, projectName, company, role){
     <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">
       <div style="font-family:${sans};font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
     </table></div>`;
-  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'[Fidevia] You have access to ' + (projectName || 'a project'), content:[{type:'text/html',value:html}] };
+  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'[Fidevia] You have access to ' + (multi ? (names.length + ' projects') : (projectName || 'a project')), content:[{type:'text/html',value:html}] };
   await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
@@ -385,18 +391,29 @@ export default async (req) => {
       }
       if (op === 'adminGrant') {
         const email = (body.email || '').toLowerCase().trim();
-        if (!email || !body.projectId) return json({ error: 'email and projectId required' }, 400);
+        // Accepts either a single projectId or a list, so granting several
+        // projects at once writes one grant record and sends one email.
+        const list = Array.isArray(body.projects) && body.projects.length
+          ? body.projects.map(p => ({ id: String(p.id), name: p.name || '' })).filter(p => p.id)
+          : (body.projectId ? [{ id: String(body.projectId), name: body.projectName || '' }] : []);
+        if (!email || !list.length) return json({ error: 'email and at least one project are required' }, 400);
         const company = (body.company || '').trim();
         const role = (body.role || '').trim();
         const store = grantsStore();
         const g = (await store.get(email, { type: 'json' })) || { projects: [] };
-        const ex = g.projects.find(p => String(p.id) === String(body.projectId));
-        if (ex) { ex.name = body.projectName || ex.name; ex.company = company || ex.company || ''; ex.role = role || ex.role || ''; }
-        else { g.projects.push({ id: String(body.projectId), name: body.projectName || '', company, role }); }
+        const added = [];
+        for (const proj of list) {
+          const ex = g.projects.find(p => String(p.id) === proj.id);
+          if (ex) { ex.name = proj.name || ex.name; ex.company = company || ex.company || ''; ex.role = role || ex.role || ''; }
+          else { g.projects.push({ id: proj.id, name: proj.name, company, role }); }
+          added.push(proj.name || proj.id);
+        }
         await store.setJSON(email, g);
-        try { const c = contactFromSnap(null, email); if (company) c['Company'] = company; if (role) c['Role'] = role; await addContactToProject(H, String(body.projectId), c); } catch(e) {}
-        try { await sendGrantEmail(email, body.projectName||'', company, role); } catch(e) {}
-        return json({ ok: true });
+        for (const proj of list) {
+          try { const c = contactFromSnap(null, email); if (company) c['Company'] = company; if (role) c['Role'] = role; await addContactToProject(H, proj.id, c); } catch(e) {}
+        }
+        try { await sendGrantEmailMany(email, list.map(p => p.name), company, role); } catch(e) {}
+        return json({ ok: true, granted: added });
       }
       if (op === 'adminRevoke') {
         const email = (body.email || '').toLowerCase().trim();

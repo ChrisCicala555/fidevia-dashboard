@@ -496,7 +496,16 @@
     <h2>Manage External Access</h2>
     <p class="form-desc">Grant an external user access to a specific project. External users see only the projects you grant here — nothing else.</p>
     <div class="field"><label>External user email *</label><input type="email" id="grant-email" placeholder="contractor@example.com"></div>
-    <div class="field"><label>Project *</label><select id="grant-project"><option value="">Loading projects…</option></select></div>
+    <div class="field">
+      <label>Projects * <span id="grant-proj-count" style="font-weight:400;color:var(--muted);font-size:12px;"></span></label>
+      <input id="grant-proj-search" placeholder="Filter projects…" oninput="filterGrantProjects()" style="margin-bottom:6px;">
+      <div id="grant-project-list" style="max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 10px;background:#fff;">Loading projects…</div>
+      <div style="margin-top:6px;display:flex;gap:14px;">
+        <a href="#" onclick="setAllGrantProjects(true);return false;" style="font-size:12px;color:var(--olive-700);">Select all</a>
+        <a href="#" onclick="setAllGrantProjects(false);return false;" style="font-size:12px;color:var(--olive-700);">Clear</a>
+      </div>
+    </div>
+    <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
     <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" placeholder="e.g. Lobar"><datalist id="grant-company-list"></datalist></div><div class="field"><label>Role</label><select id="grant-role"><option value="">—</option><option>General Contractor</option><option>Subcontractor</option><option>Architect</option><option>Engineer</option><option>Owner</option><option>Consultant</option><option>Other</option></select></div></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="grantAccess()" id="btn-grant">Grant Access</button>
@@ -2909,14 +2918,48 @@ async function denyRequest(email,projectId){
 
 // ── ADMIN: EXTERNAL ACCESS ──
 async function openAdmin(){ showScreen('screen-admin'); await loadAdmin(); }
+let GRANT_PROJECTS=[];
 async function loadAdmin(){
+  const box=document.getElementById('grant-project-list');
   try{
     const d=await proxyCall('adminListProjects',{});
-    const sel=document.getElementById('grant-project');
-    sel.innerHTML='<option value="">Select a project…</option>'+(d.projects||[]).map(p=>'<option value="'+esc(p.id)+'" data-name="'+esc(p.name)+'">'+esc(p.name)+'</option>').join('');
-    sel.onchange=loadGrantCompanies;
-  }catch(e){ document.getElementById('grant-project').innerHTML='<option value="">Error loading projects</option>'; }
+    GRANT_PROJECTS=(d.projects||[]);
+    renderGrantProjectList();
+  }catch(e){ if(box) box.innerHTML='<span style="color:var(--danger)">Error loading projects</span>'; }
   await renderGrants();
+}
+function renderGrantProjectList(){
+  const box=document.getElementById('grant-project-list'); if(!box) return;
+  if(!GRANT_PROJECTS.length){ box.innerHTML='<span style="color:var(--muted)">No projects found.</span>'; return; }
+  box.innerHTML=GRANT_PROJECTS.map(p=>
+    '<label class="grant-proj-row" data-name="'+esc((p.name||'').toLowerCase())+'" style="display:flex;align-items:center;gap:9px;padding:5px 2px;cursor:pointer;font-size:14px;">'
+    +'<input type="checkbox" class="grant-proj-cb" value="'+esc(p.id)+'" data-name="'+esc(p.name)+'" onchange="grantProjectsChanged()" style="margin:0;">'
+    +'<span>'+esc(p.name)+'</span></label>').join('');
+  grantProjectsChanged();
+}
+function filterGrantProjects(){
+  const q=(document.getElementById('grant-proj-search').value||'').trim().toLowerCase();
+  document.querySelectorAll('#grant-project-list .grant-proj-row').forEach(r=>{
+    r.style.display = !q || (r.getAttribute('data-name')||'').includes(q) ? 'flex' : 'none';
+  });
+}
+function setAllGrantProjects(on){
+  // Only affects rows currently visible, so it respects the filter.
+  document.querySelectorAll('#grant-project-list .grant-proj-row').forEach(r=>{
+    if(r.style.display==='none') return;
+    const cb=r.querySelector('.grant-proj-cb'); if(cb) cb.checked=!!on;
+  });
+  grantProjectsChanged();
+}
+function selectedGrantProjects(){
+  return [...document.querySelectorAll('#grant-project-list .grant-proj-cb:checked')]
+    .map(cb=>({id:cb.value, name:cb.getAttribute('data-name')||''}));
+}
+function grantProjectsChanged(){
+  const n=selectedGrantProjects().length;
+  const lbl=document.getElementById('grant-proj-count');
+  if(lbl) lbl.textContent = n ? '— '+n+' selected' : '';
+  loadGrantCompanies();
 }
 async function renderGrants(){
   const el=document.getElementById('grants-list');
@@ -2929,20 +2972,35 @@ async function renderGrants(){
   }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 async function loadGrantCompanies(){
-  const sel=document.getElementById('grant-project'); const dl=document.getElementById('grant-company-list'); if(!dl) return; dl.innerHTML='';
-  const pid=sel.value; if(!pid) return;
-  try{ const d=await proxyCall('projectCompanies',{projectId:pid},{quiet:true}); dl.innerHTML=(d.companies||[]).map(c=>'<option value="'+esc(c)+'">').join(''); }catch(e){}
+  const dl=document.getElementById('grant-company-list'); if(!dl) return;
+  const sel=selectedGrantProjects(); if(!sel.length){ dl.innerHTML=''; return; }
+  const names=new Set();
+  // Union across the selected projects, capped so a Select-all does not fan out.
+  await Promise.all(sel.slice(0,8).map(async p=>{
+    try{ const d=await proxyCall('projectCompanies',{projectId:p.id},{quiet:true}); (d.companies||[]).forEach(c=>names.add(c)); }catch(e){}
+  }));
+  dl.innerHTML=[...names].sort().map(c=>'<option value="'+esc(c)+'">').join('');
 }
 async function grantAccess(){
   const email=(document.getElementById('grant-email').value||'').trim();
-  const sel=document.getElementById('grant-project');
-  const projectId=sel.value; const opt=sel.options[sel.selectedIndex];
-  const projectName=opt?opt.getAttribute('data-name'):'';
+  const projects=selectedGrantProjects();
   const company=(document.getElementById('grant-company').value||'').trim();
   const role=document.getElementById('grant-role').value||'';
-  if(!email||!projectId){ showStatus('grant-status','Email and project are required.','error'); return; }
+  if(!email||!projects.length){ showStatus('grant-status','Email and at least one project are required.','error'); return; }
   const btn=document.getElementById('btn-grant'); btn.disabled=true;
-  try{ await proxyCall('adminGrant',{email,projectId,projectName,company,role}); showStatus('grant-status','Access granted to '+email+(company?' ('+company+')':'')+'.','success'); document.getElementById('grant-email').value=''; document.getElementById('grant-company').value=''; document.getElementById('grant-role').value=''; await renderGrants(); }
+  showStatus('grant-status','Granting access to '+projects.length+' project'+(projects.length===1?'':'s')+'…','info');
+  try{
+    // One request, so the recipient gets a single email listing every project.
+    await proxyCall('adminGrant',{email,projects,company,role});
+    const what = projects.length===1 ? projects[0].name : projects.length+' projects';
+    showStatus('grant-status','Access granted to '+email+' for '+what+(company?' ('+company+')':'')+'.','success');
+    document.getElementById('grant-email').value='';
+    document.getElementById('grant-company').value='';
+    document.getElementById('grant-role').value='';
+    setAllGrantProjects(false);
+    const q=document.getElementById('grant-proj-search'); if(q){ q.value=''; filterGrantProjects(); }
+    await renderGrants();
+  }
   catch(e){ showStatus('grant-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
