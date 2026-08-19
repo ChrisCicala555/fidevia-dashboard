@@ -980,6 +980,7 @@
           <div class="field"><label style="font-size:11px;">High (°F)</label><input id="dg-w-high"></div>
           <div class="field"><label style="font-size:11px;">Precip (in)</label><input id="dg-w-precip"></div>
           <div class="field"><label style="font-size:11px;">Wind max (mph)</label><input id="dg-w-wind"></div>
+          <div class="field"><label style="font-size:11px;">Humidity (%)</label><input id="dg-w-humid"></div>
         </div>
         <div id="dg-snapshot" style="font-size:12px;color:var(--muted);"></div>
       </div>
@@ -992,7 +993,8 @@
       <div id="dg-note-rows"></div>
       <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddNote()">+ Add Note</button>
 
-      <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple><p class="file-hint">Included in the report, grouped after the work summary.</p></div>
+      <div class="field"><label>Photos (optional)</label><input type="file" id="dg-photos" accept="image/*" multiple onchange="dgRenderPhotoList()"><p class="file-hint">Included in the report, grouped after the work summary. Add a description to each and it prints as the caption.</p></div>
+      <div id="dg-photo-list" style="display:none;margin-top:4px;"></div>
       <div class="field"><label>Copies To</label><input id="dg-copies" placeholder="Names or distribution list"></div>
       <div class="status-msg" id="dg-status"></div>
     </div>
@@ -1372,7 +1374,7 @@ const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Submitted By','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
-  daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Attachment File ID','Attachment Name']},
+  daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
@@ -3401,6 +3403,7 @@ async function openDailyGen(){
   document.getElementById('dg-crew-rows').innerHTML=''; dgAddCrew();
   document.getElementById('dg-note-rows').innerHTML=''; dgAddNote();
   document.getElementById('dg-photos').value='';
+  DG_CAPTIONS={}; dgRenderPhotoList();
   document.getElementById('dg-copies').value='';
   showStatus('dg-status','','');
   document.getElementById('dg-progress').style.display='none';
@@ -3416,6 +3419,33 @@ async function openDailyGen(){
   dgFetchWeather();
 }
 function closeDailyGen(){ document.getElementById('dgen-backdrop').classList.remove('open'); }
+
+// Descriptions are keyed by name+size+lastModified so re-picking files keeps
+// whatever has already been typed.
+let DG_CAPTIONS={};
+function dgPhotoKey(f){ return f.name+'|'+f.size+'|'+f.lastModified; }
+function dgRenderPhotoList(){
+  const wrap=document.getElementById('dg-photo-list');
+  const files=[...((document.getElementById('dg-photos')||{}).files||[])];
+  if(!wrap) return;
+  if(!files.length){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  wrap.style.display='';
+  wrap.innerHTML=files.map((f,i)=>{
+    const k=dgPhotoKey(f);
+    return '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">'
+      +'<img id="dg-thumb-'+i+'" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:4px;background:#eceade;flex:0 0 auto;">'
+      +'<div style="flex:1 1 auto;min-width:0;">'
+      +'<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(f.name)+'</div>'
+      +'<input type="text" data-photokey="'+esc(k)+'" oninput="dgCaptionInput(this)" placeholder="Describe this photo…" value="'+esc(DG_CAPTIONS[k]||'')+'" style="width:100%;margin-top:3px;padding:5px 8px;font-size:13px;">'
+      +'</div></div>';
+  }).join('');
+  files.forEach((f,i)=>{
+    const img=document.getElementById('dg-thumb-'+i); if(!img) return;
+    const u=URL.createObjectURL(f);
+    img.src=u; img.onload=()=>URL.revokeObjectURL(u);
+  });
+}
+function dgCaptionInput(el){ DG_CAPTIONS[el.getAttribute('data-photokey')]=el.value; }
 
 async function dgFetchWeather(){
   const st=document.getElementById('dg-weather-status'); const date=document.getElementById('dg-date').value;
@@ -3434,7 +3464,7 @@ async function dgFetchWeather(){
     const url = base+'?latitude='+loc.latitude+'&longitude='+loc.longitude
       +'&start_date='+date+'&end_date='+date
       +'&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max'
-      +'&hourly=temperature_2m,weathercode&temperature_unit=fahrenheit&precipitation_unit=inch&windspeed_unit=mph&timezone=auto';
+      +'&hourly=temperature_2m,weathercode,relative_humidity_2m&temperature_unit=fahrenheit&precipitation_unit=inch&windspeed_unit=mph&timezone=auto';
     const d=await (await fetch(url)).json();
     const dd=d.daily||{};
     const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null) el.value=(typeof v==='number'?Math.round(v*10)/10:v); };
@@ -3442,6 +3472,10 @@ async function dgFetchWeather(){
     set('dg-w-high',(dd.temperature_2m_max||[])[0]);
     set('dg-w-precip',(dd.precipitation_sum||[])[0]);
     set('dg-w-wind',(dd.windspeed_10m_max||[])[0]);
+    // Open-Meteo has no daily humidity aggregate, so average the hourly series.
+    const rh=(d.hourly&&d.hourly.relative_humidity_2m)||[];
+    const rhVals=rh.filter(v=>typeof v==='number');
+    if(rhVals.length) set('dg-w-humid', Math.round(rhVals.reduce((a,b)=>a+b,0)/rhVals.length));
     const codes={0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Fog',51:'Light drizzle',53:'Drizzle',55:'Drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Showers',82:'Heavy showers',95:'Thunderstorm'};
     const hrs=(d.hourly&&d.hourly.time)||[];
     [6,9,12,15,18,21].forEach(h=>{
@@ -3525,8 +3559,8 @@ async function dgBuildPDF(){
   const wv=id=>document.getElementById(id).value||'—';
   doc.autoTable({
     startY:y, margin:{left:40,right:40},
-    head:[['Low','High','Precipitation','Max Wind']],
-    body:[[wv('dg-w-low')+'°F', wv('dg-w-high')+'°F', wv('dg-w-precip')+' in', wv('dg-w-wind')+' mph']],
+    head:[['Low','High','Precipitation','Max Wind','Humidity']],
+    body:[[wv('dg-w-low')+'°F', wv('dg-w-high')+'°F', wv('dg-w-precip')+' in', wv('dg-w-wind')+' mph', wv('dg-w-humid')+'%']],
     theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8}, bodyStyles:{fontSize:9,textColor:INK}, styles:{cellPadding:5}
   });
   y=doc.lastAutoTable.finalY+14;
@@ -3576,15 +3610,30 @@ async function dgBuildPDF(){
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...OLIVE);
     doc.text('SITE PHOTOS', 40, y); y+=16;
     let x=40; const pw=(W-80-16)/2, ph=150;
-    for(const f of files){
-      if(y+ph>700){ doc.addPage(); y=60; x=40; }
-      try{ const url=await fileToDataURL(f);
+    // Caption height varies with the description, so measure the taller of each
+    // pair before deciding how far to advance.
+    let rowCapH=0;
+    for(let i=0;i<files.length;i++){
+      const f=files[i];
+      const cap=(DG_CAPTIONS[dgPhotoKey(f)]||'').trim();
+      const capLines=cap?doc.splitTextToSize(cap, pw):[];
+      const thisCapH=9+(capLines.length*9);
+      if(x===40) rowCapH=thisCapH; else rowCapH=Math.max(rowCapH,thisCapH);
+
+      if(y+ph+rowCapH>720){ doc.addPage(); y=60; x=40; rowCapH=thisCapH; }
+      try{
+        const url=await fileToDataURL(f);
         doc.addImage(url, 'JPEG', x, y, pw, ph, undefined, 'FAST');
-        doc.setFontSize(7); doc.setTextColor(130,130,120); doc.text(f.name.slice(0,40), x, y+ph+9);
+        doc.setFontSize(7); doc.setTextColor(150,150,140);
+        doc.text(f.name.slice(0,44), x, y+ph+9);
+        if(capLines.length){
+          doc.setFontSize(8); doc.setTextColor(...INK);
+          doc.text(capLines, x, y+ph+19);
+        }
       }catch(e){}
-      if(x===40){ x=40+pw+16; } else { x=40; y+=ph+22; }
+      if(x===40 && i<files.length-1){ x=40+pw+16; }
+      else { x=40; y+=ph+rowCapH+16; rowCapH=0; }
     }
-    if(x!==40) y+=ph+22;
   }
 
   // ---- signature footer ----
@@ -3625,7 +3674,7 @@ async function dgGenerate(){
     const entry=up.entries?up.entries[0]:up;
     prog.textContent='Updating log…';
     const mod=MODULES.daily;
-    const row={'Date':date,'Submitted By':document.getElementById('dg-by').value,'Submitted By Email':ME_EMAIL||'','Weather':(document.getElementById('dg-w-low').value||'')+'–'+(document.getElementById('dg-w-high').value||'')+'°F','Crew Count':String(crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0)),'Work Performed':crews.map(c=>c.company+': '+c.work).join(' | ').slice(0,300),'Delays / Issues':'','Attachment File ID':entry.id||'','Attachment Name':fname};
+    const row={'Date':date,'Submitted By':document.getElementById('dg-by').value,'Submitted By Email':ME_EMAIL||'','Weather':(document.getElementById('dg-w-low').value||'')+'–'+(document.getElementById('dg-w-high').value||'')+'°F','Crew Count':String(crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0)),'Work Performed':crews.map(c=>c.company+': '+c.work).join(' | ').slice(0,300),'Delays / Issues':'','Photo Notes':Object.values(DG_CAPTIONS).filter(v=>v&&v.trim()).join(' | ').slice(0,500),'Attachment File ID':entry.id||'','Attachment Name':fname};
     if(EXTERNAL){ await proxyCall('appendRow',{folderId:fid, filename:mod.log, headers:mod.headers, row}); allData.daily=(allData.daily||[]).concat([row]); }
     else { const ex=await findFile(fid,mod.log); let rows=ex?(parseCSV(await boxGetText(ex.id))).rows:[]; rows.push(row); await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,ex?ex.id:null); allData.daily=rows; }
     doc.save(fname);
