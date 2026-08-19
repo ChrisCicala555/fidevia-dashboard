@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs';
 const AUTH0_DOMAIN = 'login.fidevia.com';
 const AUTH0_DOMAIN_FALLBACK = 'dev-477eis4yqjwd6d4g.us.auth0.com';
 let LAST_AUTH_DIAG = '';
+let LAST_AUTH_RATELIMITED = false;
 // Cache userinfo per token so a burst of parallel requests doesn't hammer (and get
 // rate-limited by) Auth0's /userinfo endpoint. Survives across warm invocations.
 const _uiCache = new Map();
@@ -15,17 +16,22 @@ async function auth0Userinfo(auth){
   const cached = _uiGet(tok);
   if (cached) return cached;
   const diag = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let sawRateLimit = false, sawHardFail = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
     for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
       try {
         const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
         if (attempt === 0) diag.push(d.split('.')[0] + ':' + r.status);
-        if (r.ok) { const u = await r.json(); _uiSet(tok, u); LAST_AUTH_DIAG = ''; return u; }
-        if (r.status === 429) { await new Promise(s => setTimeout(s, 350)); }
+        if (r.ok) { const u = await r.json(); _uiSet(tok, u); LAST_AUTH_DIAG = ''; LAST_AUTH_RATELIMITED = false; return u; }
+        if (r.status === 429) sawRateLimit = true;
+        else if (r.status === 401 || r.status === 403) sawHardFail = true;
       } catch (e) { if (attempt === 0) diag.push(d.split('.')[0] + ':err'); }
     }
+    if (attempt < 2) await new Promise(s => setTimeout(s, 300 * Math.pow(2, attempt)));
   }
   LAST_AUTH_DIAG = diag.join(' ');
+  // Only call it a dead session if Auth0 actually rejected the token.
+  LAST_AUTH_RATELIMITED = sawRateLimit && !sawHardFail;
   return null;
 }
 const ADMIN_DOMAIN = 'fidevia.com';
@@ -170,7 +176,10 @@ async function withinGranted(t, grantedIds, kind, id) {
 export default async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const who = await caller(req);
-  if (!who) return json({ error: 'Not authenticated (' + (LAST_AUTH_DIAG || 'no token') + ')' }, 401);
+  if (!who) {
+    if (LAST_AUTH_RATELIMITED) return json({ error: 'Verification service busy — please retry.', retry: true }, 503);
+    return json({ error: 'Your session could not be verified. Please sign in again.' }, 401);
+  }
 
   let body; try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
   const op = body.op;
@@ -312,6 +321,52 @@ export default async (req) => {
       if (!r.ok) return json({ error: 'Box list ' + r.status }, r.status);
       return json(await r.json());
     }
+    // Batch loader: read every module CSV for a project in a single invocation.
+    // Replaces ~26 separate calls (one list + one read per module) that were
+    // each doing their own Auth0 /userinfo and triggering rate-limit 401s.
+    if (op === 'readModules') {
+      const mods = Array.isArray(body.modules) ? body.modules.slice(0, 40) : [];
+      if (!mods.length) return json({ data: {} });
+
+      const folderIds = [...new Set(mods.map(m => String(m.folderId)).filter(Boolean))];
+      const okFolder = {};
+      await Promise.all(folderIds.map(async fid => { okFolder[fid] = await guardFolder(fid); }));
+
+      // One listing per distinct folder, shared across modules in that folder
+      const listing = {};
+      await Promise.all(folderIds.map(async fid => {
+        if (!okFolder[fid]) { listing[fid] = []; return; }
+        try {
+          const r = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(fid)}/items?limit=1000&fields=id,name,type`, { headers: H });
+          listing[fid] = r.ok ? ((await r.json()).entries || []) : [];
+        } catch (e) { listing[fid] = []; }
+      }));
+
+      const companyCache = {};
+      const data = {};
+      await Promise.all(mods.map(async m => {
+        const fid = String(m.folderId || '');
+        data[m.key] = '';
+        if (!fid || !okFolder[fid]) return;
+        const hit = (listing[fid] || []).find(i => i.type === 'file' && i.name === m.filename);
+        if (!hit) return;
+        try {
+          const r = await fetch(`https://api.box.com/2.0/files/${hit.id}/content`, { headers: H });
+          let text = r.ok ? await r.text() : '';
+          const field = PRIVATE_CSV[m.filename];
+          if (field && !who.isAdmin) {
+            if (companyCache[fid] === undefined) companyCache[fid] = (await callerCompanyFor(t, _grants, 'folder', fid)).trim().toLowerCase();
+            const company = companyCache[fid];
+            const parsed = parseCSVServer(text);
+            const rows = company ? parsed.rows.filter(row => String(row[field] || '').trim().toLowerCase() === company) : [];
+            text = toCSVServer(parsed.headers, rows);
+          }
+          data[m.key] = text;
+        } catch (e) {}
+      }));
+      return json({ data });
+    }
+
     if (op === 'readText') {
       if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
       let fname = '';
