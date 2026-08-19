@@ -1303,6 +1303,13 @@ async function boxUploadBinary(file, parentId, onProgress){
   }
 }
 
+const ITEM_FOLDER_LABEL={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'Pay App'};
+function itemFolderName(key, number){
+  let n=String(number==null?'':number).replace(/[\\/]/g,'-').trim();
+  if(key==='docs'||key==='gendocs') return n||'Document';
+  const lab=ITEM_FOLDER_LABEL[key]||'';
+  return (lab?lab+' #':'')+n;
+}
 async function itemFolderId(key, moduleFolderId, number){
   const name=itemFolderName(key, number);
   if(!name || !moduleFolderId) return moduleFolderId;
@@ -1310,6 +1317,16 @@ async function itemFolderId(key, moduleFolderId, number){
     if(EXTERNAL){ const d=await proxyCall('ensureFolder',{parentId:moduleFolderId, name}); return d.id||moduleFolderId; }
     return await findOrCreateFolder(name, moduleFolderId);
   }catch(e){ return moduleFolderId; }
+}
+
+async function boxList(folderId){
+  const d=await proxyCall('list',{folderId}); return d.entries||[];
+}
+
+async function findOrCreateFolder(name, parentId){
+  const items = await boxList(parentId);
+  const f = items.find(i=>i.type==='folder'&&i.name===name);
+  return f ? f.id : boxCreateFolder(name, parentId);
 }
 
 async function findFile(folderId, filename){
