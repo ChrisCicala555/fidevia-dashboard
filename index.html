@@ -925,6 +925,14 @@
   <div class="modal">
     <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
     <div class="modal-body">
+      <div id="pa-details" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#faf9f5;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Details from the contractor's document</div>
+        <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="pa-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="pa-contr" list="contr-list-pa" placeholder="Select or type"><datalist id="contr-list-pa"></datalist></div></div>
+        <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
+        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0"></div></div>
+        <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="45000"></div></div>
+        <p class="file-hint" style="margin:2px 0 0;">Open the uploaded file above to read these off the contractor's application.</p>
+      </div>
       <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
       <div class="field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
       <div class="field"><label>Upload signed payment application</label><input type="file" id="pa-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">The signed / marked-up PDF is saved as a new version — the contractor's original is kept.</p></div>
@@ -1810,7 +1818,7 @@ function fmtMoneyInput(el){
   el.value = parts.length>1 ? whole+'.'+parts[1].slice(0,2) : whole;
 }
 function wireMoneyInputs(){
-  ['f-cost','f-contract','f-cos-approved','f-prev','f-req','pa-amount'].forEach(function(id){
+  ['f-cost','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
     const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
     el.addEventListener('blur',function(){ fmtMoneyInput(el); });
     el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
@@ -2126,7 +2134,9 @@ function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
   tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
-    return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(r['Weather'])+'</td><td>'+esc(r['Crew Count'])+'</td><td>'+esc(r['Work Performed'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
+    // Contractor uploads carry the file only, so these columns are often blank.
+    const dash=v=>{ const t=String(v==null?'':v).trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
+    return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+dash(r['Weather'])+'</td><td>'+dash(r['Crew Count'])+'</td><td>'+dash(r['Work Performed'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
   }).join('');
 }
 function renderPayrolls(){
@@ -2356,7 +2366,7 @@ function renderOverview(){
   const ovd=rfis.filter(isOverdue);
   const openC=cos.filter(r=>notDone(r['Status']));
   const openS=subs.filter(r=>notDone(r['Status']));
-  const openP=pays.filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;});
+  const openP=pays.filter(payIsOutstanding);
   // ---- Recent Items & Tasks summary ----
   const summary=[
     ['RFIs',openR.length,'rfis',false],
@@ -2447,6 +2457,12 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>Drawings</option><option>Specifications</option><option>Contracts</option><option>Reports</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 3"></div></div>
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Visible To</label><select autocomplete="off" id="f-vis"><option value="Fidevia + External">Fidevia + External</option><option value="Fidevia">Fidevia</option></select></div></div>
     <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`},
+  cdaily_ext:{title:'Upload Daily Report',html:`
+    <p class="file-hint" style="margin:0 0 14px;">Upload your daily report. Fidevia records it against <strong id="f-ext-co-label"></strong> and today's date, then reviews it.</p>
+    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF or photos.</p></div>`},
+  payapp_ext:{title:'Upload Payment Application',html:`
+    <p class="file-hint" style="margin:0 0 14px;">Upload your pay application. Fidevia records it against <strong id="f-ext-co-label"></strong>, enters the amounts from your document, then reviews and signs.</p>
+    <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
     <div class="field-row"><div class="field"><label>Weather</label><input autocomplete="off" id="f-weather" placeholder="Sunny, 72°F"></div><div class="field"><label>Crew Count</label><input autocomplete="off" type="number" id="f-crew" placeholder="8"></div></div>
@@ -2483,6 +2499,8 @@ function contactOptions(){
   return '<option value="">— Select contact —</option>'+cts.map(c=>{ const co=(c['Company']||'').trim(), nm=(c['Name']||'').trim(); return '<option>'+esc(co?co+' - '+nm:nm)+'</option>'; }).join('');
 }
 function openModal(type){
+  // Contractors upload the document only; Fidevia records the details.
+  if(EXTERNAL && (type==='cdaily'||type==='payapp') && FORMS[type+'_ext']) type=type+'_ext';
   const def=FORMS[type]; if(!def) return;
   currentModal=type;
   document.getElementById('modal-title').textContent=def.title;
@@ -2498,6 +2516,10 @@ function openModal(type){
   if(type==='contact'){ cdPickLoad(); }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
   if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
+  if(type==='cdaily_ext'||type==='payapp_ext'){
+    const lbl=document.getElementById('f-ext-co-label');
+    if(lbl) lbl.textContent=(currentProject&&currentProject.userCompany)||'your company';
+  }
   wireMoneyInputs();
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
@@ -2606,7 +2628,7 @@ async function submitForm(){
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
   try{
-    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',gendocument:'gendocs',payapp:'pay_apps',cdaily:'contractor_daily',payroll:'payrolls',meeting:'meetings',board:'board'};
+    const keyMap={rfi:'rfi',co:'co',submittal:'sub',daily:'daily',contact:'contacts',budget:'budget',document:'docs',gendocument:'gendocs',payapp:'pay_apps',payapp_ext:'pay_apps',cdaily:'contractor_daily',cdaily_ext:'contractor_daily',payroll:'payrolls',meeting:'meetings',board:'board'};
     const key=keyMap[currentModal];
     let _wfNextLabel='';
     try{
@@ -2693,6 +2715,16 @@ async function submitForm(){
       const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
       const remain=(contract+cosApp)-prev-req;
       newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
+    } else if(currentModal==='cdaily_ext'){
+      if(!attachId) throw new Error('Please choose your daily report file.');
+      const _comp=(currentProject&&currentProject.userCompany)||'';
+      newRow={'Date':etToday(),'Company':_comp,'Submitted By':_senderEmail||'','Weather':'','Crew Count':'','Work Performed':'','Notes':'','Attachment File ID':attachId,'Attachment Name':attachName};
+    } else if(currentModal==='payapp_ext'){
+      if(!attachId) throw new Error('Please choose your pay application file.');
+      const _comp=(currentProject&&currentProject.userCompany)||'';
+      // Amounts stay blank until Fidevia reads them off the PDF, so this row
+      // contributes nothing to the financials until it is reviewed.
+      newRow={'App #':'','Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
     } else if(currentModal==='cdaily'){
       if(!v('f-work')) throw new Error('Work Performed is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -3267,6 +3299,12 @@ async function postComment(){
 function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[2]+'/'+m[3]+'/'+m[1]):String(v); }
 function payNum(x){ return parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0; }
 function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
+// Contractor-uploaded rows sit at 'Uploaded — awaiting Fidevia' until someone
+// records the numbers, so every pending count has to recognise that too.
+function payIsOutstanding(r){
+  const st=String((r&&r['Status'])||'').toLowerCase();
+  return st.indexOf('submit')>=0 || st.indexOf('pending')>=0 || st.indexOf('uploaded')>=0 || st.indexOf('awaiting')>=0;
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 function renderPayApps(){
   const wrap=document.getElementById('payapp-groups'); if(!wrap) return;
@@ -3284,7 +3322,7 @@ function renderPayApps(){
   if(!groups.length){ wrap.innerHTML='<div style="padding:16px;color:var(--muted);font-size:14px;">'+(EXTERNAL?'No payment applications are associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — add them under Financial Summary → Manage Contractors.':'.')))+'</div>'; return; }
   wrap.innerHTML=groups.map((g,gi)=>{
     const approved=g.rows.reduce((s,r)=>s+payApproved(r),0);
-    const pending=g.rows.filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;}).length;
+    const pending=g.rows.filter(payIsOutstanding).length;
     const head='<div class="pay-group-head" onclick="togglePayGroup('+gi+')"><span class="thread-arrow" id="pg-arw-'+gi+'">&#9656;</span><strong>'+esc(g.name)+'</strong>'+(g.role?' <span style="color:var(--muted);font-size:12px;">('+esc(g.role)+')</span>':'')+'<span class="pay-group-meta">'+g.rows.length+' pay app'+(g.rows.length===1?'':'s')+' &middot; '+fmtMoney(approved)+' approved'+(pending?' &middot; '+pending+' pending':'')+'</span></div>';
     let body;
     if(!g.rows.length){ body='<div id="pg-body-'+gi+'" style="display:none;"><div style="padding:12px 16px;color:var(--muted);font-size:14px;">No pay applications submitted yet.</div></div>'; }
@@ -3294,8 +3332,10 @@ function renderPayApps(){
         const s=r['Status']||'Submitted';
         const doc=r['Attachment File ID']?'<a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Attachment File ID'])+'\',event);return false;">Pay App</a>':'—';
         const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>':'';
-        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">Take Action</button>'+delBtn('pay_apps',idx):'';
-        return '<tr><td>'+impFlag(r)+esc(r['App #']||'')+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
+        const needs=payNeedsDetails(r);
+        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx):'';
+        const appCell=String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>';
+        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
       }).join('');
       body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="admin-col">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
     }
@@ -3304,12 +3344,28 @@ function renderPayApps(){
 }
 function togglePayGroup(gi){ const b=document.getElementById('pg-body-'+gi); if(!b) return; const open=b.style.display!=='none'; b.style.display=open?'none':'block'; const a=document.getElementById('pg-arw-'+gi); if(a) a.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
 let PAY_CTX=null;
+function payNeedsDetails(r){ return !String(r['App #']||'').trim() || !String(r['Requested Amount']||'').trim(); }
 function openPayAction(idx){
   PAY_CTX={idx};
   const r=(allData.pay_apps||[])[idx]||{};
-  document.getElementById('payaction-title').textContent='Take Action — '+(r['App #']||'')+' ('+(r['Contractor']||'')+')';
+  const needs=payNeedsDetails(r);
+  document.getElementById('payaction-title').textContent=(needs?'Record & Review — ':'Take Action — ')+(r['App #']||r['Attachment Name']||'Uploaded application')+' ('+(r['Contractor']||'')+')';
+  const box=document.getElementById('pa-details');
+  if(box){
+    box.style.display=needs?'':'none';
+    const dl=document.getElementById('contr-list-pa');
+    const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
+    if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join('');
+    const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.value=val||''; };
+    set('pa-num',r['App #']); set('pa-contr',r['Contractor']); set('pa-period',r['Period']);
+    set('pa-due',r['Due Date']); set('pa-contract',r['Contract Amount']);
+    set('pa-cos',r['Approved Change Orders']); set('pa-prev',r['Previously Paid']); set('pa-req',r['Requested Amount']);
+    const ci=document.getElementById('pa-contr');
+    if(ci) ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('pa-contract'); if(m&&cf&&!cf.value) cf.value=m.contract||''; };
+  }
   document.getElementById('pa-action').selectedIndex=0;
   document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';
+  if(needs){ const req=document.getElementById('pa-req'); if(req) req.oninput=function(){ const a=document.getElementById('pa-amount'); if(a&&!a.disabled) a.value=req.value; }; }
   document.getElementById('pa-file').value='';
   document.getElementById('pa-progress').style.display='none';
   document.getElementById('pa-submit-btn').disabled=false;
@@ -3340,6 +3396,21 @@ async function submitPayAction(){
     if(!vh.length){ vh=[{v:1,fileId:row['Attachment File ID']||'',fileName:row['Attachment Name']||'',status:row['Status']||'Submitted',date:row['Date']||row['Review Date']||'',by:row['Contractor']||'',note:'Submitted'}]; }
     vh.push({v:vh.length+1,fileId:(sfid||row['Attachment File ID']||''),fileName:(sname||row['Attachment Name']||''),status:status,date:etToday(),by:by,note:action+' · '+fmtMoney(appAmt)});
     row['Version History']=JSON.stringify(vh);
+    // If Fidevia is recording the contractor's numbers, save them with the review.
+    const detailBox=document.getElementById('pa-details');
+    if(detailBox && detailBox.style.display!=='none'){
+      const g=id=>{ const el=document.getElementById(id); return el?(el.value||'').trim():''; };
+      if(!g('pa-num')) throw new Error('App # is required.');
+      if(!g('pa-contr')) throw new Error('Contractor is required.');
+      if(!g('pa-req')) throw new Error('Requested This Period is required.');
+      row['App #']=g('pa-num'); row['Contractor']=g('pa-contr');
+      if(!String(row['Company']||'').trim()) row['Company']=g('pa-contr');
+      row['Period']=g('pa-period'); row['Due Date']=g('pa-due');
+      row['Contract Amount']=g('pa-contract'); row['Approved Change Orders']=g('pa-cos');
+      row['Previously Paid']=g('pa-prev'); row['Requested Amount']=g('pa-req');
+      const _c=payNum(g('pa-contract')), _co=payNum(g('pa-cos')), _pv=payNum(g('pa-prev')), _rq=payNum(g('pa-req'));
+      row['Remaining on Contract']=((_c+_co)-_pv-_rq).toFixed(2);
+    }
     row['Status']=status; row['Action']=action; row['Approved Amount']=String(appAmt); row['Reviewed By']=by; row['Review Date']=etToday(); row['Signed File ID']=sfid; row['Signed File Name']=sname;
     prog.textContent='Updating log…';
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
@@ -3363,7 +3434,7 @@ function updateContractBar(rows){
   if(EXTERNAL){ const mine=String((currentProject&&currentProject.userCompany)||'').trim().toLowerCase(); contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine); }
   const totalContract=contractors.reduce((s,c)=>s+payNum(c.contract),0);
   const approved=(rows||[]).reduce((s,r)=>s+payApproved(r),0);
-  const pending=(rows||[]).filter(r=>{const st=(r['Status']||'').toLowerCase();return st.indexOf('submit')>=0||st.indexOf('pending')>=0;}).reduce((s,r)=>s+payNum(r['Requested Amount']),0);
+  const pending=(rows||[]).filter(payIsOutstanding).reduce((s,r)=>s+payNum(r['Requested Amount']),0);
   if(el('cb-contract')) el('cb-contract').textContent=fmtMoney(totalContract);
   if(el('cb-paid'))     el('cb-paid').textContent    =fmtMoney(approved);
   if(el('cb-current'))  el('cb-current').textContent =fmtMoney(pending);
