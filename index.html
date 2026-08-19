@@ -1200,14 +1200,27 @@ function ensureSha1(){
   return _sha1Ready;
 }
 
+// Browser-side uploads go straight to Box, so they need their own 429 handling;
+// the proxy's backoff does not cover them.
+const RATE_LIMIT_MSG='Box is busy right now (too many uploads at once). Please wait a moment and try again — your file was not saved.';
+async function boxFetchRetry(url, opts, tries=4){
+  for(let i=0;i<tries;i++){
+    const r=await fetch(url,opts);
+    if(r.status!==429 || i===tries-1) return r;
+    const ra=parseFloat(r.headers.get('Retry-After')||'');
+    const wait=(Number.isFinite(ra)&&ra>0)?Math.min(ra*1000,10000):Math.min(600*Math.pow(2,i),8000);
+    await new Promise(s=>setTimeout(s, wait+Math.random()*250));
+  }
+}
 async function boxUploadDirect(file, parentId){
   const tk = await proxyCall('uploadToken',{folderId:parentId});
   if(!tk || !tk.token) throw new Error('no-scoped-token');
   const form=new FormData();
   form.append('attributes', JSON.stringify({name:file.name, parent:{id:String(parentId)}}));
   form.append('file', file, file.name);
-  const r=await fetch('https://upload.box.com/api/2.0/files/content',{ method:'POST', headers:{Authorization:'Bearer '+tk.token}, body:form });
+  const r=await boxFetchRetry('https://upload.box.com/api/2.0/files/content',{ method:'POST', headers:{Authorization:'Bearer '+tk.token}, body:form });
   if(r.status===409) throw new Error('A file with that name already exists.');
+  if(r.status===429) throw new Error(RATE_LIMIT_MSG);
   if(!r.ok) throw new Error('upload-failed-'+r.status);
   return r.json();
 }
@@ -1221,11 +1234,12 @@ async function boxUploadChunked(file, parentId, onProgress){
   if(!token) throw new Error('no-scoped-token');
   const reToken=async()=>{ token=(await proxyCall('uploadToken',{folderId:parentId})).token; };
 
-  const sr=await fetch('https://upload.box.com/api/2.0/files/upload_sessions',{
+  const sr=await boxFetchRetry('https://upload.box.com/api/2.0/files/upload_sessions',{
     method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
     body:JSON.stringify({folder_id:String(parentId), file_size:file.size, file_name:file.name})
   });
   if(sr.status===409) throw new Error('A file with that name already exists.');
+  if(sr.status===429) throw new Error(RATE_LIMIT_MSG);
   if(!sr.ok) throw new Error('Could not start upload session ('+sr.status+')');
   const sess=await sr.json();
   const partSize=sess.part_size, totalParts=sess.total_parts;
@@ -1251,6 +1265,7 @@ async function boxUploadChunked(file, parentId, onProgress){
           'Digest':'sha='+digest
         }, body:buf });
         if(r.status===401){ await reToken(); continue; }
+        if(r.status===429) throw new Error(RATE_LIMIT_MSG);
         if(!r.ok) throw new Error('part '+(idx+1)+' failed ('+r.status+')');
         parts[idx]=(await r.json()).part;
         uploaded+=buf.byteLength;
@@ -1312,6 +1327,7 @@ async function boxUploadBinary(file, parentId, onProgress){
     return await boxUploadDirect(file, parentId);
   }catch(e){
     if(/already exists/i.test(e.message)) throw e;
+    if(e.message===RATE_LIMIT_MSG) throw e;
     if(file.size > PROXY_UPLOAD_MAX) throw e;
     console.warn('Direct Box upload unavailable, using proxy:', e.message);
     return await boxUploadViaProxy(file, parentId);

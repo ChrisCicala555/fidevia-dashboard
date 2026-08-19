@@ -1,5 +1,24 @@
 import { getStore } from '@netlify/blobs';
 
+// Retry Box calls that come back rate-limited. This job runs unattended, so a
+// silent 429 means a reminder is never sent and nobody finds out.
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+async function boxFetch(url, opts, tries = 4) {
+  const method = ((opts && opts.method) || 'GET').toUpperCase();
+  const idempotent = method === 'GET' || method === 'HEAD';
+  for (let i = 0; i < tries; i++) {
+    let r;
+    try { r = await fetch(url, opts); }
+    catch (e) { if (i === tries - 1) throw e; await _sleep(Math.min(400 * 2 ** i, 6000) + Math.random() * 250); continue; }
+    const retryable = r.status === 429 || (idempotent && r.status >= 500 && r.status < 600);
+    if (!retryable || i === tries - 1) return r;
+    const ra = parseFloat(r.headers.get('Retry-After') || '');
+    const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 10000) : Math.min(500 * 2 ** i, 8000);
+    await _sleep(wait + Math.random() * 250);
+  }
+}
+
+
 const ROOT_NAME = 'Construction Dashboard';
 
 let _svc = { token: null, exp: 0 };
@@ -12,7 +31,7 @@ async function serviceToken() {
     box_subject_type: 'enterprise',
     box_subject_id: process.env.BOX_ENTERPRISE_ID
   });
-  const r = await fetch('https://api.box.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const r = await boxFetch('https://api.box.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const d = await r.json();
   if (!d.access_token) return null;
   _svc = { token: d.access_token, exp: Date.now() + (d.expires_in || 3600) * 1000 };
@@ -20,7 +39,7 @@ async function serviceToken() {
 }
 
 async function listFolder(t, id) {
-  const r = await fetch(`https://api.box.com/2.0/folders/${id}/items?limit=1000&fields=id,name,type`, { headers: { Authorization: 'Bearer ' + t } });
+  const r = await boxFetch(`https://api.box.com/2.0/folders/${id}/items?limit=1000&fields=id,name,type`, { headers: { Authorization: 'Bearer ' + t } });
   if (!r.ok) return [];
   return (await r.json()).entries || [];
 }
@@ -35,7 +54,7 @@ async function readCSV(t, folderId, filename) {
   const items = await listFolder(t, folderId);
   const f = items.find(i => i.type === 'file' && i.name === filename);
   if (!f) return [];
-  const r = await fetch(`https://api.box.com/2.0/files/${f.id}/content`, { headers: { Authorization: 'Bearer ' + t } });
+  const r = await boxFetch(`https://api.box.com/2.0/files/${f.id}/content`, { headers: { Authorization: 'Bearer ' + t } });
   return r.ok ? parseCSV(await r.text()) : [];
 }
 async function sendEmail(to, subject, html) {
