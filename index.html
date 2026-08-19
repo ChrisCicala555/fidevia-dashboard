@@ -1149,11 +1149,22 @@ async function boxUploadText(filename, content, parentId, existingId=null){
   const d=await proxyCall('uploadText',{folderId:parentId, filename, content}); return d.file||{};
 }
 
-// Netlify caps function bodies at ~6MB and base64 adds ~33%, so routing every
-// upload through the proxy would fail on anything over ~4.4MB. Preferred path:
-// ask the proxy for a folder-scoped, upload-only Box token and PUT straight to
-// Box (no size ceiling). Falls back to the proxy for small files.
+// ── UPLOADS ──
+// Three paths, chosen by size:
+//   < 4MB   proxy fallback only (Netlify caps bodies at ~6MB, +33% for base64)
+//   < 50MB  direct to Box with a folder-scoped, upload-only token
+//   >= 50MB Box chunked upload session (Box's simple endpoint stops at 50MB)
 const PROXY_UPLOAD_MAX = 4*1024*1024;
+const CHUNKED_THRESHOLD = 50*1024*1024;
+
+function _b64bytes(buf){ const b=new Uint8Array(buf); let s=''; const CH=0x8000; for(let i=0;i<b.length;i+=CH){ s+=String.fromCharCode.apply(null,b.subarray(i,i+CH)); } return btoa(s); }
+let _sha1Ready=null;
+function ensureSha1(){
+  if(window.sha1) return Promise.resolve();
+  if(_sha1Ready) return _sha1Ready;
+  _sha1Ready=new Promise((res,rej)=>{ const el=document.createElement('script'); el.src='https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.6.0/sha1.min.js'; el.onload=res; el.onerror=()=>rej(new Error('Could not load hashing library')); document.head.appendChild(el); });
+  return _sha1Ready;
+}
 
 async function boxUploadDirect(file, parentId){
   const tk = await proxyCall('uploadToken',{folderId:parentId});
@@ -1167,42 +1178,112 @@ async function boxUploadDirect(file, parentId){
   return r.json();
 }
 
+// Chunked upload. Parts are read and hashed in order (Box needs a whole-file
+// SHA-1 at commit) but uploaded a few at a time. Survives token expiry on long
+// transfers by re-minting the scoped token.
+async function boxUploadChunked(file, parentId, onProgress){
+  await ensureSha1();
+  let token=(await proxyCall('uploadToken',{folderId:parentId})).token;
+  if(!token) throw new Error('no-scoped-token');
+  const reToken=async()=>{ token=(await proxyCall('uploadToken',{folderId:parentId})).token; };
+
+  const sr=await fetch('https://upload.box.com/api/2.0/files/upload_sessions',{
+    method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({folder_id:String(parentId), file_size:file.size, file_name:file.name})
+  });
+  if(sr.status===409) throw new Error('A file with that name already exists.');
+  if(!sr.ok) throw new Error('Could not start upload session ('+sr.status+')');
+  const sess=await sr.json();
+  const partSize=sess.part_size, totalParts=sess.total_parts;
+  const ep=sess.session_endpoints||{};
+  const epPart=ep.upload_part||('https://upload.box.com/api/2.0/files/upload_sessions/'+sess.id);
+  const epCommit=ep.commit||(epPart+'/commit');
+  const epAbort=ep.abort||epPart;
+
+  const whole=sha1.create();
+  const parts=new Array(totalParts);
+  let uploaded=0, failure=null;
+  const inFlight=new Set();
+  const MAX_PARALLEL=3;
+
+  const putPart=async(idx,buf,digest)=>{
+    const start=idx*partSize;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const r=await fetch(epPart,{ method:'PUT', headers:{
+          Authorization:'Bearer '+token,
+          'Content-Type':'application/octet-stream',
+          'Content-Range':'bytes '+start+'-'+(start+buf.byteLength-1)+'/'+file.size,
+          'Digest':'sha='+digest
+        }, body:buf });
+        if(r.status===401){ await reToken(); continue; }
+        if(!r.ok) throw new Error('part '+(idx+1)+' failed ('+r.status+')');
+        parts[idx]=(await r.json()).part;
+        uploaded+=buf.byteLength;
+        if(onProgress) onProgress(Math.round(uploaded/file.size*100), uploaded, file.size);
+        return;
+      }catch(e){ if(attempt===2) throw e; await new Promise(s=>setTimeout(s,600*(attempt+1))); }
+    }
+  };
+
+  try{
+    for(let i=0;i<totalParts;i++){
+      if(failure) throw failure;
+      const start=i*partSize, end=Math.min(start+partSize,file.size);
+      const buf=await file.slice(start,end).arrayBuffer();
+      whole.update(buf);
+      const digest=_b64bytes(sha1.create().update(buf).arrayBuffer());
+      const task=putPart(i,buf,digest).catch(e=>{ failure=failure||e; }).finally(()=>inFlight.delete(task));
+      inFlight.add(task);
+      if(inFlight.size>=MAX_PARALLEL) await Promise.race(inFlight);
+    }
+    await Promise.all(inFlight);
+    if(failure) throw failure;
+
+    if(onProgress) onProgress(100, file.size, file.size, 'Finalizing…');
+    const wholeDigest=_b64bytes(whole.arrayBuffer());
+    for(let attempt=0;attempt<10;attempt++){
+      const r=await fetch(epCommit,{ method:'POST', headers:{
+        Authorization:'Bearer '+token,'Content-Type':'application/json','Digest':'sha='+wholeDigest
+      }, body:JSON.stringify({parts:parts}) });
+      if(r.status===202){ const wait=parseInt(r.headers.get('Retry-After')||'2',10); await new Promise(s=>setTimeout(s,wait*1000)); continue; }
+      if(r.status===401){ await reToken(); continue; }
+      if(!r.ok) throw new Error('Could not finalize upload ('+r.status+')');
+      return r.json();
+    }
+    throw new Error('Upload did not finalize in time.');
+  }catch(e){
+    try{ await fetch(epAbort,{method:'DELETE',headers:{Authorization:'Bearer '+token}}); }catch(_){}
+    throw e;
+  }
+}
+
 async function boxUploadViaProxy(file, parentId){
   const b64=await fileToB64(file);
   const d=await proxyCall('upload',{folderId:parentId, filename:file.name, contentBase64:b64, mime:file.type});
   return d.file;
 }
 
-async function boxUploadBinary(file, parentId){
+function uploadProgressTo(el, label){
+  return (pct, done, total, note)=>{
+    if(!el) return;
+    const mb=n=>(n/1048576).toFixed(n>=104857600?0:1)+' MB';
+    el.textContent = (label||'Uploading')+' — '+(note||(pct+'%  ('+mb(done)+' of '+mb(total)+')'));
+  };
+}
+
+async function boxUploadBinary(file, parentId, onProgress){
   try{
+    if(file.size >= CHUNKED_THRESHOLD) return await boxUploadChunked(file, parentId, onProgress);
     return await boxUploadDirect(file, parentId);
   }catch(e){
-    // Surface real Box rejections; only fall back on transport/setup problems.
     if(/already exists/i.test(e.message)) throw e;
-    if(file.size > PROXY_UPLOAD_MAX){
-      throw new Error('Upload failed. Files over 4 MB need direct Box upload to be enabled — please tell Fidevia. ('+e.message+')');
-    }
+    if(file.size > PROXY_UPLOAD_MAX) throw e;
     console.warn('Direct Box upload unavailable, using proxy:', e.message);
     return await boxUploadViaProxy(file, parentId);
   }
 }
 
-async function boxList(folderId){
-  const d=await proxyCall('list',{folderId}); return d.entries||[];
-}
-
-async function findOrCreateFolder(name, parentId){
-  const items = await boxList(parentId);
-  const f = items.find(i=>i.type==='folder'&&i.name===name);
-  return f ? f.id : boxCreateFolder(name, parentId);
-}
-const ITEM_FOLDER_LABEL={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'Pay App'};
-function itemFolderName(key, number){
-  let n=String(number==null?'':number).replace(/[\\/]/g,'-').trim();
-  if(key==='docs'||key==='gendocs') return n||'Document';
-  const lab=ITEM_FOLDER_LABEL[key]||'';
-  return (lab?lab+' #':'')+n;
-}
 async function itemFolderId(key, moduleFolderId, number){
   const name=itemFolderName(key, number);
   if(!name || !moduleFolderId) return moduleFolderId;
@@ -2404,7 +2485,7 @@ async function submitForm(){
       const _num=(currentModal==='document')?v('f-name'):v('f-num');
       if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
       prog.textContent='Uploading file to Box…';
-      const up=await boxUploadBinary(fi.files[0],uploadFolderId);
+      const up=await boxUploadBinary(fi.files[0],uploadFolderId, uploadProgressTo(prog,'Uploading file'));
       const entry=up.entries?up.entries[0]:up;
       attachId=entry.id||''; attachName=fi.files[0].name;
     }
@@ -2908,7 +2989,11 @@ async function uploadPhotos(input){
   const dateFid = await findOrCreateFolder(td, photosFid);
   const grid=document.getElementById('photo-grid');
   grid.innerHTML='<div class="photo-empty">Uploading '+files.length+' photo(s)…</div>';
-  for(const f of files) await boxUploadBinary(f, dateFid);
+  for(let i=0;i<files.length;i++){
+    const lbl='Photo '+(i+1)+' of '+files.length;
+    grid.innerHTML='<div class="photo-empty">'+lbl+'…</div>';
+    await boxUploadBinary(files[i], dateFid, uploadProgressTo(grid.querySelector('.photo-empty'), lbl));
+  }
   await loadPhotos(photosFid);
   input.value='';
 }
@@ -3101,7 +3186,7 @@ async function submitPayAction(){
     const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
-    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await itemFolderId('pay_apps',fid,row['App #']); const up=await boxUploadBinary(fileInput.files[0],_upf); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await itemFolderId('pay_apps',fid,row['App #']); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
     const status=action==='Approve and Sign'?'Approved & Signed':action==='Modify and Sign'?'Modified & Signed':'Denied';
     const appAmt=action==='Deny'?0:amount;
     let vh=[]; try{ vh=JSON.parse(row['Version History']||'[]'); }catch(e){}
@@ -3159,7 +3244,7 @@ async function uploadNewVersion(key, rowIdx){
     const existing=await findFile(fid,mod.log);
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
     const row=rows[rowIdx]; if(!row) return;
-    const _num=(key==='docs'||key==='gendocs')?row['Document Name']:(row['RFI #']||row['CO #']||row['Submittal #']||row['App #']||''); const _upf=await itemFolderId(key,fid,_num); const up=await boxUploadBinary(file,_upf);
+    const _num=(key==='docs'||key==='gendocs')?row['Document Name']:(row['RFI #']||row['CO #']||row['Submittal #']||row['App #']||''); const _upf=await itemFolderId(key,fid,_num); const up=await boxUploadBinary(file,_upf, uploadProgressTo(prog,'Uploading new version'));
     const entry=up.entries?.[0]||up;
     if(key==='docs'){
       const oldFileId=row['File ID']||'', oldName=row['File Name']||'', oldV=row['Version']||'1', oldDate=row['Date']||'';
@@ -3433,7 +3518,7 @@ async function dgGenerate(){
     const file=new File([blob], fname, {type:'application/pdf'});
     prog.textContent='Uploading to Box…';
     const fid=currentProject.folders.daily;
-    const up=await boxUploadBinary(file, fid);
+    const up=await boxUploadBinary(file, fid, uploadProgressTo(prog,'Uploading report'));
     const entry=up.entries?up.entries[0]:up;
     prog.textContent='Updating log…';
     const mod=MODULES.daily;
@@ -3657,7 +3742,7 @@ async function submitReply(){
     const row=rows[i]; if(!row) throw new Error('Item not found — reload and try again.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let newFid=row['Attachment File ID']||'', newName=row['Attachment Name']||'';
-    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const _upf=await itemFolderId(key,fid,row[REPLY_IDF[key]]); const up=await boxUploadBinary(fileInput.files[0],_upf); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const _upf=await itemFolderId(key,fid,row[REPLY_IDF[key]]); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading file')); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
     let vs=_versions(row);
     vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, note:note});
     row['Version History']=JSON.stringify(vs);
