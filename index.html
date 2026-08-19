@@ -36,7 +36,6 @@
   #screen-dashboard.active{display:block;}
 
   /* ── LOGIN ── */
-  #screen-login{min-height:100vh; flex-direction:column; align-items:center; justify-content:center; background:var(--olive-900); padding:40px 24px;}
   .login-card{background:var(--white); border-radius:12px; padding:48px 44px; width:100%; max-width:420px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.25);}
   .login-logo-img{height:72px; width:auto; margin-bottom:4px;} .picker-logo-img{height:44px; width:auto;} .sidebar-logo-img{height:48px; width:auto; filter:brightness(0) invert(1);}
   .login-tagline{font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-top:4px; margin-bottom:36px;}
@@ -333,6 +332,10 @@
 <body>
 
 <!-- ══ LOGIN ══ -->
+<div id="screen-boot" class="screen active" style="align-items:center;justify-content:center;min-height:100vh;background:var(--olive-900);flex-direction:column;">
+  <img src="./Fidevia w_branch.avif" alt="Fidevia" style="max-width:200px;height:auto;opacity:.95">
+  <div style="margin-top:18px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c9c6b4">Loading…</div>
+</div>
 <div id="screen-profile" class="screen" style="align-items:center;justify-content:center;min-height:100vh;background:#f5f4ee;">
   <div class="login-card" style="max-width:480px;width:95%;padding:36px 40px;text-align:left;">
     <div style="text-align:center;margin-bottom:24px;">
@@ -382,20 +385,6 @@
     <button class="btn-box" onclick="signupWithAuth0()" style="width:100%;background:#fff;border:1px solid #515520;color:#515520;font-size:16px;padding:12px;margin-top:10px;">Create Account</button>
   </div>
 </div>
-<div id="screen-login" class="screen active">
-  <div class="login-card">
-    <img src="./Fidevia w_branch.avif" alt="Fidevia" class="login-logo-img">
-    <div class="login-tagline">Construction Management &amp; Consulting</div>
-    <hr class="login-divider">
-    <p class="login-desc">Sign in with your Box account to access the project dashboard. Your files stay securely in Box.</p>
-    <button class="btn-box-login" onclick="initiateLogin()">
-      <svg width="18" height="18" viewBox="0 0 40 40"><rect width="40" height="40" rx="6" fill="#0061D5"/><text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-size="24" font-weight="bold" fill="white">B</text></svg>
-      Continue with Box
-    </button>
-    <p class="login-footer">Fidevia does not store your Box credentials.</p>
-  </div>
-</div>
-
 <!-- ══ PICKER ══ -->
 <div id="screen-picker" class="screen">
   <div class="picker-topbar">
@@ -1105,8 +1094,6 @@
 
 <script>
 // ── CONFIG ──
-const CLIENT_ID     = '85sfp3r7vwb2wk33lrftdo1ma6crwoyv';
-const CLIENT_SECRET = 'HGtsn1vXWU4nTbTp7q8odATJUUOfd15n';
 const REDIRECT_URI  = window.location.origin + window.location.pathname.replace(/\/index\.html$/, '/').replace(/([^/])$/, '$1/');
 const ROOT_NAME    = 'Construction Dashboard';
 const AUTH0_DOMAIN    = 'login.fidevia.com';
@@ -1118,54 +1105,8 @@ let currentProject = null;
 let currentModal   = null;
 let allData        = {};
 
-// ── PKCE AUTH ──
-function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); }
-function genVerifier(){ const a=new Uint8Array(32); crypto.getRandomValues(a); return b64url(a.buffer); }
-async function genChallenge(v){ return b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))); }
-
-async function initiateLogin(){
-  const v = genVerifier();
-  sessionStorage.setItem('pkce_v', v);
-  const ch = await genChallenge(v);
-  const st = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer);
-  sessionStorage.setItem('pkce_s', st);
-  const p = new URLSearchParams({ client_id:CLIENT_ID, redirect_uri:REDIRECT_URI, response_type:'code', code_challenge:ch, code_challenge_method:'S256', state:st });
-  window.location.replace('https://account.box.com/api/oauth2/authorize?' + p);
-}
-
-async function handleCallback(code){
-  // Back button can re-hit this with a stale/used code — handle gracefully.
-  if(sessionStorage.getItem('box_token')){ window.history.replaceState({}, '', window.location.pathname); await loadPicker(); return; }
-  const v = sessionStorage.getItem('pkce_v');
-  if(!v){ window.history.replaceState({}, '', window.location.pathname); showScreen('screen-login'); return; }
-  const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'authorization_code', client_id:CLIENT_ID, client_secret:CLIENT_SECRET, code, redirect_uri:REDIRECT_URI, code_verifier:v }) });
-  const d = await r.json();
-  window.history.replaceState({}, '', window.location.pathname);
-  if(!d.access_token){ sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s'); showScreen('screen-login'); return; }
-  storeTokens(d);
-  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
-  await loadPicker();
-}
-
-function storeTokens(d){
-  sessionStorage.setItem('box_token', d.access_token);
-  sessionStorage.setItem('box_refresh', d.refresh_token||'');
-  sessionStorage.setItem('box_expiry', Date.now()+((d.expires_in||3600)-120)*1000);
-}
-
-async function ensureToken(){
-  if(Date.now() > parseInt(sessionStorage.getItem('box_expiry')||'0')){
-    const ref = sessionStorage.getItem('box_refresh');
-    if(!ref){ logout(); throw new Error('Session expired'); }
-    const r = await fetch('https://api.box.com/oauth2/token',{ method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({ grant_type:'refresh_token', client_id:CLIENT_ID, client_secret:CLIENT_SECRET, refresh_token:ref }) });
-    const d = await r.json();
-    if(!d.access_token){ logout(); throw new Error('Token refresh failed'); }
-    storeTokens(d);
-  }
-  return sessionStorage.getItem('box_token');
-}
-
-function logout(){ sessionStorage.clear(); currentProject=null; showScreen('screen-login'); }
+// ── SESSION ──
+function logout(){ sessionStorage.clear(); localStorage.removeItem('box_token'); currentProject=null; try{ auth0Client.logout({ logoutParams:{ returnTo: window.location.origin } }); }catch(e){ window.location.reload(); } }
 
 // ── EXTERNAL (service-account proxy) ──
 let EXTERNAL = false;
@@ -1192,51 +1133,27 @@ async function proxyCall(op, body, opts){
 function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(file); }); }
 
 // ── BOX API ──
-async function boxGet(path){
-  const t = await ensureToken();
-  const r = await fetch('https://api.box.com/2.0/'+path, { headers:{Authorization:'Bearer '+t} });
-  if(r.status===401){ showSessionExpired(); throw new Error('Unauthorized'); }
-  if(!r.ok) throw new Error('Box API '+r.status+': '+path);
-  return r.json();
-}
 
 async function boxGetText(fileId){
-  if(EXTERNAL){ const d=await proxyCall('readText',{fileId}); return d.text||''; }
-  const t = await ensureToken();
-  const r = await fetch('https://api.box.com/2.0/files/'+fileId+'/content', { headers:{Authorization:'Bearer '+t} });
-  return r.ok ? r.text() : '';
+  const d=await proxyCall('readText',{fileId}); return d.text||'';
 }
 
 async function boxCreateFolder(name, parentId){
-  const t = await ensureToken();
-  const r = await fetch('https://api.box.com/2.0/folders',{ method:'POST', headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'}, body:JSON.stringify({name,parent:{id:parentId}}) });
-  return (await r.json()).id;
+  const d=await proxyCall('ensureFolder',{parentId, name}); return d.id;
 }
 
 async function boxUploadText(filename, content, parentId, existingId=null){
-  const t = await ensureToken();
-  const form = new FormData();
-  form.append('attributes', existingId ? JSON.stringify({name:filename}) : JSON.stringify({name:filename,parent:{id:parentId}}));
-  form.append('file', new Blob([content],{type:'text/plain'}), filename);
-  const url = existingId ? 'https://upload.box.com/api/2.0/files/'+existingId+'/content' : 'https://upload.box.com/api/2.0/files/content';
-  const r = await fetch(url,{ method:'POST', headers:{Authorization:'Bearer '+t}, body:form });
-  return r.json();
+  const d=await proxyCall('uploadText',{folderId:parentId, filename, content}); return d.file||{};
 }
 
 async function boxUploadBinary(file, parentId){
-  if(EXTERNAL){ const b64=await fileToB64(file); const d=await proxyCall('upload',{folderId:parentId, filename:file.name, contentBase64:b64, mime:file.type}); return d.file; }
-  const t = await ensureToken();
-  const form = new FormData();
-  form.append('attributes', JSON.stringify({name:file.name,parent:{id:parentId}}));
-  form.append('file', file, file.name);
-  const r = await fetch('https://upload.box.com/api/2.0/files/content',{ method:'POST', headers:{Authorization:'Bearer '+t}, body:form });
-  return r.json();
+  const b64=await fileToB64(file);
+  const d=await proxyCall('upload',{folderId:parentId, filename:file.name, contentBase64:b64, mime:file.type});
+  return d.file;
 }
 
 async function boxList(folderId){
-  if(EXTERNAL){ const d=await proxyCall('list',{folderId}); return d.entries||[]; }
-  const d = await boxGet('folders/'+folderId+'/items?limit=200&fields=id,name,type');
-  return d.entries||[];
+  const d=await proxyCall('list',{folderId}); return d.entries||[];
 }
 
 async function findOrCreateFolder(name, parentId){
@@ -1325,11 +1242,9 @@ async function loadPicker(){
     } else {
       try{ const u=await auth0Client.getUser(); document.getElementById('user-name-display').textContent=u.name||u.email||''; }catch(e){}
       if(toggle) toggle.style.display='';
-      const rootItems = await boxList('0');
-      let root = rootItems.find(i=>i.type==='folder'&&i.name===ROOT_NAME);
-      const rootId = root ? root.id : await boxCreateFolder(ROOT_NAME,'0');
-      sessionStorage.setItem('root_id', rootId);
-      PICKER_PROJECTS = (await boxList(rootId)).filter(i=>i.type==='folder' && !SYSTEM_FOLDERS.includes(i.name));
+      const pr = await proxyCall('adminListProjects',{});
+      if(pr.rootId) sessionStorage.setItem('root_id', pr.rootId);
+      PICKER_PROJECTS = (pr.projects||[]).map(p=>({id:String(p.id), name:p.name, type:'folder'}));
       let arch=[]; try{ arch=(await proxyCall('getArchived',{},{quiet:true})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
     }
@@ -1590,7 +1505,9 @@ async function createProject(){
   const btn = document.getElementById('wiz-create'); btn.disabled=true;
   showStatus('new-proj-status','Creating project in Box…','info');
   try{
-    const rootId = sessionStorage.getItem('root_id') || await findOrCreateFolder(ROOT_NAME,'0');
+    let rootId = sessionStorage.getItem('root_id');
+    if(!rootId){ const pr = await proxyCall('adminListProjects',{}); rootId = pr.rootId; sessionStorage.setItem('root_id', rootId||''); }
+    if(!rootId) throw new Error('Could not locate the projects root folder.');
     const projId = await boxCreateFolder(name, rootId);
     const contacts = wizGatherContacts();
     for(const key of Object.keys(MODULES)){
@@ -2116,9 +2033,7 @@ async function loadLogo(){
   const fid=currentProject&&currentProject.config&&currentProject.config.logoFileId;
   if(!fid) return;
   try{
-    let url;
-    if(EXTERNAL){ const d=await proxyCall('downloadUrl',{fileId:fid}); url=d.url; }
-    else { const t=await ensureToken(); const r=await fetch('https://api.box.com/2.0/files/'+encodeURIComponent(fid)+'/content',{headers:{Authorization:'Bearer '+t}}); if(r.ok){ url=URL.createObjectURL(await r.blob()); } }
+    const d=await proxyCall('downloadUrl',{fileId:fid}); const url=d.url;
     if(url){ el.src=url; el.style.display='inline-block'; }
   }catch(e){}
 }
@@ -2830,20 +2745,16 @@ async function initAuth0(){
     authorizationParams: { redirect_uri: REDIRECT_URI, scope: 'openid profile email offline_access' }
   });
   const p=new URLSearchParams(window.location.search);
-  const _code=p.get('code'), _state=p.get('state'), _boxState=sessionStorage.getItem('pkce_s');
-  const _isBoxCallback = !!_code && !!_boxState && _state===_boxState;   // Box callback only if state matches
-  if(_code && !_isBoxCallback){
+  if(p.get('code')){
     try{ await auth0Client.handleRedirectCallback(); window.history.replaceState({},document.title,window.location.pathname); }
     catch(e){ console.warn('Auth0 callback:',e); }
   }
   return auth0Client.isAuthenticated();
 }
 async function loginWithAuth0(){
-  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI } });
 }
 async function signupWithAuth0(){
-  sessionStorage.removeItem('pkce_v'); sessionStorage.removeItem('pkce_s');
   await auth0Client.loginWithRedirect({ authorizationParams: { redirect_uri: REDIRECT_URI, screen_hint: 'signup' } });
 }
 async function logoutAuth0(){
@@ -2881,8 +2792,8 @@ async function saveProfile(){
     // Route based on role: external users skip Box login and go to their picker
     let isAdmin=false; try{ const w=await proxyCall('whoami',{}); isAdmin=!!w.isAdmin; }catch(e){}
     IS_ADMIN=isAdmin; EXTERNAL=!isAdmin;
-    if(EXTERNAL){ document.body.classList.add('is-external-user'); await loadPicker(); }
-    else{ if(isAdmin) document.body.classList.add('is-admin'); if(sessionStorage.getItem('box_token')){ await loadPicker(); } else{ showScreen('screen-login'); } }
+    if(EXTERNAL) document.body.classList.add('is-external-user'); else document.body.classList.add('is-admin');
+    await loadPicker();
   }catch(e){
     btn.disabled=false; btn.textContent='Continue to Dashboard →';
     errEl.textContent='Error: '+e.message; errEl.style.display='block';
@@ -2928,11 +2839,7 @@ async function saveProfile(){
     await loadPicker();
     return;
   }
-  const params=new URLSearchParams(window.location.search);
-  const code=params.get('code');
-  if(code && sessionStorage.getItem('pkce_v')){ showScreen('screen-login'); await handleCallback(code); }
-  else if(sessionStorage.getItem('box_token')){ await loadPicker(); }
-  else{ showScreen('screen-login'); }
+  await loadPicker();
 })();
 
 // ══════════════════════════════════════════════
@@ -2979,10 +2886,7 @@ async function loadProjectPhotos(){
 let PHOTO_DATA={};
 let VIEWER_STATE={date:null,idx:0};
 async function boxImageURL(fileId, dim){
-  try{ const t=await ensureToken();
-    try{ const r=await fetch('https://api.box.com/2.0/files/'+fileId+'/thumbnail.jpg?min_height='+dim+'&min_width='+dim,{headers:{Authorization:'Bearer '+t}}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return URL.createObjectURL(b); } }catch(e){}
-    const r2=await fetch('https://api.box.com/2.0/files/'+fileId+'/content',{headers:{Authorization:'Bearer '+t}}); if(r2.ok){ return URL.createObjectURL(await r2.blob()); }
-  }catch(e){}
+  try{ const d=await proxyCall('downloadUrl',{fileId}); if(d&&d.url) return d.url; }catch(e){}
   return '';
 }
 async function loadPhotos(photosFid){
@@ -3021,9 +2925,8 @@ async function pvDownload(){
   const d=PHOTO_DATA[VIEWER_STATE.date]; if(!d) return; const img=d.images[VIEWER_STATE.idx]; if(!img) return;
   const btn=document.getElementById('pv-download'); const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Downloading…'; }
   try{
-    const t=await ensureToken();
-    const r=await fetch('https://api.box.com/2.0/files/'+img.id+'/content',{headers:{Authorization:'Bearer '+t}});
-    if(r.ok){ const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=img.name||'photo.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); }
+    const d=await proxyCall('downloadUrl',{fileId:img.id});
+    if(d&&d.url){ const a=document.createElement('a'); a.href=d.url; a.download=img.name||'photo.jpg'; a.target='_blank'; document.body.appendChild(a); a.click(); a.remove(); }
   }catch(e){}
   if(btn){ btn.disabled=false; btn.textContent=orig||'⬇ Download'; }
 }

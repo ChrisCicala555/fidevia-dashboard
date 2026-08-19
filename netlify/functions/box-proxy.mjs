@@ -205,7 +205,7 @@ export default async (req) => {
       if (op === 'adminListProjects') {
         const r = await fetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
         const d = await r.json();
-        return json({ projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
+        return json({ rootId: String(process.env.BOX_PROJECTS_ROOT_ID || ''), projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
       }
       if (op === 'adminListGrants') {
         const store = grantsStore();
@@ -462,6 +462,21 @@ export default async (req) => {
       if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
       const nextNames = next >= steps.length ? [] : steps.slice(next, next + 1).map(s => s.person || s.name);
       return json({ ok: true, complete: next >= steps.length, nextStep: nextNames });
+    }
+    if (op === 'uploadText') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      const { folderId, filename, content } = body;
+      if (!folderId || !filename) return json({ error: 'folderId and filename required' }, 400);
+      const lr = await fetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const existing = items.find(i => i.type === 'file' && i.name === filename);
+      const form = new FormData();
+      form.append('attributes', JSON.stringify(existing ? { name: filename } : { name: filename, parent: { id: String(folderId) } }));
+      form.append('file', new Blob([new TextEncoder().encode(String(content == null ? '' : content))], { type: 'text/plain' }), filename);
+      const url = existing ? `https://upload.box.com/api/2.0/files/${existing.id}/content` : 'https://upload.box.com/api/2.0/files/content';
+      const r = await fetch(url, { method: 'POST', headers: H, body: form });
+      if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
+      return json({ ok: true, file: await r.json() });
     }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
