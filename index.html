@@ -1111,14 +1111,27 @@ let EXTERNAL = false;
 let IS_ADMIN = false;
 let _sessionShown=false;
 function showSessionExpired(){ if(_sessionShown) return; _sessionShown=true; const el=document.getElementById('session-backdrop'); if(el) el.classList.add('open'); }
+let _idTokCache={raw:'',exp:0};
+async function cachedIdToken(force){
+  const now=Date.now();
+  if(!force && _idTokCache.raw && now < _idTokCache.exp) return _idTokCache.raw;
+  try{
+    const c=await auth0Client.getIdTokenClaims();
+    const raw=(c&&c.__raw)||'';
+    // Refresh a minute before the token actually expires.
+    const exp=(c&&c.exp?c.exp*1000:now+3600000)-60000;
+    _idTokCache={raw, exp};
+    return raw;
+  }catch(e){ return ''; }
+}
+
 async function proxyCall(op, body, opts){
   opts=opts||{};
   async function attempt(fresh){
     const tok = await auth0Client.getTokenSilently(fresh?{cacheMode:'off'}:undefined);
     // Send the ID token too: the proxy verifies it locally against Auth0's JWKS
     // instead of calling /userinfo, which is rate-limited to ~10/min per user.
-    let idTok='';
-    try{ const c=await auth0Client.getIdTokenClaims(); idTok=(c&&c.__raw)||''; }catch(e){}
+    const idTok = await cachedIdToken(fresh);
     const headers={'Authorization':'Bearer '+tok,'Content-Type':'application/json'};
     if(idTok) headers['X-Id-Token']=idTok;
     const r = await fetch('/api/box-proxy', { method:'POST', headers, body: JSON.stringify(Object.assign({op}, body||{})) });
@@ -1658,7 +1671,9 @@ async function loadDashboard(){
   const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps','contacts','gendocs','contractor_daily','payrolls'] : allKeys;
   const mods = keys.filter(k=>currentProject.folders[k]).map(k=>({key:k, folderId:currentProject.folders[k], filename:MODULES[k].log}));
   try{
+    const _t0=performance.now();
     const d = await proxyCall('readModules',{modules:mods});
+    try{ console.log('[dashboard] modules loaded in', Math.round(performance.now()-_t0)+'ms', d._diag||{}); }catch(e){}
     keys.forEach(k=>{ const txt=(d.data||{})[k]; allData[k] = txt ? parseCSV(txt).rows : []; });
   }catch(e){
     // Fall back to per-module loads if the batch call fails

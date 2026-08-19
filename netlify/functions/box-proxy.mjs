@@ -27,20 +27,16 @@ async function auth0Userinfo(auth){
   if (cached) return cached;
   const diag = [];
   let sawRateLimit = false, sawHardFail = false;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
-      try {
-        const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
-        if (attempt === 0) diag.push(d.split('.')[0] + ':' + r.status);
-        if (r.ok) { const u = await r.json(); _uiSet(tok, u); LAST_AUTH_DIAG = ''; LAST_AUTH_RATELIMITED = false; return u; }
-        if (r.status === 429) sawRateLimit = true;
-        else if (r.status === 401 || r.status === 403) sawHardFail = true;
-      } catch (e) { if (attempt === 0) diag.push(d.split('.')[0] + ':err'); }
-    }
-    if (attempt < 2) await new Promise(s => setTimeout(s, 300 * Math.pow(2, attempt)));
+  for (const d of [AUTH0_DOMAIN, AUTH0_DOMAIN_FALLBACK]) {
+    try {
+      const r = await fetch(`https://${d}/userinfo`, { headers: { Authorization: auth } });
+      diag.push(d.split('.')[0] + ':' + r.status);
+      if (r.ok) { const u = await r.json(); _uiSet(tok, u); LAST_AUTH_DIAG = ''; LAST_AUTH_RATELIMITED = false; return u; }
+      if (r.status === 429) sawRateLimit = true;
+      else if (r.status === 401 || r.status === 403) sawHardFail = true;
+    } catch (e) { diag.push(d.split('.')[0] + ':err'); }
   }
   LAST_AUTH_DIAG = diag.join(' ');
-  // Only call it a dead session if Auth0 actually rejected the token.
   LAST_AUTH_RATELIMITED = sawRateLimit && !sawHardFail;
   return null;
 }
@@ -104,14 +100,18 @@ async function verifyIdToken(idToken){
   return null;
 }
 
+let LAST_AUTH_VIA = '';
 async function caller(req) {
   const auth = req.headers.get('authorization') || '';
   // Fast path: verify the ID token locally. Falls back to /userinfo so older
   // clients (and anything the verification cannot handle) keep working.
-  let u = await verifyIdToken(req.headers.get('x-id-token') || '');
+  const idTok = req.headers.get('x-id-token') || '';
+  let u = await verifyIdToken(idTok);
+  LAST_AUTH_VIA = u ? 'jwks' : (idTok ? 'jwks-failed' : 'no-id-token');
   if (!u) {
     if (!auth.startsWith('Bearer ')) return null;
     u = await auth0Userinfo(auth);
+    if (u) LAST_AUTH_VIA += '+userinfo';
   }
   if (!u) return null;
   const email = (u.email || '').toLowerCase();
@@ -217,7 +217,9 @@ async function withinGranted(t, grantedIds, kind, id) {
 
 export default async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const _t0 = Date.now();
   const who = await caller(req);
+  const _tAuth = Date.now() - _t0;
   if (!who) {
     if (LAST_AUTH_RATELIMITED) return json({ error: 'Verification service busy — please retry.', retry: true }, 503);
     return json({ error: 'Your session could not be verified. Please sign in again.' }, 401);
@@ -427,7 +429,7 @@ export default async (req) => {
           data[m.key] = text;
         } catch (e) {}
       }));
-      return json({ data });
+      return json({ data, _diag: { authMs: _tAuth, authVia: LAST_AUTH_VIA, totalMs: Date.now() - _t0, modules: mods.length, listed: need.size } });
     }
 
     if (op === 'readText') {
