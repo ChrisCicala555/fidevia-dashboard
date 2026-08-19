@@ -200,6 +200,15 @@
   .cd-letter-cell{font-family:'Times New Roman',Times,serif;font-size:19px;font-weight:700;color:var(--olive-900);background:var(--cream);padding:12px 8px 6px;border-bottom:1px solid var(--khaki-300);}
   .note{color:var(--muted); font-size:13px; padding:14px 18px; border-top:1px solid var(--border); background:var(--cream);}
   .empty-row td,.loading-row td{color:var(--muted); font-style:italic; text-align:center; padding:24px;}
+  /* Skeleton placeholders: show the shape of the page while it loads rather
+     than a blank screen that pops into content. */
+  @keyframes skelShimmer{0%{background-position:-500px 0;}100%{background-position:500px 0;}}
+  .skel{display:block; height:12px; border-radius:4px;
+        background:linear-gradient(90deg,#e9e6dc 0%,#f6f4ee 50%,#e9e6dc 100%);
+        background-size:1000px 100%; animation:skelShimmer 1.5s linear infinite;}
+  .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
+  .skel-card{border-top-color:var(--khaki-100) !important;}
+  @media(prefers-reduced-motion:reduce){ .skel{animation:none;} }
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
   #access-requests-banner{padding:0 32px;margin-top:16px;}
@@ -1485,9 +1494,64 @@ async function confirmDeleteProject(){
   }catch(e){ showStatus('delete-status', e.message||'Error', 'error'); btn.disabled=false; }
 }
 
+// Paint the shape of the dashboard immediately so landing on a project shows
+// structure instead of a blank page that pops into content.
+let _skelTimer=null;
+function showProjectSkeleton(){
+  const bar=(w,h)=>'<span class="skel" style="width:'+w+(h?';height:'+h:'')+'"></span>';
+
+  const kp=document.getElementById('exec-kpis');
+  if(kp){
+    kp.style.display='';
+    kp.innerHTML=Array.from({length:4},()=>
+      '<div class="stat-card skel-card">'+bar('55%','9px')+'<div style="height:10px;"></div>'+bar('75%','22px')+'</div>').join('');
+  }
+
+  const att=document.getElementById('attention-panel');
+  if(att){
+    att.style.display='';
+    att.innerHTML='<div class="att-card">'+bar('170px','10px')+'<div style="height:12px;"></div>'+bar('60%')+'</div>';
+  }
+
+  // Every module table that is still showing its "Loading…" placeholder
+  document.querySelectorAll('#screen-dashboard tbody').forEach(tb=>{
+    const lr=tb.querySelector('.loading-row'); if(!lr) return;
+    const first=lr.firstElementChild;
+    const cols=Math.max(1, parseInt((first&&first.getAttribute('colspan'))||'1',10)||1);
+    // Mirror each column's header alignment so placeholders sit where the real
+    // values will land.
+    const ths=(tb.parentElement&&tb.parentElement.querySelectorAll('thead th'))||[];
+    const alignRight=c=>{ const th=ths[c]; return !!th && /right/.test((th.getAttribute('style')||'')+' '+(th.style&&th.style.textAlign||'')); };
+    let html='';
+    for(let r=0;r<5;r++){
+      html+='<tr class="loading-row skel-row">';
+      for(let c=0;c<cols;c++){
+        const w=(c===0?'60%':(c===cols-1?'45%':'80%'));
+        const extra=alignRight(c)?';margin-left:auto':'';
+        html+='<td><span class="skel" style="width:'+w+extra+'"></span></td>';
+      }
+      html+='</tr>';
+    }
+    tb.innerHTML=html;
+  });
+
+  // Never shimmer forever — if something breaks, say so instead.
+  clearTimeout(_skelTimer);
+  _skelTimer=setTimeout(()=>{
+    document.querySelectorAll('#screen-dashboard tbody .skel-row').forEach(r=>r.remove());
+    document.querySelectorAll('#screen-dashboard tbody').forEach(tb=>{
+      if(!tb.children.length) tb.innerHTML='<tr class="empty-row"><td colspan="12">Still loading — if this persists, please refresh the page.</td></tr>';
+    });
+    const k=document.getElementById('exec-kpis'); if(k&&k.querySelector('.skel')){ k.style.display='none'; k.innerHTML=''; }
+    const a=document.getElementById('attention-panel'); if(a&&a.querySelector('.skel')){ a.style.display='none'; a.innerHTML=''; }
+  }, 30000);
+}
+function clearProjectSkeleton(){ clearTimeout(_skelTimer); _skelTimer=null; }
+
 async function openProject(folderId, name){
   document.getElementById('topbar-title').textContent = name;
   showScreen('screen-dashboard');
+  showProjectSkeleton();
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
   currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
@@ -1697,6 +1761,7 @@ async function loadDashboard(){
     await Promise.allSettled(keys.map(k=>loadModule(k)));
   }
   renderAll();
+  clearProjectSkeleton();
 }
 
 async function loadModule(key){
