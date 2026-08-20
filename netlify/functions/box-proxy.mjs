@@ -151,10 +151,15 @@ async function caller(req) {
   }
   if (!u) return null;
   const email = (u.email || '').toLowerCase();
+  // Admin is granted purely on the email domain, so an UNVERIFIED address is a
+  // free pass to every project. Anyone able to sign up as someone@fidevia.com
+  // without proving they control the mailbox would be a full administrator.
+  // The same applies to external users: grants are keyed to an email address.
+  const emailVerified = u.email_verified === true || u.email_verified === 'true';
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const blobAdmins = await getBlobAdmins();
-  const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email);
-  return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin };
+  const isAdmin = emailVerified && ((!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email));
+  return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin, emailVerified };
 }
 
 // --- Grants store: key = external email, value = { projects:[{id,name}] } ---
@@ -345,6 +350,11 @@ export default async (req) => {
   if (!who) {
     if (LAST_AUTH_RATELIMITED) return json({ error: 'Verification service busy — please retry.', retry: true }, 503);
     return json({ error: 'Your session could not be verified. Please sign in again.' }, 401);
+  }
+  // Escape hatch in case a legitimate account predates verification being required.
+  const REQUIRE_VERIFIED = String(process.env.REQUIRE_VERIFIED_EMAIL || 'true').toLowerCase() !== 'false';
+  if (REQUIRE_VERIFIED && !who.emailVerified) {
+    return json({ error: 'Please verify your email address before using the dashboard. Check your inbox for the verification link from Fidevia.', needsVerification: true }, 403);
   }
 
   let body; try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }

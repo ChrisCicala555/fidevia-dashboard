@@ -1216,6 +1216,13 @@ async function proxyCall(op, body, opts){
     try{ ({r,d}=await attempt(false)); }catch(e){ break; }
   }
   if(r.status===401){ if(!opts.quiet) showSessionExpired(); throw new Error((d&&d.error)||'Session expired — please sign in again.'); }
+  if(r.status===403 && d && d.needsVerification){
+    if(!opts.quiet && !window._verifyNoticeShown){
+      window._verifyNoticeShown=true;
+      alert(d.error||'Please verify your email address before using the dashboard.');
+    }
+    throw new Error(d.error||'Email not verified.');
+  }
   if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
   return d;
 }
