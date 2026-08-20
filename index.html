@@ -1587,14 +1587,16 @@ function showProjectSkeleton(){
     att.innerHTML='<div class="att-card">'+bar('170px','10px')+'<div style="height:12px;"></div>'+bar('60%')+'</div>';
   }
 
-  // Every module table that is still showing its "Loading…" placeholder
+  // Every module table. This must clear rows left over from the previously
+  // opened project — skipping tables that already had content was showing the
+  // last project's data until the new data arrived.
   document.querySelectorAll('#screen-dashboard tbody').forEach(tb=>{
-    const lr=tb.querySelector('.loading-row'); if(!lr) return;
-    const first=lr.firstElementChild;
-    const cols=Math.max(1, parseInt((first&&first.getAttribute('colspan'))||'1',10)||1);
+    const ths=(tb.parentElement&&tb.parentElement.querySelectorAll('thead th'))||[];
+    const lr=tb.querySelector('.loading-row');
+    const first=lr&&lr.firstElementChild;
+    const cols=Math.max(1, ths.length || parseInt((first&&first.getAttribute('colspan'))||'1',10) || 1);
     // Mirror each column's header alignment so placeholders sit where the real
     // values will land.
-    const ths=(tb.parentElement&&tb.parentElement.querySelectorAll('thead th'))||[];
     const alignRight=c=>{ const th=ths[c]; return !!th && /right/.test((th.getAttribute('style')||'')+' '+(th.style&&th.style.textAlign||'')); };
     let html='';
     for(let r=0;r<5;r++){
@@ -1622,9 +1624,20 @@ function showProjectSkeleton(){
 }
 function clearProjectSkeleton(){ clearTimeout(_skelTimer); _skelTimer=null; }
 
+// PHOTO_DATA is a module-level cache. It is only rebuilt inside loadPhotos, and
+// loadProjectPhotos returns early when a project has no Photos folder — so
+// without this the previous project's photos stayed on screen.
+function resetProjectPhotos(){
+  PHOTO_DATA={};
+  const strip=document.getElementById('overview-photos'); if(strip) strip.innerHTML='';
+  const panel=document.getElementById('overview-photos-panel'); if(panel) panel.style.display='none';
+  const grid=document.getElementById('photo-grid'); if(grid) grid.innerHTML='<div class="photo-empty">Loading photos…</div>';
+}
+
 async function openProject(folderId, name){
   document.getElementById('topbar-title').textContent = name;
   showScreen('screen-dashboard');
+  resetProjectPhotos();
   showProjectSkeleton();
   const items = await boxList(folderId);
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
@@ -3308,14 +3321,14 @@ async function uploadPhotos(input){
 async function loadProjectPhotos(){
   const grid=document.getElementById('photo-grid'); if(!grid) return;
   const dailyFid=currentProject&&currentProject.folders&&currentProject.folders.daily;
-  if(!dailyFid){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; return; }
+  if(!dailyFid){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; PHOTO_DATA={}; populateOverviewPhotos(); return; }
   grid.innerHTML='<div class="photo-empty">Loading photos…</div>';
   try{
     const items=await boxList(dailyFid);
     const pf=items.find(i=>i.type==='folder'&&i.name==='Photos');
-    if(!pf){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; return; }
+    if(!pf){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; PHOTO_DATA={}; populateOverviewPhotos(); return; }
     await loadPhotos(pf.id);
-  }catch(e){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; }
+  }catch(e){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; PHOTO_DATA={}; populateOverviewPhotos(); }
 }
 let PHOTO_DATA={};
 let VIEWER_STATE={date:null,idx:0};
@@ -3347,7 +3360,7 @@ function populateOverviewPhotos(){
   const strip=document.getElementById('overview-photos'); const panel=document.getElementById('overview-photos-panel');
   if(!strip||!panel) return;
   const dates=Object.keys(PHOTO_DATA).sort((a,b)=>b.localeCompare(a));
-  if(!dates.length){ panel.style.display='none'; return; }
+  if(!dates.length){ strip.innerHTML=''; panel.style.display='none'; return; }
   const recent=[]; for(const d of dates){ for(const im of PHOTO_DATA[d].images){ recent.push({date:d, img:im}); if(recent.length>=8) break; } if(recent.length>=8) break; }
   strip.innerHTML=recent.map((r,i)=>'<div class="ovp-thumb" id="ovp-'+i+'" title="'+esc(fmtDMY(r.date))+'"></div>').join('');
   recent.forEach((r,i)=>{ const el=document.getElementById('ovp-'+i); if(el){ el.onclick=()=>openPhotoViewer(r.date); boxImageURL(r.img.id,200).then(u=>{ if(u) el.style.backgroundImage='url('+u+')'; }); } });
