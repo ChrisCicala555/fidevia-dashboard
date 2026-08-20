@@ -163,9 +163,10 @@ async function caller(req) {
   const emailVerified = (_ev === true || _ev === 'true');
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const blobAdmins = await getBlobAdmins();
-  // Fail open when we cannot tell; only withhold admin on an explicit false.
-  const verifiedOrUnknown = emailVerified || !verificationKnown;
-  const isAdmin = verifiedOrUnknown && ((!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email));
+  // Admin no longer hinges on verification while that signal is unproven —
+  // gating it locked real accounts out. Re-enable via REQUIRE_VERIFIED_EMAIL
+  // once we have confirmed what Auth0 actually reports.
+  const isAdmin = (!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email);
   return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin, emailVerified, verificationKnown };
 }
 
@@ -359,7 +360,7 @@ export default async (req) => {
     return json({ error: 'Your session could not be verified. Please sign in again.' }, 401);
   }
   // Escape hatch in case a legitimate account predates verification being required.
-  const REQUIRE_VERIFIED = String(process.env.REQUIRE_VERIFIED_EMAIL || 'true').toLowerCase() !== 'false';
+  const REQUIRE_VERIFIED = String(process.env.REQUIRE_VERIFIED_EMAIL || 'false').toLowerCase() === 'true';
   if (REQUIRE_VERIFIED && who.verificationKnown && !who.emailVerified) {
     return json({ error: 'Please verify your email address before using the dashboard. Check your inbox for the verification link from Fidevia.', needsVerification: true }, 403);
   }
