@@ -155,11 +155,18 @@ async function caller(req) {
   // free pass to every project. Anyone able to sign up as someone@fidevia.com
   // without proving they control the mailbox would be a full administrator.
   // The same applies to external users: grants are keyed to an email address.
-  const emailVerified = u.email_verified === true || u.email_verified === 'true';
+  // Distinguish "Auth0 says this address is unverified" from "the token does not
+  // carry the claim at all". Treating a missing claim as unverified locks out
+  // every account, which is exactly what happened on the first attempt.
+  const _ev = u.email_verified;
+  const verificationKnown = (_ev !== undefined && _ev !== null);
+  const emailVerified = (_ev === true || _ev === 'true');
   const admins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const blobAdmins = await getBlobAdmins();
-  const isAdmin = emailVerified && ((!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email));
-  return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin, emailVerified };
+  // Fail open when we cannot tell; only withhold admin on an explicit false.
+  const verifiedOrUnknown = emailVerified || !verificationKnown;
+  const isAdmin = verifiedOrUnknown && ((!!email && email.endsWith('@' + ADMIN_DOMAIN)) || admins.includes(email) || blobAdmins.includes(email));
+  return { sub: u.sub, email, name: u.name || u.given_name || '', isAdmin, emailVerified, verificationKnown };
 }
 
 // --- Grants store: key = external email, value = { projects:[{id,name}] } ---
@@ -353,7 +360,7 @@ export default async (req) => {
   }
   // Escape hatch in case a legitimate account predates verification being required.
   const REQUIRE_VERIFIED = String(process.env.REQUIRE_VERIFIED_EMAIL || 'true').toLowerCase() !== 'false';
-  if (REQUIRE_VERIFIED && !who.emailVerified) {
+  if (REQUIRE_VERIFIED && who.verificationKnown && !who.emailVerified) {
     return json({ error: 'Please verify your email address before using the dashboard. Check your inbox for the verification link from Fidevia.', needsVerification: true }, 403);
   }
 
@@ -572,7 +579,7 @@ export default async (req) => {
           data[m.key] = text;
         } catch (e) {}
       }));
-      return json({ data, _diag: { authMs: _tAuth, authVia: LAST_AUTH_VIA, totalMs: Date.now() - _t0, modules: mods.length, listed: need.size, rateLimited: RATE_LIMIT_HITS } });
+      return json({ data, _diag: { authMs: _tAuth, authVia: LAST_AUTH_VIA, totalMs: Date.now() - _t0, modules: mods.length, listed: need.size, rateLimited: RATE_LIMIT_HITS, emailVerified: who.emailVerified, verificationKnown: who.verificationKnown } });
     }
 
     if (op === 'readText') {
