@@ -2565,7 +2565,8 @@ function contactOptions(){
 }
 function openModal(type){
   // Contractors upload the document only; Fidevia records the details.
-  if(EXTERNAL && (type==='cdaily'||type==='payapp') && FORMS[type+'_ext']) type=type+'_ext';
+  // Applies in the preview too, so the toggle shows what a contractor sees.
+  if(viewingAsExternal() && (type==='cdaily'||type==='payapp') && FORMS[type+'_ext']) type=type+'_ext';
   const def=FORMS[type]; if(!def) return;
   currentModal=type;
   document.getElementById('modal-title').textContent=def.title;
@@ -2583,7 +2584,7 @@ function openModal(type){
   if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
   if(type==='cdaily_ext'||type==='payapp_ext'){
     const lbl=document.getElementById('f-ext-co-label');
-    if(lbl) lbl.textContent=(currentProject&&currentProject.userCompany)||'your company';
+    if(lbl) lbl.textContent=viewingAsCompany()||'your company';
   }
   wireMoneyInputs();
   document.getElementById('modal-backdrop').classList.add('open');
@@ -2794,11 +2795,13 @@ async function submitForm(){
       newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
     } else if(currentModal==='cdaily_ext'){
       if(!attachId) throw new Error('Please choose your daily report file.');
-      const _comp=(currentProject&&currentProject.userCompany)||'';
+      const _comp=viewingAsCompany();
+      if(!_comp) throw new Error('No company is associated with this view.');
       newRow={'Date':etToday(),'Company':_comp,'Submitted By':_senderEmail||'','Weather':'','Crew Count':'','Work Performed':'','Notes':'','Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='payapp_ext'){
       if(!attachId) throw new Error('Please choose your pay application file.');
-      const _comp=(currentProject&&currentProject.userCompany)||'';
+      const _comp=viewingAsCompany();
+      if(!_comp) throw new Error('No company is associated with this view.');
       // Amounts stay blank until Fidevia reads them off the PDF, so this row
       // contributes nothing to the financials until it is reviewed.
       newRow={'App #':'','Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
@@ -3165,6 +3168,18 @@ function setViewer(mode){
   renderAll();
 }
 function setViewerCompany(v){ VIEWER_COMPANY=v||''; renderAll(); }
+// A real external user, or a Fidevia admin previewing via the External Viewer
+// toggle. Everything company-scoped should key off these two, not off EXTERNAL
+// alone — otherwise the preview shows figures a contractor could never see.
+function viewingAsExternal(){
+  return EXTERNAL || document.body.classList.contains('external-mode');
+}
+function viewingAsCompany(){
+  if(EXTERNAL) return String((currentProject&&currentProject.userCompany)||'').trim();
+  if(document.body.classList.contains('external-mode')) return String(VIEWER_COMPANY||'').trim();
+  return '';
+}
+
 function viewerFilter(rows, field){
   if(EXTERNAL || !document.body.classList.contains('external-mode') || !VIEWER_COMPANY) return rows;
   return rows.filter(r=>String(r[field]||'').trim().toLowerCase()===VIEWER_COMPANY.trim().toLowerCase());
@@ -3626,10 +3641,17 @@ function updateContractBar(rows){
   const el=id=>document.getElementById(id);
   const cfg=(currentProject&&currentProject.config)||{};
   let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
-  if(EXTERNAL){ const mine=String((currentProject&&currentProject.userCompany)||'').trim().toLowerCase(); contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine); }
+  let scoped=rows||[];
+  const mine=viewingAsCompany().toLowerCase();
+  if(viewingAsExternal()){
+    // No company selected in preview means no contractor's view is being
+    // simulated, so show nothing rather than the project total.
+    contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
+    scoped=mine ? scoped.filter(r=>String(r['Contractor']||'').trim().toLowerCase()===mine) : [];
+  }
   const totalContract=contractors.reduce((s,c)=>s+payNum(c.contract),0);
-  const approved=(rows||[]).reduce((s,r)=>s+payApproved(r),0);
-  const pending=(rows||[]).filter(payIsOutstanding).reduce((s,r)=>s+payNum(r['Requested Amount']),0);
+  const approved=scoped.reduce((s,r)=>s+payApproved(r),0);
+  const pending=scoped.filter(payIsOutstanding).reduce((s,r)=>s+payNum(r['Requested Amount']),0);
   if(el('cb-contract')) el('cb-contract').textContent=fmtMoney(totalContract);
   if(el('cb-paid'))     el('cb-paid').textContent    =fmtMoney(approved);
   if(el('cb-current'))  el('cb-current').textContent =fmtMoney(pending);
