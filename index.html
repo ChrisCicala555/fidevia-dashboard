@@ -1131,7 +1131,8 @@
 
 <div id="photo-viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:2000;flex-direction:column;">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;color:#fff;">
-    <div><strong id="pv-date" style="font-size:16px;"></strong><span id="pv-count" style="color:#bbb;margin-left:12px;font-size:13px;"></span></div>
+    <div><strong id="pv-date" style="font-size:16px;"></strong><span id="pv-count" style="color:#bbb;margin-left:12px;font-size:13px;"></span>
+      <div id="pv-by" style="color:#a9a9a0;font-size:12.5px;margin-top:3px;"></div></div>
     <div><button id="pv-download" onclick="pvDownload()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">⬇ Download</button><button id="pv-cover" onclick="pvSetCover()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;margin-right:8px;">☆ Set as cover</button><button onclick="closePhotoViewer()" style="background:none;color:#fff;border:1px solid #666;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;">Close ✕</button></div>
   </div>
   <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;padding:0 20px;overflow:hidden;">
@@ -3316,11 +3317,19 @@ async function uploadPhotos(input){
   const dateFid = await findOrCreateFolder(td, photosFid);
   const grid=document.getElementById('photo-grid');
   grid.innerHTML='<div class="photo-empty">Uploading '+files.length+' photo(s)…</div>';
+  await resolveMe();
+  const _by = ME_COMPANY ? (ME_NAME+' ('+ME_COMPANY+')') : (ME_NAME||ME_EMAIL||'');
+  const _at = new Date().toISOString();
+  const entries=[];
   for(let i=0;i<files.length;i++){
     const lbl='Photo '+(i+1)+' of '+files.length;
     grid.innerHTML='<div class="photo-empty">'+lbl+'…</div>';
-    await boxUploadBinary(files[i], dateFid, uploadProgressTo(grid.querySelector('.photo-empty'), lbl));
+    const up=await boxUploadBinary(files[i], dateFid, uploadProgressTo(grid.querySelector('.photo-empty'), lbl));
+    const ent=up&&up.entries?up.entries[0]:up;
+    if(ent&&ent.id) entries.push({'File ID':String(ent.id),'File Name':files[i].name,'Date Folder':td,'Uploaded By':_by,'Uploaded By Email':ME_EMAIL||'','Uploaded At':_at});
   }
+  await appendPhotoIndex(photosFid, entries);
+  try{ auditLog('Uploaded photos','daily',{'Date':td}, entries.length+' photo'+(entries.length===1?'':'s')); }catch(e){}
   await loadPhotos(photosFid);
   input.value='';
 }
@@ -3338,6 +3347,34 @@ async function loadProjectPhotos(){
   }catch(e){ grid.innerHTML='<div class="photo-empty">No photos yet. Upload site photos above.</div>'; PHOTO_DATA={}; populateOverviewPhotos(); }
 }
 let PHOTO_DATA={};
+// fileId -> { by, email, at }. Photos are plain files in Box with no row of
+// their own, so attribution lives in a small CSV beside them.
+let PHOTO_META={};
+const PHOTO_INDEX_HEADERS=['File ID','File Name','Date Folder','Uploaded By','Uploaded By Email','Uploaded At'];
+const PHOTO_INDEX_NAME='Photo Index.csv';
+
+async function loadPhotoIndex(photosFid){
+  PHOTO_META={};
+  try{
+    const items=await boxList(photosFid);
+    const f=items.find(i=>i.type==='file'&&i.name===PHOTO_INDEX_NAME);
+    if(!f) return;
+    const rows=(parseCSV(await boxGetText(f.id))).rows;
+    rows.forEach(r=>{ const id=String(r['File ID']||'').trim(); if(id) PHOTO_META[id]={by:r['Uploaded By']||'', email:r['Uploaded By Email']||'', at:r['Uploaded At']||''}; });
+  }catch(e){ console.warn('photo index unavailable', e.message); }
+}
+
+async function appendPhotoIndex(photosFid, entries){
+  if(!entries.length) return;
+  try{
+    const items=await boxList(photosFid);
+    const f=items.find(i=>i.type==='file'&&i.name===PHOTO_INDEX_NAME);
+    let rows=[]; if(f){ try{ rows=(parseCSV(await boxGetText(f.id))).rows; }catch(e){} }
+    rows=rows.concat(entries);
+    await boxUploadText(PHOTO_INDEX_NAME, toCSV(PHOTO_INDEX_HEADERS,rows), photosFid, f?f.id:null);
+    entries.forEach(e=>{ PHOTO_META[String(e['File ID'])]={by:e['Uploaded By'],email:e['Uploaded By Email'],at:e['Uploaded At']}; });
+  }catch(e){ console.warn('could not record photo attribution', e.message); }
+}
 let VIEWER_STATE={date:null,idx:0};
 async function boxImageURL(fileId, dim){
   try{ const d=await proxyCall('downloadUrl',{fileId}); if(d&&d.url) return d.url; }catch(e){}
@@ -3346,11 +3383,12 @@ async function boxImageURL(fileId, dim){
 async function loadPhotos(photosFid){
   const grid=document.getElementById('photo-grid'); if(!grid) return;
   if(!photosFid){ grid.innerHTML='<div class="photo-empty">No photos yet.</div>'; return; }
+  await loadPhotoIndex(photosFid);
   const dateFolders=(await boxList(photosFid)).filter(i=>i.type==='folder').sort((a,b)=>b.name.localeCompare(a.name));
   grid.innerHTML=''; PHOTO_DATA={};
   const covers=(currentProject.config&&currentProject.config.photoCovers)||{};
   for(const df of dateFolders){
-    const imgs=(await boxList(df.id)).filter(i=>i.type==='file');
+    const imgs=(await boxList(df.id)).filter(i=>i.type==='file' && i.name!==PHOTO_INDEX_NAME);
     if(!imgs.length) continue;
     PHOTO_DATA[df.name]={folderId:df.id, images:imgs};
     const coverId=(covers[df.name] && imgs.some(i=>i.id===covers[df.name])) ? covers[df.name] : imgs[0].id;
@@ -3392,6 +3430,15 @@ function renderViewer(){
   document.getElementById('pv-count').textContent=(i+1)+' / '+imgs.length;
   const stage=document.getElementById('pv-stage'); stage.innerHTML='<div style="color:#ccc;">Loading…</div>';
   boxImageURL(img.id,1024).then(u=>{ stage.innerHTML=u?'<img src="'+u+'" style="max-width:100%;max-height:78vh;object-fit:contain;border-radius:4px;">':'<div style="color:#ccc;">Could not load image</div>'; });
+  const byEl=document.getElementById('pv-by');
+  if(byEl){
+    const m=PHOTO_META[String(img.id)];
+    // Photos uploaded before attribution was recorded have no entry.
+    byEl.textContent = m && m.by
+      ? 'Uploaded by '+m.by+(m.at?' · '+fmtDMY(String(m.at).slice(0,10)):'')
+      : 'Uploader not recorded';
+    byEl.style.fontStyle = (m&&m.by) ? 'normal' : 'italic';
+  }
   const covers=(currentProject.config&&currentProject.config.photoCovers)||{};
   const isCover=((covers[VIEWER_STATE.date]||imgs[0].id)===img.id);
   const cb=document.getElementById('pv-cover'); if(cb){ cb.textContent=isCover?'★ Cover photo':'☆ Set as cover'; cb.disabled=isCover; cb.style.opacity=isCover?'0.6':'1'; }
