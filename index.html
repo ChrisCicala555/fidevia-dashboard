@@ -3407,44 +3407,61 @@ function setViewer(mode){
   document.getElementById('btn-internal').classList.toggle('active',mode==='internal');
   document.getElementById('btn-external').classList.toggle('active',mode==='external');
   const vc=document.getElementById('viewer-company');
-  if(vc && !EXTERNAL){
-    if(mode==='external'){
-      const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
-      vc.innerHTML='<option value="">All companies</option>'+cts.map(c=>'<option value="'+esc(c.name)+'"'+(VIEWER_COMPANY===c.name?' selected':'')+'>'+esc(c.name)+'</option>').join('');
-      vc.style.display='inline-block';
-    } else { vc.style.display='none'; VIEWER_COMPANY=''; }
+  if(vc && !EXTERNAL && mode==='external'){
+    const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
+    vc.innerHTML='<option value="">All companies</option>'+cts.map(c=>'<option value="'+esc(c.name)+'"'+(VIEWER_COMPANY===c.name?' selected':'')+'>'+esc(c.name)+'</option>').join('');
   }
-  if(mode!=='external' && !EXTERNAL){ VIEWER_ROLE=''; VIEWER_COMPANY=''; const _vc=document.getElementById('viewer-company'); if(_vc) _vc.value=''; }
+  syncViewerControls();
   applyRoleClasses();
-  const vr=document.getElementById('viewer-role');
-  if(vr && !EXTERNAL) vr.style.display = (mode==='external') ? 'inline-block' : 'none';
   if(mode==='external'){
     const a=document.querySelector('.nav-item.active');
     if(a&&(a.classList.contains('nav-budget')||a.classList.contains('nav-contacts')||a.classList.contains('nav-dailylogs'))) navTo('overview');
+    const cur=document.querySelector('.nav-item.active');
+    if(cur && isOwnerView() && !cur.classList.contains('owner-ok')) navTo('overview');
   }
   renderAll();
 }
-function setViewerCompany(v){ VIEWER_COMPANY=v||''; renderAll(); }
-function setViewerRole(v){
-  VIEWER_ROLE=v||'contractor';
-  applyRoleClasses();
-  // A/E and Owner are not tied to one company.
+
+function setViewerCompany(v){
   const vc=document.getElementById('viewer-company');
-  const scoped=(VIEWER_ROLE==='contractor');
-  if(vc) vc.style.display = scoped ? 'inline-block' : 'none';
-  // Keep the dropdown and VIEWER_COMPANY in step. Switching to A/E clears the
-  // company, so switching back must re-adopt whatever the dropdown shows —
-  // otherwise it displays a company while the filter believes none is chosen.
-  if(scoped){
-    VIEWER_COMPANY = (vc && vc.value) || '';
-  } else {
-    VIEWER_COMPANY='';
-    if(vc) vc.value='';
-  }
-  const cur=document.querySelector('.nav-item.active');
-  if(cur && VIEWER_ROLE==='owner' && !cur.classList.contains('owner-ok')) navTo('overview');
+  if(vc && v!==undefined) vc.value=v||'';
+  syncViewerControls();
   renderAll();
 }
+// One place reconciles both dropdowns with VIEWER_ROLE / VIEWER_COMPANY. Every
+// bug here came from changing a variable without changing the control that
+// displays it, or the reverse. The selects are the source of truth while
+// previewing, and nothing else sets these variables directly.
+function syncViewerControls(){
+  if(EXTERNAL) return;
+  const ext=document.body.classList.contains('external-mode');
+  const vr=document.getElementById('viewer-role');
+  const vc=document.getElementById('viewer-company');
+  if(vr) vr.style.display = ext ? 'inline-block' : 'none';
+  if(!ext){
+    VIEWER_ROLE=''; VIEWER_COMPANY='';
+    if(vc){ vc.style.display='none'; vc.value=''; }
+    return;
+  }
+  VIEWER_ROLE = (vr && vr.value) || 'contractor';
+  const scoped = (VIEWER_ROLE==='contractor');
+  if(vc){
+    vc.style.display = scoped ? 'inline-block' : 'none';
+    if(scoped){ VIEWER_COMPANY = vc.value || ''; }
+    else { VIEWER_COMPANY=''; vc.value=''; }
+  }
+}
+
+function setViewerRole(v){
+  const vr=document.getElementById('viewer-role');
+  if(vr && v) vr.value=v;
+  syncViewerControls();
+  applyRoleClasses();
+  const cur=document.querySelector('.nav-item.active');
+  if(cur && isOwnerView() && !cur.classList.contains('owner-ok')) navTo('overview');
+  renderAll();
+}
+
 // A real external user, or a Fidevia admin previewing via the External Viewer
 // toggle. Everything company-scoped should key off these two, not off EXTERNAL
 // alone — otherwise the preview shows figures a contractor could never see.
