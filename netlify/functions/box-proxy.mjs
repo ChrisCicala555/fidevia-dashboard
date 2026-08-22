@@ -763,8 +763,24 @@ export default async (req) => {
       const pitems = (await (await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
       const cfgFile = pitems.find(e => e.type === 'file' && e.name === 'Project Info.json');
       let cfg = {}; if (cfgFile) { try { cfg = JSON.parse(await (await boxFetch(`https://api.box.com/2.0/files/${cfgFile.id}/content`, { headers: H })).text()) || {}; } catch (e) {} }
-      const steps = ((cfg.workflows || {})[wfKey]) || [];
-      if (!steps.length) return json({ error: 'No workflow configured' }, 400);
+      // Resolve the chain the same way the client does: the submitting
+      // company's override if it has one, otherwise the project default.
+      const wfForCompany = (company) => {
+        const t = String(company || '').trim().toLowerCase();
+        if (t) {
+          const byCo = cfg.workflowsByCompany || {};
+          const ck = Object.keys(byCo).find(k => k.trim().toLowerCase() === t);
+          if (ck) { const arr = (byCo[ck] || {})[wfKey]; if (Array.isArray(arr) && arr.length) return arr; }
+        }
+        return ((cfg.workflows || {})[wfKey]) || [];
+      };
+      const rowCompanyOf = (r) => {
+        if (!r) return '';
+        const direct = String(r['Company'] || r['Contractor'] || '').trim();
+        if (direct) return direct;
+        const m = String(r['Submitted By'] || r['Submitted By (Sub)'] || '').match(/\(([^)]+)\)\s*$/);
+        return m ? m[1].trim() : '';
+      };
       // --- contacts: name -> email ---
       const emailByName = {};
       try {
@@ -784,6 +800,8 @@ export default async (req) => {
       const row = rows.find(r => String(r[idField] || '') === String(idValue || ''));
       if (!row) return json({ error: 'item not found' }, 404);
       if (String(row['Workflow Status'] || '').toLowerCase() === 'complete') return json({ error: 'Workflow already complete' }, 400);
+      const steps = wfForCompany(rowCompanyOf(row));
+      if (!steps.length) return json({ error: 'No workflow configured' }, 400);
       // --- current parallel group ---
       let cur = parseInt(row['Workflow Step']); if (isNaN(cur)) cur = 0;
       let gs = cur; while (gs > 0 && steps[gs] && steps[gs].parallel) gs--;

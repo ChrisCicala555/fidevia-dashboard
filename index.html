@@ -944,11 +944,20 @@
 
       <!-- NOTIFICATION SETTINGS (admin) -->
       <div class="section" id="section-workflows">
-        <h2 class="page-title">Workflow Settings</h2>
-        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;max-width:680px;">Define the review chain for each item type on this project. Steps run in order; check <strong>Parallel</strong> to notify a step at the same time as the one above it. Assignees come from this project's Contacts Directory.</p>
+        <div class="page-title-row" style="align-items:center;gap:14px;">
+          <h2 class="page-title" style="margin:0;">Workflow Settings</h2>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">Editing</label>
+            <select id="wf-scope" onchange="wfScopeChanged()" style="min-width:210px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:var(--white);color:var(--ink);"></select>
+          </div>
+        </div>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;max-width:720px;" id="wf-scope-hint"></p>
         <div style="max-width:720px;">
           <div id="wf-settings-body"></div>
-          <div style="margin-top:14px;"><button class="btn-primary" id="btn-wf-save" onclick="saveWorkflowSettings()">Save Workflows</button></div>
+          <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
+            <button class="btn-primary" id="btn-wf-save" onclick="saveWorkflowSettings()">Save Workflows</button>
+            <button class="btn-secondary" id="btn-wf-revert" style="display:none;" onclick="revertWorkflowToDefault()">Revert to default</button>
+          </div>
           <div class="status-msg" id="wf-status"></div>
         </div>
       </div>
@@ -1824,18 +1833,78 @@ function wfGather(prefix){
   });
   return out;
 }
+let WF_SCOPE='';   // '' = project default, otherwise a contractor name
+function wfScopeOptions(){
+  const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
+  const sel=document.getElementById('wf-scope'); if(!sel) return;
+  sel.innerHTML='<option value="">Default (all companies)</option>'+cts.map(c=>{
+    const has=wfHasOverride(c.name,'rfi')||wfHasOverride(c.name,'co')||wfHasOverride(c.name,'sub')||wfHasOverride(c.name,'pay_apps');
+    return '<option value="'+esc(c.name)+'"'+(WF_SCOPE===c.name?' selected':'')+'>'+esc(c.name)+(has?' — custom':'')+'</option>';
+  }).join('');
+}
 function loadWorkflowSettings(){
-  const wf=(currentProject&&currentProject.config&&currentProject.config.workflows)||null;
+  wfScopeOptions();
   const people=(allData.contacts||[]).filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||''}));
+  const hint=document.getElementById('wf-scope-hint');
+  const revert=document.getElementById('btn-wf-revert');
+  let wf;
+  if(!WF_SCOPE){
+    wf=(currentProject&&currentProject.config&&currentProject.config.workflows)||null;
+    if(hint) hint.innerHTML='Steps run in order; check <strong>Parallel</strong> to notify a step at the same time as the one above it. Assignees come from this project\'s Contacts Directory. This chain applies to every company that does not have its own.';
+    if(revert) revert.style.display='none';
+  } else {
+    const ck=wfCompanyKey(WF_SCOPE);
+    const set=ck?(wfOverrides()[ck]||{}):null;
+    const custom=!!(set&&Object.keys(set).some(k=>Array.isArray(set[k])&&set[k].length));
+    // Start from the default so an override is an edit, not a blank slate.
+    wf = custom ? set : ((currentProject&&currentProject.config&&currentProject.config.workflows)||null);
+    if(hint) hint.innerHTML= custom
+      ? '<strong>'+esc(WF_SCOPE)+'</strong> has its own review chain. Items they submit follow this instead of the default.'
+      : '<strong>'+esc(WF_SCOPE)+'</strong> currently follows the project default, shown below. Saving creates a chain just for them.';
+    if(revert) revert.style.display = custom ? 'inline-block' : 'none';
+  }
   wfRenderAll('wfs','wf-settings-body',wf,people);
+}
+function wfScopeChanged(){
+  const sel=document.getElementById('wf-scope');
+  WF_SCOPE = sel ? (sel.value||'') : '';
+  loadWorkflowSettings();
+}
+async function revertWorkflowToDefault(){
+  if(!WF_SCOPE) return;
+  if(!confirm(WF_SCOPE+' will go back to the project default chain. Their custom steps are removed.')) return;
+  const btn=document.getElementById('btn-wf-revert'); btn.disabled=true;
+  try{
+    currentProject.config=currentProject.config||{};
+    const byCo=currentProject.config.workflowsByCompany||{};
+    const ck=wfCompanyKey(WF_SCOPE);
+    if(ck) delete byCo[ck];
+    currentProject.config.workflowsByCompany=byCo;
+    await writeProjectConfig(currentProject.folderId,currentProject.config);
+    showStatus('wf-status',WF_SCOPE+' now follows the project default.','success');
+    loadWorkflowSettings();
+  }catch(e){ showStatus('wf-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
 }
 async function saveWorkflowSettings(){
   const btn=document.getElementById('btn-wf-save'); btn.disabled=true;
   try{
     currentProject.config=currentProject.config||{};
-    currentProject.config.workflows=wfGather('wfs');
-    await writeProjectConfig(currentProject.folderId,currentProject.config);
-    showStatus('wf-status','Workflows saved.','success');
+    const gathered=wfGather('wfs');
+    if(!WF_SCOPE){
+      currentProject.config.workflows=gathered;
+      await writeProjectConfig(currentProject.folderId,currentProject.config);
+      showStatus('wf-status','Default workflows saved.','success');
+    } else {
+      const byCo=currentProject.config.workflowsByCompany||{};
+      const ck=wfCompanyKey(WF_SCOPE)||WF_SCOPE;
+      byCo[ck]=gathered;
+      currentProject.config.workflowsByCompany=byCo;
+      await writeProjectConfig(currentProject.folderId,currentProject.config);
+      showStatus('wf-status','Workflow saved for '+WF_SCOPE+'. Their items now follow this chain.','success');
+    }
+    wfScopeOptions();
+    loadWorkflowSettings();
   }catch(e){ showStatus('wf-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
@@ -2552,8 +2621,8 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
 
   // Workflow steps sitting with our company
   [['rfi',rfis,'RFI #','rfis'],['co',cos,'CO #','cos'],['sub',subs,'Submittal #','submittals'],['pay_apps',pays,'App #','payapps']].forEach(([key,rows,idf,sec])=>{
-    const steps=wfSteps(key); if(!steps.length) return;
     (rows||[]).forEach(r=>{
+      const steps=wfStepsFor(key, rowCompany(r)); if(!steps.length) return;
       if(wfIsDone(r)) return;
       if(!String(r['Workflow Status']||'').trim()) return;
       const cur=wfActiveIdx(r); const [gs,ge]=wfGroupAt(steps,cur);
@@ -2941,7 +3010,7 @@ async function submitForm(){
     const key=keyMap[currentModal];
     let _wfNextLabel='';
     try{
-      const _s=wfSteps(key);
+      const _s=wfStepsFor(key, (EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'')));
       if(_s.length){ const [a,b]=wfGroupAt(_s,0);
         _wfNextLabel=_s.slice(a,b+1).map(s=>{ const co=wfCompanyOf(s.person); return (s.person||s.name)+(co?' ('+co+')':'')+(s.name&&s.person?' — '+s.name:''); }).join(', ');
       }
@@ -3066,7 +3135,7 @@ async function submitForm(){
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     let _wfFirst=[];
-    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfSteps(key); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfStepsFor(key, rowCompany(newRow)); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
     if(EXTERNAL){
@@ -4479,7 +4548,38 @@ function wfShowAC(inp){
 }
 document.addEventListener('click',function(e){ if(!e.target.closest('.wf-row')) wfCloseAC(); });
 function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value)||''; }
+// Project default chains.
 function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
+// Per-contractor overrides live alongside the defaults, so projects without any
+// override behave exactly as before and need no migration.
+function wfOverrides(){ return (currentProject&&currentProject.config&&currentProject.config.workflowsByCompany)||{}; }
+function wfCompanyKey(company){
+  const t=String(company||'').trim().toLowerCase(); if(!t) return '';
+  return Object.keys(wfOverrides()).find(k=>k.trim().toLowerCase()===t)||'';
+}
+function wfHasOverride(company,key){
+  const ck=wfCompanyKey(company); if(!ck) return false;
+  const set=wfOverrides()[ck]||{};
+  const arr=set[WF_KEYMAP[key]||key];
+  return Array.isArray(arr) && arr.length>0;
+}
+// The chain that governs one item: its submitting company's override, else default.
+function wfStepsFor(key, company){
+  const ck=wfCompanyKey(company);
+  if(ck){
+    const arr=(wfOverrides()[ck]||{})[WF_KEYMAP[key]||key];
+    if(Array.isArray(arr) && arr.length) return arr;
+  }
+  return wfSteps(key);
+}
+// Company that submitted a row, used to pick its chain.
+function rowCompany(r){
+  if(!r) return '';
+  const direct=String(r['Company']||r['Contractor']||'').trim();
+  if(direct) return direct;
+  const m=String(r['Submitted By']||r['Submitted By (Sub)']||'').match(/\(([^)]+)\)\s*$/);
+  return m?m[1].trim():'';
+}
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
 function wfIsDone(r){ return String(r['Workflow Status']||'').toLowerCase()==='complete'; }
 function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel group containing idx
@@ -4497,7 +4597,7 @@ function wfCanAdvance(steps, gs, ge){
   return steps.slice(gs,ge+1).some(s=>{ const e=String(s.email||'').trim().toLowerCase()||wfEmailOf(s.person); return e && e===ME_EMAIL; });
 }
 function wfProgressHTML(key,r,i){
-  const steps=wfSteps(key); if(!steps.length) return '';
+  const steps=wfStepsFor(key, rowCompany(r)); if(!steps.length) return '';
   const done=wfIsDone(r); const cur=wfActiveIdx(r);
   const [gs,ge]=wfGroupAt(steps,cur);
   const items=steps.map((s,n)=>{
@@ -4518,7 +4618,8 @@ function wfProgressHTML(key,r,i){
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
 }
 async function wfAdvance(key, i){
-  const steps=wfSteps(key); if(!steps.length) return;
+  const _r0=(allData[key]||[])[i];
+  const steps=wfStepsFor(key, rowCompany(_r0)); if(!steps.length) return;
   const mod=MODULES[key], fid=currentProject.folders[key];
   if(EXTERNAL){
     const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
