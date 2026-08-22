@@ -1476,9 +1476,9 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Submitted By','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
@@ -2004,6 +2004,14 @@ function nextItemNumber(key, comp){
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
+// Index against the FULL array, then filter. Filtering first renumbers the rows
+// and every row-index button (delete, archive) would target the wrong record.
+function splitByArchived(all, df){
+  const paired=all.map((r,idx)=>({r,idx}));
+  const bydate=(a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0);
+  return { live: paired.filter(p=>!isArchived(p.r)).sort(bydate),
+           past: paired.filter(p=>isArchived(p.r)).sort(bydate) };
+}
 function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // Owner is read-only, and A/E may read Workflow Settings but not change them.
@@ -2113,13 +2121,24 @@ function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No recor
 
 // ── RENDERERS ──
 function renderRFIs(){
-  const rows=allData.rfi||[], tb=document.getElementById('tbody-rfis');
+  const all=allData.rfi||[], tb=document.getElementById('tbody-rfis');
+  // Archived items leave the active log but stay in the record below.
+  const {live,past}=splitByArchived(all,'Date Submitted');
+  const rows=live.map(p=>p.r);
+  renderPastPanel('rfi','section-rfis','Past RFIs', past,
+    9, ({r,idx})=>'<tr><td style="width:150px;">'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td>'
+      +'<td style="width:130px;">'+esc(r['Assigned To'])+'</td>'
+      +'<td style="width:110px;">'+esc(fmtDMY(r['Date Closed']||r['Date Submitted']))+'</td>'
+      +'<td style="width:110px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:90px;">'+fileCell(r)+'</td>'
+      +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
+      +'<td class="admin-col" style="width:90px;">'+archiveBtn('rfi',idx,r)+'</td></tr>');
   if(!rows.length){tb.innerHTML=emptyRow(8);document.getElementById('note-rfis').textContent='';return;}
-  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('rfi',i)+'</td></tr>';
+  tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
-  const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']);
+  const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']&&!isArchived(r));
   document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(fmtDMY(r['Date Closed']))+')').join('<br>');
 }
 
@@ -2132,10 +2151,20 @@ function renderCOs(){
 }
 
 function renderSubmittals(){
-  const rows=allData.sub||[], tb=document.getElementById('tbody-submittals');
+  const all=allData.sub||[], tb=document.getElementById('tbody-submittals');
+  const {live,past}=splitByArchived(all,'Date Submitted');
+  const rows=live.map(p=>p.r);
+  renderPastPanel('sub','section-submittals','Past Submittals', past,
+    9, ({r,idx})=>'<tr><td style="width:160px;">'+esc(r['Submittal #'])+'</td><td>'+esc(r['Description'])+'</td>'
+      +'<td style="width:130px;">'+esc(r['Reviewer'])+'</td>'
+      +'<td style="width:110px;">'+esc(fmtDMY(r['Date Submitted']))+'</td>'
+      +'<td style="width:120px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:90px;">'+fileCell(r)+'</td>'
+      +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
+      +'<td class="admin-col" style="width:90px;">'+archiveBtn('sub',idx,r)+'</td></tr>');
   if(!rows.length){tb.innerHTML=emptyRow(8);return;}
-  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('sub',i)+'</td></tr>';
+  tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
     return main+verThreadRows('sub',r,i,9);
   }).join('');
 }
@@ -2561,12 +2590,74 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     +(list.length>8?'<div style="font-size:12px;color:var(--muted);padding-top:8px;">+'+(list.length-8)+' more</div>':'')
     +'</div>';
 }
+// ── ARCHIVING COMPLETED ITEMS ──
+// Closed items stay in the record but leave the active log, so the working view
+// only shows what is still live.
+function isArchived(r){ return String((r&&r['Archived'])||'').trim().toLowerCase()==='yes'; }
+// Complete means the review chain finished, or the status says it is closed.
+function isItemComplete(key,r){
+  if(!r) return false;
+  if(wfIsDone(r)) return true;
+  const st=String(r['Status']||'').toLowerCase();
+  if(key==='rfi') return st.indexOf('closed')>=0;
+  if(key==='sub') return st.indexOf('approv')>=0 || st.indexOf('closed')>=0;
+  if(key==='co')  return st.indexOf('approv')>=0 || st.indexOf('reject')>=0 || st.indexOf('den')>=0;
+  return false;
+}
+function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemComplete(key,r) && !isArchived(r); }
+function archiveBtn(key,i,r){
+  if(isArchived(r)) return IS_ADMIN && !viewingAsExternal()
+    ? '<button class="btn-secondary btn-del" style="padding:4px 10px;font-size:12px;" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',false)">Restore</button>' : '';
+  return canArchive(key,r)
+    ? '<button class="btn-secondary btn-del" style="padding:4px 10px;font-size:12px;" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',true)">Archive</button>' : '';
+}
+async function setArchived(key, idx, on){
+  const label=(MODULE_LABEL[key]||key);
+  if(on && !confirm('Archive this item? It moves to the Past '+label+' section and leaves the active log.')) return;
+  try{
+    const mod=MODULES[key], fid=currentProject.folders[key];
+    const existing=await findFile(fid,mod.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    const row=rows[idx]; if(!row) throw new Error('Item not found — reload and try again.');
+    await resolveMe();
+    row['Archived']= on?'Yes':'';
+    row['Archived By']= on?(ME_NAME||ME_EMAIL||''):'';
+    row['Archived Date']= on?etToday():'';
+    await boxUploadText(mod.log, toCSV(mod.headers,rows), fid, existing?existing.id:null);
+    allData[key]=rows;
+    try{ auditLog(on?'Archived':'Restored', key, row, ''); }catch(e){}
+    renderAll();
+  }catch(e){ alert('Could not update: '+e.message); }
+}
+// Collapsible "Past ..." panel appended beneath a module's section.
+function renderPastPanel(key, secId, title, rows, colCount, rowHtml){
+  const sec=document.getElementById(secId); if(!sec) return;
+  let panel=document.getElementById('past-'+key);
+  if(!rows.length){ if(panel) panel.style.display='none'; return; }
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='past-'+key; panel.className='panel'; panel.style.marginTop='20px';
+    panel.innerHTML='<div class="panel-header" style="cursor:pointer;background:var(--khaki-200);color:var(--olive-900);" onclick="togglePast(\''+key+'\')">'
+      +'<span class="thread-arrow" id="past-arw-'+key+'">&#9656;</span> '+esc(title)+' <span id="past-count-'+key+'" style="font-weight:400;font-size:12px;color:var(--olive-700);"></span></div>'
+      +'<div id="past-body-'+key+'" style="display:none;"><table><tbody id="past-tbody-'+key+'"></tbody></table></div>';
+    sec.appendChild(panel);
+  }
+  panel.style.display='';
+  const cnt=document.getElementById('past-count-'+key); if(cnt) cnt.textContent='· '+rows.length+' archived';
+  const tb=document.getElementById('past-tbody-'+key); if(tb) tb.innerHTML=rows.map(rowHtml).join('');
+}
+function togglePast(key){
+  const b=document.getElementById('past-body-'+key); if(!b) return;
+  const open=b.style.display!=='none'; b.style.display=open?'none':'block';
+  const a=document.getElementById('past-arw-'+key); if(a) a.style.transform=open?'rotate(0deg)':'rotate(90deg)';
+}
+
 function notDoneStatus(s){ const st=(s||'').toLowerCase(); return !(st.indexOf('approv')>=0||st.indexOf('reject')>=0||st.indexOf('den')>=0||st.indexOf('closed')>=0||st.indexOf('signed')>=0); }
 function renderOverview(){
   const rfis=allData.rfi||[],cos=allData.co||[],subs=allData.sub||[],pays=allData.pay_apps||[];
   const notDone=s=>{ const st=(s||'').toLowerCase(); return !(st.indexOf('approv')>=0||st.indexOf('reject')>=0||st.indexOf('den')>=0||st.indexOf('closed')>=0||st.indexOf('signed')>=0); };
   const openR=rfis.filter(r=>notDone(r['Status']));
-  const ovd=rfis.filter(isOverdue);
+  const ovd=rfis.filter(r=>isOverdue(r)&&!isArchived(r));
   const openC=cos.filter(r=>notDone(r['Status']));
   const openS=subs.filter(r=>notDone(r['Status']));
   const openP=pays.filter(payIsOutstanding);
