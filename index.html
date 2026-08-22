@@ -247,6 +247,7 @@
   @media(prefers-reduced-motion:reduce){ .skel{animation:none;} }
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
+  body.role-contractor .hide-contractor{display:none !important;}
   /* Role views. Owner sees only financial and reporting modules; A/E sees the
      project but not internal-only areas. The server enforces the data — these
      rules only keep the navigation honest. */
@@ -636,8 +637,8 @@
     <div class="nav-item" data-section="gendocs">Documents</div>
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Reports</div>
     <div class="nav-item" data-section="cdaily">Contractor Daily Reports</div>
-    <div class="nav-item owner-ok" data-section="meetings">Meeting Minutes</div>
-    <div class="nav-item owner-ok" data-section="board" style="display:none;">Board Reports</div>
+    <div class="nav-item owner-ok hide-contractor" data-section="meetings">Meeting Minutes</div>
+    <div class="nav-item owner-ok hide-contractor" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-section-label">Financial Management</div>
     <div class="nav-item owner-ok" data-section="financials">Financial Summary</div>
     <div class="nav-item owner-ok" data-section="cos">Change Orders</div>
@@ -682,7 +683,7 @@
     <div id="access-requests-banner" style="display:none;"></div>
 
     <div class="content">
-      <div class="external-banner">Viewing as: <strong>External</strong> &mdash; Daily logs and contact management are hidden in this view.</div>
+      <div class="external-banner" id="external-banner"></div>
 
       <!-- OVERVIEW -->
       <div class="section active" id="section-overview">
@@ -903,7 +904,7 @@
       </div>
 
       <!-- MEETING MINUTES -->
-      <div class="section hide-external" id="section-meetings">
+      <div class="section hide-contractor" id="section-meetings">
         <div class="page-title-row">
           <h2>Meeting minutes</h2>
           <button class="btn-add" onclick="openModal('meeting')">+ Add Minutes</button>
@@ -916,7 +917,7 @@
       </div>
 
       <!-- BOARD REPORTS -->
-      <div class="section hide-external" id="section-board">
+      <div class="section hide-contractor" id="section-board">
         <div class="page-title-row">
           <h2>Board reports</h2>
           <button class="btn-add" onclick="openModal('board')">+ Add Report</button>
@@ -2281,7 +2282,10 @@ function renderFinancials(){
   const tb=document.getElementById('tbody-financials'); if(!tb) return;
   const cfg=(currentProject&&currentProject.config)||{};
   let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
-  if(EXTERNAL){ const mine=String((currentProject&&currentProject.userCompany)||'').trim().toLowerCase(); contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine); }
+  if(viewingAsExternal() && isContractorView()){
+    const mine=companyScope().toLowerCase();
+    contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
+  }
   const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
   const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
@@ -3313,10 +3317,26 @@ function viewingAsRole(){
   return 'fidevia';
 }
 function isOwnerView(){ return viewingAsRole()==='owner'; }
+function isContractorView(){ return viewingAsRole()==='contractor'; }
+// Non-empty only when the view genuinely belongs to one company. A/E, Owner and
+// Fidevia review the whole project, so they must not be filtered at all.
+function companyScope(){ return isContractorView() ? viewingAsCompany() : ''; }
 function isAEView(){ return viewingAsRole()==='architect-engineer'; }
 function roleSeesAllCompanies(){ const r=viewingAsRole(); return r==='architect-engineer'||r==='owner'||r==='fidevia'; }
+function updateExternalBanner(){
+  const el=document.getElementById('external-banner'); if(!el) return;
+  const r=viewingAsRole();
+  const co=companyScope();
+  const txt={
+    'contractor':'Viewing as: <strong>Contractor</strong>'+(co?' &mdash; '+esc(co):'')+' &mdash; sees only its own pay applications, daily reports and payrolls.',
+    'architect-engineer':'Viewing as: <strong>Architect / Engineer</strong> &mdash; sees all contractors and can review RFIs and submittals. Workflow settings are read-only.',
+    'owner':'Viewing as: <strong>Owner</strong> &mdash; read-only. Financials and reports only.'
+  }[r] || 'Viewing as: <strong>External</strong>';
+  el.innerHTML=txt;
+}
 function applyRoleClasses(){
   const r=viewingAsRole();
+  try{ updateExternalBanner(); }catch(e){}
   document.body.classList.toggle('role-owner', r==='owner');
   document.body.classList.toggle('role-ae', r==='architect-engineer');
   document.body.classList.toggle('role-contractor', r==='contractor');
@@ -3677,8 +3697,10 @@ function renderPayApps(){
   const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
   const norm=s=>(s||'').trim().toLowerCase();
   let groups=contractors.map(c=>({name:c.name,role:c.role||'',rows:rows.filter(r=>norm(r['Contractor'])===norm(c.name))}));
-  if(EXTERNAL){ const mine=norm((currentProject&&currentProject.userCompany)||''); groups=groups.filter(g=>mine && norm(g.name)===mine); }
-  if(!EXTERNAL && document.body.classList.contains('external-mode') && VIEWER_COMPANY){ groups=groups.filter(g=>norm(g.name)===norm(VIEWER_COMPANY)); }
+  if(viewingAsExternal() && isContractorView()){
+    const mine=norm(companyScope());
+    groups=groups.filter(g=>mine && norm(g.name)===mine);
+  }
   const known=new Set(contractors.map(c=>norm(c.name)));
   const other=rows.filter(r=>!known.has(norm(r['Contractor'])));
   if(other.length) groups.push({name:'Other / Unassigned',role:'',rows:other});
@@ -3795,8 +3817,8 @@ function updateContractBar(rows){
   const cfg=(currentProject&&currentProject.config)||{};
   let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
   let scoped=rows||[];
-  const mine=viewingAsCompany().toLowerCase();
-  if(viewingAsExternal()){
+  if(viewingAsExternal() && isContractorView()){
+    const mine=companyScope().toLowerCase();
     // No company selected in preview means no contractor's view is being
     // simulated, so show nothing rather than the project total.
     contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
