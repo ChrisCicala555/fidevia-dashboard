@@ -247,6 +247,20 @@
   @media(prefers-reduced-motion:reduce){ .skel{animation:none;} }
   .error-row td{color:var(--danger); font-style:italic; text-align:center; padding:20px;}
   body.external-mode .hide-external{display:none !important;}
+  /* Role views. Owner sees only financial and reporting modules; A/E sees the
+     project but not internal-only areas. The server enforces the data — these
+     rules only keep the navigation honest. */
+  body.role-owner .nav-item{display:none;}
+  body.role-owner .nav-item.owner-ok{display:block;}
+  body.role-owner .nav-section-label.owner-hide{display:none;}
+  body.role-ae .hide-ae{display:none !important;}
+  body.role-owner .admin-only{display:none !important;}
+  /* A/E loses admin tools EXCEPT Workflow Settings, which they may read. */
+  body.role-ae .admin-only:not(.ae-readonly):not(.ae-admin-label){display:none !important;}
+  body.role-ae .nav-item.ae-readonly{display:block !important;}
+  body.role-ae .nav-section-label.ae-admin-label{display:block !important;}
+  body.role-ae .wf-edit,body.role-ae .btn-add,body.role-owner .btn-add{display:none !important;}
+  .readonly-banner{background:var(--khaki-100);border-left:4px solid var(--olive-700);padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:var(--olive-900);margin-bottom:14px;}
   #access-requests-banner{padding:0 32px;margin-top:16px;}
   .req-banner-item{background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px;color:var(--olive-900);}
   .req-banner-item .btn-approve{margin-right:6px;}
@@ -541,7 +555,12 @@
       </div>
     </div>
     <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
-    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" placeholder="e.g. Lobar"><datalist id="grant-company-list"></datalist></div><div class="field"><label>Role</label><select id="grant-role"><option value="">—</option><option>General Contractor</option><option>Subcontractor</option><option>Architect</option><option>Engineer</option><option>Owner</option><option>Consultant</option><option>Other</option></select></div></div>
+    <p class="form-desc" id="grant-role-hint" style="margin:-6px 0 12px;font-size:12.5px;color:var(--muted);"></p>
+    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" placeholder="e.g. Lobar"><datalist id="grant-company-list"></datalist></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
+      <option value="contractor">Contractor — sees only its own company</option>
+      <option value="architect-engineer">Architect / Engineer — sees all companies, can review</option>
+      <option value="owner">Owner — read-only, financials and reports only</option>
+    </select></div></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="grantAccess()" id="btn-grant">Grant Access</button>
       <button class="btn-secondary" onclick="showScreen('screen-picker')">Back</button>
@@ -606,10 +625,10 @@
       <button class="hamburger" onclick="toggleSidebar()">&#9776;</button>
     </div>
     <div class="nav-section-label">Overview</div>
-    <div class="nav-item active" data-section="overview">Home</div>
-    <div class="nav-item nav-contacts" data-section="contacts">Directory</div>
+    <div class="nav-item owner-ok active" data-section="overview">Home</div>
+    <div class="nav-item nav-contacts owner-ok" data-section="contacts">Directory</div>
     <div class="nav-item hide-external" data-section="qa">Project Message Board</div>
-    <div class="nav-section-label">Project Management</div>
+    <div class="nav-section-label owner-hide">Project Management</div>
     <div class="nav-item" data-section="schedule">Schedule</div>
     <div class="nav-item" data-section="rfis">RFIs</div>
     <div class="nav-item" data-section="submittals">Submittals</div>
@@ -617,15 +636,15 @@
     <div class="nav-item" data-section="gendocs">Documents</div>
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Reports</div>
     <div class="nav-item" data-section="cdaily">Contractor Daily Reports</div>
-    <div class="nav-item hide-external" data-section="meetings">Meeting Minutes</div>
-    <div class="nav-item hide-external" data-section="board" style="display:none;">Board Reports</div>
+    <div class="nav-item owner-ok" data-section="meetings">Meeting Minutes</div>
+    <div class="nav-item owner-ok" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-section-label">Financial Management</div>
-    <div class="nav-item" data-section="financials">Financial Summary</div>
-    <div class="nav-item" data-section="cos">Change Orders</div>
-    <div class="nav-item" data-section="payapps">Payment Applications</div>
+    <div class="nav-item owner-ok" data-section="financials">Financial Summary</div>
+    <div class="nav-item owner-ok" data-section="cos">Change Orders</div>
+    <div class="nav-item owner-ok" data-section="payapps">Payment Applications</div>
     <div class="nav-item" data-section="payrolls">Certified Payrolls</div>
-    <div class="nav-section-label admin-only">Admin</div>
-    <div class="nav-item admin-only" data-section="workflows">Workflow Settings</div>
+    <div class="nav-section-label admin-only ae-admin-label">Admin</div>
+    <div class="nav-item admin-only ae-readonly" data-section="workflows">Workflow Settings</div>
     <div class="nav-item admin-only" data-section="notifsettings">Notification Settings</div>
     <div class="sidebar-footer">
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
@@ -644,6 +663,11 @@
           <div class="viewer-toggle">
             <button class="active" id="btn-internal" onclick="setViewer('internal')">Fidevia Viewer</button>
             <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
+            <select id="viewer-role" style="display:none;max-width:180px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);margin-right:6px;" onchange="setViewerRole(this.value)">
+              <option value="contractor">Contractor</option>
+              <option value="architect-engineer">Architect / Engineer</option>
+              <option value="owner">Owner</option>
+            </select>
             <select id="viewer-company" style="display:none;max-width:170px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);" onchange="setViewerCompany(this.value)"></select>
           </div>
           <div class="account-chip" onclick="openAccount()" title="My Account">
@@ -1651,6 +1675,8 @@ async function openProject(folderId, name){
   const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
   currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
   if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; }
+  if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
+  applyRoleClasses();
   navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
   try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
   try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId},{quiet:true})).templates||{}; }catch(e){ currentProject.notif={}; }
@@ -1977,7 +2003,26 @@ function nextItemNumber(key, comp){
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+
+// Owner is read-only, and A/E may read Workflow Settings but not change them.
+// The server enforces both; these banners explain rather than protect.
+function applyReadOnlyBanners(){
+  const owner=isOwnerView(), ae=isAEView();
+  const put=(secId,text,on)=>{
+    const sec=document.getElementById(secId); if(!sec) return;
+    let b=sec.querySelector('.readonly-banner');
+    if(on){
+      if(!b){ b=document.createElement('div'); b.className='readonly-banner';
+        const t=sec.querySelector('.page-title,.page-title-row,h2');
+        if(t&&t.parentNode) t.parentNode.insertBefore(b,t.nextSibling); else sec.insertBefore(b,sec.firstChild); }
+      b.textContent=text; b.style.display='';
+    } else if(b){ b.style.display='none'; }
+  };
+  put('section-workflows','Viewing only — workflow changes are made by Fidevia.', ae);
+  ['section-financials','section-cos','section-payapps','section-meetings','section-board','section-contacts']
+    .forEach(id=>put(id,'Viewing only — this is a read-only view of the project record.', owner));
+}
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
@@ -2329,6 +2374,54 @@ function renderSchedule(){
   if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
     kp.innerHTML=card('Construction Duration',(s.duration!=null?s.duration+' days':'—'))+card('Days Expended',(s.expended!=null?s.expended:'—'))+card('Days Remaining',(s.remaining!=null?s.remaining:'—'))+card('% Expended',(s.pct!=null?(s.pct*100).toFixed(1)+'%':'—')); }
 }
+// The Owner's Home is the financial picture only: no attention panel, no RFI
+// or submittal counts, no feed of items they cannot open.
+function applyOwnerOverview(){
+  const owner=isOwnerView();
+  const hide=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'none':''; };
+  const panels=document.querySelectorAll('#section-overview .panel');
+  panels.forEach(p=>{
+    const h=p.querySelector('.panel-header');
+    const t=h?h.textContent.trim():'';
+    if(t==='Recent Items & Tasks'||t==='Activity Feed'||t==='Recent Photos') p.style.display=owner?'none':'';
+  });
+  hide('attention-panel', owner);
+  let fin=document.getElementById('owner-fin-panel');
+  if(owner){
+    if(!fin){
+      fin=document.createElement('div');
+      fin.id='owner-fin-panel'; fin.className='panel';
+      fin.innerHTML='<div class="panel-header">Financial Summary</div>'
+        +'<table><thead><tr><th>Contractor</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th style="text-align:right;">% Complete</th></tr></thead>'
+        +'<tbody id="tbody-owner-fin"></tbody></table>';
+      const sec=document.getElementById('section-overview'); if(sec) sec.appendChild(fin);
+    }
+    fin.style.display='';
+    renderOwnerFinancials();
+  } else if(fin){ fin.style.display='none'; }
+}
+function renderOwnerFinancials(){
+  const tb=document.getElementById('tbody-owner-fin'); if(!tb) return;
+  const cfg=(currentProject&&currentProject.config)||{};
+  const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  const pays=allData.pay_apps||[];
+  const norm=s=>String(s||'').trim().toLowerCase();
+  if(!contractors.length){ tb.innerHTML='<tr class="empty-row"><td colspan="5">No contract information yet.</td></tr>'; return; }
+  const num=v=>payNum(v);
+  let out=[];
+  contractors.forEach(c=>{
+    const mine=pays.filter(p=>norm(p['Contractor'])===norm(c.name));
+    const latest=mine.slice().sort((a,b)=>(Date.parse(b['Period']||'')||0)-(Date.parse(a['Period']||'')||0))[0];
+    const contract=(latest&&num(latest['Contract Amount']))?num(latest['Contract Amount']):num(c.contract);
+    const co=latest?num(latest['Approved Change Orders']):0;
+    const revised=contract+co;
+    const billed=mine.reduce((s,p)=>s+payApproved(p),0);
+    const pct=revised?(billed/revised*100):0;
+    out.push('<tr><td>'+esc(c.name)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(revised-billed)+'</td><td style="text-align:right;">'+pct.toFixed(1)+'%</td></tr>');
+  });
+  tb.innerHTML=out.join('');
+}
+
 function renderExec(){
   const el=document.getElementById('exec-kpis'); if(!el) return;
   const f=financialTotals(); const s=scheduleStats();
@@ -2997,6 +3090,7 @@ async function loadAdmin(){
     GRANT_PROJECTS=(d.projects||[]);
     renderGrantProjectList();
   }catch(e){ if(box) box.innerHTML='<span style="color:var(--danger)">Error loading projects</span>'; }
+  try{ grantRoleChanged(); }catch(e){}
   await renderGrants();
 }
 function renderGrantProjectList(){
@@ -3062,7 +3156,7 @@ async function renderGrants(){
     const rows=[];
     (d.grants||[]).forEach(g=>{ (g.projects||[]).forEach(p=>rows.push({email:g.email,id:p.id,name:p.name,company:p.company||'',role:p.role||''})); });
     if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">No external users have access yet.</div>'; return; }
-    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Project</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(r.email)+'</td><td style="padding:8px 6px;">'+esc(r.name||r.id)+'</td><td style="padding:8px 6px;">'+esc(r.company||'—')+'</td><td style="padding:8px 6px;">'+esc(r.role||'—')+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="revokeAccess(\''+esc(r.email)+'\',\''+esc(r.id)+'\')">Revoke</button></td></tr>').join('')+'</tbody></table>';
+    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Project</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(r.email)+'</td><td style="padding:8px 6px;">'+esc(r.name||r.id)+'</td><td style="padding:8px 6px;">'+esc(r.company||'—')+'</td><td style="padding:8px 6px;">'+roleBadge(r.role)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="revokeAccess(\''+esc(r.email)+'\',\''+esc(r.id)+'\')">Revoke</button></td></tr>').join('')+'</tbody></table>';
   }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 async function loadGrantCompanies(){
@@ -3075,12 +3169,35 @@ async function loadGrantCompanies(){
   }));
   dl.innerHTML=[...names].sort().map(c=>'<option value="'+esc(c)+'">').join('');
 }
+const ROLE_LABELS={'contractor':'Contractor','architect-engineer':'Architect / Engineer','owner':'Owner'};
+function roleBadge(r){
+  const k=String(r||'contractor').toLowerCase();
+  const lbl=ROLE_LABELS[k]||'Contractor';
+  const bg=k==='owner'?'var(--khaki-200)':(k==='architect-engineer'?'var(--olive-700)':'var(--khaki-100)');
+  const fg=k==='architect-engineer'?'#fff':'var(--olive-900)';
+  return '<span style="background:'+bg+';color:'+fg+';border-radius:10px;padding:2px 9px;font-size:12px;white-space:nowrap;">'+esc(lbl)+'</span>';
+}
+const ROLE_HINTS={
+  'contractor':'Sees only its own pay applications, daily reports and payrolls. Company is required so their records can be filed against it.',
+  'architect-engineer':'Sees every contractor\'s daily reports and pay applications, and the full financial summary. Can respond to RFIs and submittals. Workflow Settings are visible but not editable.',
+  'owner':'Read-only. Directory, Financial Summary, Change Orders, Payment Applications, Meeting Minutes and Board Reports only — no RFIs, submittals or daily logs.'
+};
+function grantRoleChanged(){
+  const r=(document.getElementById('grant-role')||{}).value||'contractor';
+  const h=document.getElementById('grant-role-hint'); if(h) h.textContent=ROLE_HINTS[r]||'';
+  // Company only scopes a contractor; for the others it is just a label.
+  const cf=document.getElementById('grant-company');
+  const lbl=cf&&cf.closest('.field')&&cf.closest('.field').querySelector('label');
+  if(lbl) lbl.textContent = (r==='contractor') ? 'Company *' : 'Company (optional)';
+}
+
 async function grantAccess(){
   const email=(document.getElementById('grant-email').value||'').trim();
   const projects=selectedGrantProjects();
   const company=(document.getElementById('grant-company').value||'').trim();
   const role=document.getElementById('grant-role').value||'';
   if(!email||!projects.length){ showStatus('grant-status','Email and at least one project are required.','error'); return; }
+  if(role==='contractor' && !company){ showStatus('grant-status','A contractor needs a company — that is what limits them to their own records.','error'); return; }
   const btn=document.getElementById('btn-grant'); btn.disabled=true;
   showStatus('grant-status','Granting access to '+projects.length+' project'+(projects.length===1?'':'s')+'…','info');
   try{
@@ -3161,6 +3278,10 @@ function setViewer(mode){
       vc.style.display='inline-block';
     } else { vc.style.display='none'; VIEWER_COMPANY=''; }
   }
+  if(mode!=='external' && !EXTERNAL){ VIEWER_ROLE=''; }
+  applyRoleClasses();
+  const vr=document.getElementById('viewer-role');
+  if(vr && !EXTERNAL) vr.style.display = (mode==='external') ? 'inline-block' : 'none';
   if(mode==='external'){
     const a=document.querySelector('.nav-item.active');
     if(a&&(a.classList.contains('nav-budget')||a.classList.contains('nav-contacts')||a.classList.contains('nav-dailylogs'))) navTo('overview');
@@ -3168,14 +3289,46 @@ function setViewer(mode){
   renderAll();
 }
 function setViewerCompany(v){ VIEWER_COMPANY=v||''; renderAll(); }
+function setViewerRole(v){
+  VIEWER_ROLE=v||'contractor';
+  applyRoleClasses();
+  // A/E and Owner are not tied to one company.
+  const vc=document.getElementById('viewer-company');
+  const scoped=(VIEWER_ROLE==='contractor');
+  if(vc) vc.style.display = scoped ? 'inline-block' : 'none';
+  if(!scoped) VIEWER_COMPANY='';
+  const cur=document.querySelector('.nav-item.active');
+  if(cur && VIEWER_ROLE==='owner' && !cur.classList.contains('owner-ok')) navTo('overview');
+  renderAll();
+}
 // A real external user, or a Fidevia admin previewing via the External Viewer
 // toggle. Everything company-scoped should key off these two, not off EXTERNAL
 // alone — otherwise the preview shows figures a contractor could never see.
+// Role of the person whose view we are rendering: their own, or the one a
+// Fidevia admin has selected in the preview toggle.
+let VIEWER_ROLE='';
+function viewingAsRole(){
+  if(EXTERNAL) return String((currentProject&&currentProject.userRole)||'contractor');
+  if(document.body.classList.contains('external-mode')) return VIEWER_ROLE||'contractor';
+  return 'fidevia';
+}
+function isOwnerView(){ return viewingAsRole()==='owner'; }
+function isAEView(){ return viewingAsRole()==='architect-engineer'; }
+function roleSeesAllCompanies(){ const r=viewingAsRole(); return r==='architect-engineer'||r==='owner'||r==='fidevia'; }
+function applyRoleClasses(){
+  const r=viewingAsRole();
+  document.body.classList.toggle('role-owner', r==='owner');
+  document.body.classList.toggle('role-ae', r==='architect-engineer');
+  document.body.classList.toggle('role-contractor', r==='contractor');
+}
+
 function viewingAsExternal(){
   return EXTERNAL || document.body.classList.contains('external-mode');
 }
 function viewingAsCompany(){
-  if(EXTERNAL) return String((currentProject&&currentProject.userCompany)||'').trim();
+  // A/E and Owner review every contractor, so there is no company to scope to.
+  if(roleSeesAllCompanies() && !EXTERNAL && viewingAsRole()!=='fidevia') return '';
+  if(EXTERNAL) return roleSeesAllCompanies() ? '' : String((currentProject&&currentProject.userCompany)||'').trim();
   if(document.body.classList.contains('external-mode')) return String(VIEWER_COMPANY||'').trim();
   return '';
 }
