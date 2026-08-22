@@ -245,6 +245,31 @@ async function sendGrantEmailMany(email, projectNames, company, role){
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
+
+// ── PROJECT ROLES ──
+// Roles are per grant, not per account: the same person can be a contractor on
+// one project and an architect on another. Fidevia staff are internal by email
+// domain and are not granted a role here.
+const ROLE_CONTRACTOR = 'contractor';
+const ROLE_AE         = 'architect-engineer';
+const ROLE_OWNER      = 'owner';
+const VALID_ROLES = [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER];
+function normRole(r){
+  const t = String(r || '').trim().toLowerCase();
+  if (VALID_ROLES.includes(t)) return t;
+  // Tolerate the free-text values written before roles were functional.
+  if (/architect|engineer|a\/e|consultant/.test(t)) return ROLE_AE;
+  if (/owner|client/.test(t)) return ROLE_OWNER;
+  return ROLE_CONTRACTOR;   // safest default: sees only its own company
+}
+// Architect/Engineer and Owner review the whole project, so company-private
+// modules are NOT filtered down to one company for them.
+function seesAllCompanies(role){ return role === ROLE_AE || role === ROLE_OWNER; }
+// Owner is strictly read-only.
+function roleMayWrite(role){ return role !== ROLE_OWNER; }
+// Modules an Owner may not reach at all, enforced server-side rather than only
+// hidden in the navigation.
+const OWNER_BLOCKED_CSV = ['RFI Log.csv','Submittal Log.csv','Comments.csv','Daily Log Index.csv','Contractor Daily Reports.csv','Certified Payrolls.csv','Document Index.csv'];
 // Documents carry a per-row "Visible To" setting. This was only ever enforced in
 // the browser, so external users received internal-only rows (and their file IDs)
 // in the payload and simply did not see them rendered.
@@ -265,19 +290,43 @@ function fileIdsInRow(row) {
 }
 const SYSTEM_FOLDERS = ['Contact Directory Snapshots'];
 // Apply the same row-level rules everywhere a CSV is handed to a caller.
-function filterCsvForCaller(filename, text, isAdmin, company) {
+function filterCsvForCaller(filename, text, isAdmin, company, role) {
   if (isAdmin) return text;
+  const r0 = normRole(role);
+
+  // An Owner cannot reach these modules at all, so hand back an empty log
+  // rather than relying on the navigation to hide them.
+  if (r0 === ROLE_OWNER && OWNER_BLOCKED_CSV.includes(filename)) {
+    return toCSVServer(parseCSVServer(text).headers, []);
+  }
+
   const priv = PRIVATE_CSV[filename];
   const vis = VISIBILITY_CSV[filename];
   if (!priv && !vis) return text;
   const parsed = parseCSVServer(text);
   let rows = parsed.rows;
-  if (priv) {
+
+  // Contractors see only their own rows. Architect/Engineer and Owner review
+  // the whole project, so the company filter does not apply to them.
+  if (priv && !seesAllCompanies(r0)) {
     const c = String(company || '').trim().toLowerCase();
-    rows = c ? rows.filter(r => String(r[priv] || '').trim().toLowerCase() === c) : [];
+    rows = c ? rows.filter(x => String(x[priv] || '').trim().toLowerCase() === c) : [];
   }
-  if (vis) rows = rows.filter(r => rowVisibleToExternal(r[vis]));
+  if (vis) rows = rows.filter(x => rowVisibleToExternal(x[vis]));
   return toCSVServer(parsed.headers, rows);
+}
+
+// The grant that covers this folder/file, so we can read both company and role.
+async function grantFor(t, grants, kind, id) {
+  const gidset = new Set(grants.map(g => String(g.id)));
+  let pid = null;
+  if (gidset.has(String(id))) pid = String(id);
+  else {
+    const path = kind === 'folder' ? `folders/${id}?fields=path_collection` : `files/${id}?fields=path_collection`;
+    const r = await boxFetch('https://api.box.com/2.0/' + path, { headers: { Authorization: 'Bearer ' + t } });
+    if (r.ok) { const d = await r.json(); const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id)); pid = ids.find(x => gidset.has(x)); }
+  }
+  return grants.find(x => String(x.id) === String(pid)) || null;
 }
 
 async function callerCompanyFor(t, grants, kind, id) {
@@ -318,14 +367,16 @@ async function allowedFileIds(H, t, grants, who, projectId) {
   try {
     const fr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H });
     const folders = fr.ok ? ((await fr.json()).entries || []).filter(e => e.type === 'folder') : [];
-    const company = await callerCompanyFor(t, grants, 'folder', projectId);
+    const _g = await grantFor(t, grants, 'folder', projectId);
+    const company = (_g && _g.company) || '';
+    const role = normRole(_g && _g.role);
     await Promise.all(folders.map(async f => {
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${f.id}/items?limit=1000&fields=id,name,type`, { headers: H });
       const files = lr.ok ? ((await lr.json()).entries || []).filter(e => e.type === 'file' && e.name.endsWith('.csv')) : [];
       await Promise.all(files.map(async csv => {
         const cr = await boxFetch(`https://api.box.com/2.0/files/${csv.id}/content`, { headers: H });
         if (!cr.ok) return;
-        const filtered = filterCsvForCaller(csv.name, await cr.text(), false, company);
+        const filtered = filterCsvForCaller(csv.name, await cr.text(), false, company, role);
         for (const row of parseCSVServer(filtered).rows) for (const id of fileIdsInRow(row)) ids.add(id);
       }));
     }));
@@ -569,13 +620,13 @@ export default async (req) => {
             r = await boxFetch(`https://api.box.com/2.0/files/${hit2.id}/content`, { headers: H });
           }
           let text = r.ok ? await r.text() : '';
-          if (!who.isAdmin && (PRIVATE_CSV[m.filename] || VISIBILITY_CSV[m.filename])) {
-            let company = '';
-            if (PRIVATE_CSV[m.filename]) {
-              if (companyCache[fid] === undefined) companyCache[fid] = await callerCompanyFor(t, _grants, 'folder', fid);
-              company = companyCache[fid];
+          if (!who.isAdmin) {
+            if (companyCache[fid] === undefined) {
+              const g = await grantFor(t, _grants, 'folder', fid);
+              companyCache[fid] = { company: (g && g.company) || '', role: normRole(g && g.role) };
             }
-            text = filterCsvForCaller(m.filename, text, false, company);
+            const { company, role } = companyCache[fid];
+            text = filterCsvForCaller(m.filename, text, false, company, role);
           }
           data[m.key] = text;
         } catch (e) {}
@@ -589,9 +640,9 @@ export default async (req) => {
       try { const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}?fields=name`, { headers: H })).json(); fname = fi.name || ''; } catch (e) {}
       const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}/content`, { headers: H });
       let text = r.ok ? await r.text() : '';
-      if (!who.isAdmin && (PRIVATE_CSV[fname] || VISIBILITY_CSV[fname])) {
-        const company = PRIVATE_CSV[fname] ? await callerCompanyFor(t, _grants, 'file', body.fileId) : '';
-        text = filterCsvForCaller(fname, text, false, company);
+      if (!who.isAdmin) {
+        const g = await grantFor(t, _grants, 'file', body.fileId);
+        text = filterCsvForCaller(fname, text, false, (g && g.company) || '', normRole(g && g.role));
       }
       return json({ text });
     }

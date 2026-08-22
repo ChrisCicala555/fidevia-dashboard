@@ -1,4 +1,4 @@
-// Pulls the pure CSV-filter helpers out of box-proxy.mjs for testing.
+// Pulls the pure role/CSV filter helpers out of box-proxy.mjs for testing.
 import fs from 'fs';
 const lines = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8').split('\n');
 const whole = lines.join('\n');
@@ -11,6 +11,6 @@ const out = [
   lines[at('const csvEsc')],
   braceFn(at('function parseCSVServer')),
   lines[at('function toCSVServer')],
-  whole.slice(whole.indexOf('function filterCsvForCaller'), whole.indexOf('async function callerCompanyFor')),
-].join('\n') + '\nexport { filterCsvForCaller, fileIdsInRow, rowVisibleToExternal };\n';
+  whole.slice(whole.indexOf('function filterCsvForCaller'), whole.indexOf('async function grantFor')),
+].join('\n') + '\nexport { filterCsvForCaller, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite };\n';
 fs.writeFileSync('.filters.tmp.mjs', out);
