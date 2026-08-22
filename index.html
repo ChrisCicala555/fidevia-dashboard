@@ -275,6 +275,19 @@
   .notify-toggle.on{background:#e6f4ea;color:#1a7f37;border-color:#a3d9b1;}
   .notify-toggle.off{background:#f3f1ec;color:#999;}
   .btn-del{margin-left:6px;}
+  /* Compact, evenly sized actions for table rows. Both buttons stay quiet until
+     hovered, so a long log is not a column of red. */
+  td.admin-col{white-space:nowrap; text-align:right; vertical-align:middle;}
+  .row-act{display:inline-flex; align-items:center; justify-content:center;
+    height:26px; padding:0 11px; margin:0 0 0 6px;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600;
+    line-height:1; white-space:nowrap; border-radius:5px; cursor:pointer;
+    background:var(--white); color:var(--muted); border:1px solid var(--border);
+    transition:background .12s,color .12s,border-color .12s;}
+  .row-act:first-child{margin-left:0;}
+  .row-act.act-archive:hover{background:var(--khaki-100); color:var(--olive-900); border-color:var(--khaki-300);}
+  .row-act.act-restore:hover{background:var(--olive-700); color:#fff; border-color:var(--olive-700);}
+  .row-act.act-delete:hover{background:var(--danger-bg); color:var(--danger); border-color:#E8BFB9;}
   .ver-link{color:#2a6fb0;cursor:pointer;font-weight:600;text-decoration:underline;}
   .ver-link:hover{color:#1d5488;}
   body.is-external-user .viewer-toggle,
@@ -2034,7 +2047,7 @@ function applyReadOnlyBanners(){
 }
 
 // ── HELPERS ──
-function delBtn(key,i){ return IS_ADMIN ? '<button class="btn-reject btn-del" onclick="deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
+function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
 const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
 function itemLabel(key,row){
@@ -2607,9 +2620,9 @@ function isItemComplete(key,r){
 function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemComplete(key,r) && !isArchived(r); }
 function archiveBtn(key,i,r){
   if(isArchived(r)) return IS_ADMIN && !viewingAsExternal()
-    ? '<button class="btn-secondary btn-del" style="padding:4px 10px;font-size:12px;" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',false)">Restore</button>' : '';
+    ? '<button class="row-act act-restore" title="Return this to the active log" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',false)">Restore</button>' : '';
   return canArchive(key,r)
-    ? '<button class="btn-secondary btn-del" style="padding:4px 10px;font-size:12px;" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',true)">Archive</button>' : '';
+    ? '<button class="row-act act-archive" title="Move to Past — reviews are complete" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',true)">Archive</button>' : '';
 }
 async function setArchived(key, idx, on){
   const label=(MODULE_LABEL[key]||key);
