@@ -728,8 +728,8 @@
         <div class="stat-grid" id="fin-kpis"></div>
         <div class="panel">
           <div class="panel-header">By contractor</div>
-          <table><thead><tr><th>Role</th><th>Contractor</th><th>Contract</th><th>Approved COs</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th>% Complete</th><th>CO %</th></tr></thead>
-          <tbody id="tbody-financials"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Role</th><th>Contractor</th><th>Contract</th><th title="Allowance remaining of the original allowance">Allowance Left</th><th title="Approved change orders that increase the contract, excluding anything funded from the allowance">Approved COs</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th>% Complete</th><th>CO %</th></tr></thead>
+          <tbody id="tbody-financials"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -769,8 +769,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
-          <table><thead><tr><th>CO #</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th>Status</th><th>Linked RFI</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>PCO / CO #</th><th>Description</th><th>Cause</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th title="Portion funded from the contractor's allowance">From Allowance</th><th title="Portion that increases the contract">To Contract</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-cos"><tr class="loading-row"><td colspan="11">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1499,7 +1499,7 @@ function toCSV(headers, rows){
 // ── MODULE DEFS ──
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['CO #','Description','Submitted By','Cost Impact','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
@@ -1992,7 +1992,7 @@ function fmtMoneyInput(el){
   el.value = parts.length>1 ? whole+'.'+parts[1].slice(0,2) : whole;
 }
 function wireMoneyInputs(){
-  ['f-cost','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
+  ['f-cost','f-allow','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
     const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
     el.addEventListener('blur',function(){ fmtMoneyInput(el); });
     el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
@@ -2227,10 +2227,16 @@ function renderRFIs(){
 
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
-  if(!rows.length){tb.innerHTML=emptyRow(7);return;}
+  if(!rows.length){tb.innerHTML=emptyRow(10);return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['CO #'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By']||'')+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(r['Cost Impact'])+'</td><td>'+pill(r['Status'],false)+'</td><td>'+esc(r['Linked RFI'])+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+delBtn('co',i)+'</td></tr>';
-    return main+verThreadRows('co',r,i,9); }).join('');
+    // A change order carries a PCO number while pending and gains a CO number
+    // once executed, so show both when they exist.
+    const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
+                          : esc(r['PCO #']||'');
+    const draw=coAllowanceDraw(r), impact=coContractImpact(r);
+    const cause=r['Cause'] ? '<span class="pill" style="background:var(--khaki-100);color:var(--olive-900);">'+esc(r['Cause'])+'</span>' : '<span style="color:var(--muted);">—</span>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div style="font-size:12px;color:var(--muted);">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+esc(r['Submitted By']||'')+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    return main+verThreadRows('co',r,i,11); }).join('');
 }
 
 function renderSubmittals(){
@@ -2401,25 +2407,37 @@ function renderFinancials(){
   const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
   const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
-  let tC=0,tCO=0,tR=0,tB=0,tRem=0;
+  let tC=0,tCO=0,tR=0,tB=0,tRem=0,tAllow=0,tAllowUsed=0;
   const out=[];
   contractors.forEach(c=>{
     const pa=latestFor(c.name);
     const contract = (pa && num(pa['Contract Amount'])) ? num(pa['Contract Amount']) : num(c.contract);
-    const co = pa ? num(pa['Approved Change Orders']) : 0;
+    // Only the part of approved change orders NOT funded from the allowance
+    // increases the contract; the allowance was already inside it.
+    const coFromLog = coContractImpactFor(c.name);
+    const co = coFromLog || (pa ? num(pa['Approved Change Orders']) : 0);
+    const allowTotal = allowanceFor(c.name);
+    const allowUsed  = allowanceUsedBy(c.name);
+    const allowLeft  = allowTotal - allowUsed;
     const revised = contract + co;
     const billed = pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(c.name||'').trim().toLowerCase()).reduce((s,p)=>s+payApproved(p),0);
     const remaining = revised - billed;
     tC+=contract; tCO+=co; tR+=revised; tB+=billed; tRem+=remaining;
+    tAllow+=allowTotal; tAllowUsed+=allowUsed;
     const pct = revised>0 ? billed/revised : 0;
     const coPct = contract>0 ? co/contract : 0;
-    out.push('<tr><td>'+esc(c.role||'')+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
+    // A negative balance means the allowance is overdrawn — show it, do not hide it.
+    const allowCell = allowTotal
+      ? fmtMoney(allowLeft)+'<span style="color:var(--muted);font-size:12px;"> of '+fmtMoney(allowTotal)+'</span>'
+        +(allowLeft<0?'<div style="color:var(--danger);font-size:11px;font-weight:600;">Overdrawn</div>':'')
+      : '<span style="color:var(--muted);">—</span>';
+    out.push('<tr><td>'+esc(c.role||'')+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+allowCell+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
   });
   if(!contractors.length){
-    tb.innerHTML='<tr class="empty-row"><td colspan="9">'+(EXTERNAL?'No contract information is associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')))+'</td></tr>';
+    tb.innerHTML='<tr class="empty-row"><td colspan="10">'+(EXTERNAL?'No contract information is associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')))+'</td></tr>';
   } else {
     const totalPct=tR>0?tB/tR:0;
-    if(!EXTERNAL) out.push('<tr class="total-row" style="font-weight:700;background:var(--khaki-100);"><td></td><td>Total</td><td>'+fmtMoney(tC)+'</td><td>'+fmtMoney(tCO)+'</td><td>'+fmtMoney(tR)+'</td><td>'+fmtMoney(tB)+'</td><td>'+fmtMoney(tRem)+'</td><td>'+(totalPct*100).toFixed(1)+'%</td><td></td></tr>');
+    if(!EXTERNAL) out.push('<tr class="total-row" style="font-weight:700;background:var(--khaki-100);"><td></td><td>Total</td><td>'+fmtMoney(tC)+'</td><td>'+(tAllow?fmtMoney(tAllow-tAllowUsed)+'<span style="font-weight:400;color:var(--muted);font-size:12px;"> of '+fmtMoney(tAllow)+'</span>':'—')+'</td><td>'+fmtMoney(tCO)+'</td><td>'+fmtMoney(tR)+'</td><td>'+fmtMoney(tB)+'</td><td>'+fmtMoney(tRem)+'</td><td>'+(totalPct*100).toFixed(1)+'%</td><td></td></tr>');
     tb.innerHTML=out.join('');
   }
   const kp=document.getElementById('fin-kpis');
@@ -2441,6 +2459,7 @@ function addContractorEditRow(c){
   div.innerHTML='<div class="field" style="margin:0;flex:0 0 105px;"><label style="font-size:12px;">Role</label><select class="ce-role">'+CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'"'+(c.role===r[0]?' selected':'')+'>'+r[1]+'</option>').join('')+'</select></div>'
     +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Name</label><input class="ce-name" value="'+esc(c.name||'')+'"></div>'
     +'<div class="field" style="margin:0;flex:0 0 120px;"><label style="font-size:12px;">Contract ($)</label><input class="ce-contract" value="'+esc(c.contract!=null?c.contract:'')+'"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 115px;"><label style="font-size:12px;" title="Money already inside the contract that change orders can draw against">Allowance ($)</label><input class="ce-allowance" value="'+esc(c.allowance!=null?c.allowance:'')+'"></div>'
     +'<div class="field" style="margin:0;flex:0 0 95px;"><label style="font-size:12px;">Status</label><select class="ce-active"><option value="1"'+(c.active!==false?' selected':'')+'>Active</option><option value="0"'+(c.active===false?' selected':'')+'>Inactive</option></select></div>'
     +'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>';
   wrap.appendChild(div);
@@ -2448,7 +2467,9 @@ function addContractorEditRow(c){
 async function saveContractors(){
   const rows=[...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>{
     const role=r.querySelector('.ce-role').value, name=r.querySelector('.ce-name').value.trim(), contract=parseFloat((r.querySelector('.ce-contract').value||'').replace(/[^0-9.]/g,''))||0, active=r.querySelector('.ce-active').value==='1';
-    return name?{role,name,contract,active}:null;
+    const _al=r.querySelector('.ce-allowance');
+    const allowance=parseFloat(((_al&&_al.value)||'').replace(/[^0-9.]/g,''))||0;
+    return name?{role,name,contract,allowance,active}:null;
   }).filter(Boolean);
   const btn=document.getElementById('contractors-save'); btn.disabled=true;
   try{
@@ -2791,7 +2812,8 @@ const FORMS = {
   co:{title:'Submit New Change Order',html:`
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
-    <div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div>
+    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div><div class="field"><label>Applied to Allowance ($)</label><input autocomplete="off" id="f-allow" placeholder="0"><p class="file-hint" style="margin-top:3px;">Drawn from the contractor's allowance. Only the remainder increases the contract.</p></div></div>
+    <div class="field-row"><div class="field"><label>Cause</label><select autocomplete="off" id="f-cause"><option value="">—</option><option>Unforeseen</option><option>Owner Request</option><option>Code</option><option>Error</option><option>Omission</option><option>Other</option></select></div><div class="field"><label>PCO #</label><input autocomplete="off" id="f-pco" placeholder="Auto if left blank"></div></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
@@ -3071,7 +3093,8 @@ async function submitForm(){
       const _cc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
       const _cnum = PRE_NUM || nextItemNumber('co', _cc);
-      newRow={'CO #':_cnum,'Description':v('f-subject'),'Submitted By':(v('f-by')||(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||''))),'Cost Impact':v('f-cost'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
+      const _appr=(v('f-status')||'').toLowerCase().indexOf('approv')>=0;
+      newRow={'PCO #':(v('f-pco')||_cnum.replace(/^CO/,'PCO')),'CO #':(_appr?_cnum:''),'Description':v('f-subject'),'Submitted By':(v('f-by')||(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||''))),'Cost Impact':v('f-cost'),'Approved Amount':(_appr?v('f-cost'):''),'Applied to Allowance':v('f-allow'),'Cause':v('f-cause'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':(_appr?etToday():''),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
       sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:newRow['Submitted By']||''},[['CO #',newRow['CO #']],['Submitted By',newRow['Submitted By']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='submittal'){
 
@@ -3921,6 +3944,42 @@ async function postComment(){
 // ══════════════════════════════════════════════
 function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[2]+'/'+m[3]+'/'+m[1]):String(v); }
 function payNum(x){ return parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0; }
+// ── ALLOWANCES ──
+// A contractor's allowance is money already inside their contract. A change
+// order funded from it does NOT raise the contract; only the excess does.
+const CO_CAUSES=['Unforeseen','Owner Request','Code','Error','Omission','Other'];
+function coApprovedAmount(r){
+  const a=payNum(r&&r['Approved Amount']);
+  return a || payNum(r&&r['Cost Impact']);
+}
+function coAllowanceDraw(r){
+  // Never draw more than the change order is worth.
+  return Math.min(payNum(r&&r['Applied to Allowance']), coApprovedAmount(r));
+}
+// The part that actually increases the contract.
+function coContractImpact(r){ return Math.max(0, coApprovedAmount(r)-coAllowanceDraw(r)); }
+function coIsApproved(r){
+  const st=String((r&&r['Status'])||'').toLowerCase();
+  return st.indexOf('approv')>=0 || st.indexOf('execut')>=0;
+}
+function allowanceFor(name){
+  const cfg=(currentProject&&currentProject.config)||{};
+  const c=(cfg.contractors||[]).find(x=>String(x.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
+  return payNum(c&&c.allowance);
+}
+function allowanceUsedBy(name){
+  const norm=String(name||'').trim().toLowerCase();
+  return (allData.co||[]).filter(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+    .reduce((s,r)=>s+coAllowanceDraw(r),0);
+}
+function allowanceRemaining(name){ return allowanceFor(name)-allowanceUsedBy(name); }
+// Approved CO value that lands on the contract, for one contractor.
+function coContractImpactFor(name){
+  const norm=String(name||'').trim().toLowerCase();
+  return (allData.co||[]).filter(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+    .reduce((s,r)=>s+coContractImpact(r),0);
+}
+
 function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
 // Contractor-uploaded rows sit at 'Uploaded — awaiting Fidevia' until someone
 // records the numbers, so every pending count has to recognise that too.
