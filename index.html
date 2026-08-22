@@ -3282,7 +3282,7 @@ function setViewer(mode){
       vc.style.display='inline-block';
     } else { vc.style.display='none'; VIEWER_COMPANY=''; }
   }
-  if(mode!=='external' && !EXTERNAL){ VIEWER_ROLE=''; }
+  if(mode!=='external' && !EXTERNAL){ VIEWER_ROLE=''; VIEWER_COMPANY=''; const _vc=document.getElementById('viewer-company'); if(_vc) _vc.value=''; }
   applyRoleClasses();
   const vr=document.getElementById('viewer-role');
   if(vr && !EXTERNAL) vr.style.display = (mode==='external') ? 'inline-block' : 'none';
@@ -3300,7 +3300,15 @@ function setViewerRole(v){
   const vc=document.getElementById('viewer-company');
   const scoped=(VIEWER_ROLE==='contractor');
   if(vc) vc.style.display = scoped ? 'inline-block' : 'none';
-  if(!scoped) VIEWER_COMPANY='';
+  // Keep the dropdown and VIEWER_COMPANY in step. Switching to A/E clears the
+  // company, so switching back must re-adopt whatever the dropdown shows —
+  // otherwise it displays a company while the filter believes none is chosen.
+  if(scoped){
+    VIEWER_COMPANY = (vc && vc.value) || '';
+  } else {
+    VIEWER_COMPANY='';
+    if(vc) vc.value='';
+  }
   const cur=document.querySelector('.nav-item.active');
   if(cur && VIEWER_ROLE==='owner' && !cur.classList.contains('owner-ok')) navTo('overview');
   renderAll();
