@@ -2146,13 +2146,14 @@ function renderRFIs(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('rfi',idx,r)+'</td></tr>');
-  if(!rows.length){tb.innerHTML=emptyRow(8);document.getElementById('note-rfis').textContent='';return;}
+  if(!rows.length){tb.innerHTML=emptyRow(8);const n=document.getElementById('note-rfis');if(n){n.innerHTML='';n.style.display='none';}return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
-  const closed=rows.filter(r=>(r['Status']||'').toLowerCase()==='closed'&&r['Response Summary']&&!isArchived(r));
-  document.getElementById('note-rfis').innerHTML=closed.map(r=>'Closed '+esc(r['RFI #'])+' response on file: "'+esc(r['Response Summary'])+'" ('+esc(fmtDMY(r['Date Closed']))+')').join('<br>');
+  // The closed-RFI note used to list every response beneath the table. That
+  // information now sits inside each RFI's own expandable thread.
+  const note=document.getElementById('note-rfis'); if(note){ note.innerHTML=''; note.style.display='none'; }
 }
 
 function renderCOs(){
@@ -4563,9 +4564,19 @@ function verThreadRows(key,r,i,colspan){
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
   const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
+  // Older records carry a free-text Response Summary. Nothing writes it now —
+  // replies are versions — but where one exists it belongs with its item rather
+  // than in a separate note under the table.
+  const resp=String(r['Response Summary']||'').trim();
+  const respHTML = resp
+    ? '<div style="margin-top:10px;padding:9px 12px;background:var(--white);border-left:3px solid var(--olive-700);border-radius:0 5px 5px 0;">'
+      +'<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:3px;">Response on file'
+      +(r['Date Closed']?' &middot; '+esc(fmtDMY(r['Date Closed'])):'')+'</div>'
+      +'<div style="font-size:14px;color:var(--ink);">&ldquo;'+esc(resp)+'&rdquo;</div></div>'
+    : '';
   return '<tr class="thread-detail" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="'+colspan+'" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'
-    +vs.map(line).join('')+reply+wfProgressHTML(key,r,i)+'</td></tr>';
+    +vs.map(line).join('')+respHTML+reply+wfProgressHTML(key,r,i)+'</td></tr>';
 }
 function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i); if(!el) return; const open=el.style.display!=='none'; el.style.display=open?'none':'table-row'; const arw=document.getElementById('arw-'+key+'-'+i); if(arw) arw.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
 function openReply(key,i){
