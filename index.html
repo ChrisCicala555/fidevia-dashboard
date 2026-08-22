@@ -2479,43 +2479,84 @@ async function loadLogo(){
     if(url){ el.src=url; el.style.display='inline-block'; }
   }catch(e){}
 }
+// The company whose queue we are showing. Everyone at a company sees the same
+// list, so nothing stalls when the named person is away or has left the firm.
+function attentionCompany(){
+  if(EXTERNAL) return String((currentProject&&currentProject.userCompany)||'').trim();
+  if(document.body.classList.contains('external-mode')) return String(VIEWER_COMPANY||'').trim();
+  return String(ME_COMPANY||'Fidevia').trim();
+}
+
 function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   const el=document.getElementById('attention-panel'); if(!el) return;
+  // The Owner has no queue — they cannot action anything.
+  if(isOwnerView()){ el.style.display='none'; el.innerHTML=''; return; }
+
   const me=(ME_EMAIL||'').toLowerCase();
   const myName=(ME_NAME||'').trim().toLowerCase();
+  const myCo=attentionCompany().toLowerCase();
   const items=[];
   const nameMatches=v=>{ const s=String(v||'').trim().toLowerCase(); return s && (s===myName || s.startsWith(myName+' (')); };
+  const coMatches=v=>{ const c=String(v||'').trim().toLowerCase(); return !!myCo && !!c && c===myCo; };
+  // A person belongs to us if the contacts directory puts them at our company.
+  const personIsOurs=person=>{
+    if(!person) return false;
+    if(nameMatches(person)) return true;
+    return coMatches(wfCompanyOf(person));
+  };
+  // "Name (Company)" is written into several fields, so read the company out.
+  const coFromLabel=v=>{ const m=String(v||'').match(/\(([^)]+)\)\s*$/); return m?m[1]:''; };
 
-  // workflow steps waiting on me
+  // Workflow steps sitting with our company
   [['rfi',rfis,'RFI #','rfis'],['co',cos,'CO #','cos'],['sub',subs,'Submittal #','submittals'],['pay_apps',pays,'App #','payapps']].forEach(([key,rows,idf,sec])=>{
     const steps=wfSteps(key); if(!steps.length) return;
     (rows||[]).forEach(r=>{
       if(wfIsDone(r)) return;
       if(!String(r['Workflow Status']||'').trim()) return;
       const cur=wfActiveIdx(r); const [gs,ge]=wfGroupAt(steps,cur);
-      const mine=steps.slice(gs,ge+1).some(s=>{ const e=String(s.email||'').trim().toLowerCase()||wfEmailOf(s.person); return (e&&e===me)||nameMatches(s.person); });
-      if(mine) items.push({label:(r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''), badge:'Your review', cls:'wf', sec});
+      let who='';
+      const ours=steps.slice(gs,ge+1).some(st=>{
+        const e=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
+        if(e&&e===me){ who=st.person||''; return true; }
+        if(personIsOurs(st.person)){ who=st.person||''; return true; }
+        if(coMatches(st.company)){ who=st.person||''; return true; }
+        return false;
+      });
+      if(ours){
+        const mineOwn=(who&&nameMatches(who));
+        items.push({label:(r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
+                    badge: mineOwn?'Your review':'With '+(who||'your team'), cls:'wf', sec});
+      }
     });
   });
 
-  // items assigned to me
-  (rfis||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && nameMatches(r['Assigned To'])) items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Assigned to you', cls:'wf', sec:'rfis'}); });
-  (subs||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && nameMatches(r['Reviewer'])) items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''), badge:'Assigned to you', cls:'wf', sec:'submittals'}); });
+  // Assigned to anyone at our company
+  (rfis||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && personIsOurs(r['Assigned To'])) {
+    items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge: nameMatches(r['Assigned To'])?'Assigned to you':'Assigned to '+r['Assigned To'], cls:'wf', sec:'rfis'}); } });
+  (subs||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && personIsOurs(r['Reviewer'])) {
+    items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''), badge: nameMatches(r['Reviewer'])?'Assigned to you':'Assigned to '+r['Reviewer'], cls:'wf', sec:'submittals'}); } });
 
-  // overdue (everyone should see these)
-  (ovd||[]).forEach(r=>items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Overdue', cls:'', sec:'rfis'}));
+  // Overdue: ours if it is with us, or if we raised it.
+  (ovd||[]).forEach(r=>{
+    const withUs=personIsOurs(r['Assigned To']);
+    const raisedByUs=coMatches(r['Company'])||coMatches(coFromLabel(r['Submitted By']));
+    if(!myCo || withUs || raisedByUs){
+      items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Overdue', cls:'', sec:'rfis'});
+    }
+  });
 
-  // pending pay apps need Fidevia action
-  if(IS_ADMIN) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), badge:'Awaiting review', cls:'wf', sec:'payapps'}));
+  // Pay applications awaiting Fidevia's review
+  if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), badge:'Awaiting review', cls:'wf', sec:'payapps'}));
 
   const seen=new Set(); const list=items.filter(i=>{ const k=i.label+i.badge; if(seen.has(k)) return false; seen.add(k); return true; });
   el.style.display='';
+  const coLabel=attentionCompany();
   if(!list.length){
     const nothingOpen=!(openR.length||openC.length||openS.length||openP.length);
-    el.innerHTML='<div class="att-card clear"><div class="nailed"><div class="txt"><strong>'+(nothingOpen?'Nailed it!':'Nothing needs you right now')+'</strong><div style="font-size:13px;color:var(--muted);">'+(nothingOpen?'No outstanding items on this project.':'Open items are with other people.')+'</div></div></div></div>';
+    el.innerHTML='<div class="att-card clear"><div class="nailed"><div class="txt"><strong>'+(nothingOpen?'Nailed it!':'Nothing needs '+(coLabel||'you')+' right now')+'</strong><div style="font-size:13px;color:var(--muted);">'+(nothingOpen?'No outstanding items on this project.':'Open items are with other companies.')+'</div></div></div></div>';
     return;
   }
-  el.innerHTML='<div class="att-card"><div class="att-head">Needs your attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
+  el.innerHTML='<div class="att-card"><div class="att-head">Needs '+esc(coLabel||'your')+' attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
     +list.slice(0,8).map(i=>'<div class="att-item" onclick="navTo(\''+i.sec+'\')"><span class="att-badge '+i.cls+'">'+esc(i.badge)+'</span><span>'+esc(i.label)+'</span></div>').join('')
     +(list.length>8?'<div style="font-size:12px;color:var(--muted);padding-top:8px;">+'+(list.length-8)+' more</div>':'')
     +'</div>';
