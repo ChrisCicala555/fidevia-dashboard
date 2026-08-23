@@ -192,8 +192,8 @@
   @keyframes fadeUp{from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;}}
   .fade-seq{opacity:0;}
   .fade-seq.go{animation:fadeUp .42s ease both;}
-  .external-banner{background:var(--warn-bg); border:1px solid var(--khaki-300); color:var(--olive-900); font-size:14px; padding:10px 16px; border-radius:6px; margin-bottom:20px; display:none;}
-  body.external-mode .external-banner{display:block;}
+  .external-banner{display:none; background:var(--khaki-100); border:1px solid var(--khaki-300); border-radius:20px; padding:5px 14px; margin-bottom:16px; font-size:12.5px; color:var(--olive-900);}
+  body.external-mode .external-banner{display:inline-block;}
   .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px;}
   .stat-card{background:var(--white); border:1px solid var(--border); border-top:4px solid var(--olive-700); border-radius:6px; padding:16px 18px;}
   .stat-card .label{font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); font-weight:600;}
@@ -4108,15 +4108,10 @@ function isAEView(){ return viewingAsRole()==='architect-engineer'; }
 function roleSeesAllCompanies(){ const r=viewingAsRole(); return r==='architect-engineer'||r==='owner'||r==='fidevia'; }
 function updateExternalBanner(){
   const el=document.getElementById('external-banner'); if(!el) return;
-  const r=viewingAsRole();
-  const co=companyScope();
-  const txt={
-    'contractor':'Viewing as: <strong>Contractor</strong>'+(co?' &mdash; '+esc(co):'')+' &mdash; sees only its own pay applications, daily reports and payrolls.',
-    'architect-engineer':'Viewing as: <strong>Architect / Engineer</strong> &mdash; sees all contractors and can review RFIs and submittals. Workflow settings are read-only.',
-    'owner':'Viewing as: <strong>Owner</strong> &mdash; read-only. Financials and reports only.'
-  }[r] || 'Viewing as: <strong>External</strong>';
-  el.innerHTML=txt;
+  const label=(ROLE_LABELS&&ROLE_LABELS[viewingAsRole()])||'External';
+  el.innerHTML='Role: <strong>'+esc(label)+'</strong>';
 }
+
 function applyRoleClasses(){
   const r=viewingAsRole();
   try{ updateExternalBanner(); }catch(e){}
