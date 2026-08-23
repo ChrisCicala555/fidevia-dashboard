@@ -3682,12 +3682,44 @@ document.addEventListener('click',function(e){
   if(!e.target.closest('.picker-user')){ const p=document.getElementById('picker-actions'); if(p) p.classList.remove('open'); }
 });
 let _histGuard=false;
+function currentScreenId(){
+  const el=document.querySelector('.screen.active');
+  return el?el.id:'screen-picker';
+}
+// Where Back should land from each screen. The dashboard and every admin view
+// belong to the picker; the picker itself is the floor.
+function backTargetFor(id){
+  if(id==='screen-picker'||id==='screen-boot'||id==='screen-auth0login'||id==='screen-profile') return null;
+  return 'screen-picker';
+}
 function armHistoryGuard(){
   if(_histGuard) return; _histGuard=true;
-  try{ history.pushState({app:1},'',location.pathname); }catch(e){}
+  // Strip any spent Auth0 callback parameters so Back can never replay them —
+  // returning to a used ?code= is what produces the error.
+  try{
+    const u=new URL(location.href);
+    if(u.searchParams.has('code')||u.searchParams.has('state')||u.searchParams.has('error')){
+      history.replaceState({app:1,screen:currentScreenId()},document.title,u.pathname);
+    } else {
+      history.replaceState({app:1,screen:currentScreenId()},document.title,u.pathname);
+    }
+  }catch(e){}
+  // A sentinel so the first Back stays inside the app.
+  try{ history.pushState({app:1,screen:currentScreenId()},'',location.pathname); }catch(e){}
+
   window.addEventListener('popstate', function(){
-    try{ history.pushState({app:1},'',location.pathname); }catch(e){}
-    try{ goHome(); }catch(e){}
+    // Always restore a sentinel, so history can never run out beneath us.
+    try{ history.pushState({app:1,screen:currentScreenId()},'',location.pathname); }catch(e){}
+    try{
+      const here=currentScreenId();
+      const target=backTargetFor(here);
+      if(!target) return;                 // already at the floor: stay put
+      if(target==='screen-picker'){
+        if(EXTERNAL && here==='screen-dashboard'){ navTo('overview'); return; }
+        showScreen('screen-picker');
+        loadPicker();
+      }
+    }catch(e){ console.warn('back navigation:', e && e.message); }
   });
 }
 function showStatus(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='status-msg '+type; }
@@ -3757,6 +3789,7 @@ async function saveProfile(){
 
 (async()=>{
   const isAuth = await initAuth0();
+  try{ armHistoryGuard(); }catch(e){}
   if(!isAuth){ showScreen('screen-auth0login'); return; }
   const user = await auth0Client.getUser();
   if(user){
