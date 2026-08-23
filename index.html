@@ -973,8 +973,8 @@
         <p class="file-hint" style="margin:0 0 12px;">Each company sees only its own reports; Fidevia sees all.</p>
         <div class="panel">
           <div class="panel-header">Daily Reports by Contractor</div>
-          <table><thead><tr><th>Date</th><th>Company</th><th>Submitted By</th><th>Weather</th><th>Crew</th><th>Work Performed</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-cdaily"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Date</th><th>Company</th><th>Submitted By</th><th>Report</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-cdaily"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -2615,11 +2615,11 @@ function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
 function renderGenDocs(){ renderDocsTable('gendocs','tbody-gendocs'); }
 function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
-  if(!rows.length){tb.innerHTML=emptyRow(8);return;}
+  if(!rows.length){tb.innerHTML=emptyRow(5);return;}
+  // Contractors upload the report itself; the document is the record, so the
+  // weather / crew / work columns were always empty and have been dropped.
   tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
-    // Contractor uploads carry the file only, so these columns are often blank.
-    const dash=v=>{ const t=String(v==null?'':v).trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
-    return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+dash(r['Weather'])+'</td><td>'+dash(r['Crew Count'])+'</td><td>'+dash(r['Work Performed'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
+    return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
   }).join('');
 }
 function renderPayrolls(){
@@ -3128,10 +3128,8 @@ const FORMS = {
     <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
-    <div class="field-row"><div class="field"><label>Weather</label><input autocomplete="off" id="f-weather" placeholder="Sunny, 72°F"></div><div class="field"><label>Crew Count</label><input autocomplete="off" type="number" id="f-crew" placeholder="8"></div></div>
-    <div class="field"><label>Work Performed *</label><textarea autocomplete="off" id="f-work" placeholder="Describe the day's work…"></textarea></div>
-    <div class="field"><label>Notes / Delays</label><textarea autocomplete="off" id="f-notes"></textarea></div>
-    <div class="field"><label>Attachment</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Optional — report PDF or photos.</p></div>`},
+    <div class="field"><label>Notes</label><textarea autocomplete="off" id="f-notes" placeholder="Optional — anything worth recording alongside the report."></textarea></div>
+    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The report document itself.</p></div>`},
   payroll:{title:'Upload Certified Payroll',html:`
     <div class="field-row"><div class="field"><label>Week Ending</label><input autocomplete="off" type="date" id="f-week"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
     <div class="field-row"><div class="field"><label>Payroll #</label><input autocomplete="off" id="f-num" placeholder="e.g. 12"></div><div class="field"></div></div>
@@ -3606,9 +3604,10 @@ async function submitForm(){
       // contributes nothing to the financials until it is reviewed.
       newRow={'App #':'','Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
     } else if(currentModal==='cdaily'){
-      if(!v('f-work')) throw new Error('Work Performed is required.');
+      if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
-      newRow={'Date':(v('f-date-sub')||etToday()),'Company':_comp,'Submitted By':_senderEmail||'','Weather':v('f-weather'),'Crew Count':v('f-crew'),'Work Performed':v('f-work'),'Notes':v('f-notes'),'Attachment File ID':attachId,'Attachment Name':attachName};
+      if(!_comp) throw new Error('Company is required.');
+      newRow={'Date':(v('f-date-sub')||etToday()),'Company':_comp,'Submitted By':_senderEmail||'','Weather':'','Crew Count':'','Work Performed':'','Notes':v('f-notes'),'Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='payroll'){
       if(!attachId) throw new Error('A certified payroll file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
