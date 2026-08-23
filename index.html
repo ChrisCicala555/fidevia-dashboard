@@ -202,13 +202,18 @@
   .stat-card.alert .value{color:var(--danger);}
   .stat-card.neg .value{color:var(--danger);}
   .stat-card.pos .value{color:var(--olive-700);}
-  .panel{background:var(--white); border:1px solid var(--border); border-radius:6px; margin-bottom:24px; overflow:hidden;}
+  .panel{background:var(--white); border:1px solid var(--border); border-radius:12px; margin-bottom:24px; overflow:hidden;}
   .tscroll{overflow-x:auto; width:100%;}
-  .panel-header{background:var(--olive-600); color:#fff; padding:10px 18px; font-size:15px; font-weight:600; letter-spacing:0.3px; text-transform:capitalize; display:flex; justify-content:space-between; align-items:center;}
-  .panel-header .src{font-size:11px; text-transform:none; font-weight:600; color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); padding:3px 8px; border-radius:4px;}
+  /* Lighter treatment, matching the Contact Directory: the header names the
+     panel rather than shouting it, and the olive is kept for accents. */
+  .panel-header{background:var(--white); color:var(--olive-900); padding:14px 18px; font-size:15px; font-weight:700; letter-spacing:0.2px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px;}
+  .panel-header .src{font-size:11px; text-transform:none; font-weight:600; color:var(--muted); background:#F6F5EF; border:1px solid var(--border); padding:3px 9px; border-radius:5px; white-space:nowrap;}
   table{width:100%; border-collapse:collapse; font-size:14px;}
-  th{background:var(--khaki-100); color:var(--olive-900); text-align:left; padding:10px 14px; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; border-bottom:1px solid var(--border);}
-  td{padding:11px 14px; border-bottom:1px solid var(--border); color:var(--ink); vertical-align:middle;}
+  th{background:#FAF9F5; color:var(--muted); text-align:left; padding:12px 18px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; border-bottom:1px solid var(--border);}
+  td{padding:13px 18px; border-bottom:1px solid #F1F0E8; color:var(--ink); vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover td{background:#FBFAF6;}
+  tbody tr.thread-detail:hover td,tbody tr.cd-band:hover td,tbody tr.total-row:hover td{background:inherit;}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:var(--cream);}
   .pill{display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; white-space:nowrap;}
@@ -3007,7 +3012,7 @@ function renderPastPanel(key, secId, title, rows, colCount, rowHtml){
   if(!panel){
     panel=document.createElement('div');
     panel.id='past-'+key; panel.className='panel'; panel.style.marginTop='20px';
-    panel.innerHTML='<div class="panel-header" style="cursor:pointer;background:var(--khaki-200);color:var(--olive-900);" onclick="togglePast(\''+key+'\')">'
+    panel.innerHTML='<div class="panel-header" style="cursor:pointer;background:#F6F5EF;color:var(--muted);font-weight:600;" onclick="togglePast(\''+key+'\')">'
       +'<span class="thread-arrow" id="past-arw-'+key+'">&#9656;</span> '+esc(title)+' <span id="past-count-'+key+'" style="font-weight:400;font-size:12px;color:var(--olive-700);"></span></div>'
       +'<div id="past-body-'+key+'" style="display:none;"><table><tbody id="past-tbody-'+key+'"></tbody></table></div>';
     sec.appendChild(panel);
