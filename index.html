@@ -638,9 +638,17 @@
       <h2 class="picker-heading" style="margin:0;text-align:left;">Contact Directory</h2>
       <div><button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="margin-right:8px;">Export to Box</button><button class="btn-secondary" onclick="showScreen('screen-picker')">← Back</button></div>
     </div>
-    <p class="form-desc">All dashboard accounts, grouped alphabetically. Enter the password to edit company, role, phone, or email.</p>
     <div id="cd-lockbar" style="margin-bottom:14px;"></div>
-    <input id="cd-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContactDir()" style="width:100%;max-width:420px;margin-bottom:18px;">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
+      <input id="cd-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContactDir()" style="flex:1 1 280px;max-width:420px;margin:0;">
+      <label style="font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">Group by</label>
+      <select id="cd-group" onchange="renderContactDir()" style="border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;font-family:inherit;background:var(--white);color:var(--ink);">
+        <option value="name">Name</option>
+        <option value="company">Company</option>
+        <option value="role">Role</option>
+      </select>
+      <span id="cd-count" style="font-size:12.5px;color:var(--muted);"></span>
+    </div>
     <div id="cd-list"><div style="color:var(--muted)">Loading…</div></div>
   </div>
 </div>
@@ -3088,9 +3096,25 @@ function renderContactDir(){
   if(q) list=list.filter(c=>((c.name||'')+' '+(c.company||'')+' '+(c.email||'')+' '+(c.role||'')).toLowerCase().includes(q));
   const el=document.getElementById('cd-list');
   if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">'+(q?'No contacts match your search.':'No accounts yet.')+'</div>'; return; }
+  const mode=((document.getElementById('cd-group')||{}).value)||'name';
   const groups={};
-  list.forEach(c=>{ let L=(c.name||'#').trim().charAt(0).toUpperCase(); if(!/[A-Z]/.test(L)) L='#'; (groups[L]=groups[L]||[]).push(c); });
-  const letters=Object.keys(groups).sort();
+  list.forEach(c=>{
+    let key;
+    if(mode==='name'){ key=(c.name||'#').trim().charAt(0).toUpperCase(); if(!/[A-Z]/.test(key)) key='#'; }
+    else { key=String(c[mode]||'').trim() || '— No '+(mode==='company'?'company':'role')+' —'; }
+    (groups[key]=groups[key]||[]).push(c);
+  });
+  // Unlabelled entries sort last rather than leading on a dash.
+  const letters=Object.keys(groups).sort((a,b)=>{
+    const au=a.startsWith('—'), bu=b.startsWith('—');
+    if(au!==bu) return au?1:-1;
+    return a.localeCompare(b);
+  });
+  // Within a group, order by whatever is not the grouping field.
+  const within = mode==='name' ? 'name' : 'name';
+  letters.forEach(L=>groups[L].sort((x,y)=>String(x[within]||'').localeCompare(String(y[within]||''))));
+  const cnt=document.getElementById('cd-count');
+  if(cnt) cnt.textContent = list.length+' contact'+(list.length===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s');
   const fld=(idx,field,val,w)=> CD_UNLOCKED
     ? '<input class="cd-inp" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
       +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
@@ -3103,7 +3127,7 @@ function renderContactDir(){
       +'<td style="padding:6px;">'+fld(idx,'email',c.email,190)+'</td>'
       +'<td style="padding:6px;white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):esc(fmtPhone(c.phone)||'—'))+'</td></tr>'; };
   el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
-    +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell">'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
+    +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table>';
 }
 async function saveContactMeta(idx, field, val){
