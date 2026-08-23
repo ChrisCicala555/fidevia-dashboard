@@ -1158,7 +1158,7 @@
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Projects</div>
       <div id="person-projects" style="margin-bottom:20px;"></div>
 
-      <div style="border-top:1px solid var(--border);padding-top:16px;">
+      <div id="person-add-block" style="border-top:1px solid var(--border);padding-top:16px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;">Add to a project</div>
         <div class="field-row" style="margin-bottom:10px;">
           <div class="field" style="margin:0;flex:1.4;"><label>Project</label><select id="person-add-proj"></select></div>
@@ -3342,6 +3342,11 @@ function renderPersonProjects(){
       +'<div style="font-size:12px;color:var(--muted);">'+roleLabelOf(p.role)+(p.company?' · '+esc(p.company):'')+'</div></div>'
       +'<button class="row-act act-delete" onclick="personRevoke(\''+esc(p.id)+'\')">Remove</button></div>').join('');
   }
+  // Fidevia staff reach everything by email domain, so there is nothing to grant.
+  const addBlock=document.getElementById('person-add-block');
+  if(addBlock) addBlock.style.display = isFidevia ? 'none' : '';
+  if(isFidevia){ const w=document.getElementById('person-add-warn'); if(w) w.style.display='none'; return; }
+
   // Only offer projects they are not already on.
   const have=new Set(g.map(p=>String(p.id)));
   const sel=document.getElementById('person-add-proj');
