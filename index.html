@@ -262,6 +262,7 @@
     font-weight:700; line-height:1; cursor:help; vertical-align:middle; position:relative; text-transform:none;
     letter-spacing:0;}
   .info-i:hover,.info-i:focus{background:var(--olive-700); color:#fff; border-color:var(--olive-700); outline:none;}
+  .info-i.tip-below::after{bottom:auto; top:calc(100% + 8px);}
   .info-i::after{content:attr(data-tip); position:absolute; left:50%; bottom:calc(100% + 8px);
     transform:translateX(-50%); width:260px; padding:9px 12px; border-radius:7px;
     background:var(--olive-900); color:#F2F1E6; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
@@ -715,8 +716,7 @@
     <div id="grants-list" style="margin-top:10px;">Loading…</div>
 
     <hr style="margin:28px 0;border:none;border-top:1px solid var(--khaki-300);">
-    <h3 style="font-size:17px;color:var(--olive-900);">Dashboard Administrators</h3>
-    <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">Admins can manage access, delete records, and edit settings. Anyone with an @fidevia.com email is always an admin. Enter the admin password to add or remove additional admins.</p>
+    <h3 style="font-size:17px;color:var(--olive-900);margin-bottom:12px;">Dashboard Administrators<span class="info-i" tabindex="0" data-tip="Admins can manage access, delete records and edit settings. Anyone with an @fidevia.com address is always an admin. The password below adds or removes additional ones.">i</span></h3>
     <div id="admins-locked">
       <div class="field"><label>Admin password</label><input type="password" id="admins-pw" placeholder="Enter password"></div>
       <button class="btn-secondary" onclick="unlockAdmins()">Unlock</button>
