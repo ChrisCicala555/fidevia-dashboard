@@ -86,9 +86,10 @@
   .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
   .project-card .pname{font-size:16px; font-weight:700; color:var(--olive-900); margin-bottom:4px;}
   .project-card .psub{font-size:13px; color:var(--muted); margin-bottom:16px;}
-  .pcard-logo{height:42px; margin-bottom:12px; display:flex; align-items:center;}
-  .pcard-logo img{max-height:42px; max-width:170px; width:auto; object-fit:contain;}
-  .project-card .pname{margin-bottom:16px;}
+  .pname-row{display:flex; align-items:center; gap:12px; margin-bottom:16px;}
+  .pcard-logo{flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px;}
+  .pcard-logo img{max-width:40px; max-height:40px; width:auto; height:auto; object-fit:contain;}
+  .project-card .pname{margin-bottom:0; line-height:1.25;}
   .project-card .popen{align-self:flex-start; display:inline-block; background:var(--olive-700); color:#fff; font-size:12px; font-weight:600; padding:6px 14px; border-radius:4px; transition:background .15s;}
   .project-card:hover .popen{background:var(--olive-900);}
   .add-project-card{background:var(--white); border:2px dashed var(--border); border-radius:8px; padding:22px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:14px; font-weight:600; gap:8px; min-height:130px; transition:background 0.15s,border-color 0.15s;}
@@ -1696,7 +1697,7 @@ async function loadPickerLogo(projectId, fileId){
     if(!url){ const d=await proxyCall('downloadUrl',{fileId},{quiet:true}); url=d&&d.url; if(url) PICKER_LOGOS[fileId]=url; }
     if(url){ slot.innerHTML='<img src="'+esc(url)+'" alt="">'; slot.classList.add('has-logo'); }
     else { slot.remove(); }
-  }catch(e){ slot.remove(); }
+  }catch(e){ if(slot) slot.remove(); }
 }
 
 function renderPickerGrid(){
@@ -1709,9 +1710,10 @@ function renderPickerGrid(){
     // The project's own logo where it has one; otherwise nothing rather than
     // a line of boilerplate.
     const logoSlot = p.logoFileId
-      ? '<div class="pcard-logo" id="plogo-'+esc(p.id)+'"></div>'
+      ? '<span class="pcard-logo" id="plogo-'+esc(p.id)+'"></span>'
       : '';
-    let html=logoSlot+'<div class="pname">'+esc(p.name)+'</div><span class="popen">Open Dashboard</span>';
+    let html='<div class="pname-row">'+logoSlot+'<span class="pname">'+esc(p.name)+'</span></div>'
+      +'<span class="popen">Open Dashboard</span>';
     if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'");
       let items='<button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>';
       items+='<button onclick="event.stopPropagation();renameProject(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Rename Project</button>';
