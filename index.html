@@ -241,6 +241,12 @@
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
   /* Contact Directory */
+  .cd-tabs{display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px;}
+  .cd-tab{background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px;
+    padding:10px 16px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px;
+    font-weight:600; color:var(--muted); cursor:pointer;}
+  .cd-tab:hover{color:var(--olive-900);}
+  .cd-tab.active{color:var(--olive-900); border-bottom-color:var(--olive-700);}
   .cd-card{background:var(--white); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
   .cd-card table{width:100%; border-collapse:collapse; font-size:14px;}
   .cd-card thead th{background:var(--white); text-align:left; padding:14px 18px; font-size:11px;
@@ -505,7 +511,7 @@
       <div class="picker-actions" id="picker-actions">
         <button class="btn-logout" onclick="openAccount()">My Account</button>
         <button class="btn-logout" onclick="openFeedback()">Report a Bug / Feedback</button>
-        <button class="btn-logout admin-only" onclick="openAdmin()">Manage External Access</button>
+
         <button class="btn-logout admin-only" onclick="openContactDir()">Contact Directory</button>
         <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
       </div>
@@ -590,54 +596,7 @@
 </div>
 
 <!-- ══ ADMIN: EXTERNAL ACCESS ══ -->
-<div id="screen-admin" class="screen">
-  <div class="form-card" style="max-width:680px;margin:48px auto;">
-    <h2>Manage External Access</h2>
-    <p class="form-desc">Grant an external user access to a specific project. External users see only the projects you grant here — nothing else.</p>
-    <div class="field"><label>External user email *</label><input type="email" id="grant-email" placeholder="contractor@example.com"></div>
-    <div class="field">
-      <label>Projects * <span id="grant-proj-count" style="font-weight:400;color:var(--muted);font-size:12px;"></span></label>
-      <input id="grant-proj-search" placeholder="Search projects…" oninput="filterGrantProjects()" style="margin-bottom:7px;">
-      <div id="grant-project-list" class="proj-picker">Loading projects…</div>
-      <div class="proj-picker-bar">
-        <span style="display:flex;gap:14px;">
-          <a href="#" onclick="setAllGrantProjects(true);return false;">Select all</a>
-          <a href="#" onclick="setAllGrantProjects(false);return false;">Clear</a>
-        </span>
-        <span id="grant-proj-hint" style="font-size:12.5px;color:var(--muted);"></span>
-      </div>
-    </div>
-    <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
-    <p class="form-desc" id="grant-role-hint" style="margin:-6px 0 12px;font-size:12.5px;color:var(--muted);"></p>
-    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" oninput="markCompanyChip()" placeholder="Type, or pick below"><datalist id="grant-company-list"></datalist><div id="grant-company-chips" class="co-suggest"></div></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
-      <option value="contractor">Contractor — sees only its own company</option>
-      <option value="architect-engineer">Architect / Engineer — sees all companies, can review</option>
-      <option value="owner">Owner — read-only, financials and reports only</option>
-    </select></div></div>
-    <div class="form-actions">
-      <button class="btn-primary" onclick="grantAccess()" id="btn-grant">Grant Access</button>
-      <button class="btn-secondary" onclick="showScreen('screen-picker')">Back</button>
-    </div>
-    <div class="status-msg" id="grant-status"></div>
-    <h3 style="margin-top:30px;font-size:17px;color:var(--olive-900);">Current access</h3>
-    <div id="grants-list" style="margin-top:10px;">Loading…</div>
 
-    <hr style="margin:28px 0;border:none;border-top:1px solid var(--khaki-300);">
-    <h3 style="font-size:17px;color:var(--olive-900);">Dashboard Administrators</h3>
-    <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">Admins can manage access, delete records, and edit settings. Anyone with an @fidevia.com email is always an admin. Enter the admin password to add or remove additional admins.</p>
-    <div id="admins-locked">
-      <div class="field"><label>Admin password</label><input type="password" id="admins-pw" placeholder="Enter password"></div>
-      <button class="btn-secondary" onclick="unlockAdmins()">Unlock</button>
-      <div class="status-msg" id="admins-pw-status"></div>
-    </div>
-    <div id="admins-panel" style="display:none;margin-top:6px;">
-      <div class="field"><label>Add admin by email</label><input id="admin-add-email" placeholder="name@example.com"></div>
-      <button class="btn-primary" onclick="addAdmin()" id="btn-add-admin">Add Admin</button>
-      <div class="status-msg" id="admin-add-status"></div>
-      <div id="admins-list" style="margin-top:14px;"></div>
-    </div>
-  </div>
-</div>
 
 <!-- ══ REQUEST PROJECT ACCESS (external) ══ -->
 <div id="screen-request" class="screen">
@@ -667,6 +626,11 @@
           Back</button>
       </div>
     </div>
+    <div class="cd-tabs">
+      <button class="cd-tab active" data-tab="directory" onclick="cdTab('directory')">Directory</button>
+      <button class="cd-tab" data-tab="access" onclick="cdTab('access')">Project Access</button>
+    </div>
+    <div id="cd-pane-directory">
     <div id="cd-lockbar" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:18px;"></div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
       <span class="cd-search-wrap">
@@ -687,6 +651,57 @@
       <span id="cd-dirty-note" style="font-size:12.5px;color:var(--muted);">No unsaved changes</span>
     </div>
     <div id="cd-list"><div style="color:var(--muted)">Loading…</div></div>
+    </div>
+    <div id="cd-pane-access" style="display:none;">
+
+  <div style="max-width:680px;">
+    
+    <p class="form-desc">Grant an external user access to a specific project. External users see only the projects you grant here — nothing else.</p>
+    <div class="field"><label>External user email *</label><input type="email" id="grant-email" placeholder="contractor@example.com"></div>
+    <div class="field">
+      <label>Projects * <span id="grant-proj-count" style="font-weight:400;color:var(--muted);font-size:12px;"></span></label>
+      <input id="grant-proj-search" placeholder="Search projects…" oninput="filterGrantProjects()" style="margin-bottom:7px;">
+      <div id="grant-project-list" class="proj-picker">Loading projects…</div>
+      <div class="proj-picker-bar">
+        <span style="display:flex;gap:14px;">
+          <a href="#" onclick="setAllGrantProjects(true);return false;">Select all</a>
+          <a href="#" onclick="setAllGrantProjects(false);return false;">Clear</a>
+        </span>
+        <span id="grant-proj-hint" style="font-size:12.5px;color:var(--muted);"></span>
+      </div>
+    </div>
+    <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
+    <p class="form-desc" id="grant-role-hint" style="margin:-6px 0 12px;font-size:12.5px;color:var(--muted);"></p>
+    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" oninput="markCompanyChip()" placeholder="Type, or pick below"><datalist id="grant-company-list"></datalist><div id="grant-company-chips" class="co-suggest"></div></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
+      <option value="contractor">Contractor — sees only its own company</option>
+      <option value="architect-engineer">Architect / Engineer — sees all companies, can review</option>
+      <option value="owner">Owner — read-only, financials and reports only</option>
+    </select></div></div>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="grantAccess()" id="btn-grant">Grant Access</button>
+      
+    </div>
+    <div class="status-msg" id="grant-status"></div>
+    <h3 style="margin-top:30px;font-size:17px;color:var(--olive-900);">Current access</h3>
+    <div id="grants-list" style="margin-top:10px;">Loading…</div>
+
+    <hr style="margin:28px 0;border:none;border-top:1px solid var(--khaki-300);">
+    <h3 style="font-size:17px;color:var(--olive-900);">Dashboard Administrators</h3>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:12px;">Admins can manage access, delete records, and edit settings. Anyone with an @fidevia.com email is always an admin. Enter the admin password to add or remove additional admins.</p>
+    <div id="admins-locked">
+      <div class="field"><label>Admin password</label><input type="password" id="admins-pw" placeholder="Enter password"></div>
+      <button class="btn-secondary" onclick="unlockAdmins()">Unlock</button>
+      <div class="status-msg" id="admins-pw-status"></div>
+    </div>
+    <div id="admins-panel" style="display:none;margin-top:6px;">
+      <div class="field"><label>Add admin by email</label><input id="admin-add-email" placeholder="name@example.com"></div>
+      <button class="btn-primary" onclick="addAdmin()" id="btn-add-admin">Add Admin</button>
+      <div class="status-msg" id="admin-add-status"></div>
+      <div id="admins-list" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+    </div>
   </div>
 </div>
 
@@ -3120,6 +3135,7 @@ async function exportContactsNow(){
   if(btn){ btn.disabled=false; btn.textContent=orig||'Export to Box'; }
 }
 async function openContactDir(){
+  try{ cdTab('directory'); }catch(e){}
   document.querySelectorAll('.picker-actions.open').forEach(x=>x.classList.remove('open'));
   showScreen('screen-contactdir');
   try{ animateSection(document.querySelector('#screen-contactdir .cd-page')); }catch(e){}
@@ -3577,7 +3593,19 @@ async function denyRequest(email,projectId){
 }
 
 // ── ADMIN: EXTERNAL ACCESS ──
-async function openAdmin(){ showScreen('screen-admin'); await loadAdmin(); }
+// External access now lives as a tab inside the Contact Directory, so both
+// entry points land in the same place.
+function cdTab(name){
+  document.querySelectorAll('.cd-tab').forEach(b=>b.classList.toggle('active', b.getAttribute('data-tab')===name));
+  const d=document.getElementById('cd-pane-directory'), a=document.getElementById('cd-pane-access');
+  if(d) d.style.display = name==='directory' ? '' : 'none';
+  if(a) a.style.display = name==='access' ? '' : 'none';
+  if(name==='access'){ try{ loadAdmin(); }catch(e){} }
+}
+async function openAdmin(){
+  await openContactDir();
+  cdTab('access');
+}
 let GRANT_PROJECTS=[];
 async function loadAdmin(){
   const box=document.getElementById('grant-project-list');
