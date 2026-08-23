@@ -240,6 +240,12 @@
         background-size:1000px 100%; animation:skelShimmer 1.5s linear infinite;}
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
+  .co-suggest{display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;}
+  .co-chip{font-size:12.5px; line-height:1; padding:6px 11px; border-radius:20px; cursor:pointer;
+    background:var(--white); color:var(--olive-900); border:1px solid var(--khaki-300);
+    transition:background .12s,border-color .12s;}
+  .co-chip:hover{background:var(--khaki-100); border-color:var(--olive-700);}
+  .co-chip.on{background:var(--olive-700); color:#fff; border-color:var(--olive-700);}
   .dir-flag{display:inline-flex; align-items:center; gap:4px; margin-top:3px;
     font-size:11px; line-height:1.3; color:var(--olive-700); cursor:pointer;
     background:var(--khaki-100); border:1px solid var(--khaki-300); border-radius:4px;
@@ -581,7 +587,7 @@
     </div>
     <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
     <p class="form-desc" id="grant-role-hint" style="margin:-6px 0 12px;font-size:12.5px;color:var(--muted);"></p>
-    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" placeholder="e.g. Lobar"><datalist id="grant-company-list"></datalist></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
+    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" oninput="markCompanyChip()" placeholder="Type, or pick below"><datalist id="grant-company-list"></datalist><div id="grant-company-chips" class="co-suggest"></div></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
       <option value="contractor">Contractor — sees only its own company</option>
       <option value="architect-engineer">Architect / Engineer — sees all companies, can review</option>
       <option value="owner">Owner — read-only, financials and reports only</option>
@@ -3521,14 +3527,39 @@ async function renderGrants(){
   }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 async function loadGrantCompanies(){
-  const dl=document.getElementById('grant-company-list'); if(!dl) return;
-  const sel=selectedGrantProjects(); if(!sel.length){ dl.innerHTML=''; return; }
+  const dl=document.getElementById('grant-company-list');
+  const chips=document.getElementById('grant-company-chips');
+  if(!dl) return;
+  const sel=selectedGrantProjects();
+  if(!sel.length){ dl.innerHTML=''; if(chips) chips.innerHTML=''; return; }
+  if(chips) chips.innerHTML='<span style="font-size:12px;color:var(--muted);">Loading companies…</span>';
   const names=new Set();
   // Union across the selected projects, capped so a Select-all does not fan out.
   await Promise.all(sel.slice(0,8).map(async p=>{
     try{ const d=await proxyCall('projectCompanies',{projectId:p.id},{quiet:true}); (d.companies||[]).forEach(c=>names.add(c)); }catch(e){}
   }));
-  dl.innerHTML=[...names].sort().map(c=>'<option value="'+esc(c)+'">').join('');
+  const list=[...names].filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  dl.innerHTML=list.map(c=>'<option value="'+esc(c)+'">').join('');
+  // A native datalist only appears once the user types the right thing, and
+  // competes with the browser's own autofill. Show the options outright.
+  if(chips){
+    chips.innerHTML = list.length
+      ? list.map(c=>'<span class="co-chip" onclick="pickCompany(this)">'+esc(c)+'</span>').join('')
+      : '<span style="font-size:12px;color:var(--muted);">No companies recorded on the selected project'+(sel.length>1?'s':'')+' yet.</span>';
+    markCompanyChip();
+  }
+}
+function pickCompany(el){
+  const inp=document.getElementById('grant-company'); if(!inp) return;
+  inp.value=el.textContent; markCompanyChip(); inp.focus();
+}
+// Highlight whichever chip matches what is typed, so the state is obvious.
+function markCompanyChip(){
+  const inp=document.getElementById('grant-company'); if(!inp) return;
+  const v=String(inp.value||'').trim().toLowerCase();
+  document.querySelectorAll('#grant-company-chips .co-chip').forEach(c=>{
+    c.classList.toggle('on', c.textContent.trim().toLowerCase()===v);
+  });
 }
 const ROLE_LABELS={'contractor':'Contractor','architect-engineer':'Architect / Engineer','owner':'Owner'};
 function roleBadge(r){
