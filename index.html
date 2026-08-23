@@ -162,17 +162,17 @@
   .tb-actions{display:flex; align-items:center; gap:12px;}
   .picker-actions{display:flex; align-items:center; gap:10px;}
   .tb-menu-btn,.picker-menu-btn{display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:20px; line-height:1; cursor:pointer; color:var(--olive-900);}
-  .account-chip{display:inline-flex; align-items:center; gap:9px; cursor:pointer; padding:5px 16px 5px 6px;
-    border:1px solid var(--border); border-radius:24px; background:var(--white);
-    font-size:14px; color:var(--ink); max-width:290px; white-space:nowrap; transition:border-color .15s,background .15s;}
+  .account-chip{display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:3px 13px 3px 4px;
+    border:1px solid var(--border); border-radius:22px; background:var(--white);
+    font-size:13px; color:var(--ink); max-width:260px; white-space:nowrap; transition:border-color .15s,background .15s;}
   .account-chip:hover{background:var(--cream); border-color:var(--khaki-300);}
   .account-chip span.ac-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .ac-avatar{flex:0 0 auto; width:32px; height:32px; border-radius:50%; display:inline-flex;
+  .ac-avatar{flex:0 0 auto; width:26px; height:26px; border-radius:50%; display:inline-flex;
     align-items:center; justify-content:center; background:#E9C63F; color:#5A4A08;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:.4px;
     text-transform:uppercase; overflow:hidden;}
   .ac-avatar img{width:100%; height:100%; object-fit:cover; border-radius:50%;}
-  .tb-signout{background:var(--white); border:1px solid var(--border); border-radius:8px; padding:9px 16px;
+  .tb-signout{background:var(--white); border:1px solid var(--border); border-radius:8px; padding:8px 14px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:600;
     color:var(--muted); cursor:pointer; transition:background .15s,color .15s,border-color .15s;}
   .tb-signout:hover{background:var(--cream); color:var(--olive-900); border-color:var(--khaki-300);}
@@ -520,17 +520,17 @@
   <div class="picker-topbar">
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
-      <div class="account-chip" id="pk-chip" onclick="openAccount()" title="My Account">
-        <span class="ac-avatar" id="pk-avatar"></span>
-        <span class="ac-name" id="user-name-display"></span>
-      </div>
-      <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
       <button class="picker-menu-btn" onclick="toggleMenu(event,'picker-actions')" aria-label="More">&#9776;</button>
       <div class="picker-actions" id="picker-actions">
         <button class="btn-logout" onclick="openAccount()">My Account</button>
         <button class="btn-logout" onclick="openFeedback()">Report a Bug / Feedback</button>
         <button class="btn-logout admin-only" onclick="openContactDir()">Contact Directory</button>
         <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
+      </div>
+      <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
+      <div class="account-chip" id="pk-chip" onclick="openAccount()" title="My Account">
+        <span class="ac-avatar" id="pk-avatar"></span>
+        <span class="ac-name" id="user-name-display"></span>
       </div>
     </div>
   </div>
