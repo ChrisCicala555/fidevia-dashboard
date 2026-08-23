@@ -2329,9 +2329,11 @@ function renderContacts(){
     return '<div class="dir-flag" title="The Contact Directory says &ldquo;'+esc(m.theirs)+'&rdquo;. Click to use it here." onclick="adoptDirValue('+i+',\''+f+'\')">'
       +'<span>Directory:</span><span class="dfv">'+esc(m.theirs)+'</span></div>';
   };
-  const editCell=(i,f,v,w)=> IS_ADMIN
-    ? '<td><input class="cd-inp" style="width:'+w+'px" value="'+esc(v||'')+'" onchange="saveContactField('+i+',\''+f+'\',this.value)">'+flagFor(i,f)+'</td>'
-    : '<td>'+esc(v||'')+flagFor(i,f)+'</td>';
+  // Contact details are no longer editable inside a project. They are
+  // maintained in the Contact Directory (or on the access grant); the only
+  // change available here is adopting the directory's value, which is a
+  // correction rather than free-form editing.
+  const editCell=(i,f,v,w)=> '<td>'+esc(v||'')+flagFor(i,f)+'</td>';
   // group indexes by company (preserve original index for actions)
   const groups={};
   rows.forEach((r,i)=>{ const c=(r['Company']||'').trim()||'— No Company —'; (groups[c]=groups[c]||[]).push(i); });
@@ -2339,6 +2341,7 @@ function renderContacts(){
   const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
   let html='';
   if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
+  if(IS_ADMIN && !viewingAsExternal()){ html+='<tr><td colspan="10" style="padding:7px 14px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--khaki-100);">Names and companies are maintained in the <strong>Contact Directory</strong>. Where a contact&rsquo;s details differ from it, use the marker beneath the value to adopt the directory&rsquo;s version here.</td></tr>'; }
   companies.forEach(c=>{
     html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;">'+esc(c)+'<span class="cd-letter-count">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
