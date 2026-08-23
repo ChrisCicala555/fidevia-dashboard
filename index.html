@@ -55,6 +55,10 @@
   .picker-topbar{width:100%; max-width:800px; display:flex; justify-content:space-between; align-items:center; margin-bottom:40px; position:relative; z-index:400;}
   .picker-logo{font-family:'Playfair Display',serif; font-style:italic; font-weight:600; font-size:37px; color:var(--olive-900);}
   .picker-user{font-size:13px; color:var(--muted); display:flex; align-items:center; gap:10px;}
+  /* Wide screens show the chip and Sign Out; the menu carries only the rest. */
+  @media(min-width:861px){ .picker-actions{display:flex; flex-direction:row; gap:8px; position:static; background:none; border:none; box-shadow:none; padding:0; min-width:0;}
+    .picker-actions .btn-logout[onclick*="openAccount"],
+    .picker-actions .btn-logout[onclick*="logoutAuth0"]{display:none;} }
   .btn-logout{background:none; border:1px solid var(--border); border-radius:5px; padding:5px 12px; font-size:13px; color:var(--muted); cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .btn-logout:hover{background:var(--khaki-100);}
   .picker-heading{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:22px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:var(--olive-900); margin-bottom:6px; text-align:center;}
@@ -158,10 +162,20 @@
   .tb-actions{display:flex; align-items:center; gap:12px;}
   .picker-actions{display:flex; align-items:center; gap:10px;}
   .tb-menu-btn,.picker-menu-btn{display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:20px; line-height:1; cursor:pointer; color:var(--olive-900);}
-  .account-chip{display:flex; align-items:center; gap:8px; cursor:pointer; padding:5px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .account-chip:hover{background:var(--cream);}
-  .account-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .tb-signout{background:none; border:1px solid var(--border); border-radius:5px; padding:5px 12px; font-size:12px; color:var(--muted); cursor:pointer;}
+  .account-chip{display:inline-flex; align-items:center; gap:9px; cursor:pointer; padding:5px 16px 5px 6px;
+    border:1px solid var(--border); border-radius:24px; background:var(--white);
+    font-size:14px; color:var(--ink); max-width:290px; white-space:nowrap; transition:border-color .15s,background .15s;}
+  .account-chip:hover{background:var(--cream); border-color:var(--khaki-300);}
+  .account-chip span.ac-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ac-avatar{flex:0 0 auto; width:32px; height:32px; border-radius:50%; display:inline-flex;
+    align-items:center; justify-content:center; background:#E9C63F; color:#5A4A08;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:.4px;
+    text-transform:uppercase; overflow:hidden;}
+  .ac-avatar img{width:100%; height:100%; object-fit:cover; border-radius:50%;}
+  .tb-signout{background:var(--white); border:1px solid var(--border); border-radius:8px; padding:9px 16px;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:600;
+    color:var(--muted); cursor:pointer; transition:background .15s,color .15s,border-color .15s;}
+  .tb-signout:hover{background:var(--cream); color:var(--olive-900); border-color:var(--khaki-300);}
   .topbar h1{font-size:21px; margin:0; color:var(--olive-900); font-weight:600;}
   .topbar .project-name{font-size:14px; color:var(--muted); margin-top:2px;}
   .viewer-toggle{display:flex; align-items:center; gap:10px; background:var(--khaki-100); padding:6px 8px; border-radius:6px;}
@@ -506,12 +520,15 @@
   <div class="picker-topbar">
     <img src="./Fidevia w_branch.avif" alt="Fidevia" class="picker-logo-img">
     <div class="picker-user">
-      <span id="user-name-display"></span>
-      <button class="picker-menu-btn" onclick="toggleMenu(event,'picker-actions')" aria-label="Menu">&#9776;</button>
+      <div class="account-chip" id="pk-chip" onclick="openAccount()" title="My Account">
+        <span class="ac-avatar" id="pk-avatar"></span>
+        <span class="ac-name" id="user-name-display"></span>
+      </div>
+      <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
+      <button class="picker-menu-btn" onclick="toggleMenu(event,'picker-actions')" aria-label="More">&#9776;</button>
       <div class="picker-actions" id="picker-actions">
         <button class="btn-logout" onclick="openAccount()">My Account</button>
         <button class="btn-logout" onclick="openFeedback()">Report a Bug / Feedback</button>
-
         <button class="btn-logout admin-only" onclick="openContactDir()">Contact Directory</button>
         <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
       </div>
@@ -761,9 +778,9 @@
             </select>
             <select id="viewer-company" style="display:none;max-width:170px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);" onchange="setViewerCompany(this.value)"></select>
           </div>
-          <div class="account-chip" onclick="openAccount()" title="My Account">
-            <img id="auth0-user-avatar" src="" style="display:none;width:26px;height:26px;border-radius:50%;">
-            <span id="auth0-user-name"></span>
+          <div class="account-chip" id="tb-chip" onclick="openAccount()" title="My Account">
+            <span class="ac-avatar" id="tb-avatar"></span>
+            <span class="ac-name" id="auth0-user-name"></span>
           </div>
           <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
         </div>
@@ -1601,13 +1618,13 @@ async function loadPicker(){
   const toggle=document.getElementById('picker-view-toggle');
   try{
     if(EXTERNAL){
-      try{ const u=await auth0Client.getUser(); const el=document.getElementById('user-name-display'); if(el) el.textContent=u.name||u.email||''; }catch(e){}
+      renderAccountChip('pk-chip','pk-avatar','user-name-display');
       if(subEl) subEl.textContent='Projects you have been granted access to.';
       if(toggle) toggle.style.display='none';
       PICKER_PROJECTS = (await proxyCall('myProjects',{})).projects || [];
       PICKER_ARCHIVED = new Set();
     } else {
-      try{ const u=await auth0Client.getUser(); document.getElementById('user-name-display').textContent=u.name||u.email||''; }catch(e){}
+      renderAccountChip('pk-chip','pk-avatar','user-name-display');
       if(toggle) toggle.style.display='';
       const pr = await proxyCall('adminListProjects',{});
       if(pr.rootId) sessionStorage.setItem('root_id', pr.rootId);
@@ -3937,6 +3954,33 @@ document.addEventListener('click',function(e){
   if(!e.target.closest('.picker-user')){ const p=document.getElementById('picker-actions'); if(p) p.classList.remove('open'); }
 });
 let _histGuard=false;
+// One account chip, used by the picker and the project topbar. Falls back to
+// initials when the account has no picture, which most do.
+function initialsOf(nameOrEmail){
+  const t=String(nameOrEmail||'').trim();
+  if(!t) return '?';
+  if(t.includes('@')){
+    const local=t.split('@')[0].replace(/[^a-zA-Z]+/g,' ').trim();
+    const w=local.split(/\s+/).filter(Boolean);
+    return ((w[0]||t)[0]+((w[1]||'')[0]||(w[0]||'')[1]||'')).slice(0,2);
+  }
+  const w=t.split(/\s+/).filter(Boolean);
+  return ((w[0]||'')[0]+((w[1]||'')[0]||'')).slice(0,2);
+}
+function renderAccountChip(chipId, avatarId, nameId){
+  const chip=document.getElementById(chipId); if(!chip) return;
+  try{
+    auth0Client.getUser().then(u=>{
+      if(!u) return;
+      const label=u.email||u.name||'';
+      const nm=document.getElementById(nameId); if(nm) nm.textContent=label;
+      const av=document.getElementById(avatarId); if(!av) return;
+      if(u.picture){ av.innerHTML='<img src="'+esc(u.picture)+'" alt="">'; }
+      else { av.textContent=initialsOf(u.name||u.email||''); }
+    }).catch(()=>{});
+  }catch(e){}
+}
+
 function currentScreenId(){
   const el=document.querySelector('.screen.active');
   return el?el.id:'screen-picker';
@@ -4048,10 +4092,9 @@ async function saveProfile(){
   if(!isAuth){ showScreen('screen-auth0login'); return; }
   const user = await auth0Client.getUser();
   if(user){
-    const nm=document.getElementById('auth0-user-name');
-    if(nm) nm.textContent = user.name||user.email;
-    const av=document.getElementById('auth0-user-avatar');
-    if(av && user.picture){ av.src=user.picture; av.style.display='inline'; }
+    // Both chips are built from the same helper, so they cannot drift apart.
+    renderAccountChip('tb-chip','tb-avatar','auth0-user-name');
+    renderAccountChip('pk-chip','pk-avatar','user-name-display');
     // Onboarding check
     const meta = user['https://fidevia.com/meta'] || {};
     let localProf=null; try{ localProf=JSON.parse(localStorage.getItem('fidevia_profile_'+user.sub)||'null'); }catch(e){}
