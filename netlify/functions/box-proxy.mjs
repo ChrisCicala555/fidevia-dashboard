@@ -929,13 +929,29 @@ export default async (req) => {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');
       let emails = [];
+      // Return the profile details as well. The walk already reads each blob,
+      // so this costs nothing extra and lets the client flag project contacts
+      // whose details disagree with the directory.
+      const profiles = {};
       try {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
-          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) emails.push(String(pr.email).trim().toLowerCase()); } catch (e) {}
+          try {
+            const pr = await store.get(b.key, { type: 'json' });
+            if (pr && pr.email) {
+              const em = String(pr.email).trim().toLowerCase();
+              emails.push(em);
+              profiles[em] = {
+                name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || '',
+                company: pr.company || '',
+                phone: pr.phone || '',
+                title: pr.title || ''
+              };
+            }
+          } catch (e) {}
         }
       } catch (e) {}
-      return json({ emails: [...new Set(emails)] });
+      return json({ emails: [...new Set(emails)], profiles });
     }
     if (op === 'projectCompanies') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);

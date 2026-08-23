@@ -240,6 +240,12 @@
         background-size:1000px 100%; animation:skelShimmer 1.5s linear infinite;}
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
+  .dir-flag{display:inline-flex; align-items:center; gap:4px; margin-top:3px;
+    font-size:11px; line-height:1.3; color:var(--olive-700); cursor:pointer;
+    background:var(--khaki-100); border:1px solid var(--khaki-300); border-radius:4px;
+    padding:2px 6px; max-width:100%;}
+  .dir-flag:hover{background:var(--khaki-200);}
+  .dir-flag .dfv{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .dg-photo-x{flex:0 0 auto; width:26px; height:26px; line-height:1; border-radius:50%;
               border:1px solid var(--border); background:var(--white); color:var(--muted);
               font-size:17px; cursor:pointer; transition:background .15s,color .15s,border-color .15s;}
@@ -2315,9 +2321,17 @@ function renderContacts(){
   const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
   if(!rows.length){tb.innerHTML=emptyRow(9);return;}
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
+  // Where a contact has an account and the project value disagrees with their
+  // profile, offer the directory value rather than changing anything silently.
+  const flagFor=(i,f)=>{
+    const r=rows[i]; if(!r) return '';
+    const m=dirMismatches(r).find(x=>x.field===f); if(!m) return '';
+    return '<div class="dir-flag" title="The Contact Directory says &ldquo;'+esc(m.theirs)+'&rdquo;. Click to use it here." onclick="adoptDirValue('+i+',\''+f+'\')">'
+      +'<span>Directory:</span><span class="dfv">'+esc(m.theirs)+'</span></div>';
+  };
   const editCell=(i,f,v,w)=> IS_ADMIN
-    ? '<td><input class="cd-inp" style="width:'+w+'px" value="'+esc(v||'')+'" onchange="saveContactField('+i+',\''+f+'\',this.value)"></td>'
-    : '<td>'+esc(v||'')+'</td>';
+    ? '<td><input class="cd-inp" style="width:'+w+'px" value="'+esc(v||'')+'" onchange="saveContactField('+i+',\''+f+'\',this.value)">'+flagFor(i,f)+'</td>'
+    : '<td>'+esc(v||'')+flagFor(i,f)+'</td>';
   // group indexes by company (preserve original index for actions)
   const groups={};
   rows.forEach((r,i)=>{ const c=(r['Company']||'').trim()||'— No Company —'; (groups[c]=groups[c]||[]).push(i); });
@@ -2328,7 +2342,7 @@ function renderContacts(){
   companies.forEach(c=>{
     html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;">'+esc(c)+'<span class="cd-letter-count">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
-      html+='<tr><td>'+esc(r['Name'])+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
+      html+='<tr><td>'+esc(r['Name'])+flagFor(i,'Name')+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+flagFor(i,'Phone')+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
   });
   tb.innerHTML=html;
@@ -2342,6 +2356,34 @@ async function saveContactField(i, field, val){
   renderContacts();
 }
 let ACCOUNT_EMAILS=new Set();
+// email -> {name, company, phone, title} from the global Contact Directory.
+let ACCOUNT_PROFILES={};
+// Fields worth flagging. Role is deliberately excluded: someone can genuinely
+// be a Project Manager on one job and a Superintendent on another.
+const DIR_COMPARE=[['Company','company'],['Name','name'],['Phone','phone']];
+function normCmp(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim().toLowerCase(); }
+function normPhone(v){ return String(v==null?'':v).replace(/[^0-9]/g,''); }
+// Returns the fields where this project contact disagrees with their profile.
+function dirMismatches(r){
+  const em=String((r&&r['Email'])||'').trim().toLowerCase();
+  const prof=em?ACCOUNT_PROFILES[em]:null;
+  if(!prof) return [];
+  const out=[];
+  DIR_COMPARE.forEach(([field,key])=>{
+    const mine=r[field], theirs=prof[key];
+    if(!String(theirs||'').trim()) return;          // nothing to compare against
+    if(!String(mine||'').trim()) return;            // blank locally is not a conflict
+    const same = field==='Phone' ? normPhone(mine)===normPhone(theirs) : normCmp(mine)===normCmp(theirs);
+    if(!same) out.push({field, mine:String(mine), theirs:String(theirs)});
+  });
+  return out;
+}
+async function adoptDirValue(i, field){
+  const r=(allData.contacts||[])[i]; if(!r) return;
+  const m=dirMismatches(r).find(x=>x.field===field); if(!m) return;
+  if(!confirm('Set '+field+' to "'+m.theirs+'" from the Contact Directory?\n\nThis changes this project only.')) return;
+  await saveContactField(i, field, m.theirs);
+}
 function accountCell(r){
   const em=String(r['Email']||'').trim().toLowerCase();
   const has = em && ACCOUNT_EMAILS.has(em);
@@ -2350,7 +2392,12 @@ function accountCell(r){
     : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
 }
 async function loadAccountEmails(){
-  try{ const d=await proxyCall('accountEmails',{},{quiet:true}); ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase())); renderContacts(); }catch(e){}
+  try{
+    const d=await proxyCall('accountEmails',{},{quiet:true});
+    ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase()));
+    ACCOUNT_PROFILES=d.profiles||{};
+    renderContacts();
+  }catch(e){}
 }
 function contactInvite(r,i){
   const em=String(r['Email']||'').trim().toLowerCase();
