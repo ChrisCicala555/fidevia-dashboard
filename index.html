@@ -403,6 +403,11 @@
 <body>
 
 <!-- ══ LOGIN ══ -->
+<div id="project-loading" style="display:none;position:fixed;inset:0;z-index:9000;background:var(--olive-900);flex-direction:column;align-items:center;justify-content:center;">
+  <img src="./Fidevia w_branch.avif" alt="Fidevia" style="max-width:190px;height:auto;opacity:.95">
+  <div id="project-loading-name" style="margin-top:16px;font-family:'Times New Roman',Times,serif;font-size:19px;color:#e8e6d8;text-align:center;padding:0 24px;"></div>
+  <div id="project-loading-step" style="margin-top:8px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#a9a996;">Loading…</div>
+</div>
 <div id="screen-boot" class="screen active" style="align-items:center;justify-content:center;min-height:100vh;background:var(--olive-900);flex-direction:column;">
   <img src="./Fidevia w_branch.avif" alt="Fidevia" style="max-width:200px;height:auto;opacity:.95">
   <div style="margin-top:18px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c9c6b4">Loading…</div>
@@ -1623,6 +1628,28 @@ async function confirmDeleteProject(){
   }catch(e){ showStatus('delete-status', e.message||'Error', 'error'); btn.disabled=false; }
 }
 
+// True only once a project's data has actually arrived. Guards against
+// rendering conclusions — "Nailed it!" above all — from an empty allData.
+let DATA_READY=false;
+let _loadGateTimer=null;
+function showProjectLoading(name){
+  DATA_READY=false;
+  const el=document.getElementById('project-loading'); if(!el) return;
+  const n=document.getElementById('project-loading-name'); if(n) n.textContent=name||'';
+  const st=document.getElementById('project-loading-step'); if(st) st.textContent='Loading…';
+  el.style.display='flex';
+  // Never trap someone behind the gate if a call hangs.
+  clearTimeout(_loadGateTimer);
+  _loadGateTimer=setTimeout(()=>hideProjectLoading(), 30000);
+}
+function projectLoadingStep(txt){
+  const st=document.getElementById('project-loading-step'); if(st&&txt) st.textContent=txt;
+}
+function hideProjectLoading(){
+  clearTimeout(_loadGateTimer); _loadGateTimer=null;
+  const el=document.getElementById('project-loading'); if(el) el.style.display='none';
+}
+
 // Paint the shape of the dashboard immediately so landing on a project shows
 // structure instead of a blank page that pops into content.
 let _skelTimer=null;
@@ -1691,24 +1718,38 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   document.getElementById('topbar-title').textContent = name;
+  showProjectLoading(name);
   showScreen('screen-dashboard');
   resetProjectPhotos();
   showProjectSkeleton();
-  const items = await boxList(folderId);
-  const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
-  currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
-  if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; }
-  if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
-  applyRoleClasses();
-  navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
-  try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
-  try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId},{quiet:true})).templates||{}; }catch(e){ currentProject.notif={}; }
-  loadAccessRequests(folderId);
-  toggleBoardTab(); loadLogo();
-  if(!EXTERNAL) loadProjectPhotos();
-  if(!EXTERNAL) loadAccountEmails();
-  loadDashboard();
+  try{
+    projectLoadingStep('Checking access…');
+    const items = await boxList(folderId);
+    const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
+    currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
+    if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; }
+    if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
+    applyRoleClasses();
+    navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
+    projectLoadingStep('Reading project settings…');
+    try{ currentProject.config = await readProjectConfig(folderId, items); }catch(e){ currentProject.config={}; }
+    try{ currentProject.notif=(await proxyCall('getNotifTemplates',{projectId:folderId},{quiet:true})).templates||{}; }catch(e){ currentProject.notif={}; }
+    loadAccessRequests(folderId);
+    toggleBoardTab(); loadLogo();
+    if(!EXTERNAL) loadProjectPhotos();
+    if(!EXTERNAL) loadAccountEmails();
+    projectLoadingStep('Loading project records…');
+    // loadDashboard lifts the gate itself once records are in and rendered.
+    await loadDashboard();
+  }catch(e){
+    // Never leave someone stuck behind the gate.
+    hideProjectLoading();
+    DATA_READY=true;
+    console.warn('openProject failed:', e && e.message);
+    alert('Could not open this project.\n\n'+((e&&e.message)||'Unknown error')+'\n\nPlease try again, or go back and pick another project.');
+  }
 }
+
 
 // ── PROJECT CONFIG (per-project settings stored as Project Info.json in the project folder) ──
 async function readProjectConfig(folderId, items){
@@ -1964,8 +2005,10 @@ async function loadDashboard(){
     // Fall back to per-module loads if the batch call fails
     await Promise.allSettled(keys.map(k=>loadModule(k)));
   }
+  DATA_READY=true;
   renderAll();
   clearProjectSkeleton();
+  hideProjectLoading();
 }
 
 async function loadModule(key){
@@ -2624,6 +2667,15 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   const el=document.getElementById('attention-panel'); if(!el) return;
   // The Owner has no queue — they cannot action anything.
   if(isOwnerView()){ el.style.display='none'; el.innerHTML=''; return; }
+  // Before the project's records arrive, allData is empty — which would look
+  // exactly like "nothing outstanding". Hold the placeholder instead of
+  // announcing a conclusion we cannot support yet.
+  if(!DATA_READY){
+    el.style.display='';
+    el.innerHTML='<div class="att-card"><span class="skel" style="width:170px;height:10px;"></span>'
+      +'<div style="height:12px;"></div><span class="skel" style="width:60%"></span></div>';
+    return;
+  }
 
   const me=(ME_EMAIL||'').toLowerCase();
   const myName=(ME_NAME||'').trim().toLowerCase();
@@ -2773,7 +2825,8 @@ function renderOverview(){
     ['Payment Applications (pending)',openP.length,'payapps',false]
   ];
   const st=document.getElementById('tbody-summary');
-  if(st){ st.innerHTML=summary.map(([lbl,n,sec,danger])=>{
+  if(st && !DATA_READY){ /* leave the skeleton in place until records arrive */ }
+  else if(st){ st.innerHTML=summary.map(([lbl,n,sec,danger])=>{
     const color=n>0?(danger?'var(--danger)':'var(--olive-900)'):'var(--muted)';
     return '<tr style="cursor:pointer;" onclick="navTo(\''+sec+'\')"><td>'+esc(lbl)+'</td><td style="text-align:right;font-weight:700;font-size:16px;color:'+color+'">'+n+'</td></tr>';
   }).join(''); }
