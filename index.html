@@ -636,7 +636,7 @@
   <div class="cd-page">
     <div class="cd-page-head">
       <h2 class="picker-heading" style="margin:0;text-align:left;">Contact Directory</h2>
-      <div><button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="margin-right:8px;">Export to Box</button><button class="btn-secondary" onclick="showScreen('screen-picker')">← Back</button></div>
+      <div><button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="margin-right:8px;">Export to Box</button><button class="btn-secondary" onclick="if(cdConfirmLeave())showScreen('screen-picker')">← Back</button></div>
     </div>
     <div id="cd-lockbar" style="margin-bottom:14px;"></div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
@@ -648,6 +648,11 @@
         <option value="role">Role</option>
       </select>
       <span id="cd-count" style="font-size:12.5px;color:var(--muted);"></span>
+    </div>
+    <div id="cd-savebar" style="display:none;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:var(--khaki-100);border:1px solid var(--khaki-300);border-radius:8px;">
+      <button class="btn-primary" id="btn-cd-save" onclick="saveContactDirectory()" disabled style="padding:8px 16px;font-size:13px;">Save changes</button>
+      <button class="btn-secondary" onclick="discardContactChanges()" style="padding:8px 14px;font-size:13px;">Discard</button>
+      <span id="cd-dirty-note" style="font-size:12.5px;color:var(--muted);">No unsaved changes</span>
     </div>
     <div id="cd-list"><div style="color:var(--muted)">Loading…</div></div>
   </div>
@@ -3118,7 +3123,8 @@ function renderContactDir(){
   const fld=(idx,field,val,w)=> CD_UNLOCKED
     ? '<input class="cd-inp" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
       +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
-      +' onchange="saveContactMeta('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
+      +' oninput="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'this.value':'this.value')+')"'
+      +' onchange="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
     : esc(val||'—');
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
     return '<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:6px;font-weight:600;">'+esc(c.name)+'</td>'
@@ -3126,13 +3132,76 @@ function renderContactDir(){
       +'<td style="padding:6px;">'+fld(idx,'role',c.role,130)+'</td>'
       +'<td style="padding:6px;">'+fld(idx,'email',c.email,190)+'</td>'
       +'<td style="padding:6px;white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):esc(fmtPhone(c.phone)||'—'))+'</td></tr>'; };
+  try{ cdUpdateSaveBar(); }catch(e){}
   el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
     +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table>';
 }
-async function saveContactMeta(idx, field, val){
-  const c=CONTACT_DIR[idx]; if(!c) return; c[field]=val;
-  try{ await proxyCall('setContactMeta',{sub:c.sub, password:CD_PW, [field]:val}); }catch(e){ alert('Could not save: '+e.message); }
+// Edits are held until Save, so a mistyped field can be abandoned and several
+// changes to one person go up as a single request.
+let CD_DIRTY={};   // sub -> { field: value }
+function cdEdit(idx, field, val){
+  const c=CONTACT_DIR[idx]; if(!c) return;
+  const original=(c._orig&&c._orig[field]!==undefined)?c._orig[field]:c[field];
+  c._orig=c._orig||{}; if(c._orig[field]===undefined) c._orig[field]=original;
+  c[field]=val;
+  const changed=String(val||'')!==String(c._orig[field]||'');
+  CD_DIRTY[c.sub]=CD_DIRTY[c.sub]||{};
+  if(changed) CD_DIRTY[c.sub][field]=val; else delete CD_DIRTY[c.sub][field];
+  if(!Object.keys(CD_DIRTY[c.sub]).length) delete CD_DIRTY[c.sub];
+  cdUpdateSaveBar();
+}
+function cdDirtyCount(){
+  return Object.values(CD_DIRTY).reduce((n,o)=>n+Object.keys(o).length,0);
+}
+function cdUpdateSaveBar(){
+  const bar=document.getElementById('cd-savebar'); if(!bar) return;
+  const fields=cdDirtyCount(), people=Object.keys(CD_DIRTY).length;
+  if(!CD_UNLOCKED){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  const btn=document.getElementById('btn-cd-save');
+  const note=document.getElementById('cd-dirty-note');
+  if(btn) btn.disabled = fields===0;
+  if(note) note.textContent = fields
+    ? fields+' change'+(fields===1?'':'s')+' to '+people+' contact'+(people===1?'':'s')+' not yet saved'
+    : 'No unsaved changes';
+  if(note) note.style.color = fields ? 'var(--danger)' : 'var(--muted)';
+}
+async function saveContactDirectory(){
+  const subs=Object.keys(CD_DIRTY); if(!subs.length) return;
+  const btn=document.getElementById('btn-cd-save'); if(btn) btn.disabled=true;
+  const note=document.getElementById('cd-dirty-note'); if(note){ note.textContent='Saving…'; note.style.color='var(--muted)'; }
+  const failed=[];
+  for(const sub of subs){
+    try{ await proxyCall('setContactMeta', Object.assign({sub, password:CD_PW}, CD_DIRTY[sub])); }
+    catch(e){ failed.push((CONTACT_DIR.find(c=>c.sub===sub)||{}).name||sub); }
+  }
+  if(failed.length){
+    if(note){ note.textContent='Could not save: '+failed.join(', '); note.style.color='var(--danger)'; }
+    if(btn) btn.disabled=false;
+    return;
+  }
+  CD_DIRTY={};
+  CONTACT_DIR.forEach(c=>{ delete c._orig; });
+  if(note){ note.textContent='Saved.'; note.style.color='var(--success-text,#3b6d11)'; }
+  renderContactDir();
+  setTimeout(cdUpdateSaveBar, 1800);
+}
+// Leaving with unsaved edits should be a deliberate choice.
+function cdConfirmLeave(){
+  const n=cdDirtyCount();
+  if(!n) return true;
+  return confirm(n+' unsaved change'+(n===1?'':'s')+' will be lost. Leave anyway?');
+}
+window.addEventListener('beforeunload', function(e){
+  if(cdDirtyCount()){ e.preventDefault(); e.returnValue=''; }
+});
+function discardContactChanges(){
+  if(!cdDirtyCount()) return;
+  if(!confirm('Discard '+cdDirtyCount()+' unsaved change(s)?')) return;
+  CONTACT_DIR.forEach(c=>{ if(c._orig){ Object.keys(c._orig).forEach(f=>{ c[f]=c._orig[f]; }); delete c._orig; } });
+  CD_DIRTY={};
+  renderContactDir();
 }
 async function openAccount(){
   document.getElementById('account-backdrop').classList.add('open');
@@ -3547,7 +3616,8 @@ async function renderGrants(){
     const rows=[];
     (d.grants||[]).forEach(g=>{ (g.projects||[]).forEach(p=>rows.push({email:g.email,id:p.id,name:p.name,company:p.company||'',role:p.role||''})); });
     if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">No external users have access yet.</div>'; return; }
-    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Project</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(r.email)+'</td><td style="padding:8px 6px;">'+esc(r.name||r.id)+'</td><td style="padding:8px 6px;">'+esc(r.company||'—')+'</td><td style="padding:8px 6px;">'+roleBadge(r.role)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="revokeAccess(\''+esc(r.email)+'\',\''+esc(r.id)+'\')">Revoke</button></td></tr>').join('')+'</tbody></table>';
+    try{ cdUpdateSaveBar(); }catch(e){}
+  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Project</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:8px 6px;">'+esc(r.email)+'</td><td style="padding:8px 6px;">'+esc(r.name||r.id)+'</td><td style="padding:8px 6px;">'+esc(r.company||'—')+'</td><td style="padding:8px 6px;">'+roleBadge(r.role)+'</td><td style="padding:8px 6px;text-align:right;"><button class="btn-reject" onclick="revokeAccess(\''+esc(r.email)+'\',\''+esc(r.id)+'\')">Revoke</button></td></tr>').join('')+'</tbody></table>';
   }catch(e){ el.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 async function loadGrantCompanies(){
