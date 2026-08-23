@@ -85,6 +85,9 @@
   .project-card:hover{box-shadow:0 4px 16px rgba(63,67,34,0.15); transform:translateY(-2px);}
   .project-card .pname{font-size:16px; font-weight:700; color:var(--olive-900); margin-bottom:4px;}
   .project-card .psub{font-size:13px; color:var(--muted); margin-bottom:16px;}
+  .pcard-logo{height:42px; margin-bottom:12px; display:flex; align-items:center;}
+  .pcard-logo img{max-height:42px; max-width:170px; width:auto; object-fit:contain;}
+  .project-card .pname{margin-bottom:16px;}
   .project-card .popen{display:inline-block; background:var(--olive-700); color:#fff; font-size:12px; font-weight:600; padding:6px 14px; border-radius:4px; transition:background .15s;}
   .project-card:hover .popen{background:var(--olive-900);}
   .add-project-card{background:var(--white); border:2px dashed var(--border); border-radius:8px; padding:22px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:14px; font-weight:600; gap:8px; min-height:130px; transition:background 0.15s,border-color 0.15s;}
@@ -1652,6 +1655,18 @@ const SYSTEM_FOLDERS=['Contact Directory Snapshots'];
 let PICKER_PROJECTS=[]; let PICKER_ARCHIVED=new Set(); let PICKER_VIEW='current';
 const ADD_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 function setPickerView(v){ PICKER_VIEW=v; document.querySelectorAll('#picker-view-toggle button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-v')===v)); renderPickerGrid(); }
+// Logo URLs are short-lived, so keep them for the life of the page only.
+const PICKER_LOGOS={};
+async function loadPickerLogo(projectId, fileId){
+  const slot=document.getElementById('plogo-'+projectId); if(!slot) return;
+  try{
+    let url=PICKER_LOGOS[fileId];
+    if(!url){ const d=await proxyCall('downloadUrl',{fileId},{quiet:true}); url=d&&d.url; if(url) PICKER_LOGOS[fileId]=url; }
+    if(url){ slot.innerHTML='<img src="'+esc(url)+'" alt="">'; slot.classList.add('has-logo'); }
+    else { slot.remove(); }
+  }catch(e){ slot.remove(); }
+}
+
 function renderPickerGrid(){
   const grid=document.getElementById('project-grid'); if(!grid) return;
   const archivedView = (!EXTERNAL && PICKER_VIEW==='archived');
@@ -1659,7 +1674,12 @@ function renderPickerGrid(){
   grid.innerHTML='';
   list.forEach(p=>{
     const card=document.createElement('div'); card.className='project-card';
-    let html='<div class="pname">'+esc(p.name)+'</div><div class="psub">Box &middot; '+esc(ROOT_NAME)+'</div><span class="popen">Open Dashboard</span>';
+    // The project's own logo where it has one; otherwise nothing rather than
+    // a line of boilerplate.
+    const logoSlot = p.logoFileId
+      ? '<div class="pcard-logo" id="plogo-'+esc(p.id)+'"></div>'
+      : '';
+    let html=logoSlot+'<div class="pname">'+esc(p.name)+'</div><span class="popen">Open Dashboard</span>';
     if(IS_ADMIN && !EXTERNAL){ const nm=String(p.name).replace(/'/g,"\\'");
       let items='<button onclick="event.stopPropagation();archiveProject(\''+esc(p.id)+'\',\''+esc(nm)+'\','+(archivedView?'false':'true')+')">'+(archivedView?'Unarchive':'Archive')+'</button>';
       items+='<button onclick="event.stopPropagation();renameProject(\''+esc(p.id)+'\',\''+esc(nm)+'\')">Rename Project</button>';
@@ -1669,6 +1689,7 @@ function renderPickerGrid(){
     card.innerHTML=html;
     card.onclick=()=>openProject(p.id,p.name);
     grid.appendChild(card);
+    if(p.logoFileId) loadPickerLogo(p.id, p.logoFileId);
   });
   if(archivedView){
     if(!list.length){ grid.innerHTML='<div class="loading-state" style="color:var(--muted)">No archived projects.</div>'; }

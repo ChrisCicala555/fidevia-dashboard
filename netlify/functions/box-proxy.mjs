@@ -11,6 +11,29 @@ let LAST_AUTH_RATELIMITED = false;
 // skipping the folder listing needed to resolve a CSV's file ID. All dashboard
 // traffic now shares ONE service-account rate limit (1000 req/min), so this
 // matters more than it did when each user had their own budget.
+// projectId -> logoFileId, so the project picker can show each project's logo
+// without re-reading every Project Info.json on each visit.
+const _logoCache = new Map();
+const LOGO_TTL = 10 * 60 * 1000;
+async function logoIdFor(H, projectId){
+  const k=String(projectId);
+  const hit=_logoCache.get(k);
+  if(hit && Date.now()<hit.exp) return hit.id;
+  let id='';
+  try{
+    const r=await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(k)}/items?limit=1000&fields=id,name,type`, { headers: H });
+    const items=r.ok?((await r.json()).entries||[]):[];
+    const cfgFile=items.find(e=>e.type==='file'&&e.name==='Project Info.json');
+    if(cfgFile){
+      const cr=await boxFetch(`https://api.box.com/2.0/files/${cfgFile.id}/content`, { headers: H });
+      if(cr.ok){ const cfg=JSON.parse(await cr.text())||{}; id=String(cfg.logoFileId||''); }
+    }
+  }catch(e){}
+  if(_logoCache.size>500) _logoCache.clear();
+  _logoCache.set(k,{id, exp:Date.now()+LOGO_TTL});
+  return id;
+}
+
 const _fidCache = new Map();
 const FID_TTL = 10 * 60 * 1000;
 function _fidGet(k){ const e=_fidCache.get(k); if(e && Date.now()<e.exp) return e.id; if(e) _fidCache.delete(k); return null; }
@@ -449,7 +472,9 @@ export default async (req) => {
       if (op === 'adminListProjects') {
         const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
         const d = await r.json();
-        return json({ rootId: String(process.env.BOX_PROJECTS_ROOT_ID || ''), projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
+        const projs = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name }));
+        await Promise.all(projs.map(async pr => { pr.logoFileId = await logoIdFor(H, pr.id); }));
+        return json({ rootId: String(process.env.BOX_PROJECTS_ROOT_ID || ''), projects: projs });
       }
       if (op === 'adminListGrants') {
         const store = grantsStore();
@@ -551,7 +576,8 @@ export default async (req) => {
       const d = await r.json();
       const existing = new Map((d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => [String(e.id), e.name]));
       const archived = new Set(await getArchivedIds());
-      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: g.role || '' }));
+      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: normRole(g.role) }));
+      await Promise.all(mine.map(async pr => { pr.logoFileId = await logoIdFor(H, pr.id); }));
       return json({ projects: mine });
     }
 
