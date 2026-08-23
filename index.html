@@ -296,6 +296,10 @@
   .cd-band .cdb-n{float:right; font-size:11px; font-weight:700; color:var(--olive-700);
     background:var(--white); border:1px solid var(--khaki-300); border-radius:11px; padding:2px 10px; margin-top:2px;}
   .cd-name{font-weight:700; color:var(--olive-900);}
+  .cd-row{cursor:pointer;}
+  .cd-open{display:inline-block; margin-left:9px; font-size:11.5px; font-weight:600; color:var(--olive-700);
+    opacity:0; transition:opacity .12s; white-space:nowrap;}
+  .cd-row:hover .cd-open{opacity:1;}
   .cd-mail{color:var(--olive-700); text-decoration:none;}
   .cd-mail:hover{text-decoration:underline;}
   .cd-search-wrap{position:relative; flex:1 1 300px; max-width:440px;}
@@ -1141,6 +1145,33 @@
       <button class="btn-primary" id="pa-submit-btn" onclick="submitPayAction()">Submit</button>
       <button class="btn-secondary" onclick="closePayAction()">Cancel</button>
       <span class="upload-progress" id="pa-progress" style="display:none">Saving…</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="person-backdrop" onclick="if(event.target===this)closePerson()">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-header"><h3 id="person-title">Contact</h3><button class="modal-close" onclick="closePerson()">✕</button></div>
+    <div class="modal-body">
+      <div id="person-head" style="display:flex;align-items:center;gap:12px;margin-bottom:18px;"></div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Projects</div>
+      <div id="person-projects" style="margin-bottom:20px;"></div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;">Add to a project</div>
+        <div class="field-row" style="margin-bottom:10px;">
+          <div class="field" style="margin:0;flex:1.4;"><label>Project</label><select id="person-add-proj"></select></div>
+          <div class="field" style="margin:0;flex:1;"><label>Role</label><select id="person-add-role">
+            <option value="contractor">Contractor</option>
+            <option value="architect-engineer">Architect / Engineer</option>
+            <option value="owner">Owner</option>
+          </select></div>
+        </div>
+        <div id="person-add-warn" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
+        <button class="btn-primary" id="person-add-btn" onclick="personAddProject()" style="padding:9px 18px;font-size:13px;">Add to project</button>
+        <span class="status-msg" id="person-status" style="margin-left:10px;"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -3221,15 +3252,16 @@ function renderContactDir(){
   const cnt=document.getElementById('cd-count');
   if(cnt) cnt.textContent = list.length+' contact'+(list.length===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s');
   const fld=(idx,field,val,w)=> CD_UNLOCKED
-    ? '<input class="cd-inp" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
+    ? '<input class="cd-inp" onclick="event.stopPropagation()" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
       +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
       +' oninput="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'this.value':'this.value')+')"'
       +' onchange="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
     : esc(val||'—');
-  const mailCell=v=>{ const e=String(v||'').trim(); return e ? '<a class="cd-mail" href="mailto:'+esc(e)+'">'+esc(e)+'</a>' : '<span style="color:var(--muted)">—</span>'; };
+  const mailCell=v=>{ const e=String(v||'').trim(); return e ? '<a class="cd-mail" onclick="event.stopPropagation()" href="mailto:'+esc(e)+'">'+esc(e)+'</a>' : '<span style="color:var(--muted)">—</span>'; };
   const plain=v=>{ const t=String(v||'').trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
-    return '<tr><td class="cd-name">'+esc(c.name)+'</td>'
+    return '<tr class="cd-row" onclick="openPerson('+idx+')" title="View projects and access"><td class="cd-name">'+esc(c.name)
+      +'<span class="cd-open">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'email',c.email,190):mailCell(c.email))+'</td>'
@@ -3269,6 +3301,119 @@ function cdUpdateSaveBar(){
     : 'No unsaved changes';
   if(note) note.style.color = fields ? 'var(--danger)' : 'var(--muted)';
 }
+// ── PERSON RECORD ──
+// Opening someone from the directory shows where they already have access and
+// lets you add them elsewhere, rather than retyping their address on another tab.
+let PERSON_CTX=null;
+let PROJECT_COMPANY_CACHE={};
+
+async function openPerson(idx){
+  const c=CONTACT_DIR[idx]; if(!c) return;
+  PERSON_CTX={idx, contact:c, grants:[]};
+  document.getElementById('person-title').textContent=c.name||c.email||'Contact';
+  document.getElementById('person-head').innerHTML=
+    '<span class="ac-avatar" style="width:38px;height:38px;font-size:13px;">'+esc(initialsOf(c.name||c.email))+'</span>'
+    +'<div><div style="font-weight:700;color:var(--olive-900);">'+esc(c.name||'—')+'</div>'
+    +'<div style="font-size:13px;color:var(--muted);">'+esc(c.email||'')+(c.company?' · '+esc(c.company):'')+'</div></div>';
+  document.getElementById('person-projects').innerHTML='<div style="color:var(--muted);font-size:13px;">Loading…</div>';
+  document.getElementById('person-status').textContent='';
+  document.getElementById('person-backdrop').classList.add('open');
+
+  if(!GRANT_PROJECTS.length){ try{ const d=await proxyCall('adminListProjects',{}); GRANT_PROJECTS=d.projects||[]; }catch(e){} }
+  try{
+    const d=await proxyCall('adminListGrants',{});
+    const g=(d.grants||[]).find(x=>String(x.email||'').toLowerCase()===String(c.email||'').toLowerCase());
+    PERSON_CTX.grants=(g&&g.projects)||[];
+  }catch(e){ PERSON_CTX.grants=[]; }
+  renderPersonProjects();
+}
+function closePerson(){ document.getElementById('person-backdrop').classList.remove('open'); PERSON_CTX=null; }
+
+function renderPersonProjects(){
+  if(!PERSON_CTX) return;
+  const box=document.getElementById('person-projects');
+  const g=PERSON_CTX.grants;
+  const isFidevia=String(PERSON_CTX.contact.email||'').toLowerCase().endsWith('@fidevia.com');
+  if(isFidevia){
+    box.innerHTML='<div style="font-size:13px;color:var(--olive-900);background:var(--khaki-100);border:1px solid var(--khaki-300);border-radius:6px;padding:10px 12px;">Fidevia staff — has access to every project. Grants are only needed for external people.</div>';
+  } else if(!g.length){
+    box.innerHTML='<div style="font-size:13px;color:var(--muted);font-style:italic;">No project access yet. They can sign in but will see nothing until added below.</div>';
+  } else {
+    box.innerHTML=g.map(p=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--khaki-100);">'
+      +'<div style="flex:1;min-width:0;"><div style="font-weight:600;color:var(--olive-900);">'+esc(p.name||p.id)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);">'+roleLabelOf(p.role)+(p.company?' · '+esc(p.company):'')+'</div></div>'
+      +'<button class="row-act act-delete" onclick="personRevoke(\''+esc(p.id)+'\')">Remove</button></div>').join('');
+  }
+  // Only offer projects they are not already on.
+  const have=new Set(g.map(p=>String(p.id)));
+  const sel=document.getElementById('person-add-proj');
+  const avail=GRANT_PROJECTS.filter(p=>!have.has(String(p.id)));
+  sel.innerHTML = avail.length
+    ? avail.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')
+    : '<option value="">Already on every project</option>';
+  const btn=document.getElementById('person-add-btn');
+  if(btn) btn.disabled = !avail.length || isFidevia;
+  sel.onchange=personCheckCompanyFit;
+  personCheckCompanyFit();
+}
+function roleLabelOf(r){ return esc((ROLE_LABELS&&ROLE_LABELS[String(r||'contractor').toLowerCase()])||'Contractor'); }
+
+// Warn when nobody from this person's company is on the project yet — usually a
+// sign the wrong project was picked, occasionally the first person from a new firm.
+async function personCheckCompanyFit(){
+  const warn=document.getElementById('person-add-warn'); if(!warn||!PERSON_CTX) return;
+  warn.style.display='none';
+  const pid=(document.getElementById('person-add-proj')||{}).value; if(!pid) return;
+  const co=String(PERSON_CTX.contact.company||'').trim();
+  if(!co){ warn.style.display='block'; warn.innerHTML='This person has no company recorded in the directory, so their records cannot be filed against one.'; return; }
+  let list=PROJECT_COMPANY_CACHE[pid];
+  if(!list){
+    try{ const d=await proxyCall('projectCompanies',{projectId:pid},{quiet:true}); list=d.companies||[]; PROJECT_COMPANY_CACHE[pid]=list; }
+    catch(e){ return; }
+  }
+  const known=list.some(x=>String(x).trim().toLowerCase()===co.toLowerCase());
+  if(!known){
+    warn.style.display='block';
+    warn.innerHTML='<strong>'+esc(co)+'</strong> is not on this project yet. Adding them will be the first access for that company — check it is the right project.';
+  }
+}
+
+async function personAddProject(){
+  if(!PERSON_CTX) return;
+  const sel=document.getElementById('person-add-proj');
+  const pid=sel.value; if(!pid) return;
+  const pname=sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const role=(document.getElementById('person-add-role')||{}).value||'contractor';
+  const co=String(PERSON_CTX.contact.company||'').trim();
+  if(role==='contractor' && !co){ showStatus('person-status','This person needs a company in the directory before they can be added as a contractor.','error'); return; }
+  const warn=document.getElementById('person-add-warn');
+  if(warn && warn.style.display!=='none'){
+    if(!confirm(warn.textContent+'\n\nAdd them anyway?')) return;
+  }
+  const btn=document.getElementById('person-add-btn'); btn.disabled=true;
+  showStatus('person-status','Adding…','info');
+  try{
+    await proxyCall('adminGrant',{email:PERSON_CTX.contact.email, projects:[{id:pid,name:pname}], company:co, role});
+    PERSON_CTX.grants.push({id:pid,name:pname,company:co,role});
+    showStatus('person-status','Added to '+pname+'.','success');
+    renderPersonProjects();
+    if(typeof renderGrants==='function') renderGrants();
+  }catch(e){ showStatus('person-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
+async function personRevoke(projectId){
+  if(!PERSON_CTX) return;
+  const p=PERSON_CTX.grants.find(x=>String(x.id)===String(projectId));
+  if(!confirm('Remove '+(PERSON_CTX.contact.name||PERSON_CTX.contact.email)+' from '+((p&&p.name)||'this project')+'?')) return;
+  try{
+    await proxyCall('adminRevoke',{email:PERSON_CTX.contact.email, projectId});
+    PERSON_CTX.grants=PERSON_CTX.grants.filter(x=>String(x.id)!==String(projectId));
+    renderPersonProjects();
+    if(typeof renderGrants==='function') renderGrants();
+  }catch(e){ alert('Could not remove: '+e.message); }
+}
+
 async function saveContactDirectory(){
   const subs=Object.keys(CD_DIRTY); if(!subs.length) return;
   const btn=document.getElementById('btn-cd-save'); if(btn) btn.disabled=true;
