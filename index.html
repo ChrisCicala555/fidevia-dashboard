@@ -255,6 +255,21 @@
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
   /* Contact Directory */
+  /* Small "i" that carries an explanation on hover, so the form stays quiet. */
+  .info-i{display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px;
+    margin-left:5px; border-radius:50%; border:1px solid var(--khaki-300); background:var(--white);
+    color:var(--olive-700); font-family:Georgia,'Times New Roman',serif; font-size:10px; font-style:italic;
+    font-weight:700; line-height:1; cursor:help; vertical-align:middle; position:relative; text-transform:none;
+    letter-spacing:0;}
+  .info-i:hover,.info-i:focus{background:var(--olive-700); color:#fff; border-color:var(--olive-700); outline:none;}
+  .info-i::after{content:attr(data-tip); position:absolute; left:50%; bottom:calc(100% + 8px);
+    transform:translateX(-50%); width:260px; padding:9px 12px; border-radius:7px;
+    background:var(--olive-900); color:#F2F1E6; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:12px; font-style:normal; font-weight:400; line-height:1.45; letter-spacing:0;
+    text-align:left; text-transform:none; white-space:normal; opacity:0; visibility:hidden;
+    transition:opacity .12s; z-index:600; box-shadow:0 6px 18px rgba(0,0,0,.18);}
+  .info-i:hover::after,.info-i:focus::after{opacity:1; visibility:visible;}
+  .info-req{color:var(--danger); margin-left:3px; font-weight:700;}
   .cd-tabs{display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px;}
   .cd-tab{background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px;
     padding:10px 16px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px;
@@ -686,9 +701,7 @@
         <span id="grant-proj-hint" style="font-size:12.5px;color:var(--muted);"></span>
       </div>
     </div>
-    <p class="form-desc" style="margin:-4px 0 12px;font-size:13px;">Company and role apply to every project selected above.</p>
-    <p class="form-desc" id="grant-role-hint" style="margin:-6px 0 12px;font-size:12.5px;color:var(--muted);"></p>
-    <div class="field-row"><div class="field"><label>Company</label><input id="grant-company" list="grant-company-list" autocomplete="off" oninput="markCompanyChip()" placeholder="Type, or pick below"><datalist id="grant-company-list"></datalist><div id="grant-company-chips" class="co-suggest"></div></div><div class="field"><label>Role on this project *</label><select id="grant-role" onchange="grantRoleChanged()">
+    <div class="field-row"><div class="field"><label id="grant-company-label">Company<span class="info-req" id="grant-company-req">*</span><span class="info-i" tabindex="0" id="grant-company-info" data-tip="Applies to every project selected above.">i</span></label><input id="grant-company" list="grant-company-list" autocomplete="off" oninput="markCompanyChip()" placeholder="Type, or pick below"><datalist id="grant-company-list"></datalist><div id="grant-company-chips" class="co-suggest"></div></div><div class="field"><label>Role on this project<span class="info-req">*</span><span class="info-i" tabindex="0" id="grant-role-info" data-tip="">i</span></label><select id="grant-role" onchange="grantRoleChanged()">
       <option value="contractor">Contractor — sees only its own company</option>
       <option value="architect-engineer">Architect / Engineer — sees all companies, can review</option>
       <option value="owner">Owner — read-only, financials and reports only</option>
@@ -3750,11 +3763,16 @@ const ROLE_HINTS={
 };
 function grantRoleChanged(){
   const r=(document.getElementById('grant-role')||{}).value||'contractor';
-  const h=document.getElementById('grant-role-hint'); if(h) h.textContent=ROLE_HINTS[r]||'';
+  const ri=document.getElementById('grant-role-info');
+  if(ri) ri.setAttribute('data-tip', ROLE_HINTS[r]||'');
   // Company only scopes a contractor; for the others it is just a label.
-  const cf=document.getElementById('grant-company');
-  const lbl=cf&&cf.closest('.field')&&cf.closest('.field').querySelector('label');
-  if(lbl) lbl.textContent = (r==='contractor') ? 'Company *' : 'Company (optional)';
+  const req=document.getElementById('grant-company-req');
+  const ci=document.getElementById('grant-company-info');
+  const isCon=(r==='contractor');
+  if(req) req.style.display = isCon ? '' : 'none';
+  if(ci) ci.setAttribute('data-tip', isCon
+    ? 'Required. This is what limits a contractor to their own records. Applies to every project selected above.'
+    : 'Optional for this role — it is only a label, since they see all companies. Applies to every project selected above.');
 }
 
 async function grantAccess(){
