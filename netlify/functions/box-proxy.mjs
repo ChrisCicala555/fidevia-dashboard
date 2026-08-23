@@ -420,6 +420,10 @@ async function callerMayReadFile(H, t, grants, who, fileId) {
   const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
   projectId = ids.find(x => gidset.has(x));
   if (!projectId) return false;
+  // The project's own logo is branding, not a record. It lives in
+  // Project Info.json rather than any CSV row, so the row check below would
+  // deny it to everyone the project is shared with.
+  try { const lg = await logoIdFor(H, projectId); if (lg && String(lg) === String(fileId)) return true; } catch (e) {}
   const allowed = await allowedFileIds(H, t, grants, who, projectId);
   return allowed.has(String(fileId));
 }
