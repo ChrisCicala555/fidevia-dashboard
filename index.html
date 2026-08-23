@@ -240,6 +240,28 @@
         background-size:1000px 100%; animation:skelShimmer 1.5s linear infinite;}
   .skel-row td{padding:14px 16px !important; font-style:normal !important; text-align:left !important;}
   .skel-card{border-top-color:var(--khaki-100) !important;}
+  /* Contact Directory */
+  .cd-card{background:var(--white); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  .cd-card table{width:100%; border-collapse:collapse; font-size:14px;}
+  .cd-card thead th{background:var(--white); text-align:left; padding:14px 18px; font-size:11px;
+    letter-spacing:.6px; text-transform:uppercase; color:var(--muted); font-weight:700;
+    border-bottom:1px solid var(--border);}
+  .cd-card tbody td{padding:13px 18px; border-bottom:1px solid #F1F0E8; vertical-align:middle;}
+  .cd-card tbody tr:last-child td{border-bottom:none;}
+  .cd-card tbody tr:hover td{background:#FBFAF6;}
+  .cd-band td{background:#F6F5EF !important; padding:9px 18px !important;
+    border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:2;}
+  .cd-band .cdb-key{font-family:'Times New Roman',Times,serif; font-size:17px; font-weight:700;
+    color:var(--olive-900); letter-spacing:.3px;}
+  .cd-band .cdb-n{float:right; font-size:11px; font-weight:700; color:var(--olive-700);
+    background:var(--white); border:1px solid var(--khaki-300); border-radius:11px; padding:2px 10px; margin-top:2px;}
+  .cd-name{font-weight:700; color:var(--olive-900);}
+  .cd-mail{color:var(--olive-700); text-decoration:none;}
+  .cd-mail:hover{text-decoration:underline;}
+  .cd-search-wrap{position:relative; flex:1 1 300px; max-width:440px;}
+  .cd-search-wrap svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); opacity:.45;}
+  .cd-search-wrap input{width:100%; margin:0; padding-left:36px;}
   .co-suggest{display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;}
   .co-chip{font-size:12.5px; line-height:1; padding:6px 11px; border-radius:20px; cursor:pointer;
     background:var(--white); color:var(--olive-900); border:1px solid var(--khaki-300);
@@ -636,11 +658,21 @@
   <div class="cd-page">
     <div class="cd-page-head">
       <h2 class="picker-heading" style="margin:0;text-align:left;">Contact Directory</h2>
-      <div><button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="margin-right:8px;">Export to Box</button><button class="btn-secondary" onclick="if(cdConfirmLeave())showScreen('screen-picker')">← Back</button></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" onclick="exportContactsNow()" id="btn-cd-export" style="display:inline-flex;align-items:center;gap:7px;padding:9px 15px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          Export to Box</button>
+        <button class="btn-secondary" onclick="if(cdConfirmLeave())showScreen('screen-picker')" style="display:inline-flex;align-items:center;gap:7px;padding:9px 15px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          Back</button>
+      </div>
     </div>
-    <div id="cd-lockbar" style="margin-bottom:14px;"></div>
+    <div id="cd-lockbar" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:18px;"></div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
-      <input id="cd-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContactDir()" style="flex:1 1 280px;max-width:420px;margin:0;">
+      <span class="cd-search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="cd-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContactDir()">
+      </span>
       <label style="font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">Group by</label>
       <select id="cd-group" onchange="renderContactDir()" style="border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;font-family:inherit;background:var(--white);color:var(--ink);">
         <option value="name">Name</option>
@@ -3070,8 +3102,10 @@ let CONTACT_DIR=[];
 let CD_UNLOCKED=false, CD_PW='';
 function renderCdLockBar(){
   const el=document.getElementById('cd-lockbar'); if(!el) return;
-  if(CD_UNLOCKED){ el.innerHTML='<span style="color:var(--olive-700);font-weight:600;font-size:13px;">🔓 Editing unlocked</span> <button class="btn-secondary" style="padding:5px 12px;margin-left:8px;" onclick="lockContactDir()">Lock</button>'; }
-  else{ el.innerHTML='<span style="color:var(--muted);font-size:13px;">🔒 Locked.</span> <input type="password" id="cd-pw" autocomplete="off" placeholder="Password to edit" style="width:180px;margin:0 6px;padding:6px 10px;" onkeydown="if(event.key===\'Enter\')unlockContactDir()"> <button class="btn-secondary" style="padding:6px 12px;" onclick="unlockContactDir()">Unlock</button> <span id="cd-lock-msg" style="color:var(--danger);font-size:12px;margin-left:6px;"></span>'; }
+  const lockSVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  const openSVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+  if(CD_UNLOCKED){ el.innerHTML='<span style="display:inline-flex;align-items:center;color:var(--olive-700);font-weight:600;font-size:13px;">'+openSVG+'Editing unlocked</span> <button class="btn-secondary" style="padding:6px 13px;margin-left:10px;" onclick="lockContactDir()">Lock</button>'; }
+  else{ el.innerHTML='<span style="display:inline-flex;align-items:center;color:var(--muted);font-size:13px;">'+lockSVG+'Locked.</span> <input type="password" id="cd-pw" autocomplete="off" placeholder="Password to edit" style="width:190px;margin:0 8px;padding:8px 11px;" onkeydown="if(event.key===\'Enter\')unlockContactDir()"> <button class="btn-secondary" style="padding:8px 15px;" onclick="unlockContactDir()">Unlock</button> <span id="cd-lock-msg" style="color:var(--danger);font-size:12px;margin-left:8px;"></span>'; }
 }
 async function unlockContactDir(){
   const pw=(document.getElementById('cd-pw').value||'');
@@ -3126,16 +3160,18 @@ function renderContactDir(){
       +' oninput="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'this.value':'this.value')+')"'
       +' onchange="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
     : esc(val||'—');
+  const mailCell=v=>{ const e=String(v||'').trim(); return e ? '<a class="cd-mail" href="mailto:'+esc(e)+'">'+esc(e)+'</a>' : '<span style="color:var(--muted)">—</span>'; };
+  const plain=v=>{ const t=String(v||'').trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
-    return '<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:6px;font-weight:600;">'+esc(c.name)+'</td>'
-      +'<td style="padding:6px;">'+fld(idx,'company',c.company,130)+'</td>'
-      +'<td style="padding:6px;">'+fld(idx,'role',c.role,130)+'</td>'
-      +'<td style="padding:6px;">'+fld(idx,'email',c.email,190)+'</td>'
-      +'<td style="padding:6px;white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):esc(fmtPhone(c.phone)||'—'))+'</td></tr>'; };
+    return '<tr><td class="cd-name">'+esc(c.name)+'</td>'
+      +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
+      +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
+      +'<td>'+(CD_UNLOCKED?fld(idx,'email',c.email,190):mailCell(c.email))+'</td>'
+      +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td></tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
-  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
-    +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
-    +'</tbody></table>';
+  el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th></tr></thead><tbody>'
+    +letters.map(L=>'<tr class="cd-band"><td colspan="5"><span class="cdb-key"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'</span><span class="cdb-n">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
+    +'</tbody></table></div>';
 }
 // Edits are held until Save, so a mistyped field can be abandoned and several
 // changes to one person go up as a single request.
