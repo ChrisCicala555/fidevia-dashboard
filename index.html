@@ -442,7 +442,7 @@
     </div>
     <div style="margin-bottom:12px;">
       <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Phone Number</label>
-      <input id="prof-phone" type="tel" placeholder="(717) 555-0100" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
+      <input id="prof-phone" type="tel" onblur="this.value=fmtPhone(this.value)" placeholder="(717) 555-0100" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
     </div>
     <div style="margin-bottom:12px;">
       <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Company</label>
@@ -2366,6 +2366,20 @@ let ACCOUNT_PROFILES={};
 const DIR_COMPARE=[['Company','company'],['Name','name'],['Phone','phone']];
 function normCmp(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim().toLowerCase(); }
 function normPhone(v){ return String(v==null?'':v).replace(/[^0-9]/g,''); }
+// Format US numbers for display without touching what is stored. Anything that
+// is not a recognisable US number — international, an extension, a note — is
+// returned untouched rather than mangled.
+function fmtPhone(v){
+  const raw=String(v==null?'':v).trim();
+  if(!raw) return '';
+  if(/[a-zA-Z]/.test(raw)) return raw;                 // "ext", "cell", etc.
+  const d=raw.replace(/[^0-9]/g,'');
+  if(raw.trim().startsWith('+') && d.length>11) return raw;   // international
+  if(d.length===10) return '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6);
+  if(d.length===11 && d[0]==='1') return '('+d.slice(1,4)+') '+d.slice(4,7)+'-'+d.slice(7);
+  if(d.length===7) return d.slice(0,3)+'-'+d.slice(3);
+  return raw;
+}
 // Returns the fields where this project contact disagrees with their profile.
 function dirMismatches(r){
   const em=String((r&&r['Email'])||'').trim().toLowerCase();
@@ -3072,14 +3086,16 @@ function renderContactDir(){
   list.forEach(c=>{ let L=(c.name||'#').trim().charAt(0).toUpperCase(); if(!/[A-Z]/.test(L)) L='#'; (groups[L]=groups[L]||[]).push(c); });
   const letters=Object.keys(groups).sort();
   const fld=(idx,field,val,w)=> CD_UNLOCKED
-    ? '<input class="cd-inp" style="width:'+(w||130)+'px" value="'+esc(val||'')+'" onchange="saveContactMeta('+idx+',\''+field+'\',this.value)">'
+    ? '<input class="cd-inp" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
+      +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
+      +' onchange="saveContactMeta('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
     : esc(val||'—');
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
     return '<tr style="border-bottom:1px solid var(--khaki-100);"><td style="padding:6px;font-weight:600;">'+esc(c.name)+'</td>'
       +'<td style="padding:6px;">'+fld(idx,'company',c.company,130)+'</td>'
       +'<td style="padding:6px;">'+fld(idx,'role',c.role,130)+'</td>'
       +'<td style="padding:6px;">'+fld(idx,'email',c.email,190)+'</td>'
-      +'<td style="padding:6px;white-space:nowrap;">'+fld(idx,'phone',c.phone,120)+'</td></tr>'; };
+      +'<td style="padding:6px;white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):esc(fmtPhone(c.phone)||'—'))+'</td></tr>'; };
   el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--khaki-300);"><th style="padding:8px 6px;">Name</th><th style="padding:8px 6px;">Company</th><th style="padding:8px 6px;">Role</th><th style="padding:8px 6px;">Email</th><th style="padding:8px 6px;">Phone</th></tr></thead><tbody>'
     +letters.map(L=>'<tr><td colspan="5" class="cd-letter-cell">'+esc(L)+'<span class="cd-letter-count">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table>';
@@ -3815,7 +3831,7 @@ async function saveProfile(){
     const user = await auth0Client.getUser();
     const profile = {
       first_name:first, last_name:last,
-      phone:document.getElementById('prof-phone').value.trim(),
+      phone:fmtPhone(document.getElementById('prof-phone').value),
       company:document.getElementById('prof-company').value.trim(),
       title:document.getElementById('prof-title').value.trim(),
       involvement:'', email:user.email||'', onboarded:true
