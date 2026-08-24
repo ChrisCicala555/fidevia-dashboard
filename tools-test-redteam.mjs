@@ -40,7 +40,7 @@ const EXPECT = {
   'Budget Tracker.csv':            [NONE, NONE, NONE],
   'Comments.csv':                  [NONE, NONE, NONE],
   'Daily Log Index.csv':           [NONE, NONE, NONE],
-  'Meeting Minutes.csv':           [NONE, NONE, NONE],
+  'Meeting Minutes.csv':           [NONE, ALL,  ALL ],   // architect and owner attend OAC
   'Board Reports.csv':             [NONE, NONE, NONE],
   'Audit Log.csv':                 [NONE, NONE, NONE],
   // A log nobody has defined yet must be private, not public.

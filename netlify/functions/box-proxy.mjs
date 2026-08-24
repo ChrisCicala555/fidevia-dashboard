@@ -306,6 +306,8 @@ const EXTERNAL_READABLE_CSV = {
   'Document Index.csv':           [ROLE_CONTRACTOR, ROLE_AE],
   'Documents.csv':                [ROLE_CONTRACTOR, ROLE_AE],
   'Job Contacts.csv':             [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
+  // OAC minutes: the architect and the owner are in the room, the trades are not.
+  'Meeting Minutes.csv':          [ROLE_AE, ROLE_OWNER],
   'Payment Applications.csv':     [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
   'Contractor Daily Reports.csv': [ROLE_CONTRACTOR, ROLE_AE],
   'Certified Payrolls.csv':       [ROLE_CONTRACTOR, ROLE_AE]

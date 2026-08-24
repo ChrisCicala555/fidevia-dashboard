@@ -2184,7 +2184,12 @@ async function createProject(){
 async function loadDashboard(){
   const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board','gendocs','contractor_daily','payrolls'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
-  const keys = EXTERNAL ? ['rfi','co','sub','docs','pay_apps','contacts','gendocs','contractor_daily','payrolls'] : allKeys;
+  // Architect/Engineer and Owner sit in the OAC meetings, so they get the
+  // minutes. Contractors do not — the tab is hidden from them and the server
+  // withholds the log regardless of what is requested here.
+  const extKeys = ['rfi','co','sub','docs','pay_apps','contacts','gendocs','contractor_daily','payrolls'];
+  if(['architect-engineer','owner'].includes(viewingAsRole())) extKeys.push('meetings');
+  const keys = EXTERNAL ? extKeys : allKeys;
   const mods = keys.filter(k=>currentProject.folders[k]).map(k=>({key:k, folderId:currentProject.folders[k], filename:MODULES[k].log}));
   try{
     const _t0=performance.now();
