@@ -391,6 +391,17 @@ function filterCsvForCaller(filename, text, isAdmin, company, role) {
   return toCSVServer(parsed.headers, rows);
 }
 
+// The directory shows one name; the profile stores two. First word is the given
+// name, the remainder the family name, which round-trips cleanly for both
+// "Chris Celmer" and "Mary Jo Van Der Berg".
+function splitName(full) {
+  const parts = String(full == null ? '' : full).slice(0, 200).trim().split(/\s+/).filter(Boolean);
+  return {
+    first_name: parts.length ? parts[0] : '',
+    last_name:  parts.length > 1 ? parts.slice(1).join(' ') : ''
+  };
+}
+
 // The grant that covers this folder/file, so we can read both company and role.
 async function grantFor(t, grants, kind, id) {
   const gidset = new Set(grants.map(g => String(g.id)));
@@ -1014,7 +1025,14 @@ export default async (req) => {
       if (body.company !== undefined) pr.company = String(body.company).slice(0, 200);
       if (body.role !== undefined) pr.title = String(body.role).slice(0, 200);
       if (body.phone !== undefined) pr.phone = String(body.phone).slice(0, 60);
-      if (body.email !== undefined) pr.email = String(body.email).slice(0, 200);
+      // The directory shows one name; the profile stores two. First word is the
+      // given name, the remainder the family name, which round-trips cleanly
+      // for both "Chris Celmer" and "Mary Jo Van Der Berg".
+      if (body.name !== undefined) Object.assign(pr, splitName(body.name));
+      // Email is intentionally not accepted. It identifies the Auth0 account
+      // and keys the access grants; editing it here would desynchronise both
+      // while leaving the person signing in with the old address.
+      if (body.email !== undefined) return json({ error: 'Email address is set by the sign-in account and cannot be changed here.' }, 400);
       await store.setJSON(sub, pr);
       return json({ ok: true });
     }

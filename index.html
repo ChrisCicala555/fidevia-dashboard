@@ -312,6 +312,7 @@
   .cd-band .cdb-n{float:right; font-size:11px; font-weight:700; color:var(--olive-700);
     background:var(--white); border:1px solid var(--khaki-300); border-radius:11px; padding:2px 10px; margin-top:2px;}
   .cd-name{font-weight:700; color:var(--olive-900);}
+  .cd-locked{color:var(--muted); font-size:13px; cursor:help; border-bottom:1px dotted var(--khaki-300);}
   .cd-row{cursor:pointer;}
   .cd-open{display:inline-block; margin-left:9px; font-size:11.5px; font-weight:600; color:var(--olive-700);
     opacity:0; transition:opacity .12s; white-space:nowrap;}
@@ -625,6 +626,11 @@
       <p class="form-desc" style="margin-bottom:10px;">Add the Fidevia team, owner, and contractor contacts. Be clear about who fills which role. These populate the Contacts Directory.</p>
       <div id="np-contacts"></div>
       <button type="button" class="btn-secondary" onclick="wizAddContact()" style="margin-top:6px;">+ Add Contact</button>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--olive-900);">
+        <input type="checkbox" id="np-invite" checked>
+        Email these contacts an invitation to create an account
+      </label>
+      <p class="form-desc" style="margin:4px 0 0 26px;font-size:12px;">Fidevia addresses are skipped — they already have access.</p>
     </div>
 
     <!-- STEP 3: SCHEDULE -->
@@ -2175,7 +2181,15 @@ async function createProject(){
       milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf')
     };
     await writeProjectConfig(projId, config);
-    showStatus('new-proj-status','Project created!','success');
+    // After the project exists, not before: an invitation pointing at a project
+    // that failed to create would be worse than no invitation.
+    let invited=0;
+    const inviteBox=document.getElementById('np-invite');
+    if(!inviteBox || inviteBox.checked){
+      showStatus('new-proj-status','Sending invitations…','info');
+      for(const c of contacts){ if(await notifyContactAdded(c, name)) invited++; }
+    }
+    showStatus('new-proj-status','Project created!'+(invited?' '+invited+' invitation'+(invited===1?'':'s')+' sent.':''),'success');
     setTimeout(()=>{ btn.disabled=false; showScreen('screen-picker'); loadPicker(); }, 1200);
   }catch(e){ btn.disabled=false; showStatus('new-proj-status','Error: '+e.message,'error'); }
 }
@@ -2605,10 +2619,26 @@ async function loadAccountEmails(){
     renderContacts();
   }catch(e){}
 }
+// Fidevia staff already have accounts and access to every project, so an
+// invitation to create one would be nonsense. Everyone else is a candidate.
+function contactNeedsInvite(row){
+  const em=String((row&&row['Email'])||'').trim().toLowerCase();
+  return !!em && em.indexOf('@')>0 && !em.endsWith('@fidevia.com');
+}
 function contactInvite(r,i){
-  const em=String(r['Email']||'').trim().toLowerCase();
-  const isExt = em && !em.endsWith('@fidevia.com');
-  return isExt ? '<button class="btn-invite" onclick="inviteContact('+i+')" title="Email a dashboard invite">Invite</button> ' : '';
+  return contactNeedsInvite(r) ? '<button class="btn-invite" onclick="inviteContact('+i+')" title="Re-send the dashboard invitation">Invite</button> ' : '';
+}
+// Sending is best-effort and never blocks the add: a contact that saved but
+// whose email bounced is recoverable with the Invite button; a contact that
+// failed to save because of an email problem is not.
+async function notifyContactAdded(row, projectName){
+  if(!contactNeedsInvite(row)) return false;
+  try{
+    await sendEmail([row['Email']],
+      'You\u2019re invited to the Fidevia Construction Dashboard',
+      inviteEmailHTML(row['Name']||'', projectName||'a Fidevia project'));
+    return true;
+  }catch(e){ return false; }
 }
 function inviteEmailHTML(name, projectName){
   const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
@@ -3322,11 +3352,15 @@ function renderContactDir(){
   const mailCell=v=>{ const e=String(v||'').trim(); return e ? '<a class="cd-mail" onclick="event.stopPropagation()" href="mailto:'+esc(e)+'">'+esc(e)+'</a>' : '<span style="color:var(--muted)">—</span>'; };
   const plain=v=>{ const t=String(v||'').trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
-    return '<tr class="cd-row" onclick="openPerson('+idx+')" title="View projects and access"><td class="cd-name">'+esc(c.name)
+    // Email is deliberately never editable: it is the key to the person's
+    // sign-in account and to their project grants. Changing it here would not
+    // change how they log in — it would only break the link between the two.
+    return '<tr class="cd-row" onclick="openPerson('+idx+')" title="View projects and access"><td class="cd-name">'
+      +(CD_UNLOCKED?fld(idx,'name',c.name,150):esc(c.name))
       +'<span class="cd-open">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
-      +'<td>'+(CD_UNLOCKED?fld(idx,'email',c.email,190):mailCell(c.email))+'</td>'
+      +'<td>'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'
       +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td></tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
   el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th></tr></thead><tbody>'
@@ -3708,6 +3742,9 @@ async function submitForm(){
       sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
         emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],['Due Date',fmtDMY(newRow['Due Date']||'')||'—']], currentProject.name)); } }catch(e){}
     try{ auditLog('Created', key, newRow, (newRow['Attachment Name']||newRow['File Name']||'')); }catch(e){}
+    // Adding someone to a project should tell them so, without an administrator
+    // having to remember to press Invite afterwards.
+    if(key==='contacts'){ try{ await notifyContactAdded(newRow, currentProject&&currentProject.name); }catch(e){} }
     renderAll();
     closeModal();
   }catch(e){ alert('Error: '+e.message); btn.disabled=false; prog.style.display='none'; }

@@ -12,5 +12,5 @@ const out = [
   braceFn(at('function parseCSVServer')),
   lines[at('function toCSVServer')],
   whole.slice(whole.indexOf('function filterProjectConfig'), whole.indexOf('async function grantFor')),
-].join('\n') + '\nexport { filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite };\n';
+].join('\n') + '\nexport { splitName, filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite };\n';
 fs.writeFileSync('.filters.tmp.mjs', out);
