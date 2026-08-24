@@ -400,6 +400,8 @@
   .modal{background:var(--white); border-radius:10px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25);}
   .modal-header{background:var(--olive-900); color:#fff; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; position:sticky; top:0; z-index:1;}
   .modal-header h3{font-size:16px; font-weight:600;}
+  .modal-header.slim{padding:5px 14px; justify-content:flex-end;}
+  .modal-header.slim .modal-close{font-size:18px;}
   .modal-close{background:none; border:none; color:rgba(255,255,255,0.7); font-size:21px; cursor:pointer; padding:0 4px; line-height:1;}
   .modal-close:hover{color:#fff;}
   .modal-body{padding:24px;}
@@ -1179,7 +1181,7 @@
 
 <div class="modal-backdrop" id="person-backdrop" onclick="if(event.target===this)closePerson()">
   <div class="modal" style="max-width:620px;">
-    <div class="modal-header"><h3 id="person-title">Contact</h3><button class="modal-close" onclick="closePerson()">✕</button></div>
+    <div class="modal-header slim"><button class="modal-close" onclick="closePerson()">✕</button></div>
     <div class="modal-body">
       <div id="person-head" style="display:flex;align-items:center;gap:12px;margin-bottom:18px;"></div>
 
@@ -3343,7 +3345,6 @@ let PROJECT_COMPANY_CACHE={};
 async function openPerson(idx){
   const c=CONTACT_DIR[idx]; if(!c) return;
   PERSON_CTX={idx, contact:c, grants:[]};
-  document.getElementById('person-title').textContent=c.name||c.email||'Contact';
   document.getElementById('person-head').innerHTML=
     '<span class="ac-avatar" style="width:38px;height:38px;font-size:13px;">'+esc(initialsOf(c.name||c.email))+'</span>'
     +'<div><div style="font-weight:700;color:var(--olive-900);">'+esc(c.name||'—')+'</div>'
