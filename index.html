@@ -2786,12 +2786,33 @@ function scheduleStats(){
   if(start&&end){ duration=Math.round((end-start)/86400000); expended=Math.round((today-start)/86400000); remaining=Math.round((end-today)/86400000); pct=duration>0?Math.min(1,Math.max(0,expended/duration)):0; }
   return {start,end,duration,expended,remaining,pct};
 }
+// Feeds the Home KPI header. Mirrors the Financial Summary deliberately: the
+// same company scoping and the same allowance-aware change order maths, so the
+// two screens cannot quote different numbers for the same project.
 function financialTotals(){
-  const cfg=(currentProject&&currentProject.config)||{}; const contractors=(cfg.contractors||[]).filter(c=>c.active!==false); const pays=allData.pay_apps||[];
+  const cfg=(currentProject&&currentProject.config)||{};
+  const norm=s=>String(s||'').trim().toLowerCase();
+  let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  // A contractor's header is about their contract, not the project's. Showing
+  // the project total told a $2M subcontractor they held a $21M contract.
+  const scoped = viewingAsExternal() && isContractorView();
+  if(scoped){
+    const mine=norm(companyScope());
+    contractors=contractors.filter(c=>mine && norm(c.name)===mine);
+  }
+  const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
-  const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
-  const norm=s=>(s||'').trim().toLowerCase(); let tR=0,tB=0; contractors.forEach(c=>{ const pa=latestFor(c.name); const contract=(pa&&num(pa['Contract Amount']))?num(pa['Contract Amount']):num(c.contract); const co=pa?num(pa['Approved Change Orders']):0; tR+=contract+co; tB+=pays.filter(p=>norm(p['Contractor'])===norm(c.name)).reduce((s,p)=>s+payApproved(p),0); });
-  return {revised:tR, billed:tB, remaining:tR-tB, pctBilled:tR>0?tB/tR:0};
+  const latestFor=name=>{ const rows=pays.filter(p=>norm(p['Contractor'])===norm(name)); return rows.length?rows[rows.length-1]:null; };
+  let tR=0,tB=0;
+  contractors.forEach(c=>{
+    const pa=latestFor(c.name);
+    const contract=(pa&&num(pa['Contract Amount']))?num(pa['Contract Amount']):num(c.contract);
+    // Change orders funded from the allowance were already inside the contract.
+    const co = coContractImpactFor(c.name) || (pa?num(pa['Approved Change Orders']):0);
+    tR+=contract+co;
+    tB+=pays.filter(p=>norm(p['Contractor'])===norm(c.name)).reduce((s,p)=>s+payApproved(p),0);
+  });
+  return {revised:tR, billed:tB, remaining:tR-tB, pctBilled:tR>0?tB/tR:0, scoped:scoped};
 }
 function renderSchedule(){
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
@@ -2856,7 +2877,8 @@ function renderExec(){
   if(!f.revised && s.duration==null){ el.style.display='none'; el.innerHTML=''; return; }
   const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
   const cards=[];
-  if(f.revised){ cards.push(card('Revised Contract',fmtMoney(f.revised))); cards.push(card('% Billed',(f.pctBilled*100).toFixed(1)+'%')); }
+  const own = f.scoped ? 'Your ' : '';
+  if(f.revised){ cards.push(card(own+'Revised Contract',fmtMoney(f.revised))); cards.push(card(own+'% Billed',(f.pctBilled*100).toFixed(1)+'%')); }
   if(s.remaining!=null) cards.push(card('Days Remaining',s.remaining));
   if(s.pct!=null) cards.push(card('% Time Elapsed',(s.pct*100).toFixed(1)+'%'));
   el.style.display=cards.length?'':'none'; el.innerHTML=cards.join('');
