@@ -290,9 +290,30 @@ function normRole(r){
 function seesAllCompanies(role){ return role === ROLE_AE || role === ROLE_OWNER; }
 // Owner is strictly read-only.
 function roleMayWrite(role){ return role !== ROLE_OWNER; }
-// Modules an Owner may not reach at all, enforced server-side rather than only
-// hidden in the navigation.
-const OWNER_BLOCKED_CSV = ['RFI Log.csv','Submittal Log.csv','Comments.csv','Daily Log Index.csv','Contractor Daily Reports.csv','Certified Payrolls.csv','Document Index.csv'];
+// Which logs an external caller may read, by role. This is an ALLOWLIST on
+// purpose. The previous denylist named the files to withhold, which meant any
+// file it did not name — the budget, the internal message board, the audit log,
+// a module added next month — was served in full to anyone holding a project
+// grant. Naming what is permitted instead makes the default private.
+//
+// The rule for editing this: a file belongs here only if the interface already
+// offers that module to that role. Adding a module to the UI without adding it
+// here fails closed, which is the direction we want to fail in.
+const EXTERNAL_READABLE_CSV = {
+  'RFI Log.csv':                  [ROLE_CONTRACTOR, ROLE_AE],
+  'Change Order Log.csv':         [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
+  'Submittals Log.csv':           [ROLE_CONTRACTOR, ROLE_AE],
+  'Document Index.csv':           [ROLE_CONTRACTOR, ROLE_AE],
+  'Documents.csv':                [ROLE_CONTRACTOR, ROLE_AE],
+  'Job Contacts.csv':             [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
+  'Payment Applications.csv':     [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
+  'Contractor Daily Reports.csv': [ROLE_CONTRACTOR, ROLE_AE],
+  'Certified Payrolls.csv':       [ROLE_CONTRACTOR, ROLE_AE]
+};
+// Never reaches an external caller in any role: Budget Tracker.csv,
+// Comments.csv (internal message board), Daily Log Index.csv (Fidevia's own
+// daily reports), Meeting Minutes.csv, Board Reports.csv, Audit Log.csv.
+// These are absent from the map above rather than listed, by design.
 // Documents carry a per-row "Visible To" setting. This was only ever enforced in
 // the browser, so external users received internal-only rows (and their file IDs)
 // in the payload and simply did not see them rendered.
@@ -312,14 +333,43 @@ function fileIdsInRow(row) {
   return out;
 }
 const SYSTEM_FOLDERS = ['Contact Directory Snapshots'];
-// Apply the same row-level rules everywhere a CSV is handed to a caller.
+// The project configuration is JSON, not CSV, so it slipped past the CSV rules
+// entirely and was served whole to every external caller on every project open.
+// It carries each contractor's contract value and allowance — exactly what the
+// company-private logs exist to keep apart.
+function filterProjectConfig(text, company, role) {
+  let cfg; try { cfg = JSON.parse(text || '{}'); } catch (e) { return '{}'; }
+  // Architect/Engineer and Owner review the project as a whole and legitimately
+  // see every contractor's numbers elsewhere, so the config is left intact.
+  if (role !== ROLE_CONTRACTOR) return JSON.stringify(cfg);
+  const mine = String(company || '').trim().toLowerCase();
+  const isMine = n => String(n || '').trim().toLowerCase() === mine && mine !== '';
+  if (Array.isArray(cfg.contractors)) {
+    // Names stay: the interface needs them for labels and pickers. Money does not.
+    cfg.contractors = cfg.contractors.map(c => isMine(c && c.name)
+      ? c
+      : { name: (c && c.name) || '', active: !(c && c.active === false) });
+  }
+  if (cfg.workflowsByCompany && typeof cfg.workflowsByCompany === 'object') {
+    const kept = {};
+    for (const k of Object.keys(cfg.workflowsByCompany)) if (isMine(k)) kept[k] = cfg.workflowsByCompany[k];
+    cfg.workflowsByCompany = kept;
+  }
+  return JSON.stringify(cfg);
+}
+
+// Apply the same row-level rules everywhere a file is handed to a caller.
 function filterCsvForCaller(filename, text, isAdmin, company, role) {
   if (isAdmin) return text;
   const r0 = normRole(role);
 
-  // An Owner cannot reach these modules at all, so hand back an empty log
-  // rather than relying on the navigation to hide them.
-  if (r0 === ROLE_OWNER && OWNER_BLOCKED_CSV.includes(filename)) {
+  if (filename === 'Project Info.json') return filterProjectConfig(text, company, r0);
+
+  // Anything that is not a log we recognise is withheld. Returning the header
+  // row keeps the client's parser happy while carrying no records.
+  if (!/\.csv$/i.test(String(filename || ''))) return '';
+  const allowedRoles = EXTERNAL_READABLE_CSV[filename];
+  if (!allowedRoles || !allowedRoles.includes(r0)) {
     return toCSVServer(parseCSVServer(text).headers, []);
   }
 
@@ -690,6 +740,11 @@ export default async (req) => {
     }
     if (op === 'fileInfo') {
       if (!await guardFile(body.fileId)) return json({ error: 'Access denied' }, 403);
+      // Same row check downloadUrl applies. Without it the name and size of
+      // another company's pay application were readable by file id alone.
+      if (!who.isAdmin && !(await callerMayReadFile(H, t, _grants, who, body.fileId))) {
+        return json({ error: 'Access denied' }, 403);
+      }
       const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(body.fileId)}?fields=id,name,size,modified_at`, { headers: H });
       if (!r.ok) return json({ error: 'Box file ' + r.status }, r.status);
       return json(await r.json());
@@ -860,6 +915,10 @@ export default async (req) => {
       return json({ ok: true, complete: next >= steps.length, nextStep: nextNames });
     }
     if (op === 'uploadText') {
+      // Whole-file replacement. External users add records through appendRow,
+      // which reads and rewrites the file on the server; letting them call this
+      // would allow overwriting a log, the audit trail or the project config.
+      if (!who.isAdmin) return json({ error: 'Access denied' }, 403);
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, content } = body;
       if (!folderId || !filename) return json({ error: 'folderId and filename required' }, 400);
@@ -909,6 +968,7 @@ export default async (req) => {
     }
 
     if (op === 'getNotifTemplates') {
+      if (!await guardFolder(body.projectId)) return json({ error: 'Access denied' }, 403);
       const d = await notifStore().get(String(body.projectId), { type: 'json' });
       return json({ templates: d || null });
     }
@@ -919,6 +979,7 @@ export default async (req) => {
     }
 
     if (op === 'getReminderSettings') {
+      if (!await guardFolder(body.projectId)) return json({ error: 'Access denied' }, 403);
       const d = await reminderStore().get(String(body.projectId), { type: 'json' });
       return json({ settings: d || null });
     }
