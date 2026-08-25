@@ -2755,34 +2755,73 @@ function accountCell(r){
     ? '<span title="Has a dashboard account" style="color:#3b6d11;font-weight:700;font-size:15px">\u2713</span>'
     : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
 }
+let ACCOUNTS_LOADED=false;
 async function loadAccountEmails(){
   try{
     const d=await proxyCall('accountEmails',{},{quiet:true});
     ACCOUNT_EMAILS=new Set((d.emails||[]).map(e=>String(e).trim().toLowerCase()));
     ACCOUNT_PROFILES=d.profiles||{};
+    ACCOUNTS_LOADED=true;
     renderContacts();
   }catch(e){}
 }
-// Fidevia staff already have accounts and access to every project, so an
-// invitation to create one would be nonsense. Everyone else is a candidate.
+// The wizard creates contacts before any project is open, so the account list
+// may not have been fetched yet. Without this everyone looks account-less.
+async function ensureAccounts(){
+  if(!ACCOUNTS_LOADED) { try{ await loadAccountEmails(); }catch(e){} }
+  return ACCOUNTS_LOADED;
+}
+function contactEmail(row){ return String((row&&row['Email'])||'').trim().toLowerCase(); }
+function contactMailable(row){ const e=contactEmail(row); return !!e && e.indexOf('@')>0; }
+// Fidevia staff already have accounts and access to every project.
+function contactIsFidevia(row){ return contactEmail(row).endsWith('@fidevia.com'); }
+function contactHasAccount(row){ return ACCOUNT_EMAILS.has(contactEmail(row)); }
+// An invitation is an invitation to create an account. Offering it to someone
+// who already has one is not just noise — it tells them to do something they
+// have already done, and their address is taken, so it cannot even be followed.
 function contactNeedsInvite(row){
-  const em=String((row&&row['Email'])||'').trim().toLowerCase();
-  return !!em && em.indexOf('@')>0 && !em.endsWith('@fidevia.com');
+  return contactMailable(row) && !contactIsFidevia(row) && !contactHasAccount(row);
 }
 function contactInvite(r,i){
-  return contactNeedsInvite(r) ? '<button class="btn-invite" onclick="inviteContact('+i+')" title="Re-send the dashboard invitation">Invite</button> ' : '';
+  // Until the account list has arrived every contact looks account-less, so
+  // showing the button early would flash it onto rows that must not have it.
+  if(!ACCOUNTS_LOADED) return '';
+  return contactNeedsInvite(r) ? '<button class="btn-invite" onclick="event.stopPropagation();withBusy(event,\'Sending\u2026\',()=>inviteContact('+i+'))" title="Email an invitation to create an account">Invite</button> ' : '';
 }
 // Sending is best-effort and never blocks the add: a contact that saved but
 // whose email bounced is recoverable with the Invite button; a contact that
 // failed to save because of an email problem is not.
 async function notifyContactAdded(row, projectName){
-  if(!contactNeedsInvite(row)) return false;
+  if(!contactMailable(row) || contactIsFidevia(row)) return false;
+  await ensureAccounts();
+  const known=contactHasAccount(row);
   try{
     await sendEmail([row['Email']],
-      'You\u2019re invited to the Fidevia Construction Dashboard',
-      inviteEmailHTML(row['Name']||'', projectName||'a Fidevia project'));
+      known ? 'You\u2019ve been added to '+(projectName||'a Fidevia project')
+            : 'You\u2019re invited to the Fidevia Construction Dashboard',
+      known ? addedEmailHTML(row['Name']||'', projectName||'a Fidevia project')
+            : inviteEmailHTML(row['Name']||'', projectName||'a Fidevia project'));
     return true;
   }catch(e){ return false; }
+}
+// For someone who already has an account. Telling them to "create a free
+// account" would be wrong, and the sign-up would fail on a taken address.
+function addedEmailHTML(name, projectName){
+  const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
+  const serif="Georgia,'Times New Roman',Times,serif"; const sans="'Helvetica Neue',Helvetica,Arial,sans-serif";
+  return '<div style="background:#f4f2ec;padding:28px 16px;font-family:'+sans+'">'
+   +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">'
+   +'<tr><td style="padding:26px 24px 12px;text-align:center"><img src="'+origin+'/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>'
+   +'<tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>'
+   +'<tr><td style="padding:24px 24px 8px">'
+   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019ve been added to a project</div>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Hi'+(name?' '+esc(name):'')+',</p>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been added as a contact on <strong>'+esc(projectName)+'</strong>. Sign in with your existing account to see it.</p>'
+   +'<div style="text-align:center;margin:22px 0 8px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Open the Dashboard</a></div>'
+   +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">If the project isn\u2019t in your list yet, request access from your project list and a Fidevia administrator will approve it.</p>'
+   +'</td></tr>'
+   +'<tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>'
+   +'</table></div>';
 }
 function inviteEmailHTML(name, projectName){
   const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
@@ -2803,10 +2842,10 @@ function inviteEmailHTML(name, projectName){
 }
 async function inviteContact(i){
   const r=(allData.contacts||[])[i]; if(!r||!r['Email']){ alert('This contact has no email address.'); return; }
-  if(!confirm('Send a dashboard invitation email to '+(r['Name']||r['Email'])+' ('+r['Email']+')?')) return;
   try{
-    await sendEmail([r['Email']], 'You\u2019re invited to the Fidevia Construction Dashboard', inviteEmailHTML(r['Name']||'', (currentProject&&currentProject.name)||'a Fidevia project'));
-    alert('Invitation sent to '+r['Email']+'.');
+    const sent=await notifyContactAdded(r, (currentProject&&currentProject.name)||'a Fidevia project');
+    alert(sent ? 'Invitation sent to '+r['Email']+'.' : 'Nothing was sent — this contact does not need an invitation.');
+    renderContacts();
   }catch(e){ alert('Could not send invite: '+e.message); }
 }
 
