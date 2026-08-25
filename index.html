@@ -1010,7 +1010,7 @@
           <span id="jc-count" style="font-size:12.5px;color:var(--muted);"></span>
         </div>
         <div class="cd-card">
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw">Account</th><th class="admin-col nw">Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -1983,6 +1983,7 @@ async function openProject(folderId, name){
     toggleBoardTab(); loadLogo();
     if(!EXTERNAL) loadProjectPhotos();
     if(!EXTERNAL) loadAccountEmails();
+    if(!EXTERNAL) loadProjectAccess();
     projectLoadingStep('Loading project records…');
     // loadDashboard lifts the gate itself once records are in and rendered.
     await loadDashboard();
@@ -2422,9 +2423,18 @@ function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" ti
 // about why is worth asking for. Optional: cancelling the prompt cancels the
 // deletion, but leaving it blank does not.
 function askDelete(ev, key, i){
+  let alsoRevoke=false;
+  if(key==='contacts'){
+    const r=(allData.contacts||[])[i];
+    if(r && contactHasAccess(r)){
+      const who=r['Name']||r['Email']||'This contact';
+      if(!confirm(who+' can currently open this project.\n\nRemoving them from the contact list will also revoke that access. Continue?')) return;
+      alsoRevoke=true;
+    }
+  }
   const why=prompt('Delete this item permanently? This cannot be undone.\n\nReason (optional) — this is recorded in the audit log and sent to the Fidevia team:');
   if(why===null) return;                    // Cancel means cancel
-  return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why));
+  return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why,alsoRevoke));
 }
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
 const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
@@ -2467,10 +2477,16 @@ async function withBusy(ev, label, fn, confirmMsg){
   }
 }
 
-async function deleteRow(key,i,reason){
+async function deleteRow(key,i,reason,alsoRevoke){
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
   const removed=(allData[key]||[])[i];
   const why=String(reason||'').trim();
+  // Revoke before the row goes, so a failure here leaves both records intact
+  // rather than a contact deleted and access quietly still granted.
+  if(alsoRevoke && removed && removed['Email']){
+    await proxyCall('adminRevoke',{email:String(removed['Email']).trim().toLowerCase(), projectId:currentProject.folderId});
+    PROJECT_ACCESS.delete(String(removed['Email']).trim().toLowerCase());
+  }
   const existing=await findFile(fid,mod.log);
   const rows=(allData[key]||[]).slice(); rows.splice(i,1);
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
@@ -2721,7 +2737,7 @@ function renderContacts(){
         +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+esc(r['Email'])+'</td>'
         +'<td class="nw">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'
         +tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')
-        +accountCell(r)+'<td class="admin-col nw">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
+        +accountCell(r)+accessCell(r)+'<td class="admin-col nw">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
   });
   tb.innerHTML=html;
@@ -2786,6 +2802,16 @@ function nameCell(r){
   return em ? '<span style="color:var(--muted);font-style:italic;">'+esc(em.split('@')[0])+'</span>'
             : '<span style="color:var(--muted);">\u2014</span>';
 }
+// Having an account and having access to this project are different things.
+// Showing only the first made it look as though a checkmark meant "can open
+// this project", which is exactly the assumption that made deleting confusing.
+function accessCell(r){
+  if(!IS_ADMIN) return '<td class="hide-external nw"></td>';
+  const yes=contactHasAccess(r);
+  return '<td class="hide-external nw" style="text-align:center">'+(yes
+    ? '<span title="Has been granted access to this project" style="color:#3b6d11;font-weight:700;font-size:15px">\u2713</span>'
+    : '<span title="Listed as a contact, but cannot open this project" style="color:var(--muted)">\u2014</span>')+'</td>';
+}
 function accountCell(r){
   const em=String(r['Email']||'').trim().toLowerCase();
   const has = em && ACCOUNT_EMAILS.has(em);
@@ -2794,6 +2820,23 @@ function accountCell(r){
     : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
 }
 let ACCOUNTS_LOADED=false;
+// Emails with an access grant on the project currently open. A contact row and
+// a grant are separate records: deleting the row leaves the grant untouched,
+// which is how someone can be off the contact sheet and still sign in.
+let PROJECT_ACCESS=new Set();
+async function loadProjectAccess(){
+  PROJECT_ACCESS=new Set();
+  if(!IS_ADMIN || !currentProject) return;
+  try{
+    const d=await proxyCall('adminListGrants',{},{quiet:true});
+    const pid=String(currentProject.folderId);
+    (d.grants||[]).forEach(g=>{
+      if((g.projects||[]).some(p=>String(p.id)===pid)) PROJECT_ACCESS.add(String(g.email||'').trim().toLowerCase());
+    });
+  }catch(e){}
+  try{ renderContacts(); }catch(e){}
+}
+function contactHasAccess(row){ return PROJECT_ACCESS.has(contactEmail(row)); }
 async function loadAccountEmails(){
   try{
     const d=await proxyCall('accountEmails',{},{quiet:true});
