@@ -389,6 +389,13 @@
     background:var(--white); color:var(--muted); border:1px solid var(--border);
     transition:background .12s,color .12s,border-color .12s;}
   .row-act:first-child{margin-left:0;}
+  .row-act[disabled],.btn-secondary[disabled]{opacity:.75; cursor:default; pointer-events:none;}
+  .spin{display:inline-block; width:11px; height:11px; margin-right:6px; vertical-align:-1px;
+    border:2px solid currentColor; border-right-color:transparent; border-radius:50%;
+    animation:spin .6s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* A row on its way out or across: dimmed so it is visibly mid-flight. */
+  tr.row-busy > td{opacity:.55; transition:opacity .15s;}
   .row-act.act-archive:hover{background:var(--khaki-100); color:var(--olive-900); border-color:var(--khaki-300);}
   .row-act.act-restore:hover{background:var(--olive-700); color:#fff; border-color:var(--olive-700);}
   .row-act.act-delete:hover{background:var(--danger-bg); color:var(--danger); border-color:#E8BFB9;}
@@ -2387,7 +2394,7 @@ function applyReadOnlyBanners(){
 }
 
 // ── HELPERS ──
-function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();deleteRow(\''+key+'\','+i+')">Delete</button>' : ''; }
+function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();withBusy(event,\'Deleting\u2026\',()=>deleteRow(\''+key+'\','+i+'),\'Delete this item permanently? This cannot be undone.\')">Delete</button>' : ''; }
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
 const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
 function itemLabel(key,row){
@@ -2408,8 +2415,28 @@ async function auditLog(action, key, row, details){
     await boxUploadText('Audit Log.csv', toCSV(AUDIT_HEADERS,rows), fid, f?f.id:null);
   }catch(e){ console.warn('audit log failed', e.message); }
 }
+// Wrap any button that kicks off work in Box. The button says what it is doing
+// and stops accepting clicks; the row dims so the change is visibly in flight.
+// Restores itself on failure so a network error does not leave a dead button.
+async function withBusy(ev, label, fn, confirmMsg){
+  // Ask first. Spinning a button behind a modal dialog is a lie about state.
+  if(confirmMsg && !confirm(confirmMsg)) return;
+  const btn = ev && (ev.currentTarget || ev.target);
+  const row = btn && btn.closest ? btn.closest('tr') : null;
+  const html = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>'+esc(label); }
+  if(row) row.classList.add('row-busy');
+  try{
+    return await fn();
+  } finally {
+    // renderAll() usually replaces these nodes outright; restoring matters for
+    // the failure path, where the old row is still on screen.
+    if(btn && btn.isConnected){ btn.disabled=false; btn.innerHTML=html; }
+    if(row && row.isConnected) row.classList.remove('row-busy');
+  }
+}
+
 async function deleteRow(key,i){
-  if(!confirm('Delete this item permanently? This cannot be undone.')) return;
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
   const removed=(allData[key]||[])[i];
   const existing=await findFile(fid,mod.log);
@@ -2439,6 +2466,7 @@ async function toggleNotify(i,f){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function pill(status,overdue){
   if(overdue) return '<span class="pill overdue">Overdue</span>';
+  if(!String(status||'').trim()) return '<span style="color:var(--muted);">\u2014</span>';
   const map={'open':'open','closed':'closed','approved':'approved','under review':'review','under-review':'review','pending review':'pending','pending-review':'pending','revise and resubmit':'pending','rejected':'rejected'};
   const cls=map[(status||'').toLowerCase()]||'open';
   return '<span class="pill '+cls+'">'+esc(status)+'</span>';
@@ -3182,13 +3210,13 @@ function isItemComplete(key,r){
 function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemComplete(key,r) && !isArchived(r); }
 function archiveBtn(key,i,r){
   if(isArchived(r)) return IS_ADMIN && !viewingAsExternal()
-    ? '<button class="row-act act-restore" title="Return this to the active log" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',false)">Restore</button>' : '';
+    ? '<button class="row-act act-restore" title="Return this to the active log" onclick="event.stopPropagation();withBusy(event,\'Restoring\u2026\',()=>setArchived(\''+key+'\','+i+',false))">Restore</button>' : '';
   return canArchive(key,r)
-    ? '<button class="row-act act-archive" title="Move to Past — reviews are complete" onclick="event.stopPropagation();setArchived(\''+key+'\','+i+',true)">Archive</button>' : '';
+    ? '<button class="row-act act-archive" title="Move to Past — reviews are complete" onclick="event.stopPropagation();withBusy(event,\'Archiving\u2026\',()=>setArchived(\''+key+'\','+i+',true),\'Archive this item? It moves to the Past section and leaves the active log.\')">Archive</button>' : '';
 }
 async function setArchived(key, idx, on){
   const label=(MODULE_LABEL[key]||key);
-  if(on && !confirm('Archive this item? It moves to the Past '+label+' section and leaves the active log.')) return;
+  // The caller confirms before the spinner starts; see withBusy.
   try{
     const mod=MODULES[key], fid=currentProject.folders[key];
     const existing=await findFile(fid,mod.log);
@@ -5451,7 +5479,7 @@ function wfProgressHTML(key,r,i){
   }).join('');
   const status = done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
-  const btn = (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();wfAdvance(\''+key+'\','+i+')">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
+  const btn = (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();withBusy(event,\'Approving\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
