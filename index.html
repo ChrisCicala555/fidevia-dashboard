@@ -296,7 +296,12 @@
     font-weight:600; color:var(--muted); cursor:pointer;}
   .cd-tab:hover{color:var(--olive-900);}
   .cd-tab.active{color:var(--olive-900); border-bottom-color:var(--olive-700);}
-  .cd-card{background:var(--white); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  .cd-card{background:var(--white); border:1px solid var(--border); border-radius:12px; overflow-x:auto; overflow-y:hidden;}
+  /* Inputs sized in ch flex with the column instead of forcing a fixed width,
+     so the unlocked table usually fits without needing to scroll at all. */
+  .cd-card .cd-inp{width:100%; min-width:9ch; box-sizing:border-box;}
+  .cd-card td, .cd-card th{white-space:nowrap;}
+  .cd-card td.cd-email{max-width:26ch; overflow:hidden; text-overflow:ellipsis;}
   .cd-card table{width:100%; border-collapse:collapse; font-size:14px;}
   .cd-card thead th{background:var(--white); text-align:left; padding:14px 18px; font-size:11px;
     letter-spacing:.6px; text-transform:uppercase; color:var(--muted); font-weight:700;
@@ -3369,7 +3374,7 @@ function renderContactDir(){
   const cnt=document.getElementById('cd-count');
   if(cnt) cnt.textContent = list.length+' contact'+(list.length===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s');
   const fld=(idx,field,val,w)=> CD_UNLOCKED
-    ? '<input class="cd-inp" onclick="event.stopPropagation()" style="width:'+(w||130)+'px" value="'+esc(val||'')+'"'
+    ? '<input class="cd-inp" onclick="event.stopPropagation()" style="min-width:'+(w||130)+'px" value="'+esc(val||'')+'"'
       +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
       +' oninput="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'this.value':'this.value')+')"'
       +' onchange="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
@@ -3385,7 +3390,7 @@ function renderContactDir(){
       +'<span class="cd-open">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
-      +'<td>'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'
+      +'<td class="cd-email" title="'+esc(c.email||'')+'">'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'
       +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td></tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
   el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th></tr></thead><tbody>'
