@@ -245,7 +245,12 @@
   .daily-log-list a{color:var(--olive-700); text-decoration:none; font-weight:600; border:1px solid var(--olive-700); padding:4px 10px; border-radius:4px; font-size:13px; white-space:nowrap;}
   .daily-log-list a:hover{background:var(--olive-700); color:#fff;}
   .daily-log-list .no-link{color:var(--muted); font-size:13px; font-style:italic; white-space:nowrap;}
-  .attach-link{display:inline-block; max-width:200px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; color:var(--olive-700); text-decoration:none; font-weight:600; border:1px solid var(--olive-700); padding:3px 8px; border-radius:4px; font-size:13px; white-space:nowrap;}
+  .attach-link{display:inline-flex; align-items:center; gap:6px; max-width:210px; vertical-align:middle; color:var(--olive-700); text-decoration:none; font-weight:600; font-size:13px; white-space:nowrap;}
+  .attach-link:hover .attach-name{text-decoration:underline;}
+  .attach-name{overflow:hidden; text-overflow:ellipsis;}
+  .file-ico{flex:0 0 auto; opacity:.75;}
+  .cell-sub{font-size:12px; color:var(--muted); font-weight:400; margin-top:2px; line-height:1.3;}
+  .table-count{padding:11px 18px; font-size:12.5px; color:var(--muted); border-top:1px solid #F1F0E8;}
   .attach-link:hover{background:var(--olive-700); color:#fff;}
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
   .btn-invite:hover{background:var(--olive-700);color:#fff;}
@@ -911,6 +916,7 @@
           <div class="panel-header"><span>All RFIs</span><span class="src">Box · 01 - RFIs</span></div>
           <table><thead><tr><th>RFI #</th><th>Subject</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Due Date</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-rfis"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <div class="table-count" id="RFI-count"></div>
           <div class="note" id="note-rfis"></div>
         </div>
       </div>
@@ -925,6 +931,7 @@
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
           <table><thead><tr><th>PCO / CO #</th><th>Description</th><th>Cause</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th title="Portion funded from the contractor's allowance">From Allowance</th><th title="Portion that increases the contract">To Contract</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-cos"><tr class="loading-row"><td colspan="11">Loading…</td></tr></tbody></table>
+          <div class="table-count" id="changeorder-count"></div>
         </div>
       </div>
 
@@ -938,6 +945,7 @@
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
           <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <div class="table-count" id="submittal-count"></div>
         </div>
       </div>
 
@@ -2461,7 +2469,61 @@ async function openBoxFile(fileId, ev){
   return false;
 }
 
-function fileCell(r){ const fid=r['Attachment File ID']||r['File ID'],fn=r['Attachment Name']||r['File Name']; return fid?'<a class="attach-link" title="'+esc(fn||'View')+'" href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">'+esc(fn||'View')+'</a>':'—'; }
+// A muted second line beneath the main value. Returns just the primary when
+// there is nothing worth putting underneath, so rows never carry a blank line.
+function twoLine(primary, secondary){
+  const a=String(primary==null?'':primary).trim();
+  const b=String(secondary==null?'':secondary).trim();
+  const top=a?esc(a):'<span style="color:var(--muted);">\u2014</span>';
+  return b && b.toLowerCase()!==a.toLowerCase()
+    ? top+'<div class="cell-sub">'+esc(b)+'</div>'
+    : top;
+}
+// Whoever a name belongs to, according to the project's contact list. Lets the
+// reviewer column show the firm as well as the person.
+function firmOf(name){
+  const n=String(name||'').trim().toLowerCase(); if(!n) return '';
+  const c=(allData.contacts||[]).find(x=>String(x['Name']||'').trim().toLowerCase()===n);
+  return c?String(c['Company']||'').trim():'';
+}
+// CSI sections read "09 51 00 Acoustical Ceilings" or "09 51 00 - Acoustical
+// Ceilings". Split the number from the name so the number can lead.
+function specParts(v){
+  const t=String(v||'').trim();
+  const m=t.match(/^(\d{2}\s?\d{2}\s?\d{2})\s*[-\u2013:]?\s*(.*)$/);
+  return m ? {code:m[1], name:m[2]} : {code:t, name:''};
+}
+const FILE_ICONS={
+  pdf:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  img:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+  doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/>'
+};
+function fileKind(name){
+  const e=String(name||'').toLowerCase().split('.').pop();
+  if(['png','jpg','jpeg','gif','webp','avif','heic','bmp','svg'].includes(e)) return 'img';
+  if(e==='pdf') return 'pdf';
+  return 'doc';
+}
+function fileIcon(name){
+  return '<svg class="file-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    +'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+FILE_ICONS[fileKind(name)]+'</svg>';
+}
+function fileCell(r){
+  const fid=r['Attachment File ID']||r['File ID'], fn=r['Attachment Name']||r['File Name'];
+  if(!fid) return '<span style="color:var(--muted);">\u2014</span>';
+  return '<a class="attach-link" title="'+esc(fn||'View')+'" href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">'
+    +fileIcon(fn)+'<span class="attach-name">'+esc(fn||'View')+'</span></a>';
+}
+// "Showing 1 to 5 of 5 submittals" — makes a long log legible and an empty
+// filter obviously empty rather than looking broken.
+function countFooter(shown, total, noun){
+  const el=document.getElementById(noun.replace(/\s+/g,'')+'-count');
+  if(!el) return;
+  const plural = noun + (total===1 ? '' : 's');
+  el.textContent = !total ? ''
+    : (shown ? 'Showing 1 to '+shown+' of '+total+' '+plural
+             : 'Showing 0 of '+total+' '+plural+' — the rest are archived');
+}
 function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
 
 // ── RENDERERS ──
@@ -2478,11 +2540,21 @@ function renderRFIs(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('rfi',idx,r)+'</td></tr>');
-  if(!rows.length){tb.innerHTML=emptyRow(8);const n=document.getElementById('note-rfis');if(n){n.innerHTML='';n.style.display='none';}return;}
+  if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'RFI');const n=document.getElementById('note-rfis');if(n){n.innerHTML='';n.style.display='none';}return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')"><td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Assigned To'])+'</td><td>'+esc(fmtDMY(r['Due Date']))+'</td><td>'+pill(r['Status'],isOverdue(r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')">'
+      +'<td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['RFI #'], rowCompany(r))+'</td>'
+      +'<td>'+esc(r['Subject'])+'</td>'
+      +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
+      +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
+      +'<td>'+twoLine(r['Assigned To'], firmOf(r['Assigned To']))+'</td>'
+      +'<td>'+esc(fmtDMY(r['Due Date']))+'</td>'
+      +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
+      +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
+  countFooter(live.length, all.length, 'RFI');
   // The closed-RFI note used to list every response beneath the table. That
   // information now sits inside each RFI's own expandable thread.
   const note=document.getElementById('note-rfis'); if(note){ note.innerHTML=''; note.style.display='none'; }
@@ -2490,7 +2562,7 @@ function renderRFIs(){
 
 function renderCOs(){
   const rows=allData.co||[], tb=document.getElementById('tbody-cos');
-  if(!rows.length){tb.innerHTML=emptyRow(10);return;}
+  if(!rows.length){tb.innerHTML=emptyRow(10);countFooter(0,0,'change order');return;}
   tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
     // A change order carries a PCO number while pending and gains a CO number
     // once executed, so show both when they exist.
@@ -2498,8 +2570,9 @@ function renderCOs(){
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
     const cause=r['Cause'] ? '<span class="pill" style="background:var(--khaki-100);color:var(--olive-900);">'+esc(r['Cause'])+'</span>' : '<span style="color:var(--muted);">—</span>';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div style="font-size:12px;color:var(--muted);">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+esc(r['Submitted By']||'')+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,11); }).join('');
+  countFooter(rows.length, rows.length, 'change order');
 }
 
 function renderSubmittals(){
@@ -2514,11 +2587,22 @@ function renderSubmittals(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('sub',idx,r)+'</td></tr>');
-  if(!rows.length){tb.innerHTML=emptyRow(8);return;}
+  if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'submittal');return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')"><td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+esc(r['Submittal #'])+'</td><td>'+esc(r['Spec Section'])+'</td><td>'+esc(r['Description'])+'</td><td>'+esc(r['Submitted By (Sub)'])+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+esc(r['Reviewer'])+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
+    const sp=specParts(r['Spec Section']);
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')">'
+      +'<td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['Submittal #'], rowCompany(r))+'</td>'
+      +'<td>'+twoLine(sp.code, sp.name)+'</td>'
+      +'<td>'+esc(r['Description'])+'</td>'
+      +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
+      +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
+      +'<td>'+twoLine(firmOf(r['Reviewer'])||r['Reviewer'], firmOf(r['Reviewer'])?r['Reviewer']:'')+'</td>'
+      +'<td>'+pill(r['Status'],false)+'</td>'
+      +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
     return main+verThreadRows('sub',r,i,9);
   }).join('');
+  countFooter(live.length, all.length, 'submittal');
 }
 
 function renderDailyLogs(){
