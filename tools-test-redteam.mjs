@@ -115,5 +115,39 @@ ok('garbage role cannot read the budget',    verdict('Budget Tracker.csv','super
 ok('garbage role cannot read the audit log', verdict('Audit Log.csv','') === NONE);
 ok('garbage role is scoped to one company',  verdict('Payment Applications.csv','wat') === OWN);
 
+
+// ── Custom: access is exactly the checklist, and never more ────────────────
+console.log('Custom role');
+const custom = (file, modules) => filterCsvForCaller(file, CSV, false, 'Acme', 'custom', modules);
+const v = out => { const mine=out.includes('ACMEROW'), theirs=out.includes('RIVALROW');
+  return !mine && !theirs ? NONE : (theirs ? ALL : OWN); };
+
+ok('a listed module is readable',      v(custom('RFI Log.csv', ['rfi','co'])) !== NONE);
+ok('an unlisted module is withheld',   v(custom('Submittals Log.csv', ['rfi','co'])) === NONE);
+ok('an empty checklist grants nothing',v(custom('RFI Log.csv', [])) === NONE);
+ok('a missing checklist grants nothing',v(custom('RFI Log.csv', undefined)) === NONE);
+ok('a null checklist grants nothing',  v(custom('RFI Log.csv', null)) === NONE);
+
+// The checklist narrows; it must never widen. Internal logs stay internal even
+// if someone puts their module key in the list.
+for(const f of ['Budget Tracker.csv','Comments.csv','Audit Log.csv','Daily Log Index.csv','Board Reports.csv']){
+  ok('custom cannot reach '+f, v(custom(f, ['budget','comments','audit','daily','board'])) === NONE);
+}
+ok('custom cannot reach an unknown log', v(custom('Some Future Module.csv', ['rfi'])) === NONE);
+
+// Company scoping still applies, exactly as it does for a contractor.
+ok('custom sees only its own pay apps', v(custom('Payment Applications.csv', ['pay_apps'])) === OWN);
+ok('custom sees only its own payrolls', v(custom('Certified Payrolls.csv', ['payrolls'])) === OWN);
+ok('custom config hides rival figures',
+   !filterCsvForCaller('Project Info.json', CFG, false, 'Acme', 'custom', ['rfi']).includes('9999999'));
+
+// ── Architect and Engineer are one permission set under two names ──────────
+console.log('Architect and Engineer');
+for(const [file, want] of Object.entries(EXPECT)){
+  const a = verdict(file, 'architect'), e = verdict(file, 'engineer');
+  ok(file+': architect and engineer match', a === e);
+  ok(file+': both match the legacy combined role', a === want[1]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

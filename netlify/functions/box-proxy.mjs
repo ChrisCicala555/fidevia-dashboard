@@ -326,20 +326,31 @@ const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Dail
 // one project and an architect on another. Fidevia staff are internal by email
 // domain and are not granted a role here.
 const ROLE_CONTRACTOR = 'contractor';
+const ROLE_ARCHITECT  = 'architect';
+const ROLE_ENGINEER   = 'engineer';
+// The original combined value. Kept so grants written before the split keep
+// working; it behaves exactly as architect does.
 const ROLE_AE         = 'architect-engineer';
 const ROLE_OWNER      = 'owner';
-const VALID_ROLES = [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER];
+// Access is whatever the grant's module list says, scoped to one company.
+const ROLE_CUSTOM     = 'custom';
+const VALID_ROLES = [ROLE_CONTRACTOR, ROLE_ARCHITECT, ROLE_ENGINEER, ROLE_AE, ROLE_OWNER, ROLE_CUSTOM];
+// Architect and Engineer are two labels over one set of permissions. Keeping
+// them distinct in the data means the directory and emails can say which one a
+// person actually is, without pretending their access differs.
+const DESIGN_ROLES = [ROLE_ARCHITECT, ROLE_ENGINEER, ROLE_AE];
 function normRole(r){
   const t = String(r || '').trim().toLowerCase();
   if (VALID_ROLES.includes(t)) return t;
   // Tolerate the free-text values written before roles were functional.
-  if (/architect|engineer|a\/e|consultant/.test(t)) return ROLE_AE;
+  if (/architect/.test(t)) return ROLE_ARCHITECT;
+  if (/engineer|a\/e|consultant/.test(t)) return ROLE_ENGINEER;
   if (/owner|client/.test(t)) return ROLE_OWNER;
   return ROLE_CONTRACTOR;   // safest default: sees only its own company
 }
 // Architect/Engineer and Owner review the whole project, so company-private
 // modules are NOT filtered down to one company for them.
-function seesAllCompanies(role){ return role === ROLE_AE || role === ROLE_OWNER; }
+function seesAllCompanies(role){ return DESIGN_ROLES.includes(role) || role === ROLE_OWNER; }
 // Owner is strictly read-only.
 function roleMayWrite(role){ return role !== ROLE_OWNER; }
 // Which logs an external caller may read, by role. This is an ALLOWLIST on
@@ -351,19 +362,35 @@ function roleMayWrite(role){ return role !== ROLE_OWNER; }
 // The rule for editing this: a file belongs here only if the interface already
 // offers that module to that role. Adding a module to the UI without adding it
 // here fails closed, which is the direction we want to fail in.
+const D = DESIGN_ROLES;   // architect, engineer, and the legacy combined value
 const EXTERNAL_READABLE_CSV = {
-  'RFI Log.csv':                  [ROLE_CONTRACTOR, ROLE_AE],
-  'Change Order Log.csv':         [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
-  'Submittals Log.csv':           [ROLE_CONTRACTOR, ROLE_AE],
-  'Document Index.csv':           [ROLE_CONTRACTOR, ROLE_AE],
-  'Documents.csv':                [ROLE_CONTRACTOR, ROLE_AE],
-  'Job Contacts.csv':             [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
+  'RFI Log.csv':                  [ROLE_CONTRACTOR, ...D],
+  'Change Order Log.csv':         [ROLE_CONTRACTOR, ...D, ROLE_OWNER],
+  'Submittals Log.csv':           [ROLE_CONTRACTOR, ...D],
+  'Document Index.csv':           [ROLE_CONTRACTOR, ...D],
+  'Documents.csv':                [ROLE_CONTRACTOR, ...D],
+  'Job Contacts.csv':             [ROLE_CONTRACTOR, ...D, ROLE_OWNER],
   // OAC minutes: the architect and the owner are in the room, the trades are not.
-  'Meeting Minutes.csv':          [ROLE_AE, ROLE_OWNER],
-  'Payment Applications.csv':     [ROLE_CONTRACTOR, ROLE_AE, ROLE_OWNER],
-  'Contractor Daily Reports.csv': [ROLE_CONTRACTOR, ROLE_AE],
-  'Certified Payrolls.csv':       [ROLE_CONTRACTOR, ROLE_AE]
+  'Meeting Minutes.csv':          [...D, ROLE_OWNER],
+  'Payment Applications.csv':     [ROLE_CONTRACTOR, ...D, ROLE_OWNER],
+  'Contractor Daily Reports.csv': [ROLE_CONTRACTOR, ...D],
+  'Certified Payrolls.csv':       [ROLE_CONTRACTOR, ...D]
 };
+// Which module key each log belongs to, so a Custom grant's checklist can be
+// matched against the file being requested.
+const CSV_MODULE = {
+  'RFI Log.csv':'rfi', 'Change Order Log.csv':'co', 'Submittals Log.csv':'sub',
+  'Document Index.csv':'docs', 'Documents.csv':'gendocs', 'Job Contacts.csv':'contacts',
+  'Meeting Minutes.csv':'meetings', 'Payment Applications.csv':'pay_apps',
+  'Contractor Daily Reports.csv':'contractor_daily', 'Certified Payrolls.csv':'payrolls'
+};
+// A Custom grant may only ever reach modules that some named role could reach.
+// The checklist narrows access; it can never widen it past the allowlist above.
+function customMayRead(filename, modules){
+  const mod = CSV_MODULE[filename];
+  if (!mod) return false;
+  return Array.isArray(modules) && modules.includes(mod);
+}
 // Never reaches an external caller in any role: Budget Tracker.csv,
 // Comments.csv (internal message board), Daily Log Index.csv (Fidevia's own
 // daily reports), Meeting Minutes.csv, Board Reports.csv, Audit Log.csv.
@@ -395,7 +422,7 @@ function filterProjectConfig(text, company, role) {
   let cfg; try { cfg = JSON.parse(text || '{}'); } catch (e) { return '{}'; }
   // Architect/Engineer and Owner review the project as a whole and legitimately
   // see every contractor's numbers elsewhere, so the config is left intact.
-  if (role !== ROLE_CONTRACTOR) return JSON.stringify(cfg);
+  if (role !== ROLE_CONTRACTOR && role !== ROLE_CUSTOM) return JSON.stringify(cfg);
   const mine = String(company || '').trim().toLowerCase();
   const isMine = n => String(n || '').trim().toLowerCase() === mine && mine !== '';
   if (Array.isArray(cfg.contractors)) {
@@ -413,7 +440,7 @@ function filterProjectConfig(text, company, role) {
 }
 
 // Apply the same row-level rules everywhere a file is handed to a caller.
-function filterCsvForCaller(filename, text, isAdmin, company, role) {
+function filterCsvForCaller(filename, text, isAdmin, company, role, modules) {
   if (isAdmin) return text;
   const r0 = normRole(role);
 
@@ -422,9 +449,12 @@ function filterCsvForCaller(filename, text, isAdmin, company, role) {
   // Anything that is not a log we recognise is withheld. Returning the header
   // row keeps the client's parser happy while carrying no records.
   if (!/\.csv$/i.test(String(filename || ''))) return '';
-  const allowedRoles = EXTERNAL_READABLE_CSV[filename];
-  if (!allowedRoles || !allowedRoles.includes(r0)) {
-    return toCSVServer(parseCSVServer(text).headers, []);
+  const empty = () => toCSVServer(parseCSVServer(text).headers, []);
+  if (r0 === ROLE_CUSTOM) {
+    if (!customMayRead(filename, modules)) return empty();
+  } else {
+    const allowedRoles = EXTERNAL_READABLE_CSV[filename];
+    if (!allowedRoles || !allowedRoles.includes(r0)) return empty();
   }
 
   const priv = PRIVATE_CSV[filename];
@@ -508,13 +538,14 @@ async function allowedFileIds(H, t, grants, who, projectId) {
     const _g = await grantFor(t, grants, 'folder', projectId);
     const company = (_g && _g.company) || '';
     const role = normRole(_g && _g.role);
+    const modules = (_g && _g.modules) || [];
     await Promise.all(folders.map(async f => {
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${f.id}/items?limit=1000&fields=id,name,type`, { headers: H });
       const files = lr.ok ? ((await lr.json()).entries || []).filter(e => e.type === 'file' && e.name.endsWith('.csv')) : [];
       await Promise.all(files.map(async csv => {
         const cr = await boxFetch(`https://api.box.com/2.0/files/${csv.id}/content`, { headers: H });
         if (!cr.ok) return;
-        const filtered = filterCsvForCaller(csv.name, await cr.text(), false, company, role);
+        const filtered = filterCsvForCaller(csv.name, await cr.text(), false, company, role, modules);
         for (const row of parseCSVServer(filtered).rows) for (const id of fileIdsInRow(row)) ids.add(id);
       }));
     }));
@@ -612,13 +643,15 @@ export default async (req) => {
         if (!email || !list.length) return json({ error: 'email and at least one project are required' }, 400);
         const company = (body.company || '').trim();
         const role = (body.role || '').trim();
+        // Only meaningful for Custom; stored as given and ignored otherwise.
+        const modules = Array.isArray(body.modules) ? body.modules.map(String) : null;
         const store = grantsStore();
         const g = (await store.get(email, { type: 'json' })) || { projects: [] };
         const added = [];
         for (const proj of list) {
           const ex = g.projects.find(p => String(p.id) === proj.id);
-          if (ex) { ex.name = proj.name || ex.name; ex.company = company || ex.company || ''; ex.role = role || ex.role || ''; }
-          else { g.projects.push({ id: proj.id, name: proj.name, company, role }); }
+          if (ex) { ex.name = proj.name || ex.name; ex.company = company || ex.company || ''; ex.role = role || ex.role || ''; if (modules) ex.modules = modules; }
+          else { g.projects.push({ id: proj.id, name: proj.name, company, role, modules: modules || [] }); }
           added.push(proj.name || proj.id);
         }
         await store.setJSON(email, g);
@@ -721,7 +754,7 @@ export default async (req) => {
       const d = await r.json();
       const existing = new Map((d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => [String(e.id), e.name]));
       const archived = new Set(await getArchivedIds());
-      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: normRole(g.role) }));
+      const mine = grants.filter(g => existing.has(String(g.id)) && !archived.has(String(g.id))).map(g => ({ id: g.id, name: existing.get(String(g.id)) || g.name, company: g.company || '', role: normRole(g.role), modules: g.modules || [] }));
       await Promise.all(mine.map(async pr => { pr.logoFileId = await logoIdFor(H, pr.id); }));
       return json({ projects: mine });
     }
@@ -794,10 +827,10 @@ export default async (req) => {
           if (!who.isAdmin) {
             if (companyCache[fid] === undefined) {
               const g = await grantFor(t, _grants, 'folder', fid);
-              companyCache[fid] = { company: (g && g.company) || '', role: normRole(g && g.role) };
+              companyCache[fid] = { company: (g && g.company) || '', role: normRole(g && g.role), modules: (g && g.modules) || [] };
             }
-            const { company, role } = companyCache[fid];
-            text = filterCsvForCaller(m.filename, text, false, company, role);
+            const { company, role, modules } = companyCache[fid];
+            text = filterCsvForCaller(m.filename, text, false, company, role, modules);
           }
           data[m.key] = text;
         } catch (e) {}
@@ -813,7 +846,7 @@ export default async (req) => {
       let text = r.ok ? await r.text() : '';
       if (!who.isAdmin) {
         const g = await grantFor(t, _grants, 'file', body.fileId);
-        text = filterCsvForCaller(fname, text, false, (g && g.company) || '', normRole(g && g.role));
+        text = filterCsvForCaller(fname, text, false, (g && g.company) || '', normRole(g && g.role), (g && g.modules) || []);
       }
       return json({ text });
     }

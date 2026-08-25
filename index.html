@@ -355,6 +355,7 @@
   /* Role views. Owner sees only financial and reporting modules; A/E sees the
      project but not internal-only areas. The server enforces the data — these
      rules only keep the navigation honest. */
+  .nav-item.module-off{display:none !important;}
   body.role-owner .nav-item{display:none;}
   body.role-owner .nav-item.owner-ok{display:block;}
   body.role-owner .nav-section-label.owner-hide{display:none;}
@@ -847,7 +848,8 @@
             <button id="btn-external" onclick="setViewer('external')">External Viewer</button>
             <select id="viewer-role" style="display:none;max-width:180px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);margin-right:6px;" onchange="setViewerRole(this.value)">
               <option value="contractor">Contractor</option>
-              <option value="architect-engineer">Architect / Engineer</option>
+              <option value="architect">Architect</option>
+              <option value="engineer">Engineer</option>
               <option value="owner">Owner</option>
             </select>
             <select id="viewer-company" style="display:none;max-width:170px;border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);" onchange="setViewerCompany(this.value)"></select>
@@ -1226,11 +1228,18 @@
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px;">Add to a project</div>
         <div class="field-row" style="margin-bottom:10px;">
           <div class="field" style="margin:0;flex:1.4;"><label>Project</label><select id="person-add-proj"></select></div>
-          <div class="field" style="margin:0;flex:1;"><label>Role</label><select id="person-add-role">
+          <div class="field" style="margin:0;flex:1;"><label>Approve as</label><select id="person-add-role" onchange="personRoleChanged()">
             <option value="contractor">Contractor</option>
-            <option value="architect-engineer">Architect / Engineer</option>
+            <option value="architect">Architect</option>
+            <option value="engineer">Engineer</option>
             <option value="owner">Owner</option>
+            <option value="custom">Custom…</option>
           </select></div>
+        </div>
+        <div id="person-add-modules" style="display:none;margin-bottom:12px;padding:12px 14px;border-radius:8px;background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Which modules can they open?</div>
+          <div id="person-module-list" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;"></div>
+          <p class="file-hint" style="margin:9px 0 0;">They will still only see their own company's rows, the same as a contractor. Payment applications are all or nothing.</p>
         </div>
         <div id="person-add-warn" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
         <button class="btn-primary" id="person-add-btn" onclick="personAddProject()" style="padding:9px 18px;font-size:13px;">Add to project</button>
@@ -1951,7 +1960,7 @@ async function openProject(folderId, name){
     const items = await boxList(folderId);
     const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
     currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
-    if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; }
+    if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; currentProject.userModules=(_pp&&_pp.modules)||[]; }
     if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
     applyRoleClasses();
     navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
@@ -3668,7 +3677,10 @@ async function personAddProject(){
   const pname=sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
   const role=(document.getElementById('person-add-role')||{}).value||'contractor';
   const co=String(PERSON_CTX.contact.company||'').trim();
-  if(role==='contractor' && !co){ showStatus('person-status','This person needs a company in the directory before they can be added as a contractor.','error'); return; }
+  // Contractor and Custom are both scoped to one company, so both need one.
+  if((role==='contractor'||role==='custom') && !co){ showStatus('person-status','This person needs a company in the directory before they can be added as a '+(role==='custom'?'custom role':'contractor')+'.','error'); return; }
+  const modules = role==='custom' ? personGatherModules() : null;
+  if(role==='custom' && !modules.length){ showStatus('person-status','Choose at least one module for a custom role, or pick a named role instead.','error'); return; }
   const warn=document.getElementById('person-add-warn');
   if(warn && warn.style.display!=='none'){
     if(!confirm(warn.textContent+'\n\nAdd them anyway?')) return;
@@ -3676,13 +3688,34 @@ async function personAddProject(){
   const btn=document.getElementById('person-add-btn'); btn.disabled=true;
   showStatus('person-status','Adding…','info');
   try{
-    await proxyCall('adminGrant',{email:PERSON_CTX.contact.email, projects:[{id:pid,name:pname}], company:co, role});
-    PERSON_CTX.grants.push({id:pid,name:pname,company:co,role});
+    await proxyCall('adminGrant',Object.assign({email:PERSON_CTX.contact.email, projects:[{id:pid,name:pname}], company:co, role}, modules?{modules}:{}));
+    PERSON_CTX.grants.push({id:pid,name:pname,company:co,role,modules:modules||[]});
     showStatus('person-status','Added to '+pname+'.','success');
     renderPersonProjects();
     if(typeof renderGrants==='function') renderGrants();
   }catch(e){ showStatus('person-status','Error: '+e.message,'error'); }
   btn.disabled=false;
+}
+
+// The checklist starts from what a contractor can already reach, so Custom is
+// framed as narrowing a known role rather than assembling one from nothing.
+const CUSTOM_DEFAULT=['rfi','co','sub','docs','gendocs','contacts'];
+function renderPersonModules(){
+  const box=document.getElementById('person-module-list'); if(!box) return;
+  box.innerHTML=CUSTOM_MODULES.map(([k,label])=>
+    '<label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--olive-900);cursor:pointer;">'
+    +'<input type="checkbox" class="pm-mod" value="'+esc(k)+'"'+(CUSTOM_DEFAULT.includes(k)?' checked':'')+'>'
+    +esc(label)+'</label>').join('');
+}
+function personGatherModules(){
+  return [...document.querySelectorAll('#person-module-list .pm-mod:checked')].map(x=>x.value);
+}
+function personRoleChanged(){
+  const role=(document.getElementById('person-add-role')||{}).value||'contractor';
+  const box=document.getElementById('person-add-modules'); if(!box) return;
+  const on = role==='custom';
+  box.style.display = on ? 'block' : 'none';
+  if(on && !document.querySelector('#person-module-list .pm-mod')) renderPersonModules();
 }
 
 async function personRevoke(projectId){
@@ -4216,7 +4249,22 @@ function markCompanyChip(){
     c.classList.toggle('on', c.textContent.trim().toLowerCase()===v);
   });
 }
-const ROLE_LABELS={'contractor':'Contractor','architect-engineer':'Architect / Engineer','owner':'Owner'};
+const ROLE_LABELS={'contractor':'Contractor','architect':'Architect','engineer':'Engineer',
+  // Written before Architect and Engineer were separate options. Grants using it
+  // keep working and read as Architect.
+  'architect-engineer':'Architect','owner':'Owner','custom':'Custom'};
+// Two labels, one set of permissions. Splitting them lets the directory and the
+// emails say which a person actually is without pretending their access differs.
+const DESIGN_ROLES=['architect','engineer','architect-engineer'];
+// Modules a Custom grant can be given. Deliberately a subset: nothing internal
+// to Fidevia appears here, so the checklist can only narrow access.
+const CUSTOM_MODULES=[
+  ['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],
+  ['docs','Drawings & Specifications'],['gendocs','Documents'],
+  ['contacts','Directory'],['meetings','Meeting Minutes'],
+  ['pay_apps','Payment Applications'],['contractor_daily','Contractor Daily Reports'],
+  ['payrolls','Certified Payrolls']
+];
 function roleBadge(r){
   const k=String(r||'contractor').toLowerCase();
   const lbl=ROLE_LABELS[k]||'Contractor';
@@ -4384,6 +4432,7 @@ function setViewerRole(v){
 // Role of the person whose view we are rendering: their own, or the one a
 // Fidevia admin has selected in the preview toggle.
 let VIEWER_ROLE='';
+let VIEWER_MODULES=[];
 function viewingAsRole(){
   if(EXTERNAL) return String((currentProject&&currentProject.userRole)||'contractor');
   if(document.body.classList.contains('external-mode')) return VIEWER_ROLE||'contractor';
@@ -4395,7 +4444,33 @@ function isContractorView(){ return viewingAsRole()==='contractor'; }
 // Fidevia review the whole project, so they must not be filtered at all.
 function companyScope(){ return isContractorView() ? viewingAsCompany() : ''; }
 function isAEView(){ return viewingAsRole()==='architect-engineer'; }
-function roleSeesAllCompanies(){ const r=viewingAsRole(); return r==='architect-engineer'||r==='owner'||r==='fidevia'; }
+// The module checklist attached to a Custom grant. Empty for every other role,
+// which is why applyCustomModules only acts when the role is custom.
+function customModules(){
+  if(EXTERNAL) return (currentProject&&currentProject.userModules)||[];
+  return VIEWER_MODULES||[];
+}
+// Hide the navigation for modules a Custom grant does not include. This is
+// presentation only — the server withholds the data regardless of what is on
+// screen, so a hidden tab is a courtesy rather than the control.
+const NAV_SECTION_FOR={rfi:'rfis',co:'cos',sub:'submittals',docs:'documents',gendocs:'gendocs',
+  contacts:'contacts',meetings:'meetings',pay_apps:'payapps',contractor_daily:'cdaily',payrolls:'payrolls'};
+function applyCustomModules(){
+  const custom = viewingAsRole()==='custom';
+  const allowed = new Set(customModules());
+  document.querySelectorAll('.nav-item[data-section]').forEach(el=>{
+    const sec=el.getAttribute('data-section');
+    const key=Object.keys(NAV_SECTION_FOR).find(k=>NAV_SECTION_FOR[k]===sec);
+    if(!key) return;                       // Home, Schedule and the rest are unaffected
+    el.classList.toggle('module-off', custom && !allowed.has(key));
+  });
+  // If the section on screen has just been hidden, do not leave them staring at it.
+  if(custom){
+    const cur=document.querySelector('.nav-item.active');
+    if(cur && cur.classList.contains('module-off')) navTo('overview');
+  }
+}
+function roleSeesAllCompanies(){ const r=viewingAsRole(); return DESIGN_ROLES.includes(r)||r==='owner'||r==='fidevia'; }
 function updateExternalBanner(){
   const el=document.getElementById('external-banner'); if(!el) return;
   const label=(ROLE_LABELS&&ROLE_LABELS[viewingAsRole()])||'External';
@@ -4406,8 +4481,11 @@ function applyRoleClasses(){
   const r=viewingAsRole();
   try{ updateExternalBanner(); }catch(e){}
   document.body.classList.toggle('role-owner', r==='owner');
-  document.body.classList.toggle('role-ae', r==='architect-engineer');
-  document.body.classList.toggle('role-contractor', r==='contractor');
+  document.body.classList.toggle('role-ae', DESIGN_ROLES.includes(r));
+  // Custom is company-scoped like a contractor, so it inherits that styling.
+  document.body.classList.toggle('role-contractor', r==='contractor'||r==='custom');
+  document.body.classList.toggle('role-custom', r==='custom');
+  try{ applyCustomModules(); }catch(e){}
 }
 
 function viewingAsExternal(){

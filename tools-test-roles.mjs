@@ -40,8 +40,20 @@ ck('admin sees everything', rows(filterCsvForCaller('Payment Applications.csv',p
 ck('admin reaches RFIs', rows(filterCsvForCaller('RFI Log.csv',rfi,true,'','')).length===1);
 
 console.log('\nRole normalisation — legacy free-text values');
-ck('"Architect" maps to A/E', normRole('Architect')==='architect-engineer');
-ck('"Engineer" maps to A/E', normRole('MEP Engineer')==='architect-engineer');
+// Free text now resolves to the split roles rather than the combined one.
+ck('"Architect" maps to architect', normRole('Architect')==='architect');
+ck('"MEP Engineer" maps to engineer', normRole('MEP Engineer')==='engineer');
+ck('"Design Consultant" maps to engineer', normRole('Design Consultant')==='engineer');
+// Grants written before the split are stored as the combined value. It must
+// still be a valid role and must still see every company.
+ck('the legacy combined value survives normalisation', normRole('architect-engineer')==='architect-engineer');
+ck('the legacy combined value still sees all companies', seesAllCompanies('architect-engineer')===true);
+ck('architect sees all companies', seesAllCompanies('architect')===true);
+ck('engineer sees all companies', seesAllCompanies('engineer')===true);
+// Custom is company-scoped, like a contractor.
+ck('custom does not see all companies', seesAllCompanies('custom')===false);
+ck('custom may still write', roleMayWrite('custom')===true);
+ck('custom is a valid role', normRole('custom')==='custom');
 ck('"Owner" maps to owner', normRole('Owner')==='owner');
 ck('"General Contractor" maps to contractor', normRole('General Contractor')==='contractor');
 ck('unknown defaults to contractor', normRole('')==='contractor', '(safest: own company only)');
