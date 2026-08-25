@@ -224,6 +224,23 @@ async function addContactToProject(H, projectId, contact){
   const form = new FormData(); form.append('attributes', attrs); form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), fname);
   await boxFetch(url, { method: 'POST', headers: H, body: form });
 }
+// Find someone's directory profile by email. Grants are keyed by email while
+// profiles are keyed by Auth0 sub, so there is no direct lookup.
+async function profileByEmail(email){
+  const want = String(email || '').trim().toLowerCase();
+  if (!want) return null;
+  try {
+    const store = getStore('profiles');
+    const { blobs } = await store.list();
+    for (const b of (blobs || [])) {
+      try {
+        const pr = await store.get(b.key, { type: 'json' });
+        if (pr && String(pr.email || '').trim().toLowerCase() === want) return pr;
+      } catch (e) {}
+    }
+  } catch (e) {}
+  return null;
+}
 function contactFromSnap(snap, email){
   return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
 }
@@ -571,7 +588,19 @@ export default async (req) => {
         }
         await store.setJSON(email, g);
         for (const proj of list) {
-          try { const c = contactFromSnap(null, email); if (company) c['Company'] = company; if (role) c['Role'] = role; await addContactToProject(H, proj.id, c); } catch(e) {}
+          try {
+            // Use the person's own profile so the contact row carries their
+            // name and phone rather than an empty cell beside their address.
+            const pr = await profileByEmail(email);
+            const snap = pr ? {
+              name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || '',
+              company: pr.company || '', role: pr.title || '', phone: pr.phone || ''
+            } : null;
+            const c = contactFromSnap(snap, email);
+            if (company) c['Company'] = company;
+            if (role) c['Role'] = role;
+            await addContactToProject(H, proj.id, c);
+          } catch(e) {}
         }
         try { await sendGrantEmailMany(email, list.map(p => p.name), company, role); } catch(e) {}
         return json({ ok: true, granted: added });

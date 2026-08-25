@@ -966,8 +966,14 @@
           <h2>Job contacts directory</h2>
           <button class="btn-add hide-external" onclick="openModal('contact')">+ Add Contact</button>
         </div>
-        <div class="panel">
-          <div class="panel-header">Project contacts &amp; notification routing</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
+          <span class="cd-search-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="jc-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContacts()">
+          </span>
+          <span id="jc-count" style="font-size:12.5px;color:var(--muted);"></span>
+        </div>
+        <div class="cd-card">
           <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th class="hide-external">Notify - RFI</th><th class="hide-external">Notify - CO</th><th class="hide-external">Notify - Submittal</th><th class="hide-external">Account</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
         </div>
@@ -2521,8 +2527,18 @@ function renderDailyLogs(){
 }
 
 function renderContacts(){
-  const rows=allData.contacts||[], tb=document.getElementById('tbody-contacts');
-  if(!rows.length){tb.innerHTML=emptyRow(9);return;}
+  const all=allData.contacts||[], tb=document.getElementById('tbody-contacts');
+  const q=String((document.getElementById('jc-search')||{}).value||'').trim().toLowerCase();
+  // Filter but keep each row's original index, which the action buttons use.
+  const keep=all.map((r,i)=>i).filter(i=>{ if(!q) return true; const r=all[i];
+    return ['Name','Company','Role','Email','Phone'].some(f=>String(r[f]||'').toLowerCase().includes(q)); });
+  const cnt=document.getElementById('jc-count');
+  if(cnt) cnt.textContent = all.length
+    ? (q ? keep.length+' of '+all.length+' contacts' : all.length+' contact'+(all.length===1?'':'s'))
+    : '';
+  if(!all.length){tb.innerHTML=emptyRow(9);return;}
+  if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="10">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
+  const rows=all;
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
   // Where a contact has an account and the project value disagrees with their
   // profile, offer the directory value rather than changing anything silently.
@@ -2539,16 +2555,16 @@ function renderContacts(){
   const editCell=(i,f,v,w)=> '<td>'+esc(v||'')+flagFor(i,f)+'</td>';
   // group indexes by company (preserve original index for actions)
   const groups={};
-  rows.forEach((r,i)=>{ const c=(r['Company']||'').trim()||'— No Company —'; (groups[c]=groups[c]||[]).push(i); });
+  keep.forEach(i=>{ const c=(rows[i]['Company']||'').trim()||'— No Company —'; (groups[c]=groups[c]||[]).push(i); });
   const companies=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
   const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
   let html='';
   if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
   if(IS_ADMIN && !viewingAsExternal()){ html+='<tr><td colspan="10" style="padding:7px 14px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--khaki-100);">Names and companies are maintained in the <strong>Contact Directory</strong>. Where a contact&rsquo;s details differ from it, use the marker beneath the value to adopt the directory&rsquo;s version here.</td></tr>'; }
   companies.forEach(c=>{
-    html+='<tr><td colspan="10" class="cd-letter-cell" style="font-size:15px;">'+esc(c)+'<span class="cd-letter-count">'+groups[c].length+'</span></td></tr>';
+    html+='<tr class="cd-band"><td colspan="10"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
-      html+='<tr><td>'+esc(r['Name'])+flagFor(i,'Name')+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(r['Phone'])+flagFor(i,'Phone')+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
+      html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
   });
   tb.innerHTML=html;
@@ -2603,6 +2619,15 @@ async function adoptDirValue(i, field){
   const m=dirMismatches(r).find(x=>x.field===field); if(!m) return;
   if(!confirm('Set '+field+' to "'+m.theirs+'" from the Contact Directory?\n\nThis changes this project only.')) return;
   await saveContactField(i, field, m.theirs);
+}
+function nameCell(r){
+  const nm=String((r&&r['Name'])||'').trim();
+  if(nm) return esc(nm);
+  const em=String((r&&r['Email'])||'').trim().toLowerCase();
+  const prof=em&&ACCOUNT_PROFILES[em];
+  if(prof&&prof.name) return esc(prof.name);
+  return em ? '<span style="color:var(--muted);font-style:italic;">'+esc(em.split('@')[0])+'</span>'
+            : '<span style="color:var(--muted);">\u2014</span>';
 }
 function accountCell(r){
   const em=String(r['Email']||'').trim().toLowerCase();
