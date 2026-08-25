@@ -197,12 +197,10 @@
   .viewer-toggle button.active{background:var(--olive-700); color:#fff;}
   .content{padding:24px 20px; flex:1; overflow-y:auto; overflow-x:hidden;}
   /* One rule for every module: a table wider than the window scrolls inside its
-     own card. Previously .panel clipped it and .cd-card did not, so the page
-     itself moved on some tabs and not others. */
+     own card, and the page itself never moves. The scroll lives on the
+     container — putting it on the table splits thead from tbody and the columns
+     stop lining up. */
   .panel, .cd-card{max-width:100%;}
-  .panel > table, .cd-card > table{display:block; overflow-x:auto; white-space:normal;}
-  .panel > table > thead, .panel > table > tbody,
-  .cd-card > table > thead, .cd-card > table > tbody{display:table; width:100%; table-layout:auto;}
   .section{display:none;}
   .section.active{display:block;}
   @keyframes fadeUp{from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;}}
@@ -309,6 +307,9 @@
   .cd-tab:hover{color:var(--olive-900);}
   .cd-tab.active{color:var(--olive-900); border-bottom-color:var(--olive-700);}
   .cd-card{background:var(--white); border:1px solid var(--border); border-radius:12px; overflow-x:auto; overflow-y:hidden;}
+  /* Both the head and the body must agree on widths, so the table stays a
+     single table and only the card scrolls. */
+  .cd-card > table{table-layout:auto; min-width:100%;}
   /* Inputs sized in ch flex with the column instead of forcing a fixed width,
      so the unlocked table usually fits without needing to scroll at all. */
   .cd-card .cd-inp{width:100%; min-width:9ch; box-sizing:border-box;}
@@ -1011,7 +1012,7 @@
         </div>
         <div class="cd-card">
           <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
-          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
+          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="11">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -2704,8 +2705,8 @@ function renderContacts(){
   if(cnt) cnt.textContent = all.length
     ? (q ? keep.length+' of '+all.length+' contacts' : all.length+' contact'+(all.length===1?'':'s'))
     : '';
-  if(!all.length){tb.innerHTML=emptyRow(9);return;}
-  if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="10">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
+  if(!all.length){tb.innerHTML=emptyRow(11);return;}
+  if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="11">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
   const rows=all;
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external notify-col"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="event.stopPropagation();toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external notify-col">'+esc(v)+'</td>'; };
   // Where a contact has an account and the project value disagrees with their
@@ -2727,10 +2728,9 @@ function renderContacts(){
   const companies=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
   const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
   let html='';
-  if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
-  if(IS_ADMIN && !viewingAsExternal()){ html+='<tr><td colspan="10" style="padding:7px 14px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--khaki-100);">Names and companies are maintained in the <strong>Contact Directory</strong>. Where a contact&rsquo;s details differ from it, use the marker beneath the value to adopt the directory&rsquo;s version here. <strong>RFI</strong>, <strong>CO</strong> and <strong>SUB</strong> control who is emailed when each type of item is submitted.</td></tr>'; }
+  if(pa && IS_ADMIN){ html+='<tr><td colspan="11" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
   companies.forEach(c=>{
-    html+='<tr class="cd-band"><td colspan="10"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
+    html+='<tr class="cd-band"><td colspan="11"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
         +editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)
