@@ -195,7 +195,14 @@
   .viewer-toggle{display:flex; align-items:center; gap:10px; background:var(--khaki-100); padding:6px 8px; border-radius:6px;}
   .viewer-toggle button{border:none; background:transparent; padding:7px 14px; font-size:13px; font-weight:600; border-radius:5px; cursor:pointer; color:var(--muted); letter-spacing:0.3px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .viewer-toggle button.active{background:var(--olive-700); color:#fff;}
-  .content{padding:24px 20px; flex:1; overflow-y:auto;}
+  .content{padding:24px 20px; flex:1; overflow-y:auto; overflow-x:hidden;}
+  /* One rule for every module: a table wider than the window scrolls inside its
+     own card. Previously .panel clipped it and .cd-card did not, so the page
+     itself moved on some tabs and not others. */
+  .panel, .cd-card{max-width:100%;}
+  .panel > table, .cd-card > table{display:block; overflow-x:auto; white-space:normal;}
+  .panel > table > thead, .panel > table > tbody,
+  .cd-card > table > thead, .cd-card > table > tbody{display:table; width:100%; table-layout:auto;}
   .section{display:none;}
   .section.active{display:block;}
   @keyframes fadeUp{from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;}}
@@ -305,8 +312,13 @@
   /* Inputs sized in ch flex with the column instead of forcing a fixed width,
      so the unlocked table usually fits without needing to scroll at all. */
   .cd-card .cd-inp{width:100%; min-width:9ch; box-sizing:border-box;}
-  .cd-card td, .cd-card th{white-space:nowrap;}
-  .cd-card td.cd-email{max-width:26ch; overflow:hidden; text-overflow:ellipsis;}
+  /* Only the columns that genuinely must stay on one line. Applying this to
+     every cell stopped wide tables from ever shrinking. */
+  .cd-card td.nw, .cd-card th.nw{white-space:nowrap;}
+  .cd-card td.cd-email{max-width:24ch; overflow:hidden; text-overflow:ellipsis;}
+  /* Notification toggles: three narrow columns that only need to fit Yes/No. */
+  .cd-card th.notify-col, .cd-card td.notify-col{width:58px; text-align:center; padding-left:6px; padding-right:6px;}
+  .cd-card th.notify-col{font-size:10px; letter-spacing:.4px;}
   .cd-card table{width:100%; border-collapse:collapse; font-size:14px;}
   .cd-card thead th{background:var(--white); text-align:left; padding:14px 18px; font-size:11px;
     letter-spacing:.6px; text-transform:uppercase; color:var(--muted); font-weight:700;
@@ -998,7 +1010,7 @@
           <span id="jc-count" style="font-size:12.5px;color:var(--muted);"></span>
         </div>
         <div class="cd-card">
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th><th class="hide-external">Notify - RFI</th><th class="hide-external">Notify - CO</th><th class="hide-external">Notify - Submittal</th><th class="hide-external">Account</th><th class="admin-col">Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw">Account</th><th class="admin-col nw">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="9">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -2679,7 +2691,7 @@ function renderContacts(){
   if(!all.length){tb.innerHTML=emptyRow(9);return;}
   if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="10">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
   const rows=all;
-  const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external">'+esc(v)+'</td>'; };
+  const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external notify-col"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="event.stopPropagation();toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external notify-col">'+esc(v)+'</td>'; };
   // Where a contact has an account and the project value disagrees with their
   // profile, offer the directory value rather than changing anything silently.
   const flagFor=(i,f)=>{
@@ -2700,11 +2712,16 @@ function renderContacts(){
   const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
   let html='';
   if(pa && IS_ADMIN){ html+='<tr><td colspan="10" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
-  if(IS_ADMIN && !viewingAsExternal()){ html+='<tr><td colspan="10" style="padding:7px 14px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--khaki-100);">Names and companies are maintained in the <strong>Contact Directory</strong>. Where a contact&rsquo;s details differ from it, use the marker beneath the value to adopt the directory&rsquo;s version here.</td></tr>'; }
+  if(IS_ADMIN && !viewingAsExternal()){ html+='<tr><td colspan="10" style="padding:7px 14px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--khaki-100);">Names and companies are maintained in the <strong>Contact Directory</strong>. Where a contact&rsquo;s details differ from it, use the marker beneath the value to adopt the directory&rsquo;s version here. <strong>RFI</strong>, <strong>CO</strong> and <strong>SUB</strong> control who is emailed when each type of item is submitted.</td></tr>'; }
   companies.forEach(c=>{
     html+='<tr class="cd-band"><td colspan="10"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
-      html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'+editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)+'<td>'+esc(r['Email'])+'</td><td style="white-space:nowrap">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'+tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')+accountCell(r)+'<td class="admin-col" style="white-space:nowrap">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
+      html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
+        +editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)
+        +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+esc(r['Email'])+'</td>'
+        +'<td class="nw">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'
+        +tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')
+        +accountCell(r)+'<td class="admin-col nw">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
   });
   tb.innerHTML=html;
@@ -2772,7 +2789,7 @@ function nameCell(r){
 function accountCell(r){
   const em=String(r['Email']||'').trim().toLowerCase();
   const has = em && ACCOUNT_EMAILS.has(em);
-  return '<td class="hide-external" style="text-align:center">'+(has
+  return '<td class="hide-external nw" style="text-align:center">'+(has
     ? '<span title="Has a dashboard account" style="color:#3b6d11;font-weight:700;font-size:15px">\u2713</span>'
     : '<span title="No account yet" style="color:var(--muted)">\u2014</span>')+'</td>';
 }
