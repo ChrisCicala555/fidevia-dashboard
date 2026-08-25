@@ -258,9 +258,16 @@ async function sendGrantEmailMany(email, projectNames, company, role){
   const proj = multi ? esc(names.length + ' projects') : esc(projectName || 'a project');
   const serif = "Georgia,'Times New Roman',Times,serif";
   const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const ROLE_TEXT = { contractor:'Contractor', architect:'Architect', engineer:'Engineer',
+    'architect-engineer':'Architect', owner:'Owner', custom:'Custom' };
+  const roleLabel = ROLE_TEXT[String(role||'').trim().toLowerCase()] || String(role||'').trim();
+  const article = /^[AEIOU]/i.test(roleLabel) ? 'an' : 'a';
+  const lead = roleLabel
+    ? `You\u2019ve been added as ${article} <strong>${esc(roleLabel)}</strong> on <strong>${multi ? esc(names.length+' projects') : proj}</strong>${company ? ` for <strong>${esc(company)}</strong>` : ''}.`
+    : `You now have access to <strong>${multi ? esc(names.length+' projects') : proj}</strong>.`;
   const rows = [[multi ? 'Projects' : 'Project', multi ? names.map(esc).join('<br>') : proj], ['Your Sign-in Email', esc(email)]];
   if (company) rows.push(['Company', esc(company)]);
-  if (role) rows.push(['Role', esc(role)]);
+  if (roleLabel) rows.push(['Role', esc(roleLabel)]);
   const rowsHTML = rows.map(([k, v], i) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:170px;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
   const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
@@ -271,7 +278,7 @@ async function sendGrantEmailMany(email, projectNames, company, role){
     <tr><td style="padding:22px 24px 6px">
       <div style="font-family:${serif};font-size:20px;font-weight:700;margin:0 0 4px"><span style="color:#515520">Access granted:</span> <span style="color:#2f2f2f">${proj}</span></div>
       <div style="font-family:${sans};font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Fidevia Construction Dashboard</div>
-      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You now have access to ${multi ? 'these projects' : 'this project'}. Sign in with your account &mdash; or create one using this same email address if you haven't yet.</p>
+      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">${lead} Sign in with your existing account to view and take action on project documents and more &mdash; all in one place. If you haven&rsquo;t created an account yet, use this same email address.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rowsHTML}</table>
       <div style="text-align:center;margin:22px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:${sans};font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open in Dashboard</a></div>
       <p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">If the button doesn't work, copy and paste this link: ${origin}/</p>
@@ -285,11 +292,30 @@ async function sendGrantEmailMany(email, projectNames, company, role){
 // A request used to be written to storage and nothing else. It surfaced only
 // when an administrator happened to open that particular project, so a request
 // for a project nobody visited could sit unseen indefinitely.
-async function notifyAdminsOfRequest(projectName, requester){
+// The Fidevia addresses listed on a project's contact sheet.
+async function fideviaTeamFor(H, projectId){
+  if(!projectId) return [];
+  try{
+    const items = (await (await boxFetch(`https://api.box.com/2.0/folders/${projectId}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+    const contF = items.find(e => e.type === 'folder' && e.name.startsWith('05'));
+    if(!contF) return [];
+    const cit = (await (await boxFetch(`https://api.box.com/2.0/folders/${contF.id}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+    const csv = cit.find(e => e.type === 'file' && e.name === 'Job Contacts.csv');
+    if(!csv) return [];
+    const parsed = parseCSVServer(await (await boxFetch(`https://api.box.com/2.0/files/${csv.id}/content`, { headers: H })).text());
+    return parsed.rows.map(r => String(r['Email']||'').trim().toLowerCase())
+      .filter(e => e && e.endsWith('@fidevia.com'));
+  }catch(e){ return []; }
+}
+async function notifyAdminsOfRequest(projectName, requester, H, projectId){
   const key = process.env.SENDGRID_KEY; if(!key) return;
   const envAdmins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
   const blobAdmins = await getBlobAdmins();
-  const to = [...new Set([...envAdmins, ...blobAdmins, 'ccicala@fidevia.com'].filter(Boolean))];
+  // Everyone from Fidevia who is actually on this project, not just whoever is
+  // on the admin list — the people running the job are the ones who will know
+  // whether this person belongs on it.
+  const team = await fideviaTeamFor(H, projectId);
+  const to = [...new Set([...team, ...envAdmins, ...blobAdmins, 'ccicala@fidevia.com'].filter(Boolean))];
   if(!to.length) return;
   const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/,'');
   const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
@@ -701,7 +727,7 @@ export default async (req) => {
       });
       // Best effort: the request is already stored, so a mail failure must not
       // make the person think their request did not go through.
-      try { await notifyAdminsOfRequest(body.projectName || '', { name: snap.name, email: who.email, company: snap.company, role: snap.role }); } catch(e) {}
+      try { await notifyAdminsOfRequest(body.projectName || '', { name: snap.name, email: who.email, company: snap.company, role: snap.role }, H, projectId); } catch(e) {}
       return json({ ok: true });
     }
 

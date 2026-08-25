@@ -2405,7 +2405,15 @@ function applyReadOnlyBanners(){
 }
 
 // ── HELPERS ──
-function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();withBusy(event,\'Deleting\u2026\',()=>deleteRow(\''+key+'\','+i+'),\'Delete this item permanently? This cannot be undone.\')">Delete</button>' : ''; }
+function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();askDelete(event,\''+key+'\','+i+')">Delete</button>' : ''; }
+// Deletion is permanent and the audit log is the only record of it, so a note
+// about why is worth asking for. Optional: cancelling the prompt cancels the
+// deletion, but leaving it blank does not.
+function askDelete(ev, key, i){
+  const why=prompt('Delete this item permanently? This cannot be undone.\n\nReason (optional) — this is recorded in the audit log and sent to the Fidevia team:');
+  if(why===null) return;                    // Cancel means cancel
+  return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why));
+}
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
 const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
 function itemLabel(key,row){
@@ -2447,22 +2455,26 @@ async function withBusy(ev, label, fn, confirmMsg){
   }
 }
 
-async function deleteRow(key,i){
+async function deleteRow(key,i,reason){
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
   const removed=(allData[key]||[])[i];
+  const why=String(reason||'').trim();
   const existing=await findFile(fid,mod.log);
   const rows=(allData[key]||[]).slice(); rows.splice(i,1);
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
   allData[key]=rows; renderAll();
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
-  auditLog('Deleted', key, removed, '');
+  // The reason belongs in the audit log first — that is the durable record.
+  auditLog('Deleted', key, removed, why);
   try{
     // Deletion notices go to Fidevia (internal) contacts only — never external parties.
     const internal=(allData.contacts||[]).map(c=>String(c['Email']||'').trim()).filter(e=>e && e.toLowerCase().endsWith('@fidevia.com'));
     const seen=new Set(); const to=internal.filter(e=>{ const k=e.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; });
     if(to.length){
+      const rows=[['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'\u2014'],['When',fmtDMY(etToday())]];
+      if(why) rows.push(['Reason',esc(why)]);
       sendEmail(to, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
-        emailTemplate('A record was deleted', [['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'—'],['Project',currentProject.name],['When',fmtDMY(etToday())]], currentProject.name));
+        emailTemplate('A record was deleted', rows, currentProject.name));
     }
   }catch(e){}
 }
@@ -2800,22 +2812,30 @@ function contactInvite(r,i){
 // Sending is best-effort and never blocks the add: a contact that saved but
 // whose email bounced is recoverable with the Invite button; a contact that
 // failed to save because of an email problem is not.
-async function notifyContactAdded(row, projectName){
+async function notifyContactAdded(row, projectName, roleLabel){
   if(!contactMailable(row) || contactIsFidevia(row)) return false;
   await ensureAccounts();
   const known=contactHasAccount(row);
+  // Fall back to the role recorded on the contact row when no grant role was
+  // passed, so the sentence still names something meaningful.
+  const label=String(roleLabel||row['Role']||'').trim();
+  const company=String(row['Company']||'').trim();
   try{
     await sendEmail([row['Email']],
       known ? 'You\u2019ve been added to '+(projectName||'a Fidevia project')
-            : 'You\u2019re invited to the Fidevia Construction Dashboard',
-      known ? addedEmailHTML(row['Name']||'', projectName||'a Fidevia project')
+            : 'You\u2019re invited to the Fidevia Dashboard',
+      known ? addedEmailHTML(row['Name']||'', projectName||'a Fidevia project', label, company)
             : inviteEmailHTML(row['Name']||'', projectName||'a Fidevia project'));
     return true;
   }catch(e){ return false; }
 }
 // For someone who already has an account. Telling them to "create a free
 // account" would be wrong, and the sign-up would fail on a taken address.
-function addedEmailHTML(name, projectName){
+// "as an Architect ... for Draper & Associates" only reads correctly if the
+// article agrees with the role, and if a missing company drops the clause
+// rather than leaving a dangling "for".
+function roleArticle(label){ return /^[AEIOU]/i.test(String(label||'')) ? 'an' : 'a'; }
+function addedEmailHTML(name, projectName, roleLabel, company){
   const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
   const serif="Georgia,'Times New Roman',Times,serif"; const sans="'Helvetica Neue',Helvetica,Arial,sans-serif";
   return '<div style="background:#f4f2ec;padding:28px 16px;font-family:'+sans+'">'
@@ -2823,9 +2843,13 @@ function addedEmailHTML(name, projectName){
    +'<tr><td style="padding:26px 24px 12px;text-align:center"><img src="'+origin+'/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>'
    +'<tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>'
    +'<tr><td style="padding:24px 24px 8px">'
-   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019ve been added to a project</div>'
-   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Hi'+(name?' '+esc(name):'')+',</p>'
-   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been added as a contact on <strong>'+esc(projectName)+'</strong>. Sign in with your existing account to see it.</p>'
+   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019ve been added to a project!</div>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Welcome'+(name?' '+esc(name):'')+',</p>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been added as '
+   +(roleLabel?roleArticle(roleLabel)+' <strong>'+esc(roleLabel)+'</strong>':'a collaborator')
+   +' on <strong>'+esc(projectName)+'</strong>'
+   +(company?' for <strong>'+esc(company)+'</strong>':'')
+   +'. Sign in with your existing account to view and take action on project documents and more \u2014 all in one place.</p>'
    +'<div style="text-align:center;margin:22px 0 8px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Open the Dashboard</a></div>'
    +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">If the project isn\u2019t in your list yet, request access from your project list and a Fidevia administrator will approve it.</p>'
    +'</td></tr>'
@@ -2840,9 +2864,9 @@ function inviteEmailHTML(name, projectName){
    +'<tr><td style="padding:26px 24px 12px;text-align:center"><img src="'+origin+'/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>'
    +'<tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>'
    +'<tr><td style="padding:24px 24px 8px">'
-   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019re invited to the Fidevia Dashboard</div>'
+   +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019re invited to the Fidevia Dashboard!</div>'
    +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Hi'+(name?' '+esc(name):'')+',</p>'
-   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been added as a contact on <strong>'+esc(projectName)+'</strong>. Create a free account on the Fidevia Construction Dashboard to view project documents, RFIs, submittals, payment applications, and more \u2014 all in one place.</p>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been invited to collaborate on the <strong>'+esc(projectName)+'</strong>. Create an account on the Fidevia Dashboard to view and take action on project documents and more \u2014 all in one place.</p>'
    +'<div style="text-align:center;margin:22px 0 8px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Create Your Account</a></div>'
    +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">After you create an account, request access to this project from your project list \u2014 a Fidevia administrator will approve it. Already have an account? Just sign in.</p>'
    +'</td></tr>'
@@ -5736,11 +5760,52 @@ function notifyContacts(notifyField, subject, bodyHTML, opts){
   if(emails.length) sendEmail(emails, subject, bodyHTML, {attachments:opts.attachments, replyTo:opts.replyTo});
 }
 
+// Inline SVG so the icons need no second network fetch. Clients that block
+// remote images will still render these, and one that strips them loses
+// nothing — the label already carries the meaning.
+const MAIL_ICONS={
+  doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  person:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  assign:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
+  date:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  status:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  money:'<circle cx="12" cy="12" r="10"/><path d="M12 6v12"/>',
+  spec:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  flow:'<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><path d="M9 6h5a4 4 0 0 1 4 4v5"/>'
+};
+function mailIconFor(label){
+  const t=String(label||'').toLowerCase();
+  if(/amount|cost|impact|allowance/.test(t)) return 'money';
+  if(/submitted by|reviewed by|deleted by|^by$/.test(t)) return 'person';
+  if(/assigned|reviewer|your step/.test(t)) return 'assign';
+  if(/date|due|when|period/.test(t)) return 'date';
+  if(/status/.test(t)) return 'status';
+  if(/spec|section|module|cause/.test(t)) return 'spec';
+  return 'doc';
+}
+function mailIcon(label){
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8550" stroke-width="1.7" '
+    +'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px">'+MAIL_ICONS[mailIconFor(label)]+'</svg>';
+}
 function emailTemplate(title, rows, projectName){
   const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
   const serif="Georgia,'Times New Roman',Times,serif";
   const sans="'Helvetica Neue',Helvetica,Arial,sans-serif";
-  const rowsHTML=rows.map(([k,v],i)=>'<tr style="background:'+(i%2?'#ffffff':'#faf9f6')+'"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:'+sans+';width:170px;border-bottom:1px solid #ece8df">'+k+'</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:'+sans+';border-bottom:1px solid #ece8df">'+(v||'—')+'</td></tr>').join('');
+  // "Next in workflow" is not a property of the item, it is what happens next.
+  // Lifting it out of the table and giving it its own block says so.
+  const wfRow=rows.find(r=>/next in workflow/i.test(String(r[0]||'')));
+  const bodyRows=rows.filter(r=>r!==wfRow);
+  const rowsHTML=bodyRows.map(([k,v],i)=>'<tr style="background:'+(i%2?'#ffffff':'#faf9f6')+'">'
+    +'<td style="padding:11px 16px;color:#7a7a70;font-size:13px;font-family:'+sans+';width:180px;border-bottom:1px solid #ece8df">'
+    +mailIcon(k)+'<span style="margin-left:9px">'+k+'</span></td>'
+    +'<td style="padding:11px 16px;font-size:14px;font-weight:700;color:#2f2f2f;font-family:'+sans+';border-bottom:1px solid #ece8df">'+(v||'\u2014')+'</td></tr>').join('');
+  const wfHTML = (wfRow && wfRow[1]) ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;background:#f4f2ec;border:1px solid #ece8df;border-radius:8px">'
+    +'<tr><td style="padding:13px 6px 13px 16px;vertical-align:top;width:26px">'
+    +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#515520" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+MAIL_ICONS.flow+'</svg></td>'
+    +'<td style="padding:13px 16px 13px 0">'
+    +'<div style="font-family:'+sans+';font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8a8550;margin-bottom:3px">Next in workflow</div>'
+    +'<div style="font-family:'+sans+';font-size:14px;font-weight:600;color:#2f2f2f">'+wfRow[1]+'</div>'
+    +'</td></tr></table>' : '';
   const _ti=String(title).indexOf(':');
   const headingHTML=_ti>=0 ? '<span style="color:#515520">'+String(title).slice(0,_ti+1)+'</span> <span style="color:#2f2f2f">'+String(title).slice(_ti+1).trim()+'</span>' : '<span style="color:#515520">'+title+'</span>';
   return '<div style="background:#f4f2ec;padding:28px 16px;font-family:'+sans+'">'
@@ -5753,6 +5818,7 @@ function emailTemplate(title, rows, projectName){
     +'<div style="font-family:'+serif+';font-size:20px;font-weight:700;margin:0 0 4px">'+headingHTML+'</div>'
     +'<div style="font-family:'+sans+';font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Project: '+projectName+'</div>'
     +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">'+rowsHTML+'</table>'
+    +wfHTML
     +'<div style="text-align:center;margin:22px 0 4px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:'+sans+';font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open in Dashboard</a></div>'
     +'</td></tr>'
     +'<tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">'

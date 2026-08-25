@@ -56,6 +56,7 @@ ok('the notice is sent after the record is stored',
 
 const notify = src.slice(src.indexOf('async function notifyAdminsOfRequest'), src.indexOf('const reqKey ='));
 ok('it gathers env admins',        /ADMIN_EMAILS/.test(notify));
+ok('it gathers the project team',  /fideviaTeamFor/.test(notify));
 ok('it gathers listed admins',     /getBlobAdmins/.test(notify));
 ok('it always includes a fallback',/ccicala@fidevia\.com/.test(notify));
 ok('recipients are deduplicated',  /new Set\(/.test(notify));
@@ -70,6 +71,15 @@ ok('the confirmation reads the way it was asked for',
    html.includes('Request submitted, thank you. Fidevia will review and respond shortly.'));
 ok('the old wording is gone',
    !html.includes('A Fidevia admin will review it and grant access.'));
+
+
+console.log('Fidevia project team lookup');
+const team = src.slice(src.indexOf('async function fideviaTeamFor'), src.indexOf('async function notifyAdminsOfRequest'));
+ok('reads the project contact sheet', /Job Contacts\.csv/.test(team));
+ok('keeps only Fidevia addresses',    /endsWith\('@fidevia\.com'\)/.test(team));
+ok('lowercases before matching',      /toLowerCase\(\)/.test(team));
+ok('returns empty rather than throwing', /catch\(e\)\{ return \[\]; \}/.test(team));
+ok('a project with no contacts folder is safe', /if\(!contF\) return \[\];/.test(team));
 
 const src2 = fs.readFileSync('index.html','utf8');
 console.log('Access request banner');

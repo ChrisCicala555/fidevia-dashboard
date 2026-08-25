@@ -78,11 +78,15 @@ ok('the dialog is asked before the spinner starts', htmlAtConfirm==='Archive');
 
 console.log('Wiring');
 ok('Archive is wrapped',        /withBusy\(event,\\?'Archiving/.test(src));
-ok('Delete is wrapped',         /withBusy\(event,\\?'Deleting/.test(src));
+ok('Delete is wrapped',         /withBusy\(ev,'Deleting/.test(src));
+ok('Delete asks for an optional reason', /askDelete\(ev, key, i\)/.test(src) && /Reason \(optional\)/.test(src));
+ok('cancelling the prompt cancels the delete', /if\(why===null\) return;/.test(src));
+ok('the reason reaches the audit log', /auditLog\('Deleted', key, removed, why\)/.test(src));
+ok('the reason is omitted from the email when blank', /if\(why\) rows\.push\(\['Reason'/.test(src));
 ok('Restore is wrapped',        /withBusy\(event,\\?'Restoring/.test(src));
 ok('Approve Step is wrapped',   /withBusy\(event,\\?'Approving/.test(src));
 ok('Archive asks first',        /Archive this item\?/.test(src));
-ok('Delete asks first',         /Delete this item permanently\?/.test(src));
+ok('Delete still warns it is permanent', /Delete this item permanently\?/.test(src));
 ok('no duplicate confirm left in deleteRow',
    !/async function deleteRow[\s\S]{0,120}confirm\(/.test(src));
 ok('no duplicate confirm left in setArchived',
