@@ -653,8 +653,19 @@ export default async (req) => {
       await gstore.setJSON(email, g);
       // auto-add to the project's contacts with notifications ON
       const reqRec = await requestsStore().get(reqKey(projectId, email), { type: 'json' });
+      // company and role were read from variables that only exist inside the
+      // adminGrant block, so this threw a ReferenceError into a silent catch and
+      // approving a request never sent its email. Take them from the request.
+      const reqCompany = String((reqRec && reqRec.snap && reqRec.snap.company) || '').trim();
+      const reqRole = String((reqRec && reqRec.snap && reqRec.snap.role) || '').trim();
+      // Record them on the grant too. Approving used to store only an id and a
+      // name, leaving the person a contractor with no company — able to open the
+      // project but shown nothing in any company-scoped module.
+      const added = g.projects.find(p => String(p.id) === projectId);
+      if (added) { if (!added.company) added.company = reqCompany; if (!added.role) added.role = normRole(reqRole); }
+      await gstore.setJSON(email, g);
       try { await addContactToProject(H, projectId, contactFromSnap(reqRec && reqRec.snap, email)); } catch(e) {}
-      try { await sendGrantEmail(email, body.projectName||'', company, role); } catch(e) {}
+      try { await sendGrantEmail(email, body.projectName||'', reqCompany, reqRole); } catch(e) {}
       await requestsStore().delete(reqKey(projectId, email));
       return json({ ok: true });
     }
