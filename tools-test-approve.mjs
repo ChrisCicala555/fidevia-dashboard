@@ -71,5 +71,22 @@ ok('the confirmation reads the way it was asked for',
 ok('the old wording is gone',
    !html.includes('A Fidevia admin will review it and grant access.'));
 
+const src2 = fs.readFileSync('index.html','utf8');
+console.log('Access request banner');
+const banner = src2.slice(src2.indexOf('async function loadAccessRequests'), src2.indexOf('async function approveRequest'));
+ok('prefers the profile name over the Auth0 name', /snap\.name/.test(banner));
+// Auth0 sets name to the email for password accounts, which read as a duplicate.
+ok('suppresses an Auth0 name that is just the email',
+   /toLowerCase\(\)!==String\(r\.email\|\|''\)\.trim\(\)\.toLowerCase\(\)/.test(banner));
+ok('shows the company',            /snap\.company/.test(banner));
+ok('shows the role',               /snap\.role/.test(banner));
+ok('shows the phone when present', /snap\.phone/.test(banner));
+ok('formats the phone',            /fmtPhone\(snap\.phone\)/.test(banner));
+ok('falls back to the email when no name is known', /esc\(nm\|\|r\.email\)/.test(banner));
+ok('company and role are omitted when blank', /filter\(Boolean\)/.test(banner));
+ok('Approve shows progress',       /withBusy\(event,\\?'Approving/.test(banner));
+ok('Deny shows progress',          /withBusy\(event,\\?'Denying/.test(banner));
+ok('Deny asks first',              /Deny this access request\?/.test(banner));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

@@ -369,6 +369,8 @@
   #access-requests-banner{padding:0 32px;margin-top:16px;}
   .req-banner-item{background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px;color:var(--olive-900);}
   .req-banner-item .btn-approve{margin-right:6px;}
+  .req-meta{font-size:13px;color:var(--olive-700);}
+  .req-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
   .admin-only{display:none;}
   body.is-admin .admin-only{display:inline-block;}
   body.external-mode .admin-only{display:none !important;}
@@ -4023,7 +4025,22 @@ async function loadAccessRequests(projectId){
     const reqs=d.requests||[];
     if(!reqs.length){ b.style.display='none'; b.innerHTML=''; return; }
     b.style.display='block';
-    b.innerHTML=reqs.map(r=>'<div class="req-banner-item"><span><strong>'+esc(r.name||r.email)+'</strong> ('+esc(r.email)+') is requesting access to this project.</span><span style="white-space:nowrap;"><button class="btn-approve" onclick="approveRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\',\''+esc(r.projectName||'')+'\')">Approve</button><button class="btn-reject" onclick="denyRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\')">Deny</button></span></div>').join('');
+    b.innerHTML=reqs.map(r=>{
+      const snap=r.snap||{};
+      // r.name comes from Auth0, which for password accounts is just the email
+      // again — so the banner read "someone@x.com (someone@x.com)". The profile
+      // name is the one worth showing.
+      const nm=String(snap.name||'').trim() || (String(r.name||'').trim().toLowerCase()!==String(r.email||'').trim().toLowerCase() ? String(r.name||'').trim() : '');
+      const meta=[snap.company,snap.role].map(x=>String(x||'').trim()).filter(Boolean);
+      return '<div class="req-banner-item">'
+        +'<span><strong>'+esc(nm||r.email)+'</strong>'
+        +(meta.length?' <span class="req-meta">'+esc(meta.join(' \u00b7 '))+'</span>':'')
+        +'<div class="req-sub">'+esc(r.email)+(nm?'':'')+' \u2014 requesting access to this project'
+        +(snap.phone?' \u00b7 '+esc(fmtPhone(snap.phone)):'')+'</div></span>'
+        +'<span style="white-space:nowrap;">'
+        +'<button class="btn-approve" onclick="withBusy(event,\'Approving\u2026\',()=>approveRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\',\''+esc(r.projectName||'')+'\'))">Approve</button>'
+        +'<button class="btn-reject" onclick="withBusy(event,\'Denying\u2026\',()=>denyRequest(\''+esc(r.email)+'\',\''+esc(projectId)+'\'),\'Deny this access request?\')">Deny</button>'
+        +'</span></div>'; }).join('');
   }catch(e){ b.style.display='none'; }
 }
 async function approveRequest(email,projectId,projectName){
