@@ -282,6 +282,41 @@ async function sendGrantEmailMany(email, projectNames, company, role){
   const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'[Fidevia] You have access to ' + (multi ? (names.length + ' projects') : (projectName || 'a project')), content:[{type:'text/html',value:html}] };
   await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
 }
+// A request used to be written to storage and nothing else. It surfaced only
+// when an administrator happened to open that particular project, so a request
+// for a project nobody visited could sit unseen indefinitely.
+async function notifyAdminsOfRequest(projectName, requester){
+  const key = process.env.SENDGRID_KEY; if(!key) return;
+  const envAdmins = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
+  const blobAdmins = await getBlobAdmins();
+  const to = [...new Set([...envAdmins, ...blobAdmins, 'ccicala@fidevia.com'].filter(Boolean))];
+  if(!to.length) return;
+  const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/,'');
+  const esc = s => String(s == null ? '' : s).replace(/</g, '&lt;');
+  const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const rows = [
+    ['Name', esc(requester.name || '\u2014')],
+    ['Email', esc(requester.email || '')],
+    ['Company', esc(requester.company || '\u2014')],
+    ['Role', esc(requester.role || '\u2014')],
+    ['Project', esc(projectName || '\u2014')]
+  ].map(([k,v],i)=>`<tr style="background:${i%2?'#ffffff':'#faf9f6'}"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:150px;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
+  const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
+    <tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>
+    <tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>
+    <tr><td style="padding:22px 24px 8px">
+      <div style="font-family:Georgia,serif;font-size:19px;color:#515520;font-weight:700;margin:0 0 12px">Someone is requesting project access</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rows}</table>
+      <p style="font-size:13px;color:#2f2f2f;line-height:1.6;margin:16px 0 0">Open the project in the dashboard to approve or deny. You will be asked for their company and role when approving.</p>
+      <div style="text-align:center;margin:20px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open the Dashboard</a></div>
+    </td></tr>
+    <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.</div></td></tr>
+    </table></div>`;
+  await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+    body:JSON.stringify({ personalizations:[{to:to.map(e=>({email:e}))}], from:{email:process.env.FROM_EMAIL||'dashboard@fidevia.com',name:'Fidevia Dashboard'},
+      subject:'[Fidevia] Access request: '+(projectName||'a project'), content:[{type:'text/html',value:html}] })});
+}
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
@@ -631,6 +666,9 @@ export default async (req) => {
       await requestsStore().setJSON(reqKey(projectId, who.email), {
         email: who.email, name: who.name || '', snap, projectId, projectName: body.projectName || '', requestedAt: new Date().toISOString()
       });
+      // Best effort: the request is already stored, so a mail failure must not
+      // make the person think their request did not go through.
+      try { await notifyAdminsOfRequest(body.projectName || '', { name: snap.name, email: who.email, company: snap.company, role: snap.role }); } catch(e) {}
       return json({ ok: true });
     }
 

@@ -45,5 +45,31 @@ ok('placeholders are not the owner’s own name',
 ok('placeholders still demonstrate the format',
    html.includes('placeholder="Jordan"') && html.includes('placeholder="Reyes"'));
 
+
+console.log('Requesting access');
+const reqBlock = src.slice(src.indexOf("op === 'requestAccess'"), src.indexOf("op === 'listRequests'"));
+ok('the request still reaches storage',        /requestsStore\(\)\.setJSON/.test(reqBlock));
+ok('administrators are emailed',               /notifyAdminsOfRequest/.test(reqBlock));
+ok('the notification cannot fail the request', /try \{ await notifyAdminsOfRequest[\s\S]{0,220}catch\(e\) \{\}/.test(reqBlock));
+ok('the notice is sent after the record is stored',
+   reqBlock.indexOf('requestsStore().setJSON') < reqBlock.indexOf('notifyAdminsOfRequest'));
+
+const notify = src.slice(src.indexOf('async function notifyAdminsOfRequest'), src.indexOf('const reqKey ='));
+ok('it gathers env admins',        /ADMIN_EMAILS/.test(notify));
+ok('it gathers listed admins',     /getBlobAdmins/.test(notify));
+ok('it always includes a fallback',/ccicala@fidevia\.com/.test(notify));
+ok('recipients are deduplicated',  /new Set\(/.test(notify));
+ok('it does nothing without a mail key', /SENDGRID_KEY; if\(!key\) return/.test(notify));
+ok('it names the requester and project',
+   /'Name'/.test(notify) && /'Company'/.test(notify) && /'Project'/.test(notify));
+
+console.log('Request screen');
+ok('the request card is centred',
+   /id="screen-request"[^>]*align-items:center[^>]*justify-content:center/.test(html));
+ok('the confirmation reads the way it was asked for',
+   html.includes('Request submitted, thank you. Fidevia will review and respond shortly.'));
+ok('the old wording is gone',
+   !html.includes('A Fidevia admin will review it and grant access.'));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

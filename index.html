@@ -692,8 +692,8 @@
 
 
 <!-- ══ REQUEST PROJECT ACCESS (external) ══ -->
-<div id="screen-request" class="screen">
-  <div class="form-card">
+<div id="screen-request" class="screen" style="align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;">
+  <div class="form-card" style="max-width:520px;width:100%;">
     <h2>Request Project Access</h2>
     <p class="form-desc">Select the project you need access to. A Fidevia administrator will review your request.</p>
     <div class="field"><label>Project *</label><select id="req-project"><option value="">Loading projects…</option></select></div>
@@ -3907,7 +3907,7 @@ async function submitRequest(){
   const projectName=opt?opt.getAttribute('data-name'):'';
   if(!projectId){ showStatus('req-status','Please select a project.','error'); return; }
   const btn=document.getElementById('btn-request'); btn.disabled=true;
-  try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted! A Fidevia admin will review it and grant access.','success'); }
+  try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted, thank you. Fidevia will review and respond shortly.','success'); }
   catch(e){ showStatus('req-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
