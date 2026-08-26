@@ -260,7 +260,7 @@
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
   .btn-invite:hover{background:var(--olive-700);color:#fff;}
   .cd-inp{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;font-family:inherit;width:130px;color:var(--ink);background:var(--white);}
-  .cd-page{width:100%;max-width:900px;margin:0 auto;padding:40px 24px;align-self:flex-start;}
+  .cd-page{width:100%;max-width:1240px;margin:0 auto;padding:40px 24px;align-self:flex-start;}
   .cd-page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
   /* Alphabet / group bands in the directories. Sticky so the letter you are
      currently reading under stays visible while scrolling a long list. */
@@ -312,7 +312,8 @@
   .cd-card > table{table-layout:auto; min-width:100%;}
   /* Inputs sized in ch flex with the column instead of forcing a fixed width,
      so the unlocked table usually fits without needing to scroll at all. */
-  .cd-card .cd-inp{width:100%; min-width:9ch; box-sizing:border-box;}
+  .cd-card .cd-inp{width:100%; min-width:8ch; box-sizing:border-box;}
+  .cd-card td.cd-name, .cd-card th:first-child{min-width:170px;}
   /* Only the columns that genuinely must stay on one line. Applying this to
      every cell stopped wide tables from ever shrinking. */
   .cd-card td.nw, .cd-card th.nw{white-space:nowrap;}
