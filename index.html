@@ -341,6 +341,11 @@
   .cd-open{display:inline-block; margin-left:9px; font-size:11.5px; font-weight:600; color:var(--olive-700);
     opacity:0; transition:opacity .12s; white-space:nowrap;}
   .cd-row:hover .cd-open{opacity:1;}
+  .cd-open{cursor:pointer;}
+  .cd-open:hover{text-decoration:underline;}
+  /* While editing, the row is a set of fields rather than a button, so the link
+     is the way in and should not need hunting for. */
+  body.cd-unlocked .cd-open{opacity:.75;}
   .cd-mail{color:var(--olive-700); text-decoration:none;}
   .cd-mail:hover{text-decoration:underline;}
   .cd-search-wrap{position:relative; flex:1 1 300px; max-width:440px;}
@@ -2512,12 +2517,27 @@ async function auditLog(action, key, row, details){
 // Where the pointer went down, so a click that travelled can be told apart
 // from one that did not. Capture phase, so it is recorded before any handler
 // on the row runs.
-let _pressAt=null;
-document.addEventListener('mousedown', e=>{ _pressAt=[e.clientX, e.clientY]; }, true);
-// True when the pointer moved far enough to have been a drag rather than a
-// click — or when text ended up selected, which also covers double-click and
-// keyboard selection. 4px allows for the shake of an ordinary click.
+let _pressAt=null, _pressTarget=null;
+document.addEventListener('mousedown', e=>{ _pressAt=[e.clientX, e.clientY]; _pressTarget=e.target; }, true);
+// Anything a press can begin inside that is not an attempt to activate the row.
+const NOT_A_ROW_PRESS='input,textarea,select,button,a,label,[contenteditable]';
 function wasDragNotClick(e){
+  // Where the press STARTED is the reliable signal. If it began in a field, the
+  // person was selecting or editing, whatever happens next. This is the check
+  // that matters on Safari: text selected inside an input never appears in
+  // window.getSelection(), so the selection test below sees nothing, and a
+  // press that starts in a field and ends outside it fires its click on the
+  // row rather than the field — so stopPropagation on the field cannot help
+  // either. Measuring travel caught the long drags and missed the short ones.
+  try{
+    if(_pressTarget && _pressTarget.closest && _pressTarget.closest(NOT_A_ROW_PRESS)) return true;
+  }catch(err){}
+  // A press that began on a different row entirely is not a click on this one.
+  try{
+    if(_pressTarget && e.currentTarget && e.currentTarget.contains && !e.currentTarget.contains(_pressTarget)) return true;
+  }catch(err){}
+  // Selected text anywhere else on the page — covers double-click and keyboard
+  // selection, neither of which moves the pointer.
   try{ const sel=window.getSelection && window.getSelection(); if(sel && String(sel).length>0) return true; }catch(err){}
   if(!_pressAt) return false;
   return Math.abs(e.clientX-_pressAt[0])>4 || Math.abs(e.clientY-_pressAt[1])>4;
@@ -3693,10 +3713,10 @@ function renderCdLockBar(){
 }
 async function unlockContactDir(){
   const pw=(document.getElementById('cd-pw').value||'');
-  try{ await proxyCall('adminPanelUnlock',{password:pw}); CD_UNLOCKED=true; CD_PW=pw; renderCdLockBar(); renderContactDir(); }
+  try{ await proxyCall('adminPanelUnlock',{password:pw}); CD_UNLOCKED=true; CD_PW=pw; document.body.classList.add('cd-unlocked'); renderCdLockBar(); renderContactDir(); }
   catch(e){ const m=document.getElementById('cd-lock-msg'); if(m) m.textContent='Incorrect password.'; }
 }
-function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; renderCdLockBar(); renderContactDir(); }
+function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; document.body.classList.remove('cd-unlocked'); renderCdLockBar(); renderContactDir(); }
 async function exportContactsNow(){
   const btn=document.getElementById('btn-cd-export'); const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Exporting…'; }
   try{ const d=await proxyCall('exportContacts',{}); alert('Saved '+(d.count||0)+' contacts to Box as '+(d.file||'a snapshot')+'.'); }
@@ -3753,7 +3773,7 @@ function renderContactDir(){
     // change how they log in — it would only break the link between the two.
     return '<tr class="cd-row" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
       +(CD_UNLOCKED?fld(idx,'name',c.name,150):esc(c.name))
-      +'<span class="cd-open">View access →</span></td>'
+      +'<span class="cd-open" onclick="event.stopPropagation();openPerson('+idx+')" title="View projects and access">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
       +'<td class="cd-email" title="'+esc(c.email||'')+'">'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'

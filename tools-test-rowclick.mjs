@@ -11,17 +11,20 @@ const grab=(sig)=>{ const i=src.indexOf(sig); let d=0,on=false,j=i;
 // Stand in for the browser: a selection we control and a recorded press point.
 let selText='';
 fs.writeFileSync('.rc.tmp.mjs', [
-  "export let _pressAt=null;",
-  "export function press(x,y){ _pressAt=[x,y]; }",
+  "export let _pressAt=null, _pressTarget=null;",
+  "export function press(x,y){ _pressAt=[x,y]; _pressTarget=null; }",
   "export function setSel(t){ globalThis.__sel=t; }",
   "globalThis.window={ getSelection:()=>({ toString:()=>globalThis.__sel||'' }) };",
-  grab('function wasDragNotClick').replace('if(!_pressAt)','if(!_pressAt)'),
+  "export function pressOn(t){ _pressTarget=t; }",
+  "const NOT_A_ROW_PRESS='input,textarea,select,button,a,label,[contenteditable]';",
+  grab('function wasDragNotClick').replace(/^const NOT_A_ROW_PRESS.*$/m,''),
   grab('function rowActivate'),
   "export { wasDragNotClick, rowActivate };"
 ].join('\n'));
 const M = await import('./.rc.tmp.mjs');
-const { wasDragNotClick, rowActivate, press, setSel } = M;
+const { wasDragNotClick, rowActivate, press, setSel, pressOn } = M;
 
+const NOT_A_ROW_PRESS_SEL='input,textarea,select,button,a,label,[contenteditable]';
 let pass=0, fail=0;
 const ok=(n,c)=>{ c?pass++:(fail++,console.log('  FAIL: '+n)); };
 
@@ -64,8 +67,27 @@ ok('the return value is passed through',
 ok('a blocked call returns undefined',
    (()=>{ setSel('x'); return rowActivate({clientX:1,clientY:1}, ()=>'yes'); })()===undefined);
 
+
+console.log('Where the press started');
+// Safari never reports text selected inside an input, and a press that starts
+// in a field and ends outside fires its click on the row — so neither the
+// selection test nor stopPropagation on the field can catch this one.
+const inField = { closest:(sel)=>sel===NOT_A_ROW_PRESS_SEL ? {} : null };
+const inCell  = { closest:()=>null };
+setSel(''); press(100,100); pressOn(inField);
+ok('a press that began in a field never activates',
+   wasDragNotClick({clientX:100, clientY:100})===true);
+ok('even a perfectly still press in a field',
+   wasDragNotClick({clientX:100, clientY:100, currentTarget:null})===true);
+setSel(''); press(100,100); pressOn(inCell);
+ok('a press that began on plain text still activates',
+   wasDragNotClick({clientX:100, clientY:100})===false);
+
 console.log('Wiring');
-ok('the press point is captured in the capture phase', /mousedown'[\s\S]{0,80}, true\);/.test(src));
+ok('the press point is captured in the capture phase', /mousedown'[\s\S]{0,100}, true\);/.test(src));
+ok('the press target is captured too', /_pressTarget=e\.target/.test(src));
+ok('fields are excluded by selector', /NOT_A_ROW_PRESS='input,textarea,select,button,a,label/.test(src));
+ok('the View access link opens directly', /class="cd-open" onclick="event\.stopPropagation\(\);openPerson/.test(src));
 ok('the contact row is guarded',   /class="cd-row" onclick="rowActivate\(event,\(\)=>openPerson/.test(src));
 ok('every expandable row is guarded', (src.match(/rowActivate\(event,\(\)=>toggleThread/g)||[]).length===4);
 ok('no bare row handlers remain',  !/onclick="toggleThread\(/.test(src) && !/onclick="openPerson\(/.test(src));
