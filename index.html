@@ -2024,6 +2024,7 @@ async function openProject(folderId, name){
     currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
     if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; currentProject.userModules=(_pp&&_pp.modules)||[]; }
     if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
+    try{ clearMe(); }catch(e){}
     applyRoleClasses();
     navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
     projectLoadingStep('Reading project settings…');
@@ -3921,6 +3922,8 @@ async function saveContactDirectory(){
   const btn=document.getElementById('btn-cd-save'); if(btn) btn.disabled=true;
   const note=document.getElementById('cd-dirty-note'); if(note){ note.textContent='Saving…'; note.style.color='var(--muted)'; }
   const failed=[];
+  // Note who changed company before the dirty list is cleared.
+  const movedCompany=subs.filter(sub=>CD_DIRTY[sub] && CD_DIRTY[sub].company!==undefined);
   for(const sub of subs){
     try{ await proxyCall('setContactMeta', Object.assign({sub, password:CD_PW}, CD_DIRTY[sub])); }
     catch(e){ failed.push((CONTACT_DIR.find(c=>c.sub===sub)||{}).name||sub); }
@@ -3930,12 +3933,40 @@ async function saveContactDirectory(){
     if(btn) btn.disabled=false;
     return;
   }
+  // A company change has to reach the grants as well. Each grant carries the
+  // company recorded when it was made; the directory edit alone leaves them all
+  // pointing at the old firm, which is what decides the data they see.
+  for(const sub of movedCompany){
+    try{ await cdOfferGrantUpdate(sub); }catch(e){}
+  }
   CD_DIRTY={};
   CONTACT_DIR.forEach(c=>{ delete c._orig; });
   if(note){ note.textContent='Saved.'; note.style.color='var(--success-text,#3b6d11)'; }
   renderContactDir();
   setTimeout(cdUpdateSaveBar, 1800);
 }
+// Which projects should follow the new company, asked one at a time. Someone
+// can legitimately stay on an old job under their former firm while joining new
+// ones under the new one, so this is a question rather than a sweep.
+async function cdOfferGrantUpdate(sub){
+  const c=CONTACT_DIR.find(x=>x.sub===sub); if(!c || !c.email) return;
+  const co=String(c.company||'').trim(); if(!co) return;
+  let grants=[];
+  try{
+    const d=await proxyCall('adminListGrants',{},{quiet:true});
+    const rec=(d.grants||[]).find(g=>String(g.email||'').trim().toLowerCase()===String(c.email).trim().toLowerCase());
+    grants=(rec&&rec.projects)||[];
+  }catch(e){ return; }
+  const stale=grants.filter(p=>String(p.company||'').trim().toLowerCase()!==co.toLowerCase());
+  if(!stale.length) return;
+  const names=stale.map(p=>'  \u2022 '+(p.name||p.id)+'  (currently '+(p.company||'no company')+')').join('\n');
+  if(!confirm((c.name||c.email)+' is now '+co+'.\n\nThese projects still record their previous company:\n\n'+names
+      +'\n\nUpdate them to '+co+'?\n\nThe company on a project decides which financial records they can see, so leaving one behind keeps them on the old firm\u2019s data there.')) return;
+  for(const p of stale){
+    try{ await proxyCall('adminGrant',{email:c.email, projects:[{id:p.id,name:p.name||''}], company:co, role:p.role||'contractor'}); }catch(e){}
+  }
+}
+
 // Leaving with unsaved edits should be a deliberate choice.
 function cdConfirmLeave(){
   const n=cdDirtyCount();
@@ -4528,20 +4559,28 @@ async function resolveMe(){
     try{ const u=await auth0Client.getUser(); ME_EMAIL=String(u.email||'').toLowerCase(); ME_NAME=u.name||u.email||'';
       // prefer the saved profile's real name if Auth0 only has the email
       try{ const p=JSON.parse(localStorage.getItem('fidevia_profile_'+u.sub)||'null');
-        if(p){ const full=((p.first_name||'')+' '+(p.last_name||'')).trim(); if(full) ME_NAME=full; if(p.company) ME_COMPANY=p.company; }
+        if(p){ const full=((p.first_name||'')+' '+(p.last_name||'')).trim(); if(full) ME_NAME=full; }
       }catch(e){}
     }catch(e){}
   }
-  if(!ME_COMPANY){
-    if(EXTERNAL && currentProject && currentProject.userCompany){ ME_COMPANY=currentProject.userCompany; }
-    else {
-      const c=(allData.contacts||[]).find(x=>String(x['Email']||'').trim().toLowerCase()===ME_EMAIL);
-      if(c && c['Company']) ME_COMPANY=c['Company'];
-      else if(ME_EMAIL.endsWith('@fidevia.com')) ME_COMPANY='Fidevia';
-    }
+  // The company that matters is the one on the grant for THIS project, not the
+  // one on the global profile. The same person is legitimately a different
+  // company on different jobs, and the profile only records the most recent.
+  // This deliberately overwrites rather than filling a blank: a stale value
+  // from a previous project must not survive into this one.
+  if(EXTERNAL && currentProject && currentProject.userCompany){
+    ME_COMPANY = currentProject.userCompany;
+  } else if(!ME_COMPANY){
+    const c=(allData.contacts||[]).find(x=>String(x['Email']||'').trim().toLowerCase()===ME_EMAIL);
+    if(c && c['Company']) ME_COMPANY=c['Company'];
+    else if(ME_EMAIL.endsWith('@fidevia.com')) ME_COMPANY='Fidevia';
+    else { try{ const u=await auth0Client.getUser(); const p=JSON.parse(localStorage.getItem('fidevia_profile_'+u.sub)||'null'); if(p&&p.company) ME_COMPANY=p.company; }catch(e){} }
   }
   return {name:ME_NAME, email:ME_EMAIL, company:ME_COMPANY};
 }
+// Cached identity has to be dropped when the project changes, or the previous
+// project's company follows you into the next one.
+function clearMe(){ ME_COMPANY=''; }
 async function fillSubmittedBy(){
   const by=document.getElementById('f-by'); if(!by) return;
   by.readOnly=true; by.title='Automatically set to your account';
@@ -4842,13 +4881,16 @@ async function saveProfile(){
     // Onboarding check
     const meta = user['https://fidevia.com/meta'] || {};
     let localProf=null; try{ localProf=JSON.parse(localStorage.getItem('fidevia_profile_'+user.sub)||'null'); }catch(e){}
-    if(!localProf){
-      try{
-        const tok = await auth0Client.getTokenSilently();
-        const r = await fetch('/api/profile',{ headers:{'Authorization':'Bearer '+tok} });
-        if(r.ok){ const d=await r.json(); if(d.profile){ localProf=d.profile; localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(d.profile)); } }
-      }catch(e){}
-    }
+    // Always ask the server. The cache was only consulted when nothing was
+    // stored, so once written it never changed again — an administrator could
+    // correct someone's name or company in the directory and that person's own
+    // browser would keep showing the old one indefinitely. The local copy is
+    // now a fallback for when the request fails, not the source of truth.
+    try{
+      const tok = await auth0Client.getTokenSilently();
+      const r = await fetch('/api/profile',{ headers:{'Authorization':'Bearer '+tok} });
+      if(r.ok){ const d=await r.json(); if(d.profile){ localProf=d.profile; localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(d.profile)); } }
+    }catch(e){}
     if(!meta.onboarded && !(localProf&&localProf.onboarded)){
       if(user.given_name){ const el=document.getElementById('prof-first'); if(el) el.value=user.given_name; }
       if(user.family_name){ const el=document.getElementById('prof-last'); if(el) el.value=user.family_name; }
