@@ -404,6 +404,17 @@
     line-height:1; white-space:nowrap; border-radius:5px; cursor:pointer;
     background:var(--white); color:var(--muted); border:1px solid var(--border);
     transition:background .12s,color .12s,border-color .12s;}
+  .billing-bar{background:var(--white); border:1px solid var(--border); border-radius:12px; margin-bottom:18px; overflow:hidden;}
+  .bb-head{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 18px; border-bottom:1px solid #F1F0E8;
+    font-size:11px; letter-spacing:.6px; text-transform:uppercase; color:var(--olive-700); font-weight:700;}
+  .bb-items{display:flex; flex-wrap:wrap;}
+  .bb-item{flex:1 1 190px; padding:14px 18px; border-right:1px solid #F1F0E8;}
+  .bb-item:last-child{border-right:none;}
+  .bb-lbl{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;}
+  .bb-val{font-size:17px; font-weight:700; color:var(--olive-900);}
+  .bb-sub{font-size:12px; color:var(--muted); margin-top:3px;}
+  .bb-item.due-soon .bb-val{color:#9a6a00;}
+  .bb-item.overdue .bb-val{color:var(--danger);}
   .row-act:first-child{margin-left:0;}
   .row-act[disabled],.btn-secondary[disabled]{opacity:.75; cursor:default; pointer-events:none;}
   .spin{display:inline-block; width:11px; height:11px; margin-right:6px; vertical-align:-1px;
@@ -691,6 +702,13 @@
     <div class="wiz-step" data-step="6" style="display:none;">
       <h3 style="font-size:16px;margin:0 0 6px;">Options</h3>
       <div class="field" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="np-board" style="width:auto;"><label style="margin:0;">Enable <strong>Board Reports</strong> tab for this project</label></div>
+      <h3 style="font-size:15px;margin:20px 0 4px;">Billing Cycle</h3>
+      <p class="form-desc" style="margin-bottom:10px;">The days the specification sets. Leave as they are if the job follows the usual cycle.</p>
+      <div class="field-row">
+        <div class="field" style="flex:1;"><label>Pencil copy day</label><input type="number" min="1" max="31" id="np-pencil" value="20"></div>
+        <div class="field" style="flex:1;"><label>Formal application day</label><input type="number" min="1" max="31" id="np-formal" value="25"></div>
+        <div class="field" style="flex:1;"><label>Owner payment day <span style="font-weight:400;color:var(--muted);">(next month)</span></label><input type="number" min="1" max="31" id="np-ownerpay" value="15"></div>
+      </div>
       <p class="form-desc">If checked, a Board Reports tab appears under Activity for this project.</p>
     </div>
 
@@ -1095,6 +1113,13 @@
           <h2>Payment Applications</h2>
           <button class="btn-add" onclick="openModal('payapp')">+ New Pay App</button>
         </div>
+        <div class="billing-bar" id="billing-bar" style="display:none;">
+          <div class="bb-head">
+            <span>Billing cycle</span>
+            <button class="btn-secondary admin-only" style="padding:5px 11px;font-size:12px;" onclick="openBilling()">Edit</button>
+          </div>
+          <div class="bb-items" id="bb-items"></div>
+        </div>
         <div class="contract-bar">
           <div class="cb-head">Contract Summary</div>
           <div class="cb-items">
@@ -1383,6 +1408,30 @@
       <button class="btn-primary" id="contractors-save" onclick="saveContractors()">Save</button>
       <button class="btn-secondary" onclick="closeContractors()">Cancel</button>
       <span class="status-msg" id="contractors-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="billing-backdrop" onclick="if(event.target===this)closeBilling()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3>Billing Cycle</h3>
+      <button class="modal-close" onclick="closeBilling()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="form-desc" style="margin-top:0;">The days the specification sets for this project. Pencil copy and formal application fall in the billing month; the owner&rsquo;s payment falls in the month after.</p>
+      <div class="field"><label>Pencil copy due &mdash; day of month</label>
+        <input type="number" min="1" max="31" id="bl-pencil" placeholder="20"></div>
+      <div class="field"><label>Formal application due &mdash; day of month</label>
+        <input type="number" min="1" max="31" id="bl-formal" placeholder="25"></div>
+      <div class="field"><label>Owner payment due &mdash; day of the <em>following</em> month</label>
+        <input type="number" min="1" max="31" id="bl-ownerpay" placeholder="15"></div>
+      <p class="file-hint" id="bl-preview" style="margin-top:2px;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="billing-save" onclick="saveBilling()">Save</button>
+      <button class="btn-secondary" onclick="closeBilling()">Cancel</button>
+      <span class="status-msg" id="billing-status" style="margin-left:8px;"></span>
     </div>
   </div>
 </div>
@@ -2229,7 +2278,8 @@ async function createProject(){
     const config = {
       owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
-      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf')
+      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf'),
+      billing: { pencilDay: parseInt(wizVal('np-pencil'),10)||20, formalDay: parseInt(wizVal('np-formal'),10)||25, ownerPayDay: parseInt(wizVal('np-ownerpay'),10)||15 }
     };
     await writeProjectConfig(projId, config);
     // After the project exists, not before: an invitation pointing at a project
@@ -3195,6 +3245,49 @@ function renderExec(){
   el.style.display=cards.length?'':'none'; el.innerHTML=cards.join('');
 }
 // ── EDIT SCHEDULE (admin) ──
+// ── BILLING CYCLE (admin) ──
+function openBilling(){
+  const c=billingCycle();
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v; el.oninput=billingPreview; } };
+  set('bl-pencil',c.pencilDay); set('bl-formal',c.formalDay); set('bl-ownerpay',c.ownerPayDay);
+  const st=document.getElementById('billing-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  billingPreview();
+  document.getElementById('billing-backdrop').classList.add('open');
+}
+function closeBilling(){ document.getElementById('billing-backdrop').classList.remove('open'); }
+// Show the numbers as real dates while they are being typed. Day 31 in a short
+// month is the case worth seeing before saving, not after.
+function billingPreview(){
+  const el=document.getElementById('bl-preview'); if(!el) return;
+  const v=id=>parseInt((document.getElementById(id)||{}).value,10);
+  const p=v('bl-pencil'), f=v('bl-formal'), o=v('bl-ownerpay');
+  if(!(p>=1&&p<=31)||!(f>=1&&f<=31)||!(o>=1&&o<=31)){ el.textContent='Enter a day between 1 and 31 for each.'; return; }
+  const now=new Date();
+  const d1=dayOfMonth(now.getFullYear(),now.getMonth(),p);
+  const d2=dayOfMonth(now.getFullYear(),now.getMonth(),f);
+  const d3=dayOfMonth(now.getFullYear(),now.getMonth()+1,o);
+  let txt='This month: pencil '+fmtCycleDate(d1)+', formal '+fmtCycleDate(d2)+', owner pays '+fmtCycleDate(d3)+'.';
+  if(f<p) txt+=' Note: the formal application falls before the pencil copy.';
+  el.textContent=txt;
+}
+async function saveBilling(){
+  const v=id=>parseInt((document.getElementById(id)||{}).value,10);
+  const p=v('bl-pencil'), f=v('bl-formal'), o=v('bl-ownerpay');
+  const ok=n=>n>=1&&n<=31;
+  if(!ok(p)||!ok(f)||!ok(o)){ showStatus('billing-status','Each day must be between 1 and 31.','error'); return; }
+  const btn=document.getElementById('billing-save'); btn.disabled=true;
+  showStatus('billing-status','Saving…','info');
+  try{
+    currentProject.config=currentProject.config||{};
+    currentProject.config.billing={pencilDay:p, formalDay:f, ownerPayDay:o};
+    await writeProjectConfig(currentProject.folderId, currentProject.config);
+    showStatus('billing-status','Saved.','success');
+    renderBillingBar();
+    setTimeout(closeBilling, 700);
+  }catch(e){ showStatus('billing-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
 function openSchedule(){ renderScheduleEditor(); const s=document.getElementById('schedule-status'); if(s){s.textContent='';s.className='status-msg';} document.getElementById('schedule-backdrop').classList.add('open'); }
 function closeSchedule(){ document.getElementById('schedule-backdrop').classList.remove('open'); }
 function renderScheduleEditor(){
@@ -3547,7 +3640,16 @@ function openModal(type){
   if(['rfi','co','submittal','daily'].includes(type)){ fillSubmittedBy(); }
   if(type==='contact'){ cdPickLoad(); }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
-  if(type==='payapp'){ const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
+  if(type==='payapp'){
+    // Default the due date from the billing cycle once a period is chosen.
+    const pd=document.getElementById('f-period'), du=document.getElementById('f-due');
+    if(pd&&du){
+      const fill=()=>{ const d=billingDatesFor(pd.value); if(d&&!du.dataset.touched) du.value=d.formal.toISOString().slice(0,10); };
+      pd.onchange=fill; pd.oninput=fill;
+      du.onchange=()=>{ du.dataset.touched='1'; };
+      fill();
+    }
+    const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
   if(type==='cdaily_ext'||type==='payapp_ext'){
     const lbl=document.getElementById('f-ext-co-label');
     if(lbl) lbl.textContent=viewingAsCompany()||'your company';
@@ -5006,6 +5108,40 @@ function coContractImpactFor(name){
     .reduce((s,r)=>s+coContractImpact(r),0);
 }
 
+// ── BILLING CYCLE ──────────────────────────────────────────────────────────
+// The spec fixes three days: the contractor's pencil copy, the formal
+// application, and the owner's payment. The first two fall in the billing
+// month; the payment falls in the month after. Held once per project because
+// one specification governs the whole job.
+const BILLING_DEFAULT={pencilDay:20, formalDay:25, ownerPayDay:15};
+function billingCycle(){
+  const b=(currentProject&&currentProject.config&&currentProject.config.billing)||{};
+  const clamp=(v,d)=>{ const n=parseInt(v,10); return (n>=1&&n<=31)?n:d; };
+  return { pencilDay:clamp(b.pencilDay,BILLING_DEFAULT.pencilDay),
+           formalDay:clamp(b.formalDay,BILLING_DEFAULT.formalDay),
+           ownerPayDay:clamp(b.ownerPayDay,BILLING_DEFAULT.ownerPayDay),
+           configured: !!(b && (b.pencilDay||b.formalDay||b.ownerPayDay)) };
+}
+// A day of 31 in a 30-day month must not roll into the next one, which is what
+// new Date(y, m, 31) does. Clamp to the last day the month actually has.
+function dayOfMonth(year, monthIdx, day){
+  const last=new Date(year, monthIdx+1, 0).getDate();
+  return new Date(year, monthIdx, Math.min(day, last));
+}
+// The three dates for a billing period, given any date inside that period.
+function billingDatesFor(periodDate){
+  const d = periodDate instanceof Date ? periodDate : new Date(periodDate);
+  if(isNaN(d)) return null;
+  const c=billingCycle();
+  const y=d.getFullYear(), m=d.getMonth();
+  return {
+    pencil: dayOfMonth(y, m, c.pencilDay),
+    formal: dayOfMonth(y, m, c.formalDay),
+    ownerPay: dayOfMonth(y, m+1, c.ownerPayDay)   // the following month
+  };
+}
+function fmtCycleDate(d){ return d ? fmtDMY(d.toISOString().slice(0,10)) : '—'; }
+
 function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
 // Contractor-uploaded rows sit at 'Uploaded — awaiting Fidevia' until someone
 // records the numbers, so every pending count has to recognise that too.
@@ -5014,7 +5150,32 @@ function payIsOutstanding(r){
   return st.indexOf('submit')>=0 || st.indexOf('pending')>=0 || st.indexOf('uploaded')>=0 || st.indexOf('awaiting')>=0;
 }
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
+// Which billing period we are in now, and how the three dates sit against
+// today. Shows the current month until the formal application date passes,
+// then rolls to the next — so the strip stops nagging about a deadline that
+// has been met and starts pointing at the next one.
+function renderBillingBar(){
+  const bar=document.getElementById('billing-bar'), box=document.getElementById('bb-items');
+  if(!bar||!box) return;
+  const now=new Date(); now.setHours(0,0,0,0);
+  let d=billingDatesFor(now);
+  if(d && now > d.formal) d=billingDatesFor(new Date(now.getFullYear(), now.getMonth()+1, 1));
+  if(!d){ bar.style.display='none'; return; }
+  const day=86400000;
+  const state=t=>{ const diff=Math.round((t-now)/day);
+    if(diff<0) return 'overdue'; if(diff<=3) return 'due-soon'; return ''; };
+  const rel=t=>{ const diff=Math.round((t-now)/day);
+    if(diff===0) return 'today'; if(diff===1) return 'tomorrow';
+    return diff<0 ? Math.abs(diff)+' days ago' : 'in '+diff+' days'; };
+  const cell=(lbl,t,sub)=>'<div class="bb-item '+state(t)+'"><div class="bb-lbl">'+lbl+'</div>'
+    +'<div class="bb-val">'+fmtCycleDate(t)+'</div><div class="bb-sub">'+rel(t)+(sub?' · '+sub:'')+'</div></div>';
+  box.innerHTML = cell('Pencil copy due', d.pencil, 'from contractors')
+    + cell('Formal application due', d.formal, '')
+    + cell('Owner payment due', d.ownerPay, '');
+  bar.style.display='block';
+}
 function renderPayApps(){
+  try{ renderBillingBar(); }catch(e){}
   const wrap=document.getElementById('payapp-groups'); if(!wrap) return;
   const rows=allData.pay_apps||[];
   updateContractBar(rows);
