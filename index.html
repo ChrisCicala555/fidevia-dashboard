@@ -6032,6 +6032,95 @@ async function wfAdvance(key, i){
   }catch(e){}
   renderAll();
 }
+// ── ONE-OFF: attribute historic versions to a person ───────────────────────
+// Deliberately not a button. Entries recorded before versions carried a person
+// hold only a firm, and there is no person to recover — any name written here
+// is chosen, not restored. That is acceptable on demo data and wrong on a real
+// project, so this is run knowingly from the console rather than found by
+// accident.
+//
+//   backfillVersionAuthors()              — show what it would change
+//   backfillVersionAuthors({apply:true})  — write it
+//
+// A version whose author is already a person is left alone. A firm with no
+// contact on the project is reported and skipped rather than guessed at.
+async function backfillVersionAuthors(opts){
+  opts=opts||{};
+  if(!IS_ADMIN){ console.warn('Administrators only.'); return; }
+  if(!currentProject){ console.warn('Open a project first.'); return; }
+  const contacts=allData.contacts||[];
+  const norm=x=>String(x||'').trim().toLowerCase();
+  const firms=new Map();          // firm -> [contacts], best candidate first
+  contacts.forEach(c=>{
+    const co=String(c['Company']||'').trim(); if(!co) return;
+    if(!firms.has(norm(co))) firms.set(norm(co), []);
+    firms.get(norm(co)).push(c);
+  });
+  // Prefer whoever is most likely to have written on an item.
+  const RANK=[/project manager/i,/principal/i,/architect/i,/engineer/i,/superintendent/i];
+  const pick=co=>{
+    const list=firms.get(norm(co))||[];
+    if(!list.length) return null;
+    for(const rx of RANK){ const hit=list.find(c=>rx.test(String(c['Role']||''))); if(hit) return hit; }
+    return list[0];
+  };
+  const peopleNames=new Set(contacts.map(c=>norm(c['Name'])).filter(Boolean));
+  const planned=[], unmatched=new Set();
+  const MODS=['rfi','co','sub','pay_apps'];
+  const IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'};
+
+  for(const key of MODS){
+    const rows=allData[key]||[];
+    rows.forEach((r,idx)=>{
+      let vs; try{ vs=JSON.parse(r['Version History']||'[]'); }catch(e){ return; }
+      if(!Array.isArray(vs) || !vs.length) return;
+      let touched=false;
+      const next=vs.map(v=>{
+        const by=String(v.by||'').trim();
+        if(!by) return v;
+        if(v.co) return v;                       // already carries both
+        if(peopleNames.has(norm(by))) {          // already a person
+          const c=contacts.find(x=>norm(x['Name'])===norm(by));
+          if(c && c['Company']){ touched=true; return Object.assign({}, v, {co:c['Company']}); }
+          return v;
+        }
+        if(!firms.has(norm(by))){ unmatched.add(by); return v; }
+        const who=pick(by); if(!who || !who['Name']) return v;
+        touched=true;
+        planned.push({module:key, item:r[IDF[key]]||('row '+idx), v:v.v, from:by, to:who['Name']+' ('+by+')'});
+        return Object.assign({}, v, {by:who['Name'], co:by});
+      });
+      if(touched) r._nextVH=JSON.stringify(next);
+    });
+  }
+
+  console.log('%cVersion author backfill — '+currentProject.name, 'font-weight:700');
+  if(!planned.length){ console.log('Nothing to change.'); }
+  else console.table(planned);
+  if(unmatched.size) console.warn('No contact on this project for: '+[...unmatched].join(', ')+' — left unchanged.');
+
+  if(!opts.apply){
+    console.log('%cPreview only. Re-run backfillVersionAuthors({apply:true}) to write these.', 'color:#8a8550');
+    MODS.forEach(k=>(allData[k]||[]).forEach(r=>{ delete r._nextVH; }));
+    return planned.length;
+  }
+
+  let written=0;
+  for(const key of MODS){
+    const rows=allData[key]||[]; if(!rows.some(r=>r._nextVH)) continue;
+    const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) continue;
+    const existing=await findFile(fid,mod.log);
+    const live=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    rows.forEach((r,i)=>{ if(r._nextVH && live[i]){ live[i]['Version History']=r._nextVH; written++; } delete r._nextVH; });
+    await boxUploadText(mod.log,toCSV(mod.headers,live),fid,existing?existing.id:null);
+    allData[key]=live;
+  }
+  try{ auditLog('Backfilled version authors', 'rfi', {}, written+' entries'); }catch(e){}
+  renderAll();
+  console.log('%cWrote '+written+' entries.', 'color:#3b6d11;font-weight:700');
+  return written;
+}
+
 function verThreadRows(key,r,i,colspan){
   const vs=_versions(r).slice().reverse();
   const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;">'
