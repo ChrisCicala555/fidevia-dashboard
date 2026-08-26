@@ -2508,6 +2508,22 @@ async function auditLog(action, key, row, details){
     await boxUploadText('Audit Log.csv', toCSV(AUDIT_HEADERS,rows), fid, f?f.id:null);
   }catch(e){ console.warn('audit log failed', e.message); }
 }
+// Where the pointer went down, so a click that travelled can be told apart
+// from one that did not. Capture phase, so it is recorded before any handler
+// on the row runs.
+let _pressAt=null;
+document.addEventListener('mousedown', e=>{ _pressAt=[e.clientX, e.clientY]; }, true);
+// True when the pointer moved far enough to have been a drag rather than a
+// click — or when text ended up selected, which also covers double-click and
+// keyboard selection. 4px allows for the shake of an ordinary click.
+function wasDragNotClick(e){
+  try{ const sel=window.getSelection && window.getSelection(); if(sel && String(sel).length>0) return true; }catch(err){}
+  if(!_pressAt) return false;
+  return Math.abs(e.clientX-_pressAt[0])>4 || Math.abs(e.clientY-_pressAt[1])>4;
+}
+// For rows that behave as buttons. Reading a row should never trigger it.
+function rowActivate(e, fn){ if(wasDragNotClick(e)) return; return fn(); }
+
 // Wrap any button that kicks off work in Box. The button says what it is doing
 // and stops accepting clicks; the row dims so the change is visibly in flight.
 // Restores itself on failure so a network error does not leave a dead button.
@@ -2673,7 +2689,7 @@ function renderRFIs(){
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('rfi',idx,r)+'</td></tr>');
   if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'RFI');const n=document.getElementById('note-rfis');if(n){n.innerHTML='';n.style.display='none';}return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'rfi\','+i+')">'
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'rfi\','+i+'))">'
       +'<td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['RFI #'], rowCompany(r))+'</td>'
       +'<td>'+esc(r['Subject'])+'</td>'
       +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
@@ -2701,7 +2717,7 @@ function renderCOs(){
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
     const cause=r['Cause'] ? '<span class="pill" style="background:var(--khaki-100);color:var(--olive-900);">'+esc(r['Cause'])+'</span>' : '<span style="color:var(--muted);">—</span>';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'co\','+i+')"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,11); }).join('');
   countFooter(rows.length, rows.length, 'change order');
 }
@@ -2721,7 +2737,7 @@ function renderSubmittals(){
   if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'submittal');return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     const sp=specParts(r['Spec Section']);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="toggleThread(\'sub\','+i+')">'
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'sub\','+i+'))">'
       +'<td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['Submittal #'], rowCompany(r))+'</td>'
       +'<td>'+twoLine(sp.code, sp.name)+'</td>'
       +'<td>'+esc(r['Description'])+'</td>'
@@ -3033,7 +3049,7 @@ function renderDocsTable(key, tbodyId){
   if(!rows.length){tb.innerHTML=emptyRow(7);return;}
   tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
     const _vt=(r['Visible To']||'').toLowerCase(); const ext=!(_vt.includes('external')||_vt.includes('prime'));
-    const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="toggleThread(\''+key+'\','+i+')">'
+    const main='<tr class="thread-main'+(ext?' hide-external':'')+'" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\''+key+'\','+i+'))">'
       +'<td><span class="thread-arrow" id="arw-'+key+'-'+i+'">\u25b8</span> '+esc(r['Document Name'])+'</td>'
       +'<td>'+esc(r['Category'])+'</td><td>'+esc(r['Version']||'')+'</td>'
       +'<td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Visible To'])+'</td>'
@@ -3734,7 +3750,7 @@ function renderContactDir(){
     // Email is deliberately never editable: it is the key to the person's
     // sign-in account and to their project grants. Changing it here would not
     // change how they log in — it would only break the link between the two.
-    return '<tr class="cd-row" onclick="openPerson('+idx+')" title="View projects and access"><td class="cd-name">'
+    return '<tr class="cd-row" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
       +(CD_UNLOCKED?fld(idx,'name',c.name,150):esc(c.name))
       +'<span class="cd-open">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
