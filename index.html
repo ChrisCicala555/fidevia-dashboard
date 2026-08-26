@@ -2439,10 +2439,21 @@ function sortByHeader(th){
   totals.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
 }
 function nextItemNumber(key, comp){
-  const label={rfi:'RFI',co:'CO',sub:'Submittal'}[key];
-  const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #'}[key];
+  const label={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'PA'}[key];
+  const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+  if(!label || !idField) return '';
   const rows=allData[key]||[]; const c=(comp||'').trim().toLowerCase(); let max=0;
-  rows.forEach(r=>{ if((r['Company']||'').trim().toLowerCase()===c){ const m=String(r[idField]||'').match(/-(\d+)_/); if(m){ const n=parseInt(m[1],10); if(n>max) max=n; } } });
+  rows.forEach(r=>{
+    // Pay applications carry the firm in Contractor rather than Company on rows
+    // recorded by Fidevia, so ask for whichever the row actually has.
+    if(rowCompany(r).trim().toLowerCase()!==c) return;
+    const v=String(r[idField]||'');
+    // Match the numbered form first, then fall back to a bare number so a log
+    // that was kept by hand as 1, 2, 3 continues from where it left off rather
+    // than restarting and colliding.
+    let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
+    if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
+  });
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
@@ -3610,7 +3621,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input autocomplete="off" id="f-budget" placeholder="185000"></div><div class="field"><label>Committed Costs ($)</label><input autocomplete="off" id="f-committed" placeholder="182500"></div></div>
     <div class="field-row"><div class="field"><label>Approved COs ($)</label><input autocomplete="off" id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input autocomplete="off" id="f-actual" placeholder="140200"></div></div>`},
   payapp:{title:'New Payment Application',html:`
-    <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="f-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
+    <div class="field-row"><div class="field"><label>App #</label><input autocomplete="off" id="f-num" placeholder="Auto once a contractor is chosen"><p class="file-hint" style="margin-top:3px;" id="f-num-hint"></p></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
     <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="ABC Mechanical Inc."></div>
     <div class="field-row"><div class="field"><label>Period (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (MM/DD/YYYY) *</label><input autocomplete="off" type="date" id="f-due"></div></div>
     <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
@@ -3687,7 +3698,26 @@ function openModal(type){
       du.onchange=()=>{ du.dataset.touched='1'; };
       fill();
     }
-    const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr'); if(ci){ ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } }; } }
+    const dl=document.getElementById('contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl){ dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); } const ci=document.getElementById('f-contr');
+    if(ci){
+      const num=document.getElementById('f-num'), hint=document.getElementById('f-num-hint');
+      // The number belongs to the contractor being billed, so it cannot be
+      // issued until one is chosen — and it has to follow if the choice changes.
+      const renum=()=>{
+        if(!num) return;
+        const co=(ci.value||'').trim();
+        if(!co){ if(!num.dataset.touched) num.value=''; if(hint) hint.textContent=''; return; }
+        const next=nextItemNumber('pay_apps', co);
+        if(!num.dataset.touched) num.value=next;
+        if(hint) hint.textContent = num.dataset.touched
+          ? 'Next available for '+co+' is '+next+'.'
+          : 'Next in sequence for '+co+'. Type over it to use a different number.';
+      };
+      if(num) num.onchange=()=>{ num.dataset.touched=num.value.trim()?'1':''; renum(); };
+      ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } renum(); };
+      ci.onchange=renum;
+      renum();
+    } }
   if(type==='cdaily_ext'||type==='payapp_ext'){
     const lbl=document.getElementById('f-ext-co-label');
     if(lbl) lbl.textContent=viewingAsCompany()||'your company';
@@ -4082,10 +4112,11 @@ async function submitForm(){
     // the attachment can go in that item's own folder; otherwise every upload
     // lands in the module root and collides on filename.
     let PRE_NUM='';
-    if(['rfi','co','sub'].includes(key)){
+    if(['rfi','co','sub','pay_apps'].includes(key)){
       try{
         await resolveMe();
-        const _pc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+        let _pc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+        if(key==='pay_apps' && !EXTERNAL) _pc = v('f-contr') || v('f-company') || _pc;
         PRE_NUM = nextItemNumber(key, _pc) || '';
       }catch(e){}
     }
@@ -4158,11 +4189,11 @@ async function submitForm(){
       const bud=parseFloat(v('f-budget'))||0, act=parseFloat(v('f-actual'))||0;
       newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
     } else if(currentModal==='payapp'){
-      if(!v('f-num')||!v('f-contr')||!v('f-req')) throw new Error('App #, Contractor, and Requested Amount are required.');
+      if(!v('f-contr')||!v('f-req')) throw new Error('Contractor and Requested Amount are required.');
       if(!v('f-due')) throw new Error('Due Date is required.');
       const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
       const remain=(contract+cosApp)-prev-req;
-      newRow={'App #':v('f-num'),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
+      newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
     } else if(currentModal==='cdaily_ext'){
       if(!attachId) throw new Error('Please choose your daily report file.');
       const _comp=viewingAsCompany();
@@ -4174,7 +4205,8 @@ async function submitForm(){
       if(!_comp) throw new Error('No company is associated with this view.');
       // Amounts stay blank until Fidevia reads them off the PDF, so this row
       // contributes nothing to the financials until it is reviewed.
-      newRow={'App #':'','Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
+      // These arrived unnumbered, leaving Fidevia to assign one by hand later.
+      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
