@@ -5839,7 +5839,14 @@ const REPLY_LABEL={rfi:'RFI',co:'Change Order',sub:'Submittal'};
 let REPLY_CTX=null;
 function _versions(r){
   let h=[]; try{ h=JSON.parse(r['Version History']||'[]'); }catch(e){}
-  if(!h.length){ h=[{v:1, fileId:r['Attachment File ID']||r['File ID']||'', fileName:r['Attachment Name']||r['File Name']||'', status:r['Status']||'', date:r['Date Submitted']||r['Date']||'', by:r['Submitted By']||r['Submitted By (Sub)']||r['Contractor']||'', note:''}]; }
+  if(!h.length){ h=[{v:1, fileId:r['Attachment File ID']||r['File ID']||'', fileName:r['Attachment Name']||r['File Name']||'', status:r['Status']||'', date:r['Date Submitted']||r['Date']||'', by:r['Submitted By']||r['Submitted By (Sub)']||r['Contractor']||'', co:rowCompany(r)||'', note:''}]; }
+  // "Name (Company)" is how submitters are recorded on some rows. Split it so
+  // the two read as separate things rather than one long string.
+  h=h.map(v=>{
+    if(v.co || !v.by) return v;
+    const m=String(v.by).match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+    return m ? Object.assign({}, v, {by:m[1].trim(), co:m[2].trim()}) : v;
+  });
   return h;
 }
 const WF_KEYMAP={rfi:'rfi',co:'co',sub:'sub',pay_apps:'payapp'};
@@ -6031,7 +6038,11 @@ function verThreadRows(key,r,i,colspan){
     +'<strong>v'+esc(v.v)+'</strong>'
     +(v.status?' &middot; <span class="ver-status">'+esc(v.status)+'</span>':'')
     +(v.date?' &middot; '+esc(v.date):'')
-    +(v.by?' &middot; '+esc(v.by):'')
+    +(v.by?' &middot; <strong style="font-weight:600;">'+esc(v.by)+'</strong>':'')
+    // Older entries hold only one value, which may be either. Where both exist
+    // and differ, show the firm alongside; where they match, say it once.
+    +(v.co && String(v.co).trim().toLowerCase()!==String(v.by||'').trim().toLowerCase()
+        ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
     +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>':'')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
@@ -6075,11 +6086,17 @@ async function submitReply(){
     const existing=await findFile(fid,mod.log);
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
     const row=rows[i]; if(!row) throw new Error('Item not found — reload and try again.');
-    let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
+    // Who said it, and on whose behalf. Entries used to carry one string that
+    // was sometimes a person and sometimes a firm, so a reader could not tell
+    // which they were looking at.
+    let by='', co='';
+    try{ const me=await resolveMe(); by=me.name||me.email||''; co=me.company||''; }catch(e){
+      try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e2){}
+    }
     let newFid=row['Attachment File ID']||'', newName=row['Attachment Name']||'';
     if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading file…'; const _upf=await itemFolderId(key,fid,row[REPLY_IDF[key]]); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading file')); const e=up.entries?up.entries[0]:up; newFid=e.id||''; newName=fileInput.files[0].name; }
     let vs=_versions(row);
-    vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, note:note});
+    vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, co:co, note:note});
     row['Version History']=JSON.stringify(vs);
     row['Attachment File ID']=newFid; row['Attachment Name']=newName; row['Status']=status;
     prog.textContent='Updating log…';
