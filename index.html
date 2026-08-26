@@ -5732,10 +5732,24 @@ async function wfAdvance(key, i){
     const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
     const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
     const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - CO'}[key];
-    const nextNames = next>=steps.length ? 'Complete' : steps.slice(...wfGroupAt(steps,next)).map(s=>s.person||s.name).join(', ');
+    // Who the item is now waiting on, said by company. "Ready for your review"
+    // went to everyone on the notify list, so most recipients were told to act
+    // on something that was never theirs. Naming the firm lets each reader see
+    // at a glance whether it is them.
+    const _grp = next>=steps.length ? [] : (()=>{ const [a,b]=wfGroupAt(steps,next); return steps.slice(a,b+1); })();
+    const nextNames = next>=steps.length ? 'Complete'
+      : _grp.map(st=>{ const who=st.person||st.name||''; const firm=firmOf(who);
+          return firm ? who+' ('+firm+')' : who; }).join(', ');
+    // Companies only, de-duplicated, for the subject line.
+    const nextFirms = [...new Set(_grp.map(st=>firmOf(st.person||st.name||'') || (st.person||st.name||'')).filter(Boolean))].join(', ');
     const extra=[]; if(next<steps.length){ const [ns,ne]=wfGroupAt(steps,next); steps.slice(ns,ne+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) extra.push(c['Email']); }); }
-    notifyContacts(notifyField, '[Fidevia] '+label+' '+(row[idf]||'')+' — '+(next>=steps.length?'Workflow complete':'Ready for your review'),
-      emailTemplate(label+' Workflow Update', [[label+' #',row[idf]||''],['Advanced By',by||'—'],['Next Step',nextNames]], currentProject.name), {extraTo:extra});
+    const subj = next>=steps.length
+      ? '[Fidevia] '+label+' '+(row[idf]||'')+' — Workflow complete'
+      : '[Fidevia] '+label+' '+(row[idf]||'')+' — Awaiting '+(nextFirms||'review');
+    notifyContacts(notifyField, subj,
+      emailTemplate(label+' Workflow Update',
+        [[label+' #',row[idf]||''],['Advanced By',by||'\u2014'],['Next in Workflow',nextNames]],
+        currentProject.name), {extraTo:extra});
   }catch(e){}
   renderAll();
 }
