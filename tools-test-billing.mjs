@@ -25,22 +25,21 @@ const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+Stri
 console.log('Defaults');
 setCycle(undefined);
 let c=billingCycle();
-ok('falls back to 20 / 25 / 15', c.pencilDay===20 && c.formalDay===25 && c.ownerPayDay===15);
+ok('falls back to 20 / 25', c.pencilDay===20 && c.formalDay===25);
 ok('reports itself as unconfigured', c.configured===false);
-setCycle({pencilDay:10, formalDay:18, ownerPayDay:5});
+setCycle({pencilDay:10, formalDay:18});
 c=billingCycle();
-ok('reads a configured cycle', c.pencilDay===10 && c.formalDay===18 && c.ownerPayDay===5);
+ok('reads a configured cycle', c.pencilDay===10 && c.formalDay===18);
 ok('reports itself as configured', c.configured===true);
 
 console.log('Out-of-range values fall back rather than producing nonsense');
-setCycle({pencilDay:0, formalDay:99, ownerPayDay:-3});
+setCycle({pencilDay:0, formalDay:99});
 c=billingCycle();
 ok('zero falls back',      c.pencilDay===20);
 ok('above 31 falls back',  c.formalDay===25);
-ok('negative falls back',  c.ownerPayDay===15);
-setCycle({pencilDay:'12', formalDay:'20', ownerPayDay:'8'});
+setCycle({pencilDay:'12', formalDay:'20'});
 c=billingCycle();
-ok('numeric strings are accepted', c.pencilDay===12 && c.formalDay===20 && c.ownerPayDay===8);
+ok('numeric strings are accepted', c.pencilDay===12 && c.formalDay===20);
 
 console.log('Short months');
 // new Date(2026, 1, 31) silently becomes 3 March. It must clamp to 28 Feb.
@@ -51,22 +50,15 @@ ok('31 in a 31-day month is kept',      iso(dayOfMonth(2026,4,31))==='2026-05-31
 ok('a normal day is untouched',         iso(dayOfMonth(2026,7,15))==='2026-08-15');
 
 console.log('The three dates for a period');
-setCycle({pencilDay:20, formalDay:25, ownerPayDay:15});
+setCycle({pencilDay:20, formalDay:25});
 let d=billingDatesFor(new Date(2026,7,8));           // any date inside August
 ok('pencil lands in the billing month', iso(d.pencil)==='2026-08-20');
 ok('formal lands in the billing month', iso(d.formal)==='2026-08-25');
-// The one that is easy to get wrong.
-ok('owner payment lands in the FOLLOWING month', iso(d.ownerPay)==='2026-09-15');
 
 console.log('Year boundary');
 d=billingDatesFor(new Date(2026,11,3));              // December
 ok('December pencil stays in December', iso(d.pencil)==='2026-12-20');
-ok('owner payment rolls into January of the next year', iso(d.ownerPay)==='2027-01-15');
 
-console.log('Short-month payment');
-setCycle({pencilDay:20, formalDay:25, ownerPayDay:31});
-d=billingDatesFor(new Date(2026,0,10));              // January, paid in February
-ok('a 31st payment day clamps in February', iso(d.ownerPay)==='2026-02-28');
 
 console.log('Bad input');
 ok('an unparseable date yields nothing', billingDatesFor('not a date')===null);
@@ -76,7 +68,9 @@ console.log('Wiring');
 ok('the strip exists',                  html.includes('id="billing-bar"'));
 ok('the editor exists',                 html.includes('id="billing-backdrop"'));
 ok('the editor is admin only',          /admin-only[^>]*onclick="openBilling\(\)"/.test(html));
-ok('the wizard collects all three',     html.includes('id="np-pencil"') && html.includes('id="np-formal"') && html.includes('id="np-ownerpay"'));
+ok('the wizard collects both days',    html.includes('id="np-pencil"') && html.includes('id="np-formal"'));
+ok('owner payment is gone from the wizard', !html.includes('id="np-ownerpay"'));
+ok('owner payment is gone from the editor', !html.includes('id="bl-ownerpay"'));
 ok('the wizard writes it to config',    /billing: \{ pencilDay:/.test(src));
 ok('the pay app due date defaults from it', /billingDatesFor\(pd\.value\)/.test(src));
 ok('a typed due date is not overwritten',   /du\.dataset\.touched/.test(src));

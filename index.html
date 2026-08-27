@@ -708,12 +708,20 @@
     <div class="wiz-step" data-step="6" style="display:none;">
       <h3 style="font-size:16px;margin:0 0 6px;">Options</h3>
       <div class="field" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="np-board" style="width:auto;"><label style="margin:0;">Enable <strong>Board Reports</strong> tab for this project</label></div>
+      <h3 style="font-size:15px;margin:20px 0 4px;">Response Periods</h3>
+      <p class="form-desc" style="margin-bottom:10px;">Contractual turnaround in calendar days. An RFI&rsquo;s due date follows whoever it is assigned to.</p>
+      <div class="field-row">
+        <div class="field" style="flex:1;"><label>RFI &mdash; GC</label><input type="number" min="0" max="365" id="np-rsp-gc" value="7"></div>
+        <div class="field" style="flex:1;"><label>RFI &mdash; Architect</label><input type="number" min="0" max="365" id="np-rsp-arch" value="7"></div>
+        <div class="field" style="flex:1;"><label>RFI &mdash; Engineer</label><input type="number" min="0" max="365" id="np-rsp-eng" value="10"></div>
+        <div class="field" style="flex:1;"><label>Submittal review</label><input type="number" min="0" max="365" id="np-rsp-sub" value="14"></div>
+      </div>
+
       <h3 style="font-size:15px;margin:20px 0 4px;">Billing Cycle</h3>
       <p class="form-desc" style="margin-bottom:10px;">The days the specification sets. Leave as they are if the job follows the usual cycle.</p>
       <div class="field-row">
         <div class="field" style="flex:1;"><label>Pencil copy day</label><input type="number" min="1" max="31" id="np-pencil" value="20"></div>
         <div class="field" style="flex:1;"><label>Formal application day</label><input type="number" min="1" max="31" id="np-formal" value="25"></div>
-        <div class="field" style="flex:1;"><label>Owner payment day <span style="font-weight:400;color:var(--muted);">(next month)</span></label><input type="number" min="1" max="31" id="np-ownerpay" value="15"></div>
       </div>
       <p class="form-desc">If checked, a Board Reports tab appears under Activity for this project.</p>
     </div>
@@ -991,8 +999,8 @@
         </div>
         <div class="panel">
           <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
-          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="8">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Review Due</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
+          <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
           <div class="table-count" id="submittal-count"></div>
         </div>
       </div>
@@ -1421,17 +1429,25 @@
 <div class="modal-backdrop" id="billing-backdrop" onclick="if(event.target===this)closeBilling()">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header">
-      <h3>Billing Cycle</h3>
+      <h3>Billing &amp; Response Periods</h3>
       <button class="modal-close" onclick="closeBilling()">✕</button>
     </div>
     <div class="modal-body">
-      <p class="form-desc" style="margin-top:0;">The days the specification sets for this project. Pencil copy and formal application fall in the billing month; the owner&rsquo;s payment falls in the month after.</p>
+      <p class="form-desc" style="margin-top:0;">The days the specification sets for this project.</p>
       <div class="field"><label>Pencil copy due &mdash; day of month</label>
         <input type="number" min="1" max="31" id="bl-pencil" placeholder="20"></div>
       <div class="field"><label>Formal application due &mdash; day of month</label>
         <input type="number" min="1" max="31" id="bl-formal" placeholder="25"></div>
-      <div class="field"><label>Owner payment due &mdash; day of the <em>following</em> month</label>
-        <input type="number" min="1" max="31" id="bl-ownerpay" placeholder="15"></div>
+      <h3 style="font-size:15px;margin:18px 0 4px;">Response Periods</h3>
+      <p class="form-desc" style="margin-bottom:10px;">Contractual turnaround in calendar days.</p>
+      <div class="field-row">
+        <div class="field" style="flex:1;"><label>RFI &mdash; GC</label><input type="number" min="0" max="365" id="bl-rsp-gc"></div>
+        <div class="field" style="flex:1;"><label>RFI &mdash; Architect</label><input type="number" min="0" max="365" id="bl-rsp-arch"></div>
+      </div>
+      <div class="field-row">
+        <div class="field" style="flex:1;"><label>RFI &mdash; Engineer</label><input type="number" min="0" max="365" id="bl-rsp-eng"></div>
+        <div class="field" style="flex:1;"><label>Submittal review</label><input type="number" min="0" max="365" id="bl-rsp-sub"></div>
+      </div>
       <p class="file-hint" id="bl-preview" style="margin-top:2px;"></p>
     </div>
     <div class="modal-footer">
@@ -1781,7 +1797,7 @@ function toCSV(headers, rows){
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
@@ -2286,7 +2302,9 @@ async function createProject(){
       owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
       milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf'),
-      billing: { pencilDay: parseInt(wizVal('np-pencil'),10)||20, formalDay: parseInt(wizVal('np-formal'),10)||25, ownerPayDay: parseInt(wizVal('np-ownerpay'),10)||15 }
+      billing: { pencilDay: parseInt(wizVal('np-pencil'),10)||20, formalDay: parseInt(wizVal('np-formal'),10)||25 },
+      response: { gc: parseInt(wizVal('np-rsp-gc'),10)||7, architect: parseInt(wizVal('np-rsp-arch'),10)||7,
+                  engineer: parseInt(wizVal('np-rsp-eng'),10)||10, submittal: parseInt(wizVal('np-rsp-sub'),10)||14 }
     };
     await writeProjectConfig(projId, config);
     // After the project exists, not before: an invitation pointing at a project
@@ -2622,7 +2640,16 @@ function pill(status,overdue){
   const cls=map[(status||'').toLowerCase()]||'open';
   return '<span class="pill '+cls+'">'+esc(status)+'</span>';
 }
-function isOverdue(r){ if((r['Status']||'').toLowerCase()!=='open') return false; const d=new Date(r['Due Date']); return !isNaN(d)&&d<new Date(); }
+// Anything still awaiting a response can be overdue. Previously only a status
+// of exactly "open" counted, so a submittal sitting at "Pending Review" past
+// its date never showed as late.
+const OPEN_STATES=/open|pending|under review|revise/i;
+function isOverdue(r){
+  if(!OPEN_STATES.test(String(r['Status']||''))) return false;
+  const d=parseLocalDate(r['Due Date']); if(!d) return false;
+  const today=new Date(); today.setHours(0,0,0,0);
+  return d<today;
+}
 function fmtMoney(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); return isNaN(n)?s:(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function fmtSigned(s){ const n=parseFloat(String(s||'0').replace(/[^0-9.\-]/g,'')); if(isNaN(n)) return s; return (n>=0?'+':'-')+'$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function impFlag(r){ return (r&&r['Importance']==='High')?'<span title="High importance" style="color:var(--danger);font-weight:800;margin-right:5px">!</span>':''; }
@@ -2766,7 +2793,7 @@ function renderSubmittals(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('sub',idx,r)+'</td></tr>');
-  if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'submittal');return;}
+  if(!rows.length){tb.innerHTML=emptyRow(10);countFooter(0,all.length,'submittal');return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     const sp=specParts(r['Spec Section']);
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'sub\','+i+'))">'
@@ -2776,10 +2803,11 @@ function renderSubmittals(){
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+twoLine(firmOf(r['Reviewer'])||r['Reviewer'], firmOf(r['Reviewer'])?r['Reviewer']:'')+'</td>'
-      +'<td>'+pill(r['Status'],false)+'</td>'
+      +'<td>'+esc(fmtDMY(r['Due Date']))+'</td>'
+      +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
-    return main+verThreadRows('sub',r,i,9);
+    return main+verThreadRows('sub',r,i,10);
   }).join('');
   countFooter(live.length, all.length, 'submittal');
 }
@@ -2923,19 +2951,81 @@ let ACCOUNTS_LOADED=false;
 // a grant are separate records: deleting the row leaves the grant untouched,
 // which is how someone can be off the contact sheet and still sign in.
 let PROJECT_ACCESS=new Set();
+// email -> the role granted on this project. Drives the RFI response period,
+// which is why the Architect / Engineer split matters: identical permissions,
+// different contractual turnaround.
+let PROJECT_ROLES={};
 async function loadProjectAccess(){
-  PROJECT_ACCESS=new Set();
+  PROJECT_ACCESS=new Set(); PROJECT_ROLES={};
   if(!IS_ADMIN || !currentProject) return;
   try{
     const d=await proxyCall('adminListGrants',{},{quiet:true});
     const pid=String(currentProject.folderId);
     (d.grants||[]).forEach(g=>{
-      if((g.projects||[]).some(p=>String(p.id)===pid)) PROJECT_ACCESS.add(String(g.email||'').trim().toLowerCase());
+      const hit=(g.projects||[]).find(p=>String(p.id)===pid);
+      if(!hit) return;
+      const em=String(g.email||'').trim().toLowerCase();
+      PROJECT_ACCESS.add(em);
+      PROJECT_ROLES[em]=String(hit.role||'').trim().toLowerCase();
     });
   }catch(e){}
   try{ renderContacts(); }catch(e){}
+  try{ renderAll(); }catch(e){}
 }
 function contactHasAccess(row){ return PROJECT_ACCESS.has(contactEmail(row)); }
+
+// ── RESPONSE PERIODS ───────────────────────────────────────────────────────
+// Contractual turnaround, in calendar days. Defaults are the usual figures;
+// each project can state its own.
+const RESPONSE_DEFAULT={gc:7, architect:7, engineer:10, submittal:14};
+function responseDays(){
+  const r=(currentProject&&currentProject.config&&currentProject.config.response)||{};
+  const n=(v,d)=>{ const x=parseInt(v,10); return (x>=0&&x<=365)?x:d; };
+  return { gc:n(r.gc,RESPONSE_DEFAULT.gc), architect:n(r.architect,RESPONSE_DEFAULT.architect),
+           engineer:n(r.engineer,RESPONSE_DEFAULT.engineer), submittal:n(r.submittal,RESPONSE_DEFAULT.submittal) };
+}
+// Which turnaround applies to the person an RFI is assigned to. The granted
+// role is the authority. Where someone has no grant yet — plenty of project
+// contacts have no account — fall back to reading their role on the contact
+// sheet, so assigning to them still produces a date.
+function disciplineOf(personName){
+  const nm=String(personName||'').trim(); if(!nm) return '';
+  const c=(allData.contacts||[]).find(x=>String(x['Name']||'').trim().toLowerCase()===nm.toLowerCase());
+  const em=c ? String(c['Email']||'').trim().toLowerCase() : '';
+  const granted=em ? (PROJECT_ROLES[em]||'') : '';
+  if(granted==='engineer') return 'engineer';
+  if(granted==='architect'||granted==='architect-engineer') return 'architect';
+  if(granted==='contractor') return 'gc';
+  // No grant: read the role written on the contact.
+  const t=String((c&&c['Role'])||'').toLowerCase();
+  if(/engineer/.test(t)) return 'engineer';
+  if(/architect/.test(t)) return 'architect';
+  if(t) return 'gc';
+  return '';
+}
+function rfiDueDays(personName){
+  const d=responseDays();
+  const disc=disciplineOf(personName);
+  return disc ? d[disc] : d.architect;   // an unknown assignee gets the shorter of the two
+}
+// new Date('2026-08-25') is parsed as UTC midnight, which is still the 24th
+// anywhere behind UTC — so read back through the local calendar every derived
+// date landed a day early for anyone east of Greenwich's west side, this whole
+// team included. Build the date from its parts so it means the day it says.
+function parseLocalDate(v){
+  if(v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  const m=String(v||'').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d=new Date(v);
+  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addDays(isoOrDate, days){
+  const base = parseLocalDate(isoOrDate);
+  if(!base) return null;
+  base.setDate(base.getDate()+(parseInt(days,10)||0));
+  return base;
+}
+function isoDay(d){ return d ? d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') : ''; }
 async function loadAccountEmails(){
   try{
     const d=await proxyCall('accountEmails',{},{quiet:true});
@@ -3298,7 +3388,9 @@ function renderExec(){
 function openBilling(){
   const c=billingCycle();
   const set=(id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v; el.oninput=billingPreview; } };
-  set('bl-pencil',c.pencilDay); set('bl-formal',c.formalDay); set('bl-ownerpay',c.ownerPayDay);
+  set('bl-pencil',c.pencilDay); set('bl-formal',c.formalDay);
+  const rd=responseDays();
+  set('bl-rsp-gc',rd.gc); set('bl-rsp-arch',rd.architect); set('bl-rsp-eng',rd.engineer); set('bl-rsp-sub',rd.submittal);
   const st=document.getElementById('billing-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   billingPreview();
   document.getElementById('billing-backdrop').classList.add('open');
@@ -3309,26 +3401,29 @@ function closeBilling(){ document.getElementById('billing-backdrop').classList.r
 function billingPreview(){
   const el=document.getElementById('bl-preview'); if(!el) return;
   const v=id=>parseInt((document.getElementById(id)||{}).value,10);
-  const p=v('bl-pencil'), f=v('bl-formal'), o=v('bl-ownerpay');
-  if(!(p>=1&&p<=31)||!(f>=1&&f<=31)||!(o>=1&&o<=31)){ el.textContent='Enter a day between 1 and 31 for each.'; return; }
+  const p=v('bl-pencil'), f=v('bl-formal');
+  if(!(p>=1&&p<=31)||!(f>=1&&f<=31)){ el.textContent='Enter a day between 1 and 31 for each.'; return; }
   const now=new Date();
   const d1=dayOfMonth(now.getFullYear(),now.getMonth(),p);
   const d2=dayOfMonth(now.getFullYear(),now.getMonth(),f);
-  const d3=dayOfMonth(now.getFullYear(),now.getMonth()+1,o);
-  let txt='This month: pencil '+fmtCycleDate(d1)+', formal '+fmtCycleDate(d2)+', owner pays '+fmtCycleDate(d3)+'.';
+  let txt='This month: pencil '+fmtCycleDate(d1)+', formal '+fmtCycleDate(d2)+'.';
   if(f<p) txt+=' Note: the formal application falls before the pencil copy.';
   el.textContent=txt;
 }
 async function saveBilling(){
   const v=id=>parseInt((document.getElementById(id)||{}).value,10);
-  const p=v('bl-pencil'), f=v('bl-formal'), o=v('bl-ownerpay');
+  const p=v('bl-pencil'), f=v('bl-formal');
   const ok=n=>n>=1&&n<=31;
-  if(!ok(p)||!ok(f)||!ok(o)){ showStatus('billing-status','Each day must be between 1 and 31.','error'); return; }
+  if(!ok(p)||!ok(f)){ showStatus('billing-status','Each day must be between 1 and 31.','error'); return; }
   const btn=document.getElementById('billing-save'); btn.disabled=true;
   showStatus('billing-status','Saving…','info');
   try{
     currentProject.config=currentProject.config||{};
-    currentProject.config.billing={pencilDay:p, formalDay:f, ownerPayDay:o};
+    currentProject.config.billing={pencilDay:p, formalDay:f};
+    const rn=id=>{ const x=parseInt((document.getElementById(id)||{}).value,10); return (x>=0&&x<=365)?x:null; };
+    const rsp={gc:rn('bl-rsp-gc'), architect:rn('bl-rsp-arch'), engineer:rn('bl-rsp-eng'), submittal:rn('bl-rsp-sub')};
+    if(Object.values(rsp).some(v=>v===null)){ showStatus('billing-status','Response periods must be between 0 and 365 days.','error'); btn.disabled=false; return; }
+    currentProject.config.response=rsp;
     await writeProjectConfig(currentProject.folderId, currentProject.config);
     showStatus('billing-status','Saved.','success');
     renderBillingBar();
@@ -3583,7 +3678,7 @@ const FORMS = {
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-assigned"></select></div></div>
-    <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Due Date *</label><input autocomplete="off" type="date" id="f-due"></div></div>
+    <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'Submit New Change Order',html:`
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
@@ -3593,6 +3688,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
+    <div class="field-row"><div class="field"><label>Review Due</label><input autocomplete="off" type="date" id="f-sub-due"><p class="file-hint" style="margin-top:3px;" id="f-sub-due-hint"></p></div><div class="field"></div></div>
     <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
@@ -3684,8 +3780,37 @@ function openModal(type){
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
   const ds=document.getElementById('f-date-sub');
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
-  if(type==='rfi'){ const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions(); }
-  if(type==='submittal'){ const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions(); }
+  if(type==='rfi'){
+    const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions();
+    // The contractual turnaround depends on who is answering, so the date is
+    // recalculated whenever the assignee changes rather than typed.
+    const due=document.getElementById('f-due'), hint=document.getElementById('f-due-hint');
+    const LABEL={gc:'the GC', architect:'an architect', engineer:'an engineer'};
+    const redue=()=>{
+      if(!due) return;
+      const who=sel?sel.value:'';
+      const days=rfiDueDays(who), disc=disciplineOf(who);
+      const d=addDays(etToday(), days);
+      if(!due.dataset.touched && d) due.value=isoDay(d);
+      if(hint) hint.textContent = who
+        ? days+' calendar days \u2014 the contractual turnaround for '+(LABEL[disc]||'this reviewer')+'.'
+            +(due.dataset.touched?' Clear the date to use it.':'')
+        : 'Set automatically once the RFI is assigned.';
+    };
+    if(due) due.onchange=()=>{ due.dataset.touched=due.value?'1':''; redue(); };
+    if(sel){ sel.onchange=redue; sel.oninput=redue; }
+    redue();
+  }
+  if(type==='submittal'){
+    const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions();
+    // One review period for the whole project, so this resolves without an assignee.
+    const due=document.getElementById('f-sub-due'), hint=document.getElementById('f-sub-due-hint');
+    if(due){
+      const days=responseDays().submittal;
+      if(!due.value) due.value=isoDay(addDays(etToday(), days))||'';
+      if(hint) hint.textContent=days+' calendar days \u2014 the review period set for this project.';
+    }
+  }
   if(['rfi','co','submittal','daily'].includes(type)){ fillSubmittedBy(); }
   if(type==='contact'){ cdPickLoad(); }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
@@ -4148,9 +4273,9 @@ async function submitForm(){
       await resolveMe();
       const _rc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Subject is required.');
-      if(!v('f-due')) throw new Error('Due Date is required.');
+      const _rdue = v('f-due') || isoDay(addDays(etToday(), rfiDueDays(v('f-assigned')))) || '';
       const _rnum = PRE_NUM || nextItemNumber('rfi', _rc);
-      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':v('f-due'),'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
+      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':_rdue,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',fmtDMY(newRow['Due Date'])],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='co'){
@@ -4168,7 +4293,7 @@ async function submitForm(){
       const _sc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
       const _snum = PRE_NUM || nextItemNumber('sub', _sc);
-      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
+      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='daily'){
@@ -4190,7 +4315,6 @@ async function submitForm(){
       newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
     } else if(currentModal==='payapp'){
       if(!v('f-contr')||!v('f-req')) throw new Error('Contractor and Requested Amount are required.');
-      if(!v('f-due')) throw new Error('Due Date is required.');
       const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
       const remain=(contract+cosApp)-prev-req;
       newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
@@ -5224,14 +5348,13 @@ function coContractImpactFor(name){
 // application, and the owner's payment. The first two fall in the billing
 // month; the payment falls in the month after. Held once per project because
 // one specification governs the whole job.
-const BILLING_DEFAULT={pencilDay:20, formalDay:25, ownerPayDay:15};
+const BILLING_DEFAULT={pencilDay:20, formalDay:25};
 function billingCycle(){
   const b=(currentProject&&currentProject.config&&currentProject.config.billing)||{};
   const clamp=(v,d)=>{ const n=parseInt(v,10); return (n>=1&&n<=31)?n:d; };
   return { pencilDay:clamp(b.pencilDay,BILLING_DEFAULT.pencilDay),
            formalDay:clamp(b.formalDay,BILLING_DEFAULT.formalDay),
-           ownerPayDay:clamp(b.ownerPayDay,BILLING_DEFAULT.ownerPayDay),
-           configured: !!(b && (b.pencilDay||b.formalDay||b.ownerPayDay)) };
+           configured: !!(b && (b.pencilDay||b.formalDay)) };
 }
 // A day of 31 in a 30-day month must not roll into the next one, which is what
 // new Date(y, m, 31) does. Clamp to the last day the month actually has.
@@ -5248,7 +5371,6 @@ function billingDatesFor(periodDate){
   return {
     pencil: dayOfMonth(y, m, c.pencilDay),
     formal: dayOfMonth(y, m, c.formalDay),
-    ownerPay: dayOfMonth(y, m+1, c.ownerPayDay)   // the following month
   };
 }
 function fmtCycleDate(d){ return d ? fmtDMY(d.toISOString().slice(0,10)) : '—'; }
@@ -5281,8 +5403,7 @@ function renderBillingBar(){
   const cell=(lbl,t,sub)=>'<div class="bb-item '+state(t)+'"><div class="bb-lbl">'+lbl+'</div>'
     +'<div class="bb-val">'+fmtCycleDate(t)+'</div><div class="bb-sub">'+rel(t)+(sub?' · '+sub:'')+'</div></div>';
   box.innerHTML = cell('Pencil copy due', d.pencil, 'from contractors')
-    + cell('Formal application due', d.formal, '')
-    + cell('Owner payment due', d.ownerPay, '');
+    + cell('Formal application due', d.formal, '');
   bar.style.display='block';
 }
 function renderPayApps(){
