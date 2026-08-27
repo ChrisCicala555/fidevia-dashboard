@@ -1101,15 +1101,56 @@ export default async (req) => {
       // --- advance ---
       if (!headers.includes('Workflow Step')) headers.push('Workflow Step');
       if (!headers.includes('Workflow Status')) headers.push('Workflow Status');
+      if (!headers.includes('Workflow Done')) headers.push('Workflow Done');
+      const writeRows = async () => {
+        const out = headers.join(',') + '\n' + rows.map(r => headers.map(h => csvEsc(r[h])).join(',')).join('\n') + '\n';
+        const form = new FormData();
+        form.append('attributes', JSON.stringify({ name: filename }));
+        form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+        const ur = await boxFetch(`https://upload.box.com/api/2.0/files/${logFile.id}/content`, { method: 'POST', headers: H, body: form });
+        if (!ur.ok) throw new Error('Save failed ' + ur.status);
+      };
+
+      // A group marked requireAll needs every member, not just the first to
+      // act. Signatures are the reason: four parties each have to sign, and a
+      // group that advanced on one of them would close all four.
+      const groupNeedsAll = steps.slice(gs, ge + 1).some(st => st && st.requireAll);
+      let doneIdx = []; try { doneIdx = JSON.parse(row['Workflow Done'] || '[]'); } catch (e) {}
+      if (!Array.isArray(doneIdx)) doneIdx = [];
+
+      if (groupNeedsAll && !who.isAdmin) {
+        // Record only the steps this caller is actually named on.
+        for (let n = gs; n <= ge; n++) {
+          const st = steps[n] || {};
+          const direct = String(st.email || '').trim().toLowerCase();
+          const viaName = emailByName[String(st.person || '').trim().toLowerCase()] || '';
+          if (((direct && direct === me) || (viaName && viaName === me)) && !doneIdx.includes(n)) doneIdx.push(n);
+        }
+      } else if (groupNeedsAll) {
+        // An administrator completing on someone's behalf closes the group.
+        for (let n = gs; n <= ge; n++) if (!doneIdx.includes(n)) doneIdx.push(n);
+      }
+      row['Workflow Done'] = JSON.stringify(doneIdx);
+
+      const groupSatisfied = !groupNeedsAll
+        || steps.slice(gs, ge + 1).every((_, n) => doneIdx.includes(gs + n));
+      if (!groupSatisfied) {
+        // Still waiting on others in this group; the item does not move on.
+        const outstanding = steps.slice(gs, ge + 1)
+          .map((st, n) => doneIdx.includes(gs + n) ? null : (st.person || st.name || ''))
+          .filter(Boolean);
+        row['Workflow Status'] = 'In Review';
+        try { await writeRows(); } catch (e) { return json({ error: e.message }, 502); }
+        return json({ ok: true, partial: true, outstanding, step: cur });
+      }
+
       const next = ge + 1;
       if (next >= steps.length) { row['Workflow Step'] = String(steps.length - 1); row['Workflow Status'] = 'Complete'; }
       else { row['Workflow Step'] = String(next); row['Workflow Status'] = 'In Review'; }
-      const out = headers.join(',') + '\n' + rows.map(r => headers.map(h => csvEsc(r[h])).join(',')).join('\n') + '\n';
-      const form = new FormData();
-      form.append('attributes', JSON.stringify({ name: filename }));
-      form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
-      const ur = await boxFetch(`https://upload.box.com/api/2.0/files/${logFile.id}/content`, { method: 'POST', headers: H, body: form });
-      if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
+      // Moving on: the record of who signed within the finished group is kept,
+      // but the next group starts from nothing.
+      row['Workflow Done'] = JSON.stringify([]);
+      try { await writeRows(); } catch (e) { return json({ error: e.message }, 502); }
       const nextNames = next >= steps.length ? [] : steps.slice(next, next + 1).map(s => s.person || s.name);
       return json({ ok: true, complete: next >= steps.length, nextStep: nextNames });
     }

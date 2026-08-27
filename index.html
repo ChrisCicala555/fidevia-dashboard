@@ -1808,15 +1808,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Submitted By Email','Archived','Archived By','Archived Date']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -2177,22 +2177,50 @@ function wizGatherContractors(){
   }).filter(Boolean);
 }
 const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],['payapp','Payment Applications']];
+// The chains a new project starts with, as Fidevia runs them. A step marked
+// parallel runs alongside the one above it and any member can move the item on;
+// requireAll means every member must act, which is what a signature needs.
+const WF_TEMPLATES={
+  rfi:[
+    {name:'Architect / Engineer Review', person:''}
+  ],
+  sub:[
+    {name:'Architect / Engineer Review', person:''}
+  ],
+  // Pencil copies are handled by the billing cycle, not the workflow: the
+  // contractor uploads the finalised application.
+  payapp:[
+    {name:'Fidevia Records Amounts', person:''},
+    {name:'Fidevia Review', person:''},
+    {name:'Architect Review', person:'', parallel:true},
+    {name:'Signed', person:''}
+  ],
+  co:[
+    {name:'Fidevia Review', person:''},
+    {name:'Design Team Review', person:'', parallel:true},
+    {name:'Contractor Signature', person:''},
+    {name:'Fidevia Signature', person:'', requireAll:true},
+    {name:'Architect Signature', person:'', parallel:true, requireAll:true},
+    {name:'Owner Signature', person:''}
+  ]
+};
 const WF_DEFAULTS={rfi:['Fidevia CM','Architect'],co:['Fidevia CM','Owner'],sub:['Fidevia CM','Architect'],payapp:['Fidevia CM']};
-function wfStepRow(prefix,key,name,person,parallel){
+function wfStepRow(prefix,key,name,person,parallel,requireAll){
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
     +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'" placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Company</label><input class="wf-co" autocomplete="off" readonly placeholder="—" style="background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;"></div>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;"><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one person in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. Use for signatures."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+' style="width:auto;margin-right:4px;">All must sign</label>'
     +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
 }
 function wfBlock(prefix,key,label,steps){
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">'
     +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(label)+'</div>'
-    +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel)).join('')+'</div>'
+    +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel,s.requireAll)).join('')+'</div>'
     +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;" onclick="wfAddStep(\''+prefix+'\',\''+key+'\')">+ Add Step</button></div>';
 }
-function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false)); }
+function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false,false)); }
 function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
   const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
@@ -2202,7 +2230,12 @@ function wfRenderAll(prefix, containerId, workflows, peopleList){
 function wfGather(prefix){
   const out={};
   WF_TYPES.forEach(([k])=>{ const el=document.getElementById(prefix+'-'+k+'-rows'); if(!el) return;
-    out[k]=[...el.querySelectorAll('.wf-row')].map(r=>({name:(r.querySelector('.wf-name').value||'').trim(),person:(r.querySelector('.wf-person').value||'').trim(),parallel:r.querySelector('.wf-par').checked})).filter(s=>s.name||s.person);
+    out[k]=[...el.querySelectorAll('.wf-row')].map(r=>({
+      name:(r.querySelector('.wf-name').value||'').trim(),
+      person:(r.querySelector('.wf-person').value||'').trim(),
+      parallel:r.querySelector('.wf-par').checked,
+      requireAll:!!(r.querySelector('.wf-all')&&r.querySelector('.wf-all').checked)
+    })).filter(s=>s.name||s.person);
   });
   return out;
 }
@@ -2314,7 +2347,11 @@ async function createProject(){
     const config = {
       owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
-      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com', workflows: wfGather('npwf'),
+      milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com',
+      workflows: (()=>{ const g=wfGather('npwf');
+        // Anything left untouched in the wizard falls back to the standard chain.
+        Object.keys(WF_TEMPLATES).forEach(k=>{ if(!(g[k]&&g[k].length)) g[k]=WF_TEMPLATES[k].map(x=>Object.assign({},x)); });
+        return g; })(),
       billing: { pencilDay: parseInt(wizVal('np-pencil'),10)||20, formalDay: parseInt(wizVal('np-formal'),10)||25 },
       response: { gc: parseInt(wizVal('np-rsp-gc'),10)||7, architect: parseInt(wizVal('np-rsp-arch'),10)||7,
                   engineer: parseInt(wizVal('np-rsp-eng'),10)||10, submittal: parseInt(wizVal('np-rsp-sub'),10)||14 }
@@ -6187,6 +6224,13 @@ async function wfAdvance(key, i){
     const row0=(allData[key]||[])[i]; if(!row0) return;
     try{
       const res=await proxyCall('advanceWorkflow',{projectId:currentProject.folderId, moduleFolderId:fid, filename:mod.log, wfKey:(WF_KEYMAP[key]||key), idField:idf, idValue:row0[idf]});
+      if(res.partial){
+        // A signature group holds until everyone named on it has acted.
+        row0['Workflow Status']='In Review';
+        alert('Recorded. Still waiting on: '+((res.outstanding||[]).join(', ')||'others on this step')+'.');
+        renderAll();
+        return;
+      }
       const cur=parseInt(row0['Workflow Step'])||0; const [a,b]=wfGroupAt(steps,cur);
       row0['Workflow Step']=res.complete?String(steps.length-1):String(b+1); row0['Workflow Status']=res.complete?'Complete':'In Review';
       renderAll();
@@ -6197,6 +6241,30 @@ async function wfAdvance(key, i){
   let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
   const row=rows[i]; if(!row) return;
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
+  // Fidevia signing on the record still only completes their own step when the
+  // group requires everybody.
+  const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);
+  if(needsAll){
+    let doneIdx=[]; try{ doneIdx=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+    if(!Array.isArray(doneIdx)) doneIdx=[];
+    await resolveMe();
+    for(let n=gs;n<=ge;n++){
+      const st=steps[n]||{};
+      const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
+      if((em&&em===ME_EMAIL) || IS_ADMIN){ if(!doneIdx.includes(n)) doneIdx.push(n); }
+    }
+    const outstanding=steps.slice(gs,ge+1).map((st,n)=>doneIdx.includes(gs+n)?null:(st.person||st.name||'')).filter(Boolean);
+    row['Workflow Done']=JSON.stringify(doneIdx);
+    if(outstanding.length){
+      row['Workflow Status']='In Review';
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+      allData[key]=rows;
+      alert('Recorded. Still waiting on: '+outstanding.join(', ')+'.');
+      renderAll();
+      return;
+    }
+    row['Workflow Done']=JSON.stringify([]);
+  }
   const next=ge+1;
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
   if(next>=steps.length){ row['Workflow Step']=String(steps.length-1); row['Workflow Status']='Complete'; }
