@@ -135,6 +135,20 @@ ok('it shows the billing days too',  /'Pencil copy', 'Day '\+b\.pencilDay/.test(
 ok('it explains that a typed date wins', /a date entered by hand overrides it/.test(src));
 ok('one day is not pluralised', /n\+\(n===1\?' day':' days'\)/.test(src));
 
+
+console.log('The submitter cannot set their reviewer\u2019s clock');
+const subForm = src.slice(src.indexOf("if(type==='submittal')"), src.indexOf("if(type==='submittal')")+1400);
+ok('locked for external submitters',   /const locked = viewingAsExternal\(\);/.test(subForm));
+ok('the field is made read-only',      /due\.readOnly = locked;/.test(subForm));
+ok('it says why',                      /Set by the project\\u2019s review period/.test(subForm));
+ok('it is styled as locked',           /due\.style\.background = locked/.test(subForm));
+ok('the value is always recomputed, not just when blank',
+   /due\.value=isoDay\(addDays\(etToday\(\), days\)\)/.test(subForm) && !/if\(!due\.value\) due\.value=isoDay/.test(subForm));
+ok('Fidevia is told it can override', /You can change it for this submittal/.test(subForm));
+// RFIs are different: the notes say the contractor determines the response
+// date, within the contractual obligation. That field stays editable.
+ok('the RFI due date remains editable', !/rfiDue[\s\S]{0,200}readOnly/.test(src));
+
 fs.rmSync('.dd.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

@@ -3837,8 +3837,18 @@ function openModal(type){
     const due=document.getElementById('f-sub-due'), hint=document.getElementById('f-sub-due-hint');
     if(due){
       const days=responseDays().submittal;
-      if(!due.value) due.value=isoDay(addDays(etToday(), days))||'';
-      if(hint) hint.textContent=days+' calendar days \u2014 the review period set for this project.';
+      due.value=isoDay(addDays(etToday(), days))||'';
+      // The review period is a contractual obligation Fidevia sets, not
+      // something the submitter chooses. Fidevia can still override it on a
+      // particular submittal; a contractor cannot set their reviewer's clock.
+      const locked = viewingAsExternal();
+      due.readOnly = locked;
+      due.title = locked ? 'Set by the project\u2019s review period' : '';
+      due.style.background = locked ? '#f0efe9' : '';
+      due.style.color      = locked ? '#777' : '';
+      due.style.cursor     = locked ? 'not-allowed' : '';
+      if(hint) hint.textContent = days+' calendar days \u2014 the review period set for this project.'
+        + (locked ? '' : ' You can change it for this submittal.');
     }
   }
   if(['rfi','co','submittal','daily'].includes(type)){ fillSubmittedBy(); }
