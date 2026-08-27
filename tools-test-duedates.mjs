@@ -114,6 +114,21 @@ ok('they can be edited later',
    ['bl-rsp-gc','bl-rsp-arch','bl-rsp-eng','bl-rsp-sub'].every(id=>html.includes('id="'+id+'"')));
 ok('owner payment is gone entirely', !/ownerPay/i.test(src) && !html.includes('Owner payment'));
 
+
+console.log('The rules are visible in the project');
+ok('there is a response period panel', html.includes('id="response-bar"'));
+ok('it lives on the Schedule page',
+   html.indexOf('id="response-bar"') > html.indexOf('id="section-schedule"') &&
+   html.indexOf('id="response-bar"') < html.indexOf('Contract milestones'));
+ok('it renders with the schedule', /function renderSchedule\(\)\{\s*try\{ renderResponseBar\(\); \}/.test(src));
+ok('it shows all three RFI periods', /RFI \\u2014 GC[\s\S]{0,300}RFI \\u2014 Architect[\s\S]{0,300}RFI \\u2014 Engineer/.test(src));
+ok('it shows the submittal period',  /'Submittal review', days\(d\.submittal\)/.test(src));
+ok('it shows the billing days too',  /'Pencil copy', 'Day '\+b\.pencilDay/.test(src));
+ok('everyone can read it \u2014 only Edit is restricted',
+   /id="response-bar"[\s\S]{0,400}btn-secondary admin-only/.test(html));
+ok('it explains that a typed date wins', /a date entered by hand overrides it/.test(src));
+ok('one day is not pluralised', /n\+\(n===1\?' day':' days'\)/.test(src));
+
 fs.rmSync('.dd.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

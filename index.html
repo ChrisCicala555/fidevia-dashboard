@@ -955,6 +955,14 @@
           <button class="btn-add admin-only" onclick="openSchedule()">Edit Schedule</button>
         </div>
         <div class="stat-grid" id="sched-kpis"></div>
+        <div class="billing-bar" id="response-bar" style="display:none;">
+          <div class="bb-head">
+            <span>Contractual response periods</span>
+            <button class="btn-secondary admin-only" style="padding:5px 11px;font-size:12px;" onclick="openBilling()">Edit</button>
+          </div>
+          <div class="bb-items" id="rb-items"></div>
+          <div class="table-count" id="rb-note"></div>
+        </div>
         <div class="panel">
           <div class="panel-header">Contract milestones</div>
           <table><thead><tr><th>Milestone</th><th>Actual Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
@@ -3314,7 +3322,28 @@ function financialTotals(){
   });
   return {revised:tR, billed:tB, remaining:tR-tB, pctBilled:tR>0?tB/tR:0, scoped:scoped};
 }
+// Read-only for everyone. A contractor needs to know what turnaround they are
+// owed on an RFI as much as Fidevia does, and seeing the rule explains where
+// the date on their own items came from.
+function renderResponseBar(){
+  const bar=document.getElementById('response-bar'), box=document.getElementById('rb-items');
+  if(!bar||!box) return;
+  const d=responseDays(), b=billingCycle();
+  const cell=(lbl,val,sub)=>'<div class="bb-item"><div class="bb-lbl">'+lbl+'</div>'
+    +'<div class="bb-val">'+val+'</div><div class="bb-sub">'+sub+'</div></div>';
+  const days=n=>n+(n===1?' day':' days');
+  box.innerHTML = cell('RFI \u2014 GC', days(d.gc), 'to respond')
+    + cell('RFI \u2014 Architect', days(d.architect), 'to respond')
+    + cell('RFI \u2014 Engineer', days(d.engineer), 'to respond')
+    + cell('Submittal review', days(d.submittal), 'to review')
+    + cell('Pencil copy', 'Day '+b.pencilDay, 'of the month')
+    + cell('Formal application', 'Day '+b.formalDay, 'of the month');
+  const note=document.getElementById('rb-note');
+  if(note) note.textContent='Calendar days from the date submitted. An RFI follows whoever it is assigned to; a date entered by hand overrides it.';
+  bar.style.display='block';
+}
 function renderSchedule(){
+  try{ renderResponseBar(); }catch(e){}
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
