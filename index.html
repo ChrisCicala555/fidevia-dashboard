@@ -955,14 +955,6 @@
           <button class="btn-add admin-only" onclick="openSchedule()">Edit Schedule</button>
         </div>
         <div class="stat-grid" id="sched-kpis"></div>
-        <div class="billing-bar" id="response-bar" style="display:none;">
-          <div class="bb-head">
-            <span>Contractual response periods</span>
-            <button class="btn-secondary admin-only" style="padding:5px 11px;font-size:12px;" onclick="openBilling()">Edit</button>
-          </div>
-          <div class="bb-items" id="rb-items"></div>
-          <div class="table-count" id="rb-note"></div>
-        </div>
         <div class="panel">
           <div class="panel-header">Contract milestones</div>
           <table><thead><tr><th>Milestone</th><th>Actual Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
@@ -1203,6 +1195,14 @@
 
       <div class="section" id="section-notifsettings">
         <h2 class="page-title">Notification Settings</h2>
+        <div class="billing-bar" id="response-bar" style="display:none;max-width:680px;">
+          <div class="bb-head">
+            <span>Due dates &amp; billing cycle</span>
+            <button class="btn-secondary" style="padding:5px 11px;font-size:12px;" onclick="openBilling()">Edit</button>
+          </div>
+          <div class="bb-items" id="rb-items"></div>
+          <div class="table-count" id="rb-note"></div>
+        </div>
         <p style="color:var(--muted);font-size:14px;margin-bottom:16px;max-width:640px;">Customize the email that goes out when items are submitted on this project. Available placeholders: <code>{project}</code>, <code>{number}</code>, <code>{title}</code>, <code>{submitter}</code>.</p>
         <div class="panel" style="padding:20px;max-width:680px;">
           <h3 style="font-size:16px;margin:0 0 10px;">New RFI</h3>
@@ -2491,7 +2491,7 @@ function splitByArchived(all, df){
   return { live: paired.filter(p=>!isArchived(p.r)).sort(bydate),
            past: paired.filter(p=>isArchived(p.r)).sort(bydate) };
 }
-function renderAll(){ renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+function renderAll(){ renderResponseBar(); renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // Owner is read-only, and A/E may read Workflow Settings but not change them.
 // The server enforces both; these banners explain rather than protect.
@@ -3328,6 +3328,7 @@ function financialTotals(){
 function renderResponseBar(){
   const bar=document.getElementById('response-bar'), box=document.getElementById('rb-items');
   if(!bar||!box) return;
+  if(!currentProject){ bar.style.display='none'; return; }
   const d=responseDays(), b=billingCycle();
   const cell=(lbl,val,sub)=>'<div class="bb-item"><div class="bb-lbl">'+lbl+'</div>'
     +'<div class="bb-val">'+val+'</div><div class="bb-sub">'+sub+'</div></div>';
@@ -3343,7 +3344,6 @@ function renderResponseBar(){
   bar.style.display='block';
 }
 function renderSchedule(){
-  try{ renderResponseBar(); }catch(e){}
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
@@ -3456,6 +3456,7 @@ async function saveBilling(){
     await writeProjectConfig(currentProject.folderId, currentProject.config);
     showStatus('billing-status','Saved.','success');
     renderBillingBar();
+    try{ renderResponseBar(); }catch(e){}
     setTimeout(closeBilling, 700);
   }catch(e){ showStatus('billing-status','Error: '+e.message,'error'); }
   btn.disabled=false;
