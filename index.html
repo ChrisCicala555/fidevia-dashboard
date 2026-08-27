@@ -255,6 +255,11 @@
   .attach-name{overflow:hidden; text-overflow:ellipsis;}
   .file-ico{flex:0 0 auto; opacity:.75;}
   .cell-sub{font-size:12px; color:var(--muted); font-weight:400; margin-top:2px; line-height:1.3;}
+  /* A due date that departs from the contractual turnaround. Amber rather than
+     red: it is often legitimate, it just should not be silent. */
+  .off-contract{display:inline-block; margin-left:6px; padding:1px 6px; border-radius:9px; font-size:11px;
+    font-weight:700; background:var(--khaki-100); color:var(--olive-900); cursor:help; vertical-align:1px;}
+  .off-contract.short{background:#F6E6C8; color:#8a5a00;}
   .table-count{padding:11px 18px; font-size:12.5px; color:var(--muted); border-top:1px solid #F1F0E8;}
   .attach-link:hover{background:var(--olive-700); color:#fff;}
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
@@ -1803,9 +1808,9 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
@@ -2652,6 +2657,21 @@ function pill(status,overdue){
 // of exactly "open" counted, so a submittal sitting at "Pending Review" past
 // its date never showed as late.
 const OPEN_STATES=/open|pending|under review|revise/i;
+// How far the recorded due date departs from the contractual one, in days.
+// Negative means shorter than the contract allows — the case worth seeing.
+function offContractDays(r){
+  const set=parseLocalDate(r&&r['Due Date']), owed=parseLocalDate(r&&r['Contract Due']);
+  if(!set||!owed) return 0;
+  return Math.round((set-owed)/86400000);
+}
+function offContractFlag(r){
+  const d=offContractDays(r);
+  if(!d) return '';
+  const shorter=d<0, n=Math.abs(d);
+  return '<span class="off-contract'+(shorter?' short':'')+'" title="The contract allows until '
+    +esc(fmtDMY(r['Contract Due']))+'. This was set '+n+' day'+(n===1?'':'s')+(shorter?' earlier':' later')+'.">'
+    +(shorter?'\u2212':'+')+n+'d</span>';
+}
 function isOverdue(r){
   if(!OPEN_STATES.test(String(r['Status']||''))) return false;
   const d=parseLocalDate(r['Due Date']); if(!d) return false;
@@ -2762,7 +2782,7 @@ function renderRFIs(){
       +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+twoLine(r['Assigned To'], firmOf(r['Assigned To']))+'</td>'
-      +'<td>'+esc(fmtDMY(r['Due Date']))+'</td>'
+      +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
@@ -2811,7 +2831,7 @@ function renderSubmittals(){
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+twoLine(firmOf(r['Reviewer'])||r['Reviewer'], firmOf(r['Reviewer'])?r['Reviewer']:'')+'</td>'
-      +'<td>'+esc(fmtDMY(r['Due Date']))+'</td>'
+      +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
@@ -4325,9 +4345,13 @@ async function submitForm(){
       await resolveMe();
       const _rc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Subject is required.');
-      const _rdue = v('f-due') || isoDay(addDays(etToday(), rfiDueDays(v('f-assigned')))) || '';
+      // What the contract gives, kept alongside whatever was actually set, so a
+      // shorter turnaround is visible rather than silent — and stays visible if
+      // the project's periods change afterwards.
+      const _rcontract = isoDay(addDays(etToday(), rfiDueDays(v('f-assigned')))) || '';
+      const _rdue = v('f-due') || _rcontract;
       const _rnum = PRE_NUM || nextItemNumber('rfi', _rc);
-      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':_rdue,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
+      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':_rdue,'Contract Due':_rcontract,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',fmtDMY(newRow['Due Date'])],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='co'){
@@ -4345,7 +4369,7 @@ async function submitForm(){
       const _sc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
       const _snum = PRE_NUM || nextItemNumber('sub', _sc);
-      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
+      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Contract Due':(isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
       { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
       sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='daily'){

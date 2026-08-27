@@ -15,11 +15,14 @@ fs.writeFileSync('.dd.tmp.mjs', [
   grab('function responseDays'), grab('function disciplineOf'),
   grab('function rfiDueDays'), grab('function parseLocalDate'), grab('function addDays'), grab('function isoDay'),
   "const OPEN_STATES=/open|pending|under review|revise/i;",
+  grab('function offContractDays'),
+  "const esc=x=>String(x==null?'':x); const fmtDMY=x=>String(x||'');",
+  grab('function offContractFlag'),
   grab('function isOverdue'),
-  "export { responseDays, disciplineOf, rfiDueDays, parseLocalDate, addDays, isoDay, isOverdue };"
+  "export { responseDays, disciplineOf, rfiDueDays, parseLocalDate, addDays, isoDay, isOverdue, offContractDays, offContractFlag };"
 ].join('\n'));
 const M = await import('./.dd.tmp.mjs');
-const { responseDays, disciplineOf, rfiDueDays, addDays, isoDay, isOverdue, setup } = M;
+const { responseDays, disciplineOf, rfiDueDays, addDays, isoDay, isOverdue, offContractDays, offContractFlag, setup } = M;
 
 let pass=0, fail=0;
 const ok=(n,c)=>{ c?pass++:(fail++,console.log('  FAIL: '+n)); };
@@ -103,7 +106,7 @@ ok('no date is not overdue',                    isOverdue({Status:'Open','Due Da
 
 console.log('Wiring');
 ok('change orders still have no due date', !/co:\{title[\s\S]{0,1400}id="f-due"/.test(src));
-ok('the submittal log carries a due date', /'Reviewer','Date Submitted','Due Date','Status'/.test(src));
+ok('the submittal log carries a due date', /'Reviewer','Date Submitted','Due Date','Contract Due','Status'/.test(src));
 ok('the submittal form offers one',        html.includes('id="f-sub-due"'));
 ok('the RFI due date is no longer required', !/Due Date is required/.test(src));
 ok('the RFI form recalculates on assignee change', /if\(sel\)\{ sel\.onchange=redue/.test(src));
@@ -156,6 +159,37 @@ ok('a locked submitter always gets the contractual date',
 ok('the override handler is not attached when locked', /if\(due && !locked\) due\.onchange/.test(rfiForm));
 ok('Fidevia is told it can override',    /You can change it for this RFI/.test(rfiForm));
 ok('changing the assignee still moves the date', /if\(sel\)\{ sel\.onchange=redue/.test(rfiForm));
+
+
+console.log('Off-contract dates are visible, not silent');
+const row=(due,owed)=>({'Due Date':due,'Contract Due':owed});
+ok('a date matching the contract is not flagged', offContractDays(row('2026-09-01','2026-09-01'))===0);
+ok('and shows no marker',                         offContractFlag(row('2026-09-01','2026-09-01'))==='');
+ok('a shorter turnaround is negative',            offContractDays(row('2026-08-27','2026-09-01'))===-5);
+ok('a longer one is positive',                    offContractDays(row('2026-09-04','2026-09-01'))===3);
+// The case that matters: two days demanded where the contract allows seven.
+const short=offContractFlag(row('2026-08-27','2026-09-01'));
+ok('a compressed date is marked',                 short.includes('off-contract'));
+ok('it is marked as the shorter kind',            short.includes('short'));
+ok('it shows the size of the gap',                short.includes('5d'));
+ok('it explains itself on hover',                 short.includes('title="The contract allows until'));
+const longr=offContractFlag(row('2026-09-04','2026-09-01'));
+ok('a longer date is marked but not as short',    longr.includes('off-contract') && !longr.includes('short'));
+ok('one day is not pluralised',                   offContractFlag(row('2026-09-02','2026-09-01')).includes('1 day later'));
+ok('missing contract date means no flag',         offContractFlag(row('2026-09-01',''))==='');
+ok('missing due date means no flag',              offContractFlag(row('','2026-09-01'))==='');
+ok('an unparseable date means no flag',           offContractFlag(row('nonsense','2026-09-01'))==='');
+ok('a row with neither is safe',                  offContractDays({})===0);
+ok('a null row is safe',                          offContractDays(null)===0);
+
+console.log('The contractual date is recorded at submission');
+ok('the RFI log carries it',      /'Date Submitted','Due Date','Contract Due'/.test(src));
+ok('the submittal log carries it',/'Date Submitted','Due Date','Contract Due','Status'/.test(src));
+ok('RFIs store what the contract gave', /'Contract Due':_rcontract/.test(src));
+ok('submittals store it too',           /'Contract Due':\(isoDay\(addDays\(etToday\(\), responseDays\(\)\.submittal\)\)/.test(src));
+ok('it is computed independently of what was set', /const _rcontract = isoDay\(addDays\(etToday\(\), rfiDueDays/.test(src));
+// Three matches: the two render sites plus the function's own signature.
+ok('both logs show the flag', (src.match(/\+offContractFlag\(r\)\+/g)||[]).length===2);
 
 fs.rmSync('.dd.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
