@@ -3816,18 +3816,30 @@ function openModal(type){
     // recalculated whenever the assignee changes rather than typed.
     const due=document.getElementById('f-due'), hint=document.getElementById('f-due-hint');
     const LABEL={gc:'the GC', architect:'an architect', engineer:'an engineer'};
+    // The turnaround is contractual, so the submitter does not get to name it —
+    // the same rule as a submittal's review period. Choosing the assignee is
+    // what moves the date; Fidevia can still override it on a given RFI.
+    const locked = viewingAsExternal();
+    if(due){
+      due.readOnly = locked;
+      due.title = locked ? 'Set by the contractual response period for whoever it is assigned to' : '';
+      due.style.background = locked ? '#f0efe9' : '';
+      due.style.color      = locked ? '#777' : '';
+      due.style.cursor     = locked ? 'not-allowed' : '';
+    }
     const redue=()=>{
       if(!due) return;
       const who=sel?sel.value:'';
       const days=rfiDueDays(who), disc=disciplineOf(who);
       const d=addDays(etToday(), days);
-      if(!due.dataset.touched && d) due.value=isoDay(d);
+      // Locked submitters always get the contractual date, never a stale one.
+      if((locked || !due.dataset.touched) && d) due.value=isoDay(d);
       if(hint) hint.textContent = who
         ? days+' calendar days \u2014 the contractual turnaround for '+(LABEL[disc]||'this reviewer')+'.'
-            +(due.dataset.touched?' Clear the date to use it.':'')
+            +(locked ? '' : (due.dataset.touched?' Clear the date to use it.':' You can change it for this RFI.'))
         : 'Set automatically once the RFI is assigned.';
     };
-    if(due) due.onchange=()=>{ due.dataset.touched=due.value?'1':''; redue(); };
+    if(due && !locked) due.onchange=()=>{ due.dataset.touched=due.value?'1':''; redue(); };
     if(sel){ sel.onchange=redue; sel.oninput=redue; }
     redue();
   }

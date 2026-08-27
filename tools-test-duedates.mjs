@@ -145,9 +145,17 @@ ok('it is styled as locked',           /due\.style\.background = locked/.test(su
 ok('the value is always recomputed, not just when blank',
    /due\.value=isoDay\(addDays\(etToday\(\), days\)\)/.test(subForm) && !/if\(!due\.value\) due\.value=isoDay/.test(subForm));
 ok('Fidevia is told it can override', /You can change it for this submittal/.test(subForm));
-// RFIs are different: the notes say the contractor determines the response
-// date, within the contractual obligation. That field stays editable.
-ok('the RFI due date remains editable', !/rfiDue[\s\S]{0,200}readOnly/.test(src));
+// The RFI response date is locked the same way. The submitter chooses who it
+// goes to; the contractual turnaround for that person decides the date.
+const rfiForm = src.slice(src.indexOf("if(type==='rfi')"), src.indexOf("if(type==='rfi')")+2000);
+ok('locked for external submitters too', /const locked = viewingAsExternal\(\);/.test(rfiForm));
+ok('the field is made read-only',        /due\.readOnly = locked;/.test(rfiForm));
+ok('it says why',                        /Set by the contractual response period/.test(rfiForm));
+ok('a locked submitter always gets the contractual date',
+   /if\(\(locked \|\| !due\.dataset\.touched\) && d\)/.test(rfiForm));
+ok('the override handler is not attached when locked', /if\(due && !locked\) due\.onchange/.test(rfiForm));
+ok('Fidevia is told it can override',    /You can change it for this RFI/.test(rfiForm));
+ok('changing the assignee still moves the date', /if\(sel\)\{ sel\.onchange=redue/.test(rfiForm));
 
 fs.rmSync('.dd.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
