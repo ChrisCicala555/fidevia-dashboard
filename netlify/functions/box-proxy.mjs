@@ -343,6 +343,32 @@ async function notifyAdminsOfRequest(projectName, requester, H, projectId){
     body:JSON.stringify({ personalizations:[{to:to.map(e=>({email:e}))}], from:{email:process.env.FROM_EMAIL||'dashboard@fidevia.com',name:'Fidevia Dashboard'},
       subject:'[Fidevia] Access request: '+(projectName||'a project'), content:[{type:'text/html',value:html}] })});
 }
+// The three company-private modules keep a folder per firm. A caller scoped to
+// one company may write inside their own, or directly into the module folder —
+// never into another firm's.
+const PRIVATE_FOLDER_PREFIX = ['09', '13', '14'];
+async function folderWritableBy(H, t, grants, who, folderId){
+  if (who.isAdmin) return true;
+  if (!folderId) return false;
+  const g = await grantFor(t, grants, 'folder', folderId);
+  const role = normRole(g && g.role);
+  if (!roleMayWrite(role)) return false;
+  if (seesAllCompanies(role)) return true;
+  const mine = String((g && g.company) || '').trim().toLowerCase();
+  if (!mine) return false;
+  try{
+    const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}?fields=name,path_collection`, { headers: H });
+    if (!r.ok) return false;
+    const d = await r.json();
+    const path = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.name || ''));
+    const chain = path.concat([String(d.name || '')]);
+    const modIdx = chain.findIndex(n => PRIVATE_FOLDER_PREFIX.some(p => n.startsWith(p + ' ')));
+    if (modIdx < 0) return true;                 // not a company-private module
+    const below = chain.slice(modIdx + 1);
+    if (!below.length) return true;              // the module folder itself
+    return below[0].trim().toLowerCase() === mine;
+  }catch(e){ return false; }
+}
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
@@ -904,6 +930,7 @@ export default async (req) => {
     // caps uploads at ~4.4MB (Netlify 6MB body limit + base64 inflation).
     if (op === 'uploadToken') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       try {
         const r = await boxFetch('https://api.box.com/oauth2/token', {
           method: 'POST',
@@ -924,6 +951,7 @@ export default async (req) => {
 
     if (op === 'upload') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       const chk = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       if (chk.ok) { const items = (await chk.json()).entries || []; if (items.some(i => i.type === 'file' && i.name === body.filename)) return json({ error: 'A file with that name already exists.' }, 409); }
       const bytes = Uint8Array.from(atob(body.contentBase64), c => c.charCodeAt(0));
@@ -937,6 +965,7 @@ export default async (req) => {
 
     if (op === 'ensureFolder') {
       if (!await guardFolder(body.parentId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.parentId)) return json({ error: 'Access denied' }, 403);
       const name = String(body.name || '').trim();
       if (!name) return json({ error: 'name required' }, 400);
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });
@@ -959,8 +988,16 @@ export default async (req) => {
 
     if (op === 'addVersion') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, idField, idValue } = body;
       if (!folderId || !filename || !idField) return json({ error: 'missing fields' }, 400);
+      // Identity comes from the verified token, never from the request. It was
+      // read straight off body.by, so a caller could attribute a version to
+      // anyone — including someone at another firm.
+      const _g = who.isAdmin ? null : await grantFor(t, _grants, 'folder', folderId);
+      const callerCompany = who.isAdmin ? '' : ((_g && _g.company) || '');
+      const callerRole = who.isAdmin ? '' : normRole(_g && _g.role);
+      if (!who.isAdmin && !roleMayWrite(callerRole)) return json({ error: 'Access denied' }, 403);
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       const items = lr.ok ? ((await lr.json()).entries || []) : [];
       const logFile = items.find(i => i.type === 'file' && i.name === filename);
@@ -972,9 +1009,21 @@ export default async (req) => {
       const idx = rows.findIndex(r => String(r[idField] || '') === String(idValue || ''));
       if (idx < 0) return json({ error: 'item not found' }, 404);
       const row = rows[idx];
+      // A contractor may only add to an item belonging to their own company.
+      // There was no such check, so any row in a granted project could be
+      // revised — including another firm's payment application.
+      if (!who.isAdmin && !seesAllCompanies(callerRole)) {
+        const rowCo = String(row['Company'] || row['Contractor'] || '').trim().toLowerCase();
+        const mine = String(callerCompany || '').trim().toLowerCase();
+        if (!mine || (rowCo && rowCo !== mine)) return json({ error: 'Access denied' }, 403);
+      }
       let vh = []; try { vh = JSON.parse(row['Version History'] || '[]'); } catch (e) {}
       if (!vh.length) vh = [{ v:1, fileId:(row['Attachment File ID']||row['File ID']||''), fileName:(row['Attachment Name']||row['File Name']||''), status:(row['Status']||''), date:(row['Date Submitted']||row['Date']||''), by:(row['Submitted By']||row['Submitted By (Sub)']||row['Contractor']||''), note:'' }];
-      vh.push({ v:vh.length+1, fileId:String(body.newFileId||''), fileName:String(body.newFileName||''), status:String(body.status||''), date:String(body.date||''), by:String(body.by||''), note:String(body.note||'') });
+      vh.push({ v:vh.length+1, fileId:String(body.newFileId||''), fileName:String(body.newFileName||''),
+        status:String(body.status||''), date:String(body.date||''),
+        by: who.isAdmin ? String(body.by||who.name||who.email||'') : (who.name || who.email || ''),
+        co: who.isAdmin ? String(body.co||'') : callerCompany,
+        note:String(body.note||'') });
       if (!headers.includes('Version History')) headers.push('Version History');
       row['Version History'] = JSON.stringify(vh);
       if (headers.includes('Attachment File ID')) row['Attachment File ID'] = String(body.newFileId || row['Attachment File ID'] || '');
@@ -1085,6 +1134,7 @@ export default async (req) => {
     }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, headers, row } = body;
       if (!Array.isArray(headers) || typeof row !== 'object') return json({ error: 'headers[] and row{} required' }, 400);
       const pfield = PRIVATE_CSV[filename];
@@ -1092,6 +1142,18 @@ export default async (req) => {
         const company = await callerCompanyFor(t, _grants, 'folder', folderId);
         if (!company) return json({ error: 'Your access is not assigned to a company for this project.' }, 403);
         row[pfield] = company;
+      }
+      // Who submitted it is a matter of record, so it comes from the verified
+      // token rather than the request. These were accepted as sent, which let a
+      // caller file an item under someone else's name.
+      if (!who.isAdmin) {
+        const g2 = await grantFor(t, _grants, 'folder', folderId);
+        const co2 = (g2 && g2.company) || '';
+        if (!roleMayWrite(normRole(g2 && g2.role))) return json({ error: 'Access denied' }, 403);
+        const stamp = who.name ? (co2 ? who.name + ' (' + co2 + ')' : who.name) : (who.email || '');
+        for (const f of ['Submitted By', 'Submitted By (Sub)']) if (f in row) row[f] = stamp;
+        if ('Submitted By Email' in row) row['Submitted By Email'] = who.email || '';
+        if ('Company' in row && co2) row['Company'] = co2;
       }
       const rowLine = headers.map(h => csvEsc(row[h])).join(',');
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
