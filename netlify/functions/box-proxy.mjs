@@ -1317,6 +1317,68 @@ export default async (req) => {
       return json({ ok: true, company: Object.assign({ key: k, complete: companyComplete(rec) }, rec) });
     }
 
+    // Fold one spelling of a firm into another. Two records for one company is
+    // not only untidy: a grant carrying the wrong spelling scopes that person
+    // to a contractor name that matches nothing, and they see an empty project.
+    if (op === 'mergeCompany') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const fromName = String(body.from || '').trim();
+      const toName   = String(body.to   || '').trim();
+      if (!fromName || !toName) return json({ error: 'from and to are required' }, 400);
+      const fk = companyKey(fromName), tk = companyKey(toName);
+      if (fk === tk) return json({ error: 'Those are already the same company.' }, 400);
+      const dryRun = !!body.dryRun;
+
+      // Who is affected, before anything changes.
+      const people = [];
+      const pstore = getStore('profiles');
+      try {
+        const { blobs } = await pstore.list();
+        for (const b of (blobs || [])) {
+          try {
+            const pr = await pstore.get(b.key, { type: 'json' });
+            if (pr && companyKey(pr.company) === fk) {
+              people.push({ key: b.key, name: (((pr.first_name||'')+' '+(pr.last_name||'')).trim())||pr.email||b.key, email: pr.email||'' });
+              if (!dryRun) { pr.company = toName; await pstore.setJSON(b.key, pr); }
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+
+      // Grants carry a snapshot of the company, and that snapshot is what
+      // decides which rows a contractor is shown.
+      const grantsTouched = [];
+      const gstore = grantsStore();
+      try {
+        const { blobs } = await gstore.list();
+        for (const b of (blobs || [])) {
+          try {
+            const g = await gstore.get(b.key, { type: 'json' });
+            if (!g || !Array.isArray(g.projects)) continue;
+            let hit = false;
+            g.projects.forEach(p => { if (companyKey(p.company) === fk) { hit = true; if (!dryRun) p.company = toName; } });
+            if (hit) { grantsTouched.push(b.key); if (!dryRun) await gstore.setJSON(b.key, g); }
+          } catch (e) {}
+        }
+      } catch (e) {}
+
+      if (!dryRun) {
+        // Keep whichever address is already on file: the target's if it has
+        // one, otherwise carry the source's across rather than losing it.
+        try {
+          const src = await companyStore().get(fk, { type: 'json' });
+          const dst = await companyStore().get(tk, { type: 'json' });
+          if (src && !companyComplete(dst)) {
+            await companyStore().setJSON(tk, Object.assign({}, src, { name: toName, updatedAt: new Date().toISOString() }));
+          } else if (!dst) {
+            await companyStore().setJSON(tk, { name: toName, category: '', line1:'', line2:'', city:'', state:'', zip:'', updatedAt: new Date().toISOString() });
+          }
+          await companyStore().delete(fk);
+        } catch (e) {}
+      }
+      return json({ ok: true, dryRun, people, grants: grantsTouched.length });
+    }
+
     if (op === 'allContacts') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');

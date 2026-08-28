@@ -75,6 +75,34 @@ ok('it names what is missing',         /need\.push\(nm\+' has no address on file
 ok('it catches a party not recorded at all', /is not recorded on this project/.test(rd));
 ok('it reports ready only when nothing is missing', /ready:!need\.length/.test(rd));
 
+
+console.log('Merging one spelling into another');
+const mg=proxy.slice(proxy.indexOf("op === 'mergeCompany'"), proxy.indexOf("op === 'allContacts'"));
+ok('is admin only',                    /if \(!who\.isAdmin\) return json/.test(mg));
+ok('both names are required',          /if \(!fromName \|\| !toName\) return json/.test(mg));
+ok('merging a firm into itself is refused', /if \(fk === tk\) return json/.test(mg));
+ok('it can preview without changing anything', /const dryRun = !!body\.dryRun;/.test(mg));
+ok('a preview writes no profile',      /if \(!dryRun\) \{ pr\.company = toName; await pstore\.setJSON/.test(mg));
+ok('a preview writes no grant',        /if \(!dryRun\) p\.company = toName;/.test(mg));
+ok('it moves people',                  /pr\.company = toName/.test(mg));
+// The part that actually matters: a grant holds the company that decides which
+// rows a contractor sees, so leaving it behind would empty their project.
+ok('it moves access grants too',       /companyKey\(p\.company\) === fk/.test(mg));
+ok('it reports who is affected',       /people, grants: grantsTouched\.length/.test(mg));
+ok('it keeps an address rather than losing one', /if \(src && !companyComplete\(dst\)\)/.test(mg));
+ok('the old name is removed',          /companyStore\(\)\.delete\(fk\)/.test(mg));
+ok('matching ignores spelling drift',  /companyKey\(pr\.company\) === fk/.test(mg));
+
+console.log('And it asks first');
+const mo=grab(src,'async function mergeOrg');
+ok('it previews before acting',        /dryRun:true/.test(mo));
+ok('it names the people affected',     /names\.slice\(0,8\)/.test(mo));
+ok('it says how many grants move',     /access '\+\(pre\.grants===1\?'grant':'grants'\)/.test(mo));
+ok('it warns the name is removed',     /will then be removed\. This cannot be undone/.test(mo));
+ok('declining stops it',               /if\(!confirm\(lines\.join/.test(mo));
+ok('near-matching names are offered first', /a\.startsWith\(b\)\|\|b\.startsWith\(a\)/.test(src));
+ok('the button stays disabled until a target is chosen', /b\.disabled=!sel\.value/.test(src));
+
 fs.rmSync('.og.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

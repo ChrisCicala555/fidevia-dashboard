@@ -1485,6 +1485,17 @@
         <div class="field" style="flex:1;"><label>ZIP</label><input id="og-zip" autocomplete="off" placeholder="17019"></div>
       </div>
       <p class="file-hint" style="margin-top:2px;">Used on change orders and other formal documents, which name each party in full.</p>
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Same firm under another name?</div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="field" style="flex:1;min-width:200px;margin:0;">
+            <label>Conform to</label>
+            <select id="og-merge"><option value="">— Keep as its own organization —</option></select>
+          </div>
+          <button class="btn-secondary" id="og-merge-btn" style="padding:9px 14px;" onclick="mergeOrg()" disabled>Merge</button>
+        </div>
+        <p class="file-hint" style="margin-top:6px;">Everyone recorded under this name moves to the one you choose, and their project access moves with them. This name is then removed.</p>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-primary" id="org-save" onclick="saveOrg()">Save</button>
@@ -4817,6 +4828,20 @@ function renderOrgs(){
 function openOrg(key){
   const o=ORGS.find(x=>x.key===key); if(!o) return;
   ORG_EDITING=key;
+  // Every other organization is a possible target, best-matching first so the
+  // near-duplicate that prompted this is at the top.
+  const sel=document.getElementById('og-merge');
+  if(sel){
+    const others=ORGS.filter(x=>x.key!==key);
+    const near=n=>{ const a=o.name.toLowerCase(), b=n.toLowerCase();
+      return (a.startsWith(b)||b.startsWith(a)) ? 0 : 1; };
+    others.sort((a,b)=> near(a.name)-near(b.name) || a.name.localeCompare(b.name));
+    sel.innerHTML='<option value="">\u2014 Keep as its own organization \u2014</option>'
+      +others.map(x=>'<option value="'+esc(x.key)+'">'+esc(x.name)+(x.complete?'':' (no address yet)')+'</option>').join('');
+    sel.value='';
+    sel.onchange=()=>{ const b=document.getElementById('og-merge-btn'); if(b) b.disabled=!sel.value; };
+    const b=document.getElementById('og-merge-btn'); if(b) b.disabled=true;
+  }
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
   document.getElementById('org-title').textContent=o.name;
   set('og-cat',o.category); set('og-line1',o.line1); set('og-line2',o.line2);
@@ -4826,6 +4851,33 @@ function openOrg(key){
 }
 let ORG_EDITING='';
 function closeOrg(){ document.getElementById('org-backdrop').classList.remove('open'); }
+// Shows what would change before anything does, because this rewrites the
+// company recorded on other people's profiles.
+async function mergeOrg(){
+  const from=ORGS.find(x=>x.key===ORG_EDITING); if(!from) return;
+  const sel=document.getElementById('og-merge'); const toKey=sel?sel.value:'';
+  const to=ORGS.find(x=>x.key===toKey); if(!to) return;
+  const btn=document.getElementById('og-merge-btn'); btn.disabled=true;
+  try{
+    const pre=await proxyCall('mergeCompany',{from:from.name, to:to.name, dryRun:true});
+    const names=(pre.people||[]).map(p=>p.name);
+    const lines=[];
+    lines.push('Move everyone from \u201c'+from.name+'\u201d to \u201c'+to.name+'\u201d?');
+    lines.push('');
+    lines.push(names.length ? names.length+' '+(names.length===1?'person':'people')+': '+names.slice(0,8).join(', ')+(names.length>8?', and '+(names.length-8)+' more':'')
+                            : 'No one is currently recorded under this name.');
+    if(pre.grants) lines.push(pre.grants+' access '+(pre.grants===1?'grant':'grants')+' will move with them, so the projects they can see stay correct.');
+    lines.push('');
+    lines.push('\u201c'+from.name+'\u201d will then be removed. This cannot be undone.');
+    if(!confirm(lines.join('\n'))){ btn.disabled=false; return; }
+    showStatus('org-status','Merging\u2026','info');
+    const res=await proxyCall('mergeCompany',{from:from.name, to:to.name});
+    showStatus('org-status','Merged into '+to.name+'.','success');
+    await loadOrgs();
+    setTimeout(closeOrg, 700);
+  }catch(e){ showStatus('org-status','Error: '+e.message,'error'); btn.disabled=false; }
+}
+
 async function saveOrg(){
   const o=ORGS.find(x=>x.key===ORG_EDITING); if(!o) return;
   const v=id=>String((document.getElementById(id)||{}).value||'').trim();
