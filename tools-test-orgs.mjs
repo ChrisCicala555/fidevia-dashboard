@@ -130,6 +130,19 @@ ok('an address is still required',       /An address is still needed/.test(src))
 ok('it never reads as uncategorised',    /o\.isFidevia\s*\?\s*'<span style="color:var\(--olive-700\)/.test(src));
 ok('another spelling can still be merged into it', /const others=ORGS\.filter\(x=>x\.key!==key\);/.test(src));
 
+
+console.log('A merge that did not fully take says so');
+ok('the server re-checks afterwards',   /let remaining = \[\];/.test(mg));
+ok('it looks for profiles still on the old name', /companyKey\(pr\.company\) === fk\) remaining\.push/.test(mg));
+ok('it clears a leftover record with no people', /if \(await companyStore\(\)\.get\(fk[\s\S]{0,60}delete\(fk\)/.test(mg));
+ok('it reports what is left',           /remaining \}\);/.test(mg));
+ok('the check is skipped on a preview', /if \(!dryRun\) \{\s*try \{\s*const \{ blobs \} = await pstore\.list/.test(mg));
+const mo2=grab(src,'async function mergeOrg');
+ok('the client does not claim success when profiles remain',
+   /if\(\(res\.remaining\|\|\[\]\)\.length\)\{/.test(mo2));
+ok('it names which profiles to correct', /res\.remaining\.slice\(0,3\)/.test(mo2));
+ok('it reloads before judging',         mo2.indexOf('await loadOrgs()') < mo2.indexOf('res.remaining'));
+
 fs.rmSync('.og.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

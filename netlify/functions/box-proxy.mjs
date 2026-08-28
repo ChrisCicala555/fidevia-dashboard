@@ -1388,7 +1388,25 @@ export default async (req) => {
           await companyStore().delete(fk);
         } catch (e) {}
       }
-      return json({ ok: true, dryRun, people, grants: grantsTouched.length });
+
+      // The list is rebuilt from whatever companies people are recorded under,
+      // so the old name reappears if a single profile was missed. Check rather
+      // than assume, and say so instead of reporting a success that was not.
+      let remaining = [];
+      if (!dryRun) {
+        try {
+          const { blobs } = await pstore.list();
+          for (const b of (blobs || [])) {
+            try {
+              const pr = await pstore.get(b.key, { type: 'json' });
+              if (pr && companyKey(pr.company) === fk) remaining.push(pr.email || b.key);
+            } catch (e) {}
+          }
+        } catch (e) {}
+        // A record with no people behind it can also keep the name alive.
+        try { if (await companyStore().get(fk, { type: 'json' })) await companyStore().delete(fk); } catch (e) {}
+      }
+      return json({ ok: true, dryRun, people, grants: grantsTouched.length, remaining });
     }
 
     if (op === 'allContacts') {

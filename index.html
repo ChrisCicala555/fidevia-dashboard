@@ -4806,6 +4806,8 @@ function renderOrgs(){
   if(!ORGS.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">No organizations yet. They appear here as soon as someone records a company on their profile.</div>'; return; }
   if(!list.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">Nothing matches \u201c'+esc(q)+'\u201d.</div>'; return; }
   let rows='';
+  // Fidevia first, always — it is the construction manager on every project
+  // rather than one entry among the disciplines.
   ORG_CATS.forEach(([key,label])=>{
     // Anything still needing an address sorts to the top of its group.
     const grp=list.filter(o=>String(o.category||'')===key)
@@ -4814,6 +4816,8 @@ function renderOrgs(){
     rows+='<tr class="cd-band"><td colspan="4"><span class="cdb-key" style="font-size:15px;">'+esc(label)+'</span><span class="cdb-n">'+grp.length+'</span></td></tr>';
     grp.forEach(o=>{
       const addr=[o.line1,o.line2,[o.city,o.state].filter(Boolean).join(', '),o.zip].filter(Boolean).join(', ');
+      // Two spellings of the same firm are only worth flagging while both
+      // still exist; once merged the survivor should stop apologising for it.
       const twin=orgLikelyTwin(o);
       rows+='<tr class="cd-row" onclick="rowActivate(event,()=>openOrg('+esc(JSON.stringify(o.key))+'))" title="Open this organization">'
         +'<td class="cd-name">'+esc(o.name)
@@ -4894,8 +4898,15 @@ async function mergeOrg(){
     if(!confirm(lines.join('\n'))){ btn.disabled=false; return; }
     showStatus('org-status','Merging\u2026','info');
     const res=await proxyCall('mergeCompany',{from:from.name, to:to.name});
-    showStatus('org-status','Merged into '+to.name+'.','success');
     await loadOrgs();
+    if((res.remaining||[]).length){
+      // Saying "merged" when the name is about to reappear would be worse than
+      // saying nothing.
+      showStatus('org-status',(res.remaining.length)+' profile'+(res.remaining.length===1?'':'s')+' could not be moved, so \u201c'+from.name+'\u201d will still appear. Try again, or correct '+res.remaining.slice(0,3).join(', ')+' in the Directory.','error');
+      btn.disabled=false;
+      return;
+    }
+    showStatus('org-status','Merged into '+to.name+'.','success');
     setTimeout(closeOrg, 700);
   }catch(e){ showStatus('org-status','Error: '+e.message,'error'); btn.disabled=false; }
 }
