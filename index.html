@@ -346,6 +346,15 @@
   .cd-open{display:inline-block; margin-left:9px; font-size:11.5px; font-weight:600; color:var(--olive-700);
     opacity:0; transition:opacity .12s; white-space:nowrap;}
   .cd-row:hover .cd-open{opacity:1;}
+  .cd-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:700;background:#F6E6C8;color:#8a5a00;}
+  .org-group{margin-bottom:22px;}
+  .org-group h4{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--olive-700);margin:0 0 8px;font-weight:700;}
+  .org-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:8px;
+    display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
+  .org-card.incomplete{border-color:#E8D5A8;background:#FDFBF4;}
+  .org-name{font-weight:700;color:var(--olive-900);font-size:14.5px;}
+  .org-addr{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45;}
+  .org-need{font-size:12.5px;color:#8a5a00;font-weight:600;margin-top:3px;}
   .cd-open{cursor:pointer;}
   .cd-open:hover{text-decoration:underline;}
   /* While editing, the row is a set of fields rather than a button, so the link
@@ -774,7 +783,19 @@
     </div>
     <div class="cd-tabs">
       <button class="cd-tab active" data-tab="directory" onclick="cdTab('directory')">Directory</button>
+      <button class="cd-tab" data-tab="orgs" onclick="cdTab('orgs')">Organizations <span id="cd-org-badge" class="cd-badge" style="display:none;"></span></button>
       <button class="cd-tab" data-tab="access" onclick="cdTab('access')">Project Access</button>
+    </div>
+    <div id="cd-pane-orgs" style="display:none;">
+      <p class="form-desc" style="margin-top:0;max-width:640px;">Every company that appears on someone&rsquo;s profile shows up here. Addresses are needed on formal documents — a change order names the contractor, architect and owner in full.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
+        <span class="cd-search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="org-search" autocomplete="off" placeholder="Search organizations…" oninput="renderOrgs()">
+        </span>
+        <span id="org-count" style="font-size:12.5px;color:var(--muted);"></span>
+      </div>
+      <div id="org-list"><div style="color:var(--muted)">Loading…</div></div>
     </div>
     <div id="cd-pane-directory">
     <div id="cd-lockbar" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:18px;"></div>
@@ -1200,6 +1221,7 @@
 
       <div class="section" id="section-notifsettings">
         <h2 class="page-title">Notification Settings</h2>
+        <div id="org-gap-note" class="admin-only" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;color:var(--olive-900);max-width:680px;"></div>
         <div class="billing-bar" id="response-bar" style="display:none;max-width:680px;">
           <div class="bb-head">
             <span>Due dates &amp; billing cycle</span>
@@ -1435,6 +1457,39 @@
       <button class="btn-primary" id="contractors-save" onclick="saveContractors()">Save</button>
       <button class="btn-secondary" onclick="closeContractors()">Cancel</button>
       <span class="status-msg" id="contractors-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="org-backdrop" onclick="if(event.target===this)closeOrg()">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <h3 id="org-title">Organization</h3>
+      <button class="modal-close" onclick="closeOrg()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Category</label>
+        <select id="og-cat">
+          <option value="">— Not categorised —</option>
+          <option value="architect">Architect</option>
+          <option value="engineer">Engineer</option>
+          <option value="contractor">Contractor</option>
+          <option value="owner">Owner</option>
+          <option value="other">Other</option>
+        </select></div>
+      <div class="field"><label>Street address</label><input id="og-line1" autocomplete="off" placeholder="124 West Church Street"></div>
+      <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="og-line2" autocomplete="off" placeholder="Suite 300"></div>
+      <div class="field-row">
+        <div class="field" style="flex:2;"><label>City</label><input id="og-city" autocomplete="off" placeholder="Dillsburg"></div>
+        <div class="field" style="flex:1;"><label>State</label><input id="og-state" autocomplete="off" placeholder="PA"></div>
+        <div class="field" style="flex:1;"><label>ZIP</label><input id="og-zip" autocomplete="off" placeholder="17019"></div>
+      </div>
+      <p class="file-hint" style="margin-top:2px;">Used on change orders and other formal documents, which name each party in full.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="org-save" onclick="saveOrg()">Save</button>
+      <button class="btn-secondary" onclick="closeOrg()">Cancel</button>
+      <span class="status-msg" id="org-status" style="margin-left:8px;"></span>
     </div>
   </div>
 </div>
@@ -2070,6 +2125,7 @@ async function openProject(folderId, name){
     if(!EXTERNAL) loadProjectPhotos();
     if(!EXTERNAL) loadAccountEmails();
     if(!EXTERNAL) loadProjectAccess();
+    if(!EXTERNAL) loadProjectOrgs();
     projectLoadingStep('Loading project records…');
     // loadDashboard lifts the gate itself once records are in and rendered.
     await loadDashboard();
@@ -2533,7 +2589,7 @@ function splitByArchived(all, df){
   return { live: paired.filter(p=>!isArchived(p.r)).sort(bydate),
            past: paired.filter(p=>isArchived(p.r)).sort(bydate) };
 }
-function renderAll(){ renderResponseBar(); renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+function renderAll(){ renderResponseBar(); try{ renderOrgGaps(); }catch(e){} renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // Owner is read-only, and A/E may read Workflow Settings but not change them.
 // The server enforces both; these banners explain rather than protect.
@@ -4650,11 +4706,142 @@ async function denyRequest(email,projectId){
 // entry points land in the same place.
 function cdTab(name){
   document.querySelectorAll('.cd-tab').forEach(b=>b.classList.toggle('active', b.getAttribute('data-tab')===name));
-  const d=document.getElementById('cd-pane-directory'), a=document.getElementById('cd-pane-access');
+  const d=document.getElementById('cd-pane-directory'), a=document.getElementById('cd-pane-access'), o=document.getElementById('cd-pane-orgs');
   if(d) d.style.display = name==='directory' ? '' : 'none';
   if(a) a.style.display = name==='access' ? '' : 'none';
+  if(o) o.style.display = name==='orgs' ? '' : 'none';
   if(name==='access'){ try{ loadAdmin(); }catch(e){} }
+  if(name==='orgs'){ try{ loadOrgs(); }catch(e){} }
 }
+// ── ORGANIZATIONS ──────────────────────────────────────────────────────────
+let ORGS=[];
+const ORG_CATS=[['architect','Architects'],['engineer','Engineers'],['contractor','Contractors'],
+                ['owner','Owners'],['other','Other'],['','Uncategorised']];
+// Cached for the open project so the check below costs nothing per render.
+let PROJECT_ORGS={};
+async function loadProjectOrgs(){
+  PROJECT_ORGS={};
+  if(!IS_ADMIN || !currentProject) return;
+  try{
+    const d=await proxyCall('listCompanies',{},{quiet:true});
+    (d.companies||[]).forEach(o=>{ PROJECT_ORGS[o.key]=o; });
+  }catch(e){}
+  try{ renderOrgGaps(); }catch(e){}
+}
+const orgKeyOf = n => String(n||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\s+/g,' ');
+function orgRecordFor(name){ return PROJECT_ORGS[orgKeyOf(name)]||null; }
+// Every company named on this project, from the contractor list and the
+// contact sheet.
+function projectCompanyNames(){
+  const out=new Set();
+  ((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false).forEach(c=>{ if(c.name) out.add(String(c.name).trim()); });
+  (allData.contacts||[]).forEach(c=>{ if(c['Company']) out.add(String(c['Company']).trim()); });
+  const ow=(currentProject&&currentProject.config&&currentProject.config.owner);
+  if(ow) out.add(String(ow).trim());
+  return [...out].filter(Boolean);
+}
+function projectOrgsMissingAddress(){
+  return projectCompanyNames().filter(n=>{ const r=orgRecordFor(n); return !r || !r.complete; });
+}
+function renderOrgGaps(){
+  const el=document.getElementById('org-gap-note'); if(!el) return;
+  const miss=projectOrgsMissingAddress();
+  if(!IS_ADMIN || !miss.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='block';
+  el.innerHTML='<strong>'+miss.length+' organization'+(miss.length===1?'':'s')+' on this project '
+    +(miss.length===1?'has':'have')+' no address on file:</strong> '+esc(miss.join(', '))
+    +'. <a href="#" onclick="openContactDir().then(()=>cdTab(\'orgs\'));return false;">Complete them in the Contact Directory</a> '
+    +'\u2014 change orders name each party in full and cannot be generated without one.';
+}
+// The generator will refuse rather than print a document with a blank address.
+function coDocumentReadiness(companyName){
+  const need=[];
+  const parties=[['Contractor',companyName],
+                 ['Owner',(currentProject&&currentProject.config&&currentProject.config.owner)||'']];
+  parties.forEach(([role,nm])=>{
+    if(!String(nm||'').trim()){ need.push(role+' is not recorded on this project'); return; }
+    const r=orgRecordFor(nm);
+    if(!r || !r.complete) need.push(nm+' has no address on file');
+  });
+  return { ready:!need.length, missing:need };
+}
+
+async function loadOrgs(){
+  try{ const d=await proxyCall('listCompanies',{}); ORGS=d.companies||[]; }catch(e){ ORGS=[]; }
+  renderOrgs(); renderOrgBadge();
+}
+function orgIncomplete(o){ return !o.complete; }
+function renderOrgBadge(){
+  const b=document.getElementById('cd-org-badge'); if(!b) return;
+  const n=ORGS.filter(orgIncomplete).length;
+  b.textContent=n; b.style.display=n?'inline-block':'none';
+  b.title=n+' organization'+(n===1?'':'s')+' still needs an address';
+}
+function renderOrgs(){
+  const box=document.getElementById('org-list'); if(!box) return;
+  const q=String((document.getElementById('org-search')||{}).value||'').trim().toLowerCase();
+  const list=ORGS.filter(o=>!q || o.name.toLowerCase().includes(q) || (o.city||'').toLowerCase().includes(q));
+  const cnt=document.getElementById('org-count');
+  const missing=ORGS.filter(orgIncomplete).length;
+  if(cnt) cnt.textContent=ORGS.length
+    ? (q?list.length+' of '+ORGS.length:ORGS.length+' organization'+(ORGS.length===1?'':'s'))
+      +(missing?' \u00b7 '+missing+' needing an address':'')
+    : '';
+  if(!ORGS.length){ box.innerHTML='<div style="color:var(--muted);font-style:italic;">No organizations yet. They appear here as soon as someone records a company on their profile.</div>'; return; }
+  if(!list.length){ box.innerHTML='<div style="color:var(--muted);font-style:italic;">Nothing matches \u201c'+esc(q)+'\u201d.</div>'; return; }
+  let html='';
+  ORG_CATS.forEach(([key,label])=>{
+    // Anything still needing an address sorts to the top of its group.
+    const grp=list.filter(o=>String(o.category||'')===key)
+      .sort((a,b)=> (orgIncomplete(b)-orgIncomplete(a)) || a.name.localeCompare(b.name));
+    if(!grp.length) return;
+    html+='<div class="org-group"><h4>'+esc(label)+' <span style="color:var(--muted);font-weight:400;">'+grp.length+'</span></h4>';
+    grp.forEach(o=>{
+      const addr=[o.line1,o.line2,[o.city,o.state].filter(Boolean).join(', '),o.zip].filter(Boolean).join(' \u00b7 ');
+      html+='<div class="org-card'+(orgIncomplete(o)?' incomplete':'')+'">'
+        +'<div style="flex:1;min-width:220px;">'
+          +'<div class="org-name">'+esc(o.name)+'</div>'
+          +(addr?'<div class="org-addr">'+esc(addr)+'</div>'
+                :'<div class="org-need">Address needed \u2014 formal documents name this company in full.</div>')
+          +(!o.category?'<div class="org-need">Not categorised yet.</div>':'')
+        +'</div>'
+        +'<button class="btn-secondary" style="padding:6px 13px;font-size:12.5px;" onclick="openOrg('+esc(JSON.stringify(o.key))+')">'
+          +(orgIncomplete(o)?'Complete':'Edit')+'</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  box.innerHTML=html;
+}
+function openOrg(key){
+  const o=ORGS.find(x=>x.key===key); if(!o) return;
+  ORG_EDITING=key;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  document.getElementById('org-title').textContent=o.name;
+  set('og-cat',o.category); set('og-line1',o.line1); set('og-line2',o.line2);
+  set('og-city',o.city); set('og-state',o.state); set('og-zip',o.zip);
+  const st=document.getElementById('org-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  document.getElementById('org-backdrop').classList.add('open');
+}
+let ORG_EDITING='';
+function closeOrg(){ document.getElementById('org-backdrop').classList.remove('open'); }
+async function saveOrg(){
+  const o=ORGS.find(x=>x.key===ORG_EDITING); if(!o) return;
+  const v=id=>String((document.getElementById(id)||{}).value||'').trim();
+  const btn=document.getElementById('org-save'); btn.disabled=true;
+  showStatus('org-status','Saving\u2026','info');
+  try{
+    const d=await proxyCall('saveCompany',{name:o.name, category:v('og-cat'),
+      line1:v('og-line1'), line2:v('og-line2'), city:v('og-city'), state:v('og-state'), zip:v('og-zip')});
+    Object.assign(o, d.company||{});
+    showStatus('org-status','Saved.','success');
+    renderOrgs(); renderOrgBadge();
+    setTimeout(closeOrg, 600);
+  }catch(e){ showStatus('org-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
+}
+
 async function openAdmin(){
   await openContactDir();
   cdTab('access');

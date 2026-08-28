@@ -201,6 +201,17 @@ const reminderStore = () => getStore('reminder-settings');
 const archivedStore = () => getStore('archived-projects');
 async function getArchivedIds(){ try{ const d=await archivedStore().get('ids',{type:'json'}); return Array.isArray(d)?d.map(String):[]; }catch(e){ return []; } }
 const adminListStore = () => getStore('admin-list');
+// Organizations. A company has existed only as free text on each person, so
+// "Summit Builders" and "Summit Builders LLC" were different firms and neither
+// had anywhere to keep an address. Keyed on a normalised name so the record
+// survives casing and punctuation drift.
+const companyStore = () => getStore('companies');
+const companyKey = (name) => String(name || '').trim().toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ');
+const COMPANY_CATEGORIES = ['architect', 'engineer', 'contractor', 'owner', 'other'];
+function companyComplete(rec){
+  return !!(rec && String(rec.line1 || '').trim() && String(rec.city || '').trim()
+            && String(rec.state || '').trim() && String(rec.zip || '').trim());
+}
 async function getBlobAdmins(){ try{ const d=await adminListStore().get('emails',{type:'json'}); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
 const PANEL_PW = () => process.env.ADMIN_PANEL_PASSWORD || '';
 async function getProfileBySub(sub){ try{ return await getStore('profiles').get(sub, { type:'json' }); }catch(e){ return null; } }
@@ -1240,6 +1251,70 @@ export default async (req) => {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       await reminderStore().setJSON(String(body.projectId), body.settings || {});
       return json({ ok: true });
+    }
+
+    // ---- ORGANIZATIONS ----
+    if (op === 'listCompanies') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      // Saved records first.
+      const saved = {};
+      try {
+        const { blobs } = await companyStore().list();
+        for (const b of (blobs || [])) {
+          try { const r = await companyStore().get(b.key, { type: 'json' }); if (r && r.name) saved[b.key] = r; } catch (e) {}
+        }
+      } catch (e) {}
+      // Then every company name that actually appears on a person, so a firm
+      // shows up the moment someone from it exists rather than waiting to be
+      // typed in a second time.
+      const seen = new Map();
+      try {
+        const store = getStore('profiles');
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try {
+            const pr = await store.get(b.key, { type: 'json' });
+            const nm = String((pr && pr.company) || '').trim();
+            if (nm && !seen.has(companyKey(nm))) seen.set(companyKey(nm), nm);
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const out = [];
+      const keys = new Set([...Object.keys(saved), ...seen.keys()]);
+      for (const k of keys) {
+        const rec = saved[k] || { name: seen.get(k) || k, category: '' };
+        out.push({
+          key: k,
+          name: rec.name || seen.get(k) || k,
+          category: COMPANY_CATEGORIES.includes(String(rec.category || '').toLowerCase()) ? String(rec.category).toLowerCase() : '',
+          line1: rec.line1 || '', line2: rec.line2 || '',
+          city: rec.city || '', state: rec.state || '', zip: rec.zip || '',
+          complete: companyComplete(rec),
+          knownFrom: seen.has(k) ? 'people' : 'saved'
+        });
+      }
+      out.sort((a, b) => a.name.localeCompare(b.name));
+      return json({ companies: out, categories: COMPANY_CATEGORIES });
+    }
+    if (op === 'saveCompany') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const name = String(body.name || '').trim();
+      if (!name) return json({ error: 'name required' }, 400);
+      const k = companyKey(name);
+      const prev = (await companyStore().get(k, { type: 'json' })) || {};
+      const cat = String(body.category || prev.category || '').toLowerCase();
+      const rec = {
+        name,
+        category: COMPANY_CATEGORIES.includes(cat) ? cat : '',
+        line1: String(body.line1 !== undefined ? body.line1 : (prev.line1 || '')).slice(0, 200),
+        line2: String(body.line2 !== undefined ? body.line2 : (prev.line2 || '')).slice(0, 200),
+        city:  String(body.city  !== undefined ? body.city  : (prev.city  || '')).slice(0, 120),
+        state: String(body.state !== undefined ? body.state : (prev.state || '')).slice(0, 40),
+        zip:   String(body.zip   !== undefined ? body.zip   : (prev.zip   || '')).slice(0, 20),
+        updatedAt: new Date().toISOString()
+      };
+      await companyStore().setJSON(k, rec);
+      return json({ ok: true, company: Object.assign({ key: k, complete: companyComplete(rec) }, rec) });
     }
 
     if (op === 'allContacts') {
