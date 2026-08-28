@@ -4852,7 +4852,7 @@ function signOptions(co, preferRole){
 // Draws page one. Deliberately mirrors the reference form's order — parties,
 // the change, the running maths, signatures — so an owner or architect who has
 // signed one before recognises it.
-function buildChangeOrderPDF(r, opts){
+async function buildChangeOrderPDF(r, opts){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({unit:'pt', format:'letter'});
   const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
@@ -4865,21 +4865,46 @@ function buildChangeOrderPDF(r, opts){
   const right=(x,yy,t,sz,bold)=>{ set(INK,sz||9.5,bold?'bold':'normal'); doc.text(String(t==null?'':t), x, yy, {align:'right'}); };
 
   // masthead
-  set(OL,20,'bolditalic'); doc.text('Fidevia', M, y+14);
-  set(KH,7.2); doc.text('C O N S T R U C T I O N   M A N A G E M E N T   &   C O N S U L T I N G', M, y+26);
+  let logoOK=false;
+  try{
+    const lg=await urlToDataURL('./fidevia-email-logo.png');
+    doc.addImage(lg,'PNG',M,y-4,96,60,undefined,'FAST');
+    logoOK=true;
+  }catch(e){}
+  if(!logoOK){
+    set(OL,20,'bolditalic'); doc.text('Fidevia', M, y+14);
+    set(KH,7.2); doc.text('C O N S T R U C T I O N   M A N A G E M E N T   &   C O N S U L T I N G', M, y+26);
+  }
   set(OL,15,'bold'); doc.text('CHANGE ORDER', W-M, y+12, {align:'right'});
-  set(GY,9); doc.text('No. '+(r['CO #']||r['PCO #']||'—')+'    ·    '+fmtDMY(r['Date Approved']||etToday()), W-M, y+26, {align:'right'});
-  y+=38; rule(y,M,W-M,1.6,OL); y+=20;
+  set(GY,9); doc.text('No. '+(r['CO #']||r['PCO #']||'\u2014')+'    \u00b7    '+fmtDMY(r['Date Approved']||etToday()), W-M, y+26, {align:'right'});
+  y+= logoOK ? 62 : 38;
+  rule(y,M,W-M,1.6,OL); y+=20;
 
   // parties
   const m=opts.math;
-  const cols=[['Project',[currentProject.name].concat(String((currentProject.config&&currentProject.config.location)||'').split(' · ').filter(Boolean))],
+  // Built from the stored parts rather than by splitting the joined string, so
+  // the ZIP sits with its city instead of on a line of its own.
+  const pa=(currentProject.config&&currentProject.config.address)||{};
+  const projLines=[currentProject.name, pa.line1||'', pa.line2||'',
+    [[pa.city,pa.state].filter(Boolean).join(', '), pa.zip].filter(Boolean).join(' ')].filter(x=>String(x).trim());
+  const cols=[['Project', projLines.length>1 ? projLines
+                : [currentProject.name].concat(String((currentProject.config&&currentProject.config.location)||'').split(' \u00b7 ').filter(Boolean))],
               ['Contractor',orgAddressLines(m.company)],
               ['Owner',orgAddressLines((currentProject.config&&currentProject.config.owner)||'')]];
-  const cw=(W-2*M)/3;
-  cols.forEach((c,i)=>{ const x=M+i*cw; lbl(x,y,c[0]);
-    c[1].slice(0,4).forEach((ln,j)=>{ val(x, y+12+j*11, ln, 8.8, j===0); }); });
-  y+=62; rule(y); y+=16;
+  const GUT=14, cw=(W-2*M)/3, tw=cw-GUT;
+  let partyLines=0;
+  cols.forEach((c,i)=>{
+    const x=M+i*cw; lbl(x,y,c[0]);
+    let line=0;
+    c[1].slice(0,4).forEach((ln,j)=>{
+      // Wrap inside the column rather than overflowing into the next one.
+      set(INK, 8.8, j===0 ? 'bold' : 'normal');
+      const parts=doc.splitTextToSize(String(ln), tw);
+      parts.forEach(pt=>{ doc.text(pt, x, y+12+line*11); line++; });
+    });
+    partyLines=Math.max(partyLines,line);
+  });
+  y += 14 + partyLines*11 + 8; rule(y); y+=16;
 
   // identifiers
   const ids=[['Contract type',opts.contractType],['Originating PCO',r['PCO #']||'—'],
@@ -4965,7 +4990,7 @@ async function generateChangeOrder(){
                          : (fmtDMY(subVal)||'\u2014');
     const wantPCO=document.getElementById('cg-attach-pco').checked && r['Attachment File ID'];
 
-    const doc=buildChangeOrderPDF(r,{
+    const doc=await buildChangeOrderPDF(r,{
       math, contractType:typeLabel, subComp,
       attachName: wantPCO ? (r['Attachment Name']||'') : '',
       signers:[
@@ -5096,8 +5121,10 @@ function coContractMathFor(r){
 function orgAddressLines(name){
   const o=orgRecordFor(name);
   if(!o) return [name||''];
+  // Same shape as the project block: street, optional line 2, then city/state/ZIP
+  // together on one line the way an envelope reads.
   return [o.name||name, o.line1||'', o.line2||'',
-          [o.city,o.state].filter(Boolean).join(', ')+(o.zip?' '+o.zip:'')].filter(x=>String(x).trim());
+          [[o.city,o.state].filter(Boolean).join(', '), o.zip].filter(Boolean).join(' ')].filter(x=>String(x).trim());
 }
 
 function coDocumentReadiness(companyName){

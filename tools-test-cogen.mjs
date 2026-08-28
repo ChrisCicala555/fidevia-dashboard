@@ -99,6 +99,26 @@ ok('admins only',                 /if\(!IS_ADMIN \|\| viewingAsExternal\(\)\) re
 ok('only once approved',          /if\(!coIsApproved\(r\)\) return '';/.test(btn));
 ok('regenerating is offered after the first time', /done\?'Regenerate':'Generate CO'/.test(btn));
 
+
+console.log('Text fits its column');
+const build=grab('async function buildChangeOrderPDF');
+ok('party columns wrap instead of overflowing', /doc\.splitTextToSize\(String\(ln\), tw\)/.test(build));
+ok('columns have a gutter',                     /const GUT=14, cw=\(W-2\*M\)\/3, tw=cw-GUT;/.test(build));
+ok('the block grows with the longest column',   /partyLines=Math\.max\(partyLines,line\)/.test(build));
+ok('the description already wrapped',           /doc\.splitTextToSize\(String\(r\['Description'\]/.test(build));
+
+console.log('Addresses read like an envelope');
+ok('city, state and ZIP share a line',
+   /\[\[o\.city,o\.state\]\.filter\(Boolean\)\.join\(', '\), o\.zip\]\.filter\(Boolean\)\.join\(' '\)/.test(src));
+ok('the project address uses the stored parts', /const pa=\(currentProject\.config&&currentProject\.config\.address\)/.test(build));
+ok('and falls back to the joined string',       /projLines\.length>1 \? projLines/.test(build));
+
+console.log('The logo');
+ok('it is embedded from the same file the emails use', /urlToDataURL\('\.\/fidevia-email-logo\.png'\)/.test(build));
+ok('the wordmark remains a fallback',           /if\(!logoOK\)\{[\s\S]{0,200}doc\.text\('Fidevia'/.test(build));
+ok('the header height follows which was used',  /y\+= logoOK \? 62 : 38;/.test(build));
+ok('the builder is awaited',                    /await buildChangeOrderPDF\(r,\{/.test(src));
+
 fs.rmSync('.cg.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
