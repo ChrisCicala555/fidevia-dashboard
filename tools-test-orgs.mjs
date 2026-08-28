@@ -61,6 +61,15 @@ console.log('Client');
 ok('there is an Organizations tab',    html.includes(">Organizations "));
 ok('the tab carries a count',          html.includes('id="cd-org-badge"'));
 ok('incomplete firms sort first',      /orgIncomplete\(b\)-orgIncomplete\(a\)/.test(src));
+// Styled as the Directory is: one card, a table, bands per group.
+ok('it renders as a directory table',  /box\.innerHTML='<div class="cd-card"><table>/.test(src));
+ok('groups use the same band markup',  /rows\+='<tr class="cd-band">/.test(src));
+ok('rows open the record',             /onclick="rowActivate\(event,\(\)=>openOrg/.test(src));
+ok('the old card layout is gone',      !/class="org-card/.test(src));
+// Fidevia and Fidevia LLC. sit next to each other; say so where they are seen.
+ok('likely duplicates are flagged in the list', /Possibly the same firm as/.test(src));
+ok('the twin check ignores case',      /toLowerCase\(\)\.trim\(\)/.test(grab(src,'function orgLikelyTwin')));
+ok('a firm is not its own twin',       /if\(x\.key===o\.key\) return false/.test(grab(src,'function orgLikelyTwin')));
 ok('groups follow the five categories',/\['architect','Architects'\],\['engineer','Engineers'\],\['contractor','Contractors'\]/.test(src));
 ok('uncategorised firms still appear', /\['','Uncategorised'\]/.test(src));
 ok('a project notice lists the gaps',  html.includes('id="org-gap-note"'));

@@ -347,14 +347,7 @@
     opacity:0; transition:opacity .12s; white-space:nowrap;}
   .cd-row:hover .cd-open{opacity:1;}
   .cd-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:700;background:#F6E6C8;color:#8a5a00;}
-  .org-group{margin-bottom:22px;}
-  .org-group h4{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--olive-700);margin:0 0 8px;font-weight:700;}
-  .org-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:8px;
-    display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
-  .org-card.incomplete{border-color:#E8D5A8;background:#FDFBF4;}
-  .org-name{font-weight:700;color:var(--olive-900);font-size:14.5px;}
-  .org-addr{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45;}
-  .org-need{font-size:12.5px;color:#8a5a00;font-weight:600;margin-top:3px;}
+  .org-need{font-size:13px;color:#8a5a00;font-weight:600;}
   .cd-open{cursor:pointer;}
   .cd-open:hover{text-decoration:underline;}
   /* While editing, the row is a set of fields rather than a button, so the link
@@ -4789,6 +4782,16 @@ function renderOrgBadge(){
   b.textContent=n; b.style.display=n?'inline-block':'none';
   b.title=n+' organization'+(n===1?'':'s')+' still needs an address';
 }
+// Two names that begin with one another are almost always the same firm typed
+// twice — Fidevia and Fidevia LLC. Surfacing it here means the merge is offered
+// where the duplicate is visible, rather than only inside the record.
+function orgLikelyTwin(o){
+  const a=String(o.name||'').toLowerCase().trim();
+  const hit=ORGS.find(x=>{ if(x.key===o.key) return false;
+    const b=String(x.name||'').toLowerCase().trim();
+    return a && b && (a.startsWith(b) || b.startsWith(a)); });
+  return hit||null;
+}
 function renderOrgs(){
   const box=document.getElementById('org-list'); if(!box) return;
   const q=String((document.getElementById('org-search')||{}).value||'').trim().toLowerCase();
@@ -4799,31 +4802,33 @@ function renderOrgs(){
     ? (q?list.length+' of '+ORGS.length:ORGS.length+' organization'+(ORGS.length===1?'':'s'))
       +(missing?' \u00b7 '+missing+' needing an address':'')
     : '';
-  if(!ORGS.length){ box.innerHTML='<div style="color:var(--muted);font-style:italic;">No organizations yet. They appear here as soon as someone records a company on their profile.</div>'; return; }
-  if(!list.length){ box.innerHTML='<div style="color:var(--muted);font-style:italic;">Nothing matches \u201c'+esc(q)+'\u201d.</div>'; return; }
-  let html='';
+  if(!ORGS.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">No organizations yet. They appear here as soon as someone records a company on their profile.</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">Nothing matches \u201c'+esc(q)+'\u201d.</div>'; return; }
+  let rows='';
   ORG_CATS.forEach(([key,label])=>{
     // Anything still needing an address sorts to the top of its group.
     const grp=list.filter(o=>String(o.category||'')===key)
       .sort((a,b)=> (orgIncomplete(b)-orgIncomplete(a)) || a.name.localeCompare(b.name));
     if(!grp.length) return;
-    html+='<div class="org-group"><h4>'+esc(label)+' <span style="color:var(--muted);font-weight:400;">'+grp.length+'</span></h4>';
+    rows+='<tr class="cd-band"><td colspan="4"><span class="cdb-key" style="font-size:15px;">'+esc(label)+'</span><span class="cdb-n">'+grp.length+'</span></td></tr>';
     grp.forEach(o=>{
-      const addr=[o.line1,o.line2,[o.city,o.state].filter(Boolean).join(', '),o.zip].filter(Boolean).join(' \u00b7 ');
-      html+='<div class="org-card'+(orgIncomplete(o)?' incomplete':'')+'">'
-        +'<div style="flex:1;min-width:220px;">'
-          +'<div class="org-name">'+esc(o.name)+'</div>'
-          +(addr?'<div class="org-addr">'+esc(addr)+'</div>'
-                :'<div class="org-need">Address needed \u2014 formal documents name this company in full.</div>')
-          +(!o.category?'<div class="org-need">Not categorised yet.</div>':'')
-        +'</div>'
-        +'<button class="btn-secondary" style="padding:6px 13px;font-size:12.5px;" onclick="openOrg('+esc(JSON.stringify(o.key))+')">'
-          +(orgIncomplete(o)?'Complete':'Edit')+'</button>'
-        +'</div>';
+      const addr=[o.line1,o.line2,[o.city,o.state].filter(Boolean).join(', '),o.zip].filter(Boolean).join(', ');
+      const twin=orgLikelyTwin(o);
+      rows+='<tr class="cd-row" onclick="rowActivate(event,()=>openOrg('+esc(JSON.stringify(o.key))+'))" title="Open this organization">'
+        +'<td class="cd-name">'+esc(o.name)
+          +(twin?'<div class="cell-sub" style="color:#8a5a00;">Possibly the same firm as \u201c'+esc(twin.name)+'\u201d</div>':'')
+        +'</td>'
+        +'<td class="nw">'+(o.category
+            ? esc((ORG_CATS.find(c=>c[0]===o.category)||['','\u2014'])[1].replace(/s$/,''))
+            : '<span style="color:var(--muted);">\u2014</span>')+'</td>'
+        +'<td>'+(addr?esc(addr):'<span class="org-need">Address needed</span>')+'</td>'
+        +'<td class="nw" style="text-align:right;"><button class="row-act" onclick="event.stopPropagation();openOrg('+esc(JSON.stringify(o.key))+')">'
+          +(orgIncomplete(o)?'Complete':'Edit')+'</button></td></tr>';
     });
-    html+='</div>';
   });
-  box.innerHTML=html;
+  box.innerHTML='<div class="cd-card"><table><thead><tr>'
+    +'<th>Organization</th><th class="nw">Category</th><th>Address</th><th class="nw" style="text-align:right;">Actions</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function openOrg(key){
   const o=ORGS.find(x=>x.key===key); if(!o) return;
