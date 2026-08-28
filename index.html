@@ -4772,6 +4772,24 @@ function coDocumentReadiness(companyName){
   return { ready:!need.length, missing:need };
 }
 
+// Diagnostic. The organization list is assembled from saved records and from
+// the company written on each person, so a name that will not go away is
+// either a record that did not delete or a profile that did not move. This
+// says which, by name:  traceCompany('Fidevia LLC.')
+async function traceCompany(name){
+  try{
+    const d=await proxyCall('traceCompany',{name});
+    console.log('%cTracing \u201c'+d.name+'\u201d  (key: '+d.key+')','font-weight:700');
+    console.log(d.savedRecord ? 'Saved record: present' : 'Saved record: none');
+    if(d.profiles.length){ console.log('Profiles still recorded under it:'); console.table(d.profiles); }
+    else console.log('Profiles still recorded under it: none');
+    if(d.grants.length){ console.log('Access grants still recorded under it:'); console.table(d.grants); }
+    else console.log('Access grants still recorded under it: none');
+    if(!d.savedRecord && !d.profiles.length) console.log('%cNothing references this name — it should not be listed. Reload the page.','color:#3b6d11');
+    return d;
+  }catch(e){ console.warn(e.message); }
+}
+
 async function loadOrgs(){
   try{ const d=await proxyCall('listCompanies',{}); ORGS=d.companies||[]; }catch(e){ ORGS=[]; }
   renderOrgs(); renderOrgBadge();

@@ -1409,6 +1409,42 @@ export default async (req) => {
       return json({ ok: true, dryRun, people, grants: grantsTouched.length, remaining });
     }
 
+    // Where a company name is actually coming from. The list is assembled from
+    // two places, so "it will not go away" has two possible causes and no way
+    // to tell them apart from the outside.
+    if (op === 'traceCompany') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const name = String(body.name || '').trim();
+      if (!name) return json({ error: 'name required' }, 400);
+      const k = companyKey(name);
+      const out = { name, key: k, savedRecord: null, profiles: [], grants: [] };
+      try { out.savedRecord = await companyStore().get(k, { type: 'json' }); } catch (e) {}
+      try {
+        const pstore = getStore('profiles');
+        const { blobs } = await pstore.list();
+        for (const b of (blobs || [])) {
+          try {
+            const pr = await pstore.get(b.key, { type: 'json' });
+            if (pr && companyKey(pr.company) === k) {
+              out.profiles.push({ sub: b.key, email: pr.email || '', raw: pr.company || '' });
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      try {
+        const { blobs } = await grantsStore().list();
+        for (const b of (blobs || [])) {
+          try {
+            const g = await grantsStore().get(b.key, { type: 'json' });
+            (g && g.projects || []).forEach(p => {
+              if (companyKey(p.company) === k) out.grants.push({ email: b.key, project: p.name || p.id });
+            });
+          } catch (e) {}
+        }
+      } catch (e) {}
+      return json(out);
+    }
+
     if (op === 'allContacts') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');
