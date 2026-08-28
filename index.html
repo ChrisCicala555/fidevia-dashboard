@@ -346,6 +346,11 @@
   .cd-open{display:inline-block; margin-left:9px; font-size:11.5px; font-weight:600; color:var(--olive-700);
     opacity:0; transition:opacity .12s; white-space:nowrap;}
   .cd-row:hover .cd-open{opacity:1;}
+  .set-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:0 0 20px;flex-wrap:wrap;}
+  .set-tab{background:none;border:none;border-bottom:2px solid transparent;padding:9px 15px;font-size:14px;
+    font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;}
+  .set-tab:hover{color:var(--olive-900);}
+  .set-tab.active{color:var(--olive-900);border-bottom-color:var(--olive-700);}
   .cd-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:700;background:#F6E6C8;color:#8a5a00;}
   .org-need{font-size:13px;color:#8a5a00;font-weight:600;}
   .cd-open{cursor:pointer;}
@@ -716,6 +721,8 @@
     <div class="wiz-step" data-step="6" style="display:none;">
       <h3 style="font-size:16px;margin:0 0 6px;">Options</h3>
       <div class="field" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="np-board" style="width:auto;"><label style="margin:0;">Enable <strong>Board Reports</strong> tab for this project</label></div>
+      <div class="field" style="max-width:240px;"><label>Contract Date</label><input type="date" id="np-contractdate"><p class="file-hint" style="margin-top:3px;">The date of the agreement. Printed on change orders.</p></div>
+
       <h3 style="font-size:15px;margin:20px 0 4px;">Response Periods</h3>
       <p class="form-desc" style="margin-bottom:10px;">Contractual turnaround in calendar days. An RFI&rsquo;s due date follows whoever it is assigned to.</p>
       <div class="field-row">
@@ -895,8 +902,7 @@
     <div class="nav-item owner-ok" data-section="payapps">Payment Applications</div>
     <div class="nav-item" data-section="payrolls">Certified Payrolls</div>
     <div class="nav-section-label admin-only ae-admin-label">Admin</div>
-    <div class="nav-item admin-only ae-readonly" data-section="workflows">Workflow Settings</div>
-    <div class="nav-item admin-only" data-section="notifsettings">Notification Settings</div>
+    <div class="nav-item admin-only ae-readonly" data-section="settings">Settings</div>
     <div class="sidebar-footer">
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
     </div>
@@ -1197,7 +1203,44 @@
       </div>
 
       <!-- NOTIFICATION SETTINGS (admin) -->
-      <div class="section" id="section-workflows">
+      <div class="section" id="section-settings">
+        <h2 class="page-title">Settings</h2>
+        <div class="set-tabs">
+          <button class="set-tab admin-only" data-pane="project"  onclick="setTab('project')">Project</button>
+          <button class="set-tab admin-only" data-pane="dates"    onclick="setTab('dates')">Dates &amp; Billing</button>
+          <button class="set-tab active"     data-pane="workflows" onclick="setTab('workflows')">Workflows</button>
+          <button class="set-tab admin-only" data-pane="notifs"   onclick="setTab('notifs')">Notifications</button>
+        </div>
+
+        <div class="set-pane" id="set-pane-project" style="display:none;">
+          <p class="form-desc" style="max-width:640px;">The project's own details. These appear on generated documents, so a change order names the project and its address exactly as recorded here.</p>
+          <div class="panel" style="padding:20px;max-width:680px;">
+            <div class="field-row">
+              <div class="field" style="flex:2;"><label>Owner</label><input id="ps-owner" autocomplete="off" placeholder="Lincoln School District"></div>
+              <div class="field" style="flex:1;"><label>Job number</label><input id="ps-jobnum" autocomplete="off"></div>
+            </div>
+            <div class="field-row">
+              <div class="field" style="flex:1;"><label>Contract date</label><input type="date" id="ps-contractdate"><p class="file-hint" style="margin-top:3px;">The date of the agreement. Printed on change orders.</p></div>
+              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off"></div>
+            </div>
+            <div class="field"><label>Street address</label><input id="ps-line1" autocomplete="off"></div>
+            <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="ps-line2" autocomplete="off"></div>
+            <div class="field-row">
+              <div class="field" style="flex:2;"><label>City</label><input id="ps-city" autocomplete="off"></div>
+              <div class="field" style="flex:1;"><label>State</label><input id="ps-state" autocomplete="off"></div>
+              <div class="field" style="flex:1;"><label>ZIP</label><input id="ps-zip" autocomplete="off"></div>
+            </div>
+            <div class="field"><label>Scope</label><input id="ps-scope" autocomplete="off"></div>
+            <div style="margin-top:14px;"><button class="btn-primary" id="ps-save" onclick="saveProjectSettings()">Save</button>
+              <span class="status-msg" id="ps-status" style="margin-left:8px;"></span></div>
+          </div>
+        </div>
+
+        <div class="set-pane" id="set-pane-dates" style="display:none;">
+          <p class="form-desc" style="max-width:640px;">Contractual turnaround and the billing calendar for this project. Due dates on RFIs, submittals and payment applications follow these.</p>
+        </div>
+
+        <div class="set-pane" id="set-pane-workflows">
         <div class="page-title-row" style="align-items:center;gap:14px;">
           <h2 class="page-title" style="margin:0;">Workflow Settings</h2>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -1216,10 +1259,11 @@
         </div>
       </div>
 
-      <div class="section" id="section-notifsettings">
-        <h2 class="page-title">Notification Settings</h2>
+        </div>
+
+        <div class="set-pane" id="set-pane-notifs" style="display:none;">
         <div id="org-gap-note" class="admin-only" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;color:var(--olive-900);max-width:680px;"></div>
-        <div class="billing-bar" id="response-bar" style="display:none;max-width:680px;">
+        <div class="billing-bar" id="response-bar" style="display:none;max-width:680px;" data-move-to="set-pane-dates">
           <div class="bb-head">
             <span>Due dates &amp; billing cycle</span>
             <button class="btn-secondary" style="padding:5px 11px;font-size:12px;" onclick="openBilling()">Edit</button>
@@ -1251,6 +1295,7 @@
           <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-payapps" style="margin-right:8px;">Include pending payment applications</label>
           <div style="margin-top:16px;"><button class="btn-primary" onclick="saveReminderSettings()" id="btn-rem-save">Save Reminders</button></div>
           <div class="status-msg" id="rem-status"></div>
+        </div>
         </div>
       </div>
 
@@ -2458,6 +2503,7 @@ async function createProject(){
     const config = {
       owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
+      contractDate: wizVal('np-contractdate'),
       milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com',
       workflows: (()=>{ const g=wfGather('npwf');
         // Anything left untouched in the wizard falls back to the standard chain.
@@ -4907,8 +4953,9 @@ async function buildChangeOrderPDF(r, opts){
   y += 14 + partyLines*11 + 8; rule(y); y+=16;
 
   // identifiers
-  const ids=[['Contract type',opts.contractType],['Originating PCO',r['PCO #']||'—'],
-             ['Notice to proceed',fmtDMY(projectMilestone('Notice to Proceed'))||'—'],['Cause',r['Cause']||'—']];
+  const cd=(currentProject.config&&currentProject.config.contractDate)||'';
+  const ids=[['Contract type',opts.contractType],['Originating PCO',r['PCO #']||'\u2014'],
+             ['Contract date',fmtDMY(cd)||'\u2014'],['Cause',r['Cause']||'\u2014']];
   const iw=(W-2*M)/4;
   ids.forEach((kv,i)=>{ const x=M+i*iw; lbl(x,y,kv[0]); val(x,y+13,kv[1],9.5,true); });
   y+=30; rule(y); y+=18;
@@ -5155,6 +5202,53 @@ async function traceCompany(name){
     if(!d.savedRecord && !d.profiles.length) console.log('%cNothing references this name — it should not be listed. Reload the page.','color:#3b6d11');
     return d;
   }catch(e){ console.warn(e.message); }
+}
+
+// Settings sub-navigation. Architect/Engineer reach this page for the workflow
+// chains, which they may read but not change, so every other pane is closed to
+// them and Workflows is where they land.
+function setTab(name){
+  const allowed = IS_ADMIN ? ['project','dates','workflows','notifs'] : ['workflows'];
+  if(!allowed.includes(name)) name='workflows';
+  document.querySelectorAll('.set-tab').forEach(b=>b.classList.toggle('active', b.getAttribute('data-pane')===name));
+  ['project','dates','workflows','notifs'].forEach(k=>{
+    const el=document.getElementById('set-pane-'+k); if(el) el.style.display = (k===name)?'':'none';
+  });
+  if(name==='project'){ try{ fillProjectSettings(); }catch(e){} }
+  if(name==='dates'){ try{ renderResponseBar(); }catch(e){} }
+}
+// The dates panel is authored inside the notifications markup for historical
+// reasons; move the node once so it lives under its own tab.
+function relocateDatesPanel(){
+  const bar=document.getElementById('response-bar');
+  const dest=document.getElementById('set-pane-dates');
+  if(bar && dest && bar.parentElement!==dest) dest.appendChild(bar);
+}
+function fillProjectSettings(){
+  const c=(currentProject&&currentProject.config)||{}, a=c.address||{};
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  set('ps-owner',c.owner); set('ps-jobnum',c.jobNumber); set('ps-cm',c.onsiteCM);
+  set('ps-contractdate',c.contractDate); set('ps-scope',c.scope);
+  set('ps-line1',a.line1); set('ps-line2',a.line2); set('ps-city',a.city); set('ps-state',a.state); set('ps-zip',a.zip);
+  const st=document.getElementById('ps-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+}
+async function saveProjectSettings(){
+  const v=id=>String((document.getElementById(id)||{}).value||'').trim();
+  const btn=document.getElementById('ps-save'); btn.disabled=true;
+  showStatus('ps-status','Saving\u2026','info');
+  try{
+    const c=currentProject.config=currentProject.config||{};
+    c.owner=v('ps-owner'); c.jobNumber=v('ps-jobnum'); c.onsiteCM=v('ps-cm');
+    c.contractDate=v('ps-contractdate'); c.scope=v('ps-scope');
+    c.address={line1:v('ps-line1'), line2:v('ps-line2'), city:v('ps-city'), state:v('ps-state'), zip:v('ps-zip')};
+    // Kept in step so anything still reading the joined string agrees with the parts.
+    c.location=[c.address.line1, c.address.line2,
+      [c.address.city,c.address.state].filter(Boolean).join(', '), c.address.zip].filter(Boolean).join(' \u00b7 ');
+    await writeProjectConfig(currentProject.folderId, c);
+    showStatus('ps-status','Saved.','success');
+    renderAll();
+  }catch(e){ showStatus('ps-status','Error: '+e.message,'error'); }
+  btn.disabled=false;
 }
 
 async function loadOrgs(){
@@ -5510,8 +5604,14 @@ function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
   const active=document.getElementById('section-'+sec); animateSection(active);
-  if(sec==='notifsettings') loadNotifSettings();
-  if(sec==='workflows') loadWorkflowSettings();
+  if(sec==='settings'){
+    try{ relocateDatesPanel(); }catch(e){}
+    // Both panes load their own data; doing it here means switching tabs is
+    // instant rather than fetching on every click.
+    try{ loadNotifSettings(); }catch(e){}
+    try{ loadWorkflowSettings(); }catch(e){}
+    try{ setTab(IS_ADMIN ? 'project' : 'workflows'); }catch(e){}
+  }
 }
 document.querySelectorAll('.nav-item[data-section]').forEach(el=>el.addEventListener('click',()=>navTo(el.getAttribute('data-section'))));
 
