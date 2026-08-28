@@ -552,6 +552,7 @@
 <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </head>
 <body>
 
@@ -1453,6 +1454,52 @@
       <button class="btn-primary" id="contractors-save" onclick="saveContractors()">Save</button>
       <button class="btn-secondary" onclick="closeContractors()">Cancel</button>
       <span class="status-msg" id="contractors-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cogen-backdrop" onclick="if(event.target===this)closeCoGen()">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-header">
+      <h3 id="cogen-title">Generate Change Order</h3>
+      <button class="modal-close" onclick="closeCoGen()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="cogen-blocked" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:16px;font-size:13.5px;color:var(--olive-900);"></div>
+      <div id="cogen-form">
+        <div id="cogen-summary" style="background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;"></div>
+
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Who signs</div>
+        <div class="field-row">
+          <div class="field" style="flex:1;"><label>Contractor</label><select id="cg-sign-contractor"></select></div>
+          <div class="field" style="flex:1;"><label>Architect</label><select id="cg-sign-architect"></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field" style="flex:1;"><label>Fidevia</label><select id="cg-sign-cm"></select></div>
+          <div class="field" style="flex:1;"><label>Owner</label><select id="cg-sign-owner"></select></div>
+        </div>
+        <p class="file-hint" style="margin-top:-4px;">Choosing the architect signatory also decides which firm appears on the document.</p>
+
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Substantial completion</div>
+        <div class="field-row">
+          <div class="field" style="flex:1;"><label>Date as of this change order</label><input type="date" id="cg-subcomp"></div>
+          <div class="field" style="flex:1;display:flex;align-items:flex-end;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;padding-bottom:9px;">
+              <input type="checkbox" id="cg-subcomp-same" style="width:auto;" onchange="coGenSubToggle()" checked> Unchanged by this change order
+            </label>
+          </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13.5px;">
+          <input type="checkbox" id="cg-attach-pco" style="width:auto;" checked>
+          <span id="cg-attach-label">Attach the originating PCO behind the change order</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="cogen-go" onclick="generateChangeOrder()">Generate</button>
+      <button class="btn-secondary" onclick="closeCoGen()">Cancel</button>
+      <span class="status-msg" id="cogen-status" style="margin-left:8px;"></span>
     </div>
   </div>
 </div>
@@ -2905,7 +2952,7 @@ function renderCOs(){
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
     const cause=r['Cause'] ? '<span class="pill" style="background:var(--khaki-100);color:var(--olive-900);">'+esc(r['Cause'])+'</span>' : '<span style="color:var(--muted);">—</span>';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+coGenBtn(i,r)+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,11); }).join('');
   countFooter(rows.length, rows.length, 'change order');
 }
@@ -3730,6 +3777,15 @@ function isItemComplete(key,r){
   return false;
 }
 function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemComplete(key,r) && !isArchived(r); }
+// Only on an approved change order: producing a document to sign before the
+// change is agreed would be putting the signature block ahead of the decision.
+function coGenBtn(i,r){
+  if(!IS_ADMIN || viewingAsExternal()) return '';
+  if(!coIsApproved(r)) return '';
+  const done=!!String(r['Signed File Name']||'').trim();
+  return '<button class="row-act" title="'+(done?'Generate the change order document again':'Generate the formal change order document')
+    +'" onclick="event.stopPropagation();openCoGen('+i+')">'+(done?'Regenerate':'Generate CO')+'</button>';
+}
 function archiveBtn(key,i,r){
   if(isArchived(r)) return IS_ADMIN && !viewingAsExternal()
     ? '<button class="row-act act-restore" title="Return this to the active log" onclick="event.stopPropagation();withBusy(event,\'Restoring\u2026\',()=>setArchived(\''+key+'\','+i+',false))">Restore</button>' : '';
@@ -4763,6 +4819,287 @@ function renderOrgGaps(){
     +'\u2014 change orders name each party in full and cannot be generated without one.';
 }
 // The generator will refuse rather than print a document with a blank address.
+// ── CHANGE ORDER GENERATOR ────────────────────────────────────────────────
+let COGEN_IDX=-1;
+function coGenSubToggle(){
+  const same=document.getElementById('cg-subcomp-same').checked;
+  const d=document.getElementById('cg-subcomp');
+  if(!d) return;
+  d.disabled=same;
+  d.style.background=same?'#f0efe9':''; d.style.color=same?'#777':''; d.style.cursor=same?'not-allowed':'';
+  if(same) d.value=projectMilestone('Substantial Completion')||'';
+}
+function projectMilestone(name){
+  const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
+  const m=ms.find(x=>String(x.name||'').trim().toLowerCase()===String(name).trim().toLowerCase());
+  return m ? (m.baseline||m.contract||'') : '';
+}
+// People at a given firm, for the signatory pickers. Falls back to everyone on
+// the project when a firm has nobody listed, so a document is never blocked by
+// an empty dropdown.
+function contactsAtCompany(co){
+  const all=(allData.contacts||[]).filter(c=>String(c['Name']||'').trim());
+  const mine=all.filter(c=>orgKeyOf(c['Company'])===orgKeyOf(co));
+  return (mine.length?mine:all);
+}
+function signOptions(co, preferRole){
+  const list=contactsAtCompany(co);
+  const rank=c=>preferRole && new RegExp(preferRole,'i').test(String(c['Role']||'')) ? 0 : 1;
+  return list.slice().sort((a,b)=>rank(a)-rank(b) || String(a['Name']).localeCompare(String(b['Name'])))
+    .map(c=>'<option value="'+esc(c['Name'])+'" data-co="'+esc(c['Company']||co)+'">'+esc(c['Name'])
+      +(c['Company']?' \u2014 '+esc(c['Company']):'')+'</option>').join('');
+}
+// Draws page one. Deliberately mirrors the reference form's order — parties,
+// the change, the running maths, signatures — so an owner or architect who has
+// signed one before recognises it.
+function buildChangeOrderPDF(r, opts){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'pt', format:'letter'});
+  const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
+  const M=54; let y=M;
+  const OL=[63,67,34], KH=[138,133,80], GY=[107,107,102], INK=[38,38,38];
+  const set=(c,sz,style)=>{ doc.setTextColor(c[0],c[1],c[2]); doc.setFont('helvetica',style||'normal'); doc.setFontSize(sz); };
+  const rule=(yy,x0,x1,w,c)=>{ const col=c||[218,215,205]; doc.setDrawColor(col[0],col[1],col[2]); doc.setLineWidth(w||0.6); doc.line(x0||M, yy, x1||(W-M), yy); };
+  const lbl=(x,yy,t)=>{ set(GY,7.2); doc.text(String(t).toUpperCase(), x, yy); };
+  const val=(x,yy,t,sz,bold)=>{ set(INK,sz||9.5,bold?'bold':'normal'); doc.text(String(t==null?'':t), x, yy); };
+  const right=(x,yy,t,sz,bold)=>{ set(INK,sz||9.5,bold?'bold':'normal'); doc.text(String(t==null?'':t), x, yy, {align:'right'}); };
+
+  // masthead
+  set(OL,20,'bolditalic'); doc.text('Fidevia', M, y+14);
+  set(KH,7.2); doc.text('C O N S T R U C T I O N   M A N A G E M E N T   &   C O N S U L T I N G', M, y+26);
+  set(OL,15,'bold'); doc.text('CHANGE ORDER', W-M, y+12, {align:'right'});
+  set(GY,9); doc.text('No. '+(r['CO #']||r['PCO #']||'—')+'    ·    '+fmtDMY(r['Date Approved']||etToday()), W-M, y+26, {align:'right'});
+  y+=38; rule(y,M,W-M,1.6,OL); y+=20;
+
+  // parties
+  const m=opts.math;
+  const cols=[['Project',[currentProject.name].concat(String((currentProject.config&&currentProject.config.location)||'').split(' · ').filter(Boolean))],
+              ['Contractor',orgAddressLines(m.company)],
+              ['Owner',orgAddressLines((currentProject.config&&currentProject.config.owner)||'')]];
+  const cw=(W-2*M)/3;
+  cols.forEach((c,i)=>{ const x=M+i*cw; lbl(x,y,c[0]);
+    c[1].slice(0,4).forEach((ln,j)=>{ val(x, y+12+j*11, ln, 8.8, j===0); }); });
+  y+=62; rule(y); y+=16;
+
+  // identifiers
+  const ids=[['Contract type',opts.contractType],['Originating PCO',r['PCO #']||'—'],
+             ['Notice to proceed',fmtDMY(projectMilestone('Notice to Proceed'))||'—'],['Cause',r['Cause']||'—']];
+  const iw=(W-2*M)/4;
+  ids.forEach((kv,i)=>{ const x=M+i*iw; lbl(x,y,kv[0]); val(x,y+13,kv[1],9.5,true); });
+  y+=30; rule(y); y+=18;
+
+  // the change
+  lbl(M,y,'The contract is changed as follows'); y+=15;
+  set(INK,9.5);
+  const body=doc.splitTextToSize(String(r['Description']||''), W-2*M);
+  doc.text(body, M, y); y+=body.length*12+8;
+  if(opts.attachName){ lbl(M,y,'Supporting documents'); val(M+110,y,opts.attachName,9); y+=16; }
+  rule(y); y+=18;
+
+  // the money
+  lbl(M,y,'Contract summary');
+  const rows=[['Original contract amount',m.original,false],
+              ['Net change by previously approved change orders',m.previous,false],
+              ['Contract amount prior to this change order',m.prior,false],
+              ['Net change by this change order',m.approved,false]];
+  if(m.allowance) rows.push(['Drawn from allowance',-m.allowance,false]);
+  rows.push(['Contract amount after this change order',m.after,true]);
+  rows.forEach(([k,v,strong])=>{ y+=15;
+    if(strong){ doc.setFillColor(245,244,237); doc.rect(M-4,y-11,W-2*M+8,15,'F'); }
+    val(M,y,k,9.5,strong); right(W-M,y,fmtMoney(v),9.5,strong);
+    if(!strong) rule(y+4,M,W-M,0.4,[235,233,225]); });
+  y+=24;
+
+  lbl(M,y,'Contract time adjustment'); val(M+128,y,(r['Schedule Impact (Days)']||'0')+' days',9.5,true);
+  lbl(M+250,y,'Substantial completion'); val(M+250+112,y,opts.subComp,9.5,true);
+  y+=22;
+
+  if(m.allowance){
+    doc.setFillColor(246,243,232); doc.rect(M-4,y-10,W-2*M+8,30,'F');
+    set(OL,8.5,'bold'); doc.text('Allowance', M, y+2);
+    set([77,77,72],8.5);
+    doc.text(fmtMoney(m.allowance)+' of this change order is funded from '+m.company+"'s allowance and does not increase the contract.", M+56, y+2);
+    doc.text('Allowance remaining after this change order: '+fmtMoney(m.allowanceLeft)+' of '+fmtMoney(m.allowanceTotal)+'.', M+56, y+13);
+    y+=40;
+  }
+  set(GY,8.5,'italic');
+  doc.text('This change order is not valid until signed by the Contractor, Architect, Construction Manager and Owner.', M, y);
+  y+=20; rule(y); y+=16;
+
+  // signatures
+  lbl(M,y,'Signatures'); y+=18;
+  const bw=(W-2*M)/2-10;
+  opts.signers.forEach((sg,i)=>{
+    const x=M+(i%2)*(bw+20), row=Math.floor(i/2), top=y+row*58;
+    lbl(x,top,sg.role); val(x,top+12,sg.firm,9,true);
+    if(sg.person){ set(GY,8.5); doc.text(sg.person, x, top+23); }
+    rule(top+36, x, x+bw*0.62, 0.8, [150,150,140]);
+    rule(top+36, x+bw*0.70, x+bw, 0.8, [150,150,140]);
+    set(GY,7); doc.text('SIGNATURE', x, top+46); doc.text('DATE', x+bw*0.70, top+46);
+  });
+
+  set(GY,7.5);
+  doc.text('Generated by the Fidevia Construction Dashboard  ·  '+currentProject.name, M, H-M+18);
+  doc.text((r['CO #']||r['PCO #']||''), W-M, H-M+18, {align:'right'});
+  return doc;
+}
+
+async function generateChangeOrder(){
+  const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
+  const btn=document.getElementById('cogen-go'); btn.disabled=true;
+  const say=t=>showStatus('cogen-status',t,'info');
+  try{
+    say('Building the document\u2026');
+    const math=coContractMathFor(r);
+    const cfg=(currentProject&&currentProject.config)||{};
+    const rec=(cfg.contractors||[]).find(c=>orgKeyOf(c.name)===orgKeyOf(math.company));
+    const typeLabel=(CONTRACTOR_ROLES.find(x=>x[0]===((rec&&rec.role)||''))||['','General Contractor'])[1];
+
+    const pick=id=>{ const sel=document.getElementById(id); const o=sel&&sel.options[sel.selectedIndex];
+      return o ? {person:o.value, firm:o.getAttribute('data-co')||''} : {person:'',firm:''}; };
+    const c=pick('cg-sign-contractor'), a=pick('cg-sign-architect'),
+          f=pick('cg-sign-cm'),        o=pick('cg-sign-owner');
+    const same=document.getElementById('cg-subcomp-same').checked;
+    const subVal=document.getElementById('cg-subcomp').value;
+    const subComp = same ? (fmtDMY(projectMilestone('Substantial Completion'))||'\u2014')+' \u2014 unchanged'
+                         : (fmtDMY(subVal)||'\u2014');
+    const wantPCO=document.getElementById('cg-attach-pco').checked && r['Attachment File ID'];
+
+    const doc=buildChangeOrderPDF(r,{
+      math, contractType:typeLabel, subComp,
+      attachName: wantPCO ? (r['Attachment Name']||'') : '',
+      signers:[
+        {role:'Contractor', firm:c.firm||math.company, person:c.person},
+        {role:'Architect',  firm:a.firm||'',           person:a.person},
+        {role:'Construction Manager', firm:f.firm||'Fidevia', person:f.person},
+        {role:'Owner',      firm:o.firm||cfg.owner||'',person:o.person}
+      ]});
+
+    let bytes=doc.output('arraybuffer');
+
+    // Merge the originating PCO behind page one. Only PDFs can be appended; an
+    // image or a spreadsheet stays where it is rather than being dropped
+    // silently, and the document says it is attached separately.
+    let mergeNote='';
+    if(wantPCO){
+      const nm=String(r['Attachment Name']||'').toLowerCase();
+      if(nm.endsWith('.pdf') && window.PDFLib){
+        try{
+          say('Attaching the PCO\u2026');
+          const url=(await proxyCall('downloadUrl',{fileId:r['Attachment File ID']})).url;
+          const src=await (await fetch(url)).arrayBuffer();
+          const out=await PDFLib.PDFDocument.load(bytes);
+          const add=await PDFLib.PDFDocument.load(src);
+          const pages=await out.copyPages(add, add.getPageIndices());
+          pages.forEach(pg=>out.addPage(pg));
+          bytes=await out.save();
+        }catch(e){ mergeNote=' The PCO could not be merged and remains attached to the change order separately.'; }
+      } else if(nm){
+        mergeNote=' The PCO is not a PDF, so it remains attached to the change order separately.';
+      }
+    }
+
+    say('Saving to Box\u2026');
+    const fname='CO '+(r['CO #']||r['PCO #']||'')+' \u2014 '+math.company+'.pdf';
+    const fid=await itemFolderId('co', currentProject.folders.co, r['CO #']||r['PCO #']);
+    const file=new File([bytes], fname, {type:'application/pdf'});
+    const up=await boxUploadBinary(file, fid);
+    const ent=up.entries?up.entries[0]:up;
+
+    // Recorded as a version so the generated document sits in the item's thread
+    // rather than loose in a folder.
+    try{
+      await resolveMe();
+      const rows=allData.co||[];
+      let vs=_versions(r);
+      vs.push({v:vs.length+1, fileId:ent.id||'', fileName:fname, status:r['Status']||'',
+               date:etToday(), by:ME_NAME||ME_EMAIL||'', co:ME_COMPANY||'Fidevia',
+               note:'Change order document generated.'});
+      r['Version History']=JSON.stringify(vs);
+      r['Signed File ID']=ent.id||''; r['Signed File Name']=fname;
+      const existing=await findFile(currentProject.folders.co, MODULES.co.log);
+      await boxUploadText(MODULES.co.log, toCSV(MODULES.co.headers, rows), currentProject.folders.co, existing?existing.id:null);
+    }catch(e){}
+    try{ auditLog('Generated change order','co',r,fname); }catch(e){}
+
+    showStatus('cogen-status','Generated.'+mergeNote,'success');
+    renderAll();
+    try{ openBoxFile(ent.id); }catch(e){}
+    setTimeout(closeCoGen, 1200);
+  }catch(e){ showStatus('cogen-status','Error: '+(e.message||e),'error'); }
+  btn.disabled=false;
+}
+
+function openCoGen(idx){
+  const r=(allData.co||[])[idx]; if(!r) return;
+  COGEN_IDX=idx;
+  const contractor=rowCompany(r);
+  const owner=(currentProject&&currentProject.config&&currentProject.config.owner)||'';
+  const blocked=document.getElementById('cogen-blocked');
+  const form=document.getElementById('cogen-form');
+  const go=document.getElementById('cogen-go');
+  const rd=coDocumentReadiness(contractor);
+  if(!rd.ready){
+    blocked.style.display='block';
+    blocked.innerHTML='<strong>Cannot generate yet.</strong> '+esc(rd.missing.join('; '))
+      +'. <a href="#" onclick="closeCoGen();openContactDir().then(()=>cdTab(\'orgs\'));return false;">Complete the organization records</a> and try again.';
+    form.style.display='none'; go.disabled=true;
+    document.getElementById('cogen-backdrop').classList.add('open');
+    return;
+  }
+  blocked.style.display='none'; form.style.display=''; go.disabled=false;
+
+  const money=v=>fmtMoney(v);
+  document.getElementById('cogen-summary').innerHTML=
+    '<strong>'+esc(r['CO #']||r['PCO #']||'Change order')+'</strong> \u2014 '+esc(contractor)
+    +'<div style="color:var(--muted);margin-top:4px;">'+esc(r['Description']||'')+'</div>'
+    +'<div style="margin-top:6px;">Approved '+money(coApprovedAmount(r))
+    +(coAllowanceDraw(r)?' \u00b7 '+money(coAllowanceDraw(r))+' from allowance':'')
+    +' \u00b7 reaching the contract: <strong>'+money(coContractImpact(r))+'</strong></div>';
+
+  document.getElementById('cg-sign-contractor').innerHTML=signOptions(contractor,'project manager|principal|owner');
+  document.getElementById('cg-sign-architect').innerHTML=signOptions('','architect');
+  document.getElementById('cg-sign-cm').innerHTML=signOptions('Fidevia','principal|director');
+  document.getElementById('cg-sign-owner').innerHTML=signOptions(owner,'owner|representative|director');
+
+  document.getElementById('cg-subcomp-same').checked=true; coGenSubToggle();
+  const pco=r['Attachment Name']||'';
+  const lbl=document.getElementById('cg-attach-label');
+  const box=document.getElementById('cg-attach-pco');
+  if(pco){ lbl.textContent='Attach the originating PCO behind the change order \u2014 '+pco; box.checked=true; box.disabled=false; }
+  else { lbl.textContent='No supporting document is attached to this change order'; box.checked=false; box.disabled=true; }
+  const st=document.getElementById('cogen-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  document.getElementById('cogen-backdrop').classList.add('open');
+}
+function closeCoGen(){ document.getElementById('cogen-backdrop').classList.remove('open'); }
+
+// The running contract maths for one contractor, as the document states it.
+// Only change orders approved BEFORE this one count as previous, so a document
+// generated today still reads correctly next month.
+function coContractMathFor(r){
+  const co=rowCompany(r);
+  const norm=x=>String(x||'').trim().toLowerCase();
+  const cfg=(currentProject&&currentProject.config)||{};
+  const rec=(cfg.contractors||[]).find(c=>norm(c.name)===norm(co));
+  const original=payNum(rec&&rec.contract);
+  const mine=(allData.co||[]).filter(x=>norm(rowCompany(x))===norm(co));
+  const dateOf=x=>Date.parse(x['Date Approved']||x['Date Submitted']||'')||0;
+  const thisDate=dateOf(r);
+  const previous=mine.filter(x=>x!==r && coIsApproved(x) && dateOf(x)<=thisDate)
+                     .reduce((sum,x)=>sum+coContractImpact(x),0);
+  const thisImpact=coContractImpact(r);
+  return { company:co, original, previous, prior:original+previous,
+           approved:coApprovedAmount(r), allowance:coAllowanceDraw(r),
+           thisImpact, after:original+previous+thisImpact,
+           allowanceTotal:allowanceFor(co), allowanceLeft:allowanceRemaining(co) };
+}
+function orgAddressLines(name){
+  const o=orgRecordFor(name);
+  if(!o) return [name||''];
+  return [o.name||name, o.line1||'', o.line2||'',
+          [o.city,o.state].filter(Boolean).join(', ')+(o.zip?' '+o.zip:'')].filter(x=>String(x).trim());
+}
+
 function coDocumentReadiness(companyName){
   const need=[];
   const parties=[['Contractor',companyName],
