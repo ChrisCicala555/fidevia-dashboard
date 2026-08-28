@@ -208,6 +208,11 @@ const adminListStore = () => getStore('admin-list');
 const companyStore = () => getStore('companies');
 const companyKey = (name) => String(name || '').trim().toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ');
 const COMPANY_CATEGORIES = ['architect', 'engineer', 'contractor', 'owner', 'other'];
+// Fidevia is not one of the categories above — it is the construction manager,
+// on every project, and choosing a discipline for it would be meaningless.
+// Recognised by the people under it rather than by the spelling of the name, so
+// it survives 'Fidevia', 'Fidevia LLC' and anything else it gets typed as.
+const FIDEVIA_DOMAIN = '@fidevia.com';
 function companyComplete(rec){
   return !!(rec && String(rec.line1 || '').trim() && String(rec.city || '').trim()
             && String(rec.state || '').trim() && String(rec.zip || '').trim());
@@ -1268,6 +1273,7 @@ export default async (req) => {
       // shows up the moment someone from it exists rather than waiting to be
       // typed in a second time.
       const seen = new Map();
+      const fidevia = new Set();
       try {
         const store = getStore('profiles');
         const { blobs } = await store.list();
@@ -1275,7 +1281,10 @@ export default async (req) => {
           try {
             const pr = await store.get(b.key, { type: 'json' });
             const nm = String((pr && pr.company) || '').trim();
-            if (nm && !seen.has(companyKey(nm))) seen.set(companyKey(nm), nm);
+            if (!nm) continue;
+            const k = companyKey(nm);
+            if (!seen.has(k)) seen.set(k, nm);
+            if (String((pr && pr.email) || '').trim().toLowerCase().endsWith(FIDEVIA_DOMAIN)) fidevia.add(k);
           } catch (e) {}
         }
       } catch (e) {}
@@ -1283,10 +1292,13 @@ export default async (req) => {
       const keys = new Set([...Object.keys(saved), ...seen.keys()]);
       for (const k of keys) {
         const rec = saved[k] || { name: seen.get(k) || k, category: '' };
+        const isFidevia = fidevia.has(k) || k === 'fidevia';
         out.push({
           key: k,
           name: rec.name || seen.get(k) || k,
-          category: COMPANY_CATEGORIES.includes(String(rec.category || '').toLowerCase()) ? String(rec.category).toLowerCase() : '',
+          isFidevia,
+          category: isFidevia ? 'fidevia'
+            : (COMPANY_CATEGORIES.includes(String(rec.category || '').toLowerCase()) ? String(rec.category).toLowerCase() : ''),
           line1: rec.line1 || '', line2: rec.line2 || '',
           city: rec.city || '', state: rec.state || '', zip: rec.zip || '',
           complete: companyComplete(rec),

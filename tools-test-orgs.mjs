@@ -70,7 +70,8 @@ ok('the old card layout is gone',      !/class="org-card/.test(src));
 ok('likely duplicates are flagged in the list', /Possibly the same firm as/.test(src));
 ok('the twin check ignores case',      /toLowerCase\(\)\.trim\(\)/.test(grab(src,'function orgLikelyTwin')));
 ok('a firm is not its own twin',       /if\(x\.key===o\.key\) return false/.test(grab(src,'function orgLikelyTwin')));
-ok('groups follow the five categories',/\['architect','Architects'\],\['engineer','Engineers'\],\['contractor','Contractors'\]/.test(src));
+// Fidevia was prepended to the grouping, so the disciplines now follow it.
+ok('groups follow the five categories',/\['architect','Architects'\],\['engineer','Engineers'\],\n?\s*\['contractor','Contractors'\]/.test(src));
 ok('uncategorised firms still appear', /\['','Uncategorised'\]/.test(src));
 ok('a project notice lists the gaps',  html.includes('id="org-gap-note"'));
 ok('the notice is admin only',         /id="org-gap-note" class="admin-only"/.test(html));
@@ -111,6 +112,23 @@ ok('it warns the name is removed',     /will then be removed\. This cannot be un
 ok('declining stops it',               /if\(!confirm\(lines\.join/.test(mo));
 ok('near-matching names are offered first', /a\.startsWith\(b\)\|\|b\.startsWith\(a\)/.test(src));
 ok('the button stays disabled until a target is chosen', /b\.disabled=!sel\.value/.test(src));
+
+
+console.log('Fidevia is not a discipline');
+ok('recognised by the people under it, not the spelling',
+   /String\(\(pr && pr\.email\) \|\| ''\)[\s\S]{0,60}endsWith\(FIDEVIA_DOMAIN\)/.test(proxy));
+ok('the plain name is recognised too',   /fidevia\.has\(k\) \|\| k === 'fidevia'/.test(proxy));
+ok('its category is forced',             /isFidevia \? 'fidevia'/.test(proxy));
+ok('it is not one of the choosable categories',
+   !COMPANY_CATEGORIES.includes('fidevia'));
+ok('it leads the grouping',              /const ORG_CATS=\[\['fidevia','Fidevia'\]/.test(src));
+ok('the picker is disabled for it',      /catSel\.disabled=true/.test(src));
+ok('and explains why',                   /construction manager on every project, so this is not a choice/.test(src));
+ok('the picker is re-enabled for everyone else', /catSel\.disabled=false/.test(src));
+// It still needs an address: the change order names the construction manager.
+ok('an address is still required',       /An address is still needed/.test(src));
+ok('it never reads as uncategorised',    /o\.isFidevia\s*\?\s*'<span style="color:var\(--olive-700\)/.test(src));
+ok('another spelling can still be merged into it', /const others=ORGS\.filter\(x=>x\.key!==key\);/.test(src));
 
 fs.rmSync('.og.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);

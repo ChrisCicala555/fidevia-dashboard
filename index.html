@@ -1469,7 +1469,8 @@
           <option value="contractor">Contractor</option>
           <option value="owner">Owner</option>
           <option value="other">Other</option>
-        </select></div>
+        </select>
+        <p class="file-hint" id="og-cat-note" style="margin-top:4px;display:none;"></p></div>
       <div class="field"><label>Street address</label><input id="og-line1" autocomplete="off" placeholder="124 West Church Street"></div>
       <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="og-line2" autocomplete="off" placeholder="Suite 300"></div>
       <div class="field-row">
@@ -4719,8 +4720,8 @@ function cdTab(name){
 }
 // ── ORGANIZATIONS ──────────────────────────────────────────────────────────
 let ORGS=[];
-const ORG_CATS=[['architect','Architects'],['engineer','Engineers'],['contractor','Contractors'],
-                ['owner','Owners'],['other','Other'],['','Uncategorised']];
+const ORG_CATS=[['fidevia','Fidevia'],['architect','Architects'],['engineer','Engineers'],
+                ['contractor','Contractors'],['owner','Owners'],['other','Other'],['','Uncategorised']];
 // Cached for the open project so the check below costs nothing per render.
 let PROJECT_ORGS={};
 async function loadProjectOrgs(){
@@ -4819,7 +4820,9 @@ function renderOrgs(){
           +(twin?'<div class="cell-sub" style="color:#8a5a00;">Possibly the same firm as \u201c'+esc(twin.name)+'\u201d</div>':'')
         +'</td>'
         +'<td class="nw">'+(o.category
-            ? esc((ORG_CATS.find(c=>c[0]===o.category)||['','\u2014'])[1].replace(/s$/,''))
+            ? (o.isFidevia
+                ? '<span style="color:var(--olive-700);font-weight:600;">Fidevia</span>'
+                : esc((ORG_CATS.find(c=>c[0]===o.category)||['','\u2014'])[1].replace(/s$/,'')))
             : '<span style="color:var(--muted);">\u2014</span>')+'</td>'
         +'<td>'+(addr?esc(addr):'<span class="org-need">Address needed</span>')+'</td>'
         +'<td class="nw" style="text-align:right;"><button class="row-act" onclick="event.stopPropagation();openOrg('+esc(JSON.stringify(o.key))+')">'
@@ -4850,6 +4853,20 @@ function openOrg(key){
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
   document.getElementById('org-title').textContent=o.name;
   set('og-cat',o.category); set('og-line1',o.line1); set('og-line2',o.line2);
+  // Fidevia's category is not a choice: it is the construction manager rather
+  // than a discipline on the job.
+  const catSel=document.getElementById('og-cat'), catNote=document.getElementById('og-cat-note');
+  if(catSel){
+    if(o.isFidevia){
+      if(!catSel.querySelector('option[value="fidevia"]')) catSel.insertAdjacentHTML('afterbegin','<option value="fidevia">Fidevia</option>');
+      catSel.value='fidevia'; catSel.disabled=true;
+      catSel.style.background='#f0efe9'; catSel.style.color='#777'; catSel.style.cursor='not-allowed';
+      if(catNote){ catNote.style.display='block'; catNote.textContent='Fidevia is the construction manager on every project, so this is not a choice. An address is still needed — change orders name Fidevia in full.'; }
+    } else {
+      catSel.disabled=false; catSel.style.background=''; catSel.style.color=''; catSel.style.cursor='';
+      if(catNote){ catNote.style.display='none'; catNote.textContent=''; }
+    }
+  }
   set('og-city',o.city); set('og-state',o.state); set('og-zip',o.zip);
   const st=document.getElementById('org-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   document.getElementById('org-backdrop').classList.add('open');
