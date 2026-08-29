@@ -3421,6 +3421,47 @@ async function ensureModuleFolder(key){
   if(id) currentProject.folders[key]=id;
   return id;
 }
+// ── ONE-OFF: bring an older project up to the current module set ──────────
+// A project created before a module existed has no Box folder for it, so that
+// tab has nothing to open. Reports by default; pass {apply:true} to create.
+//
+//   repairProjectFolders()               show what is missing
+//   repairProjectFolders({apply:true})   create it
+async function repairProjectFolders(opts){
+  opts=opts||{};
+  if(!IS_ADMIN || viewingAsExternal()){ console.warn('Fidevia administrators only.'); return; }
+  if(!currentProject){ console.warn('Open a project first.'); return; }
+  let items=[];
+  try{ items=await boxList(currentProject.folderId); }catch(e){ console.warn('Could not read the project folder:', e.message); return; }
+  const folders=items.filter(i=>i.type==='folder');
+  const missing=[];
+  Object.keys(MODULES).forEach(key=>{
+    const want=MODULES[key].folder;                 // e.g. '12 - Documents'
+    const prefix=want.split(' ')[0];                // '12'
+    const hit=folders.find(f=>String(f.name||'').startsWith(prefix+' '));
+    if(hit){ currentProject.folders[key]=hit.id; }
+    else missing.push({key, folder:want});
+  });
+  console.log('%cProject folders — '+currentProject.name, 'font-weight:700');
+  if(!missing.length){ console.log('Nothing missing. Every module has its folder.'); return 0; }
+  console.table(missing);
+  if(!opts.apply){
+    console.log('%cReport only. Re-run repairProjectFolders({apply:true}) to create these.', 'color:#8a8550');
+    return missing.length;
+  }
+  let made=0;
+  for(const m of missing){
+    try{
+      const d=await proxyCall('ensureFolder',{parentId:currentProject.folderId, name:m.folder});
+      if(d.id){ currentProject.folders[m.key]=d.id; made++; console.log('created', m.folder); }
+    }catch(e){ console.warn('could not create', m.folder, '\u2014', e.message); }
+  }
+  try{ auditLog('Repaired project folders','docs',{},made+' created'); }catch(e){}
+  console.log('%cCreated '+made+' folder'+(made===1?'':'s')+'. Reopen the project to pick them all up.', 'color:#3b6d11;font-weight:700');
+  try{ renderAll(); }catch(e){}
+  return made;
+}
+
 async function loadDocs(){
   const tb=document.getElementById('tbody-docs'); if(!tb) return;
   let root=docsRootId();
