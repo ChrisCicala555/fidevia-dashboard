@@ -385,6 +385,40 @@ async function folderWritableBy(H, t, grants, who, folderId){
     return below[0].trim().toLowerCase() === mine;
   }catch(e){ return false; }
 }
+// ── DOCUMENTS ──────────────────────────────────────────────────────────────
+// Documents are private per party. Every external party — architect and
+// engineer included, who see everything elsewhere — is confined to the folder
+// named for their own company. Fidevia sees all of them.
+const DOCS_PREFIX = '12';
+// Where a folder sits relative to the Documents root: null when it is outside
+// Documents entirely, otherwise { atRoot, party } where party is the name of
+// the top folder beneath the root.
+async function docsPositionOf(H, folderId){
+  try{
+    const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}?fields=name,path_collection`, { headers: H });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const chain = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.name || ''))
+                    .concat([String(d.name || '')]);
+    const i = chain.findIndex(n => n.startsWith(DOCS_PREFIX + ' '));
+    if (i < 0) return null;
+    const below = chain.slice(i + 1);
+    return { atRoot: below.length === 0, party: below[0] || '' };
+  }catch(e){ return null; }
+}
+// True when this caller may see or write inside the given folder.
+async function docsAllows(H, t, grants, who, folderId){
+  if (who.isAdmin) return true;
+  const pos = await docsPositionOf(H, folderId);
+  if (!pos) return false;                       // not in Documents: not our business
+  const g = await grantFor(t, grants, 'folder', folderId);
+  const role = normRole(g && g.role);
+  if (!roleMayWrite(role) && role !== ROLE_OWNER) return false;
+  const mine = String((g && g.company) || '').trim().toLowerCase();
+  if (!mine) return false;
+  if (pos.atRoot) return true;                  // the root itself, listed filtered
+  return String(pos.party).trim().toLowerCase() === mine;
+}
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
@@ -833,6 +867,58 @@ export default async (req) => {
     const guardFolder = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'folder', fid));
     const guardFile = async (fid) => who.isAdmin || (await withinGranted(t, grantedIds, 'file', fid));
 
+    // Browse one folder in Documents. At the root an external caller is shown
+    // only their own company's folder; below it, only what is inside it.
+    if (op === 'docsList') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
+      const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type,size,modified_at`, { headers: H });
+      if (!r.ok) return json({ error: 'Box list ' + r.status }, r.status);
+      let entries = (await r.json()).entries || [];
+      const pos = await docsPositionOf(H, body.folderId);
+      if (!who.isAdmin && pos && pos.atRoot) {
+        const g = await grantFor(t, _grants, 'folder', body.folderId);
+        const mine = String((g && g.company) || '').trim().toLowerCase();
+        entries = entries.filter(e => e.type === 'folder' && String(e.name || '').trim().toLowerCase() === mine);
+      }
+      return json({ entries, atRoot: !!(pos && pos.atRoot) });
+    }
+    // Rename a file or folder. Renaming is how a filing system stays legible,
+    // and it is the one thing a flat index could never offer.
+    if (op === 'docsRename') {
+      const id = String(body.id || ''), kind = body.kind === 'folder' ? 'folders' : 'files';
+      const name = String(body.name || '').trim();
+      if (!id || !name) return json({ error: 'id and name are required' }, 400);
+      if (/[\/\\]/.test(name)) return json({ error: 'A name cannot contain a slash.' }, 400);
+      const ok = kind === 'folders' ? await guardFolder(id) : await guardFile(id);
+      if (!ok) return json({ error: 'Access denied' }, 403);
+      // Check the parent, so a caller cannot rename their way out of their own area.
+      let parentId = id;
+      if (kind === 'files') {
+        try{ const fi = await (await boxFetch(`https://api.box.com/2.0/files/${id}?fields=parent`, { headers: H })).json();
+             parentId = (fi.parent && fi.parent.id) || id; }catch(e){}
+      }
+      if (!await docsAllows(H, t, _grants, who, parentId)) return json({ error: 'Access denied' }, 403);
+      // A party's own top-level folder is not theirs to rename: the name is how
+      // the dashboard knows whose it is.
+      if (!who.isAdmin && kind === 'folders') {
+        const pos = await docsPositionOf(H, id);
+        if (pos && !pos.atRoot) {
+          const self = await boxFetch(`https://api.box.com/2.0/folders/${id}?fields=name`, { headers: H });
+          const selfName = self.ok ? String((await self.json()).name || '') : '';
+          if (String(pos.party).trim().toLowerCase() === selfName.trim().toLowerCase())
+            return json({ error: 'This folder is named for your company and cannot be renamed.' }, 403);
+        }
+      }
+      const rr = await boxFetch(`https://api.box.com/2.0/${kind}/${encodeURIComponent(id)}`, {
+        method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, H),
+        body: JSON.stringify({ name })
+      });
+      if (rr.status === 409) return json({ error: 'Something here already has that name.' }, 409);
+      if (!rr.ok) return json({ error: 'Rename failed ' + rr.status }, rr.status);
+      return json({ ok: true, item: await rr.json() });
+    }
+
     if (op === 'list') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=200&fields=id,name,type`, { headers: H });
@@ -947,6 +1033,8 @@ export default async (req) => {
     if (op === 'uploadToken') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
+      { const pos = await docsPositionOf(H, body.folderId);
+        if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
       try {
         const r = await boxFetch('https://api.box.com/oauth2/token', {
           method: 'POST',
@@ -968,6 +1056,8 @@ export default async (req) => {
     if (op === 'upload') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
+      { const pos = await docsPositionOf(H, body.folderId);
+        if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
       const chk = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       if (chk.ok) { const items = (await chk.json()).entries || []; if (items.some(i => i.type === 'file' && i.name === body.filename)) return json({ error: 'A file with that name already exists.' }, 409); }
       const bytes = Uint8Array.from(atob(body.contentBase64), c => c.charCodeAt(0));
@@ -982,6 +1072,10 @@ export default async (req) => {
     if (op === 'ensureFolder') {
       if (!await guardFolder(body.parentId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.parentId)) return json({ error: 'Access denied' }, 403);
+      // Inside Documents the rule is stricter than elsewhere: no external party
+      // writes outside their own folder, whatever their role.
+      { const pos = await docsPositionOf(H, body.parentId);
+        if (pos && !await docsAllows(H, t, _grants, who, body.parentId)) return json({ error: 'Access denied' }, 403); }
       const name = String(body.name || '').trim();
       if (!name) return json({ error: 'name required' }, 400);
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });

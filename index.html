@@ -1095,13 +1095,23 @@
       <div class="section" id="section-gendocs">
         <div class="page-title-row">
           <h2>Documents</h2>
-          <button class="btn-add" onclick="openModal('gendocument')">+ Upload Document</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" onclick="docsNewFolder()" style="padding:9px 14px;">+ New Folder</button>
+            <label class="btn-add" style="cursor:pointer;">+ Upload
+              <input type="file" multiple id="docs-upload" style="display:none" onchange="docsUpload(this)">
+            </label>
+          </div>
         </div>
-        <div class="panel">
-          <div class="panel-header">Project documents</div>
-          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-gendocs"><tr class="loading-row"><td colspan="7">Loading…</td></tr></tbody></table>
+        <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
+        <div id="docs-note" style="display:none;background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:11px 15px;margin-bottom:14px;font-size:13px;color:var(--muted);"></div>
+        <div class="cd-card">
+          <table><thead><tr>
+            <th>Name</th><th class="nw">Size</th><th class="nw">Modified</th><th class="nw" style="text-align:right;">Actions</th>
+          </tr></thead>
+          <tbody id="tbody-docs"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
         </div>
+        <div class="table-count" id="docs-count"></div>
+        <div id="docs-progress" style="display:none;margin-top:10px;font-size:13px;color:var(--muted);"></div>
       </div>
 
       <!-- CONTRACTOR DAILY REPORTS (per-company) -->
@@ -2221,6 +2231,7 @@ async function openProject(folderId, name){
     if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; currentProject.userModules=(_pp&&_pp.modules)||[]; }
     if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
     try{ clearMe(); }catch(e){}
+    DOCS_PATH=[]; DOCS_ENTRIES=[];
     applyRoleClasses();
     navTo('overview'); setViewer(EXTERNAL?'external':'internal'); allData={};
     projectLoadingStep('Reading project settings…');
@@ -3377,7 +3388,185 @@ function _docVersions(r){
   return [cur].concat(pri.slice().reverse());
 }
 function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
-function renderGenDocs(){ renderDocsTable('gendocs','tbody-gendocs'); }
+// ── DOCUMENT BROWSER ───────────────────────────────────────────────────────
+// Documents are browsed live from Box rather than indexed. Box already is the
+// filing system; the dashboard navigates it and decides who may see what.
+let DOCS_PATH=[];            // [{id,name}] from the Documents root inward
+let DOCS_ENTRIES=[], DOCS_AT_ROOT=true;
+
+function docsRootId(){ return (currentProject&&currentProject.folders&&currentProject.folders.gendocs)||''; }
+function docsHere(){ return DOCS_PATH.length ? DOCS_PATH[DOCS_PATH.length-1].id : docsRootId(); }
+
+async function loadDocs(){
+  const tb=document.getElementById('tbody-docs'); if(!tb) return;
+  const root=docsRootId();
+  if(!root){ tb.innerHTML='<tr class="empty-row"><td colspan="4">No documents folder on this project.</td></tr>'; return; }
+  tb.innerHTML='<tr class="loading-row"><td colspan="4">Loading…</td></tr>';
+  try{
+    const d=await proxyCall('docsList',{folderId:docsHere()});
+    DOCS_ENTRIES=d.entries||[]; DOCS_AT_ROOT=!!d.atRoot;
+  }catch(e){
+    DOCS_ENTRIES=[];
+    tb.innerHTML='<tr class="empty-row"><td colspan="4">'+esc(e.message||'Could not open this folder.')+'</td></tr>';
+    return;
+  }
+  renderDocs();
+}
+function docsGoTo(i){ DOCS_PATH=DOCS_PATH.slice(0,i); loadDocs(); }
+function docsOpen(id,name){ DOCS_PATH.push({id,name}); loadDocs(); }
+
+function fmtBytes(n){
+  const b=Number(n)||0;
+  if(!b) return '—';
+  const u=['B','KB','MB','GB']; let i=0, v=b;
+  while(v>=1024 && i<u.length-1){ v/=1024; i++; }
+  return (i?v.toFixed(v<10?1:0):v)+' '+u[i];
+}
+function renderDocs(){
+  const tb=document.getElementById('tbody-docs'); if(!tb) return;
+  // breadcrumbs
+  const cr=document.getElementById('docs-crumbs');
+  if(cr){
+    let html='<a href="#" onclick="docsGoTo(0);return false;" style="color:var(--olive-700);font-weight:600;text-decoration:none;">Documents</a>';
+    DOCS_PATH.forEach((p,i)=>{ html+='<span style="color:var(--muted);">/</span>';
+      html+= i===DOCS_PATH.length-1
+        ? '<span style="font-weight:700;color:var(--olive-900);">'+esc(p.name)+'</span>'
+        : '<a href="#" onclick="docsGoTo('+(i+1)+');return false;" style="color:var(--olive-700);text-decoration:none;">'+esc(p.name)+'</a>'; });
+    cr.innerHTML=html;
+  }
+  // A word about what this view is, where it is not obvious.
+  const note=document.getElementById('docs-note');
+  if(note){
+    if(DOCS_AT_ROOT && IS_ADMIN && !viewingAsExternal()){
+      note.style.display='block';
+      note.textContent='Each party has their own folder here and can see only their own. You see all of them.';
+      const missing=docsPartyNames().filter(n=>!DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()));
+      if(missing.length) note.innerHTML+=' <a href="#" onclick="docsSetupParties();return false;">Create the '+missing.length+' missing party folder'+(missing.length===1?'':'s')+'</a>.';
+    } else if(DOCS_AT_ROOT){
+      note.style.display='block';
+      note.textContent='This is your company\u2019s document area on this project. Only your company and Fidevia can see what is here.';
+    } else {
+      note.style.display='none';
+      // Offer the precon structure inside Fidevia's own folder, where it belongs.
+      if(IS_ADMIN && !viewingAsExternal() && DOCS_PATH.length===1
+         && String(DOCS_PATH[0].name).trim().toLowerCase()==='fidevia'
+         && !PRECON_FOLDERS.every(n=>DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()))){
+        note.style.display='block';
+        note.innerHTML='Setting up precon? <a href="#" onclick="docsCreatePrecon();return false;">Create the standard precon folders</a> \u2014 the same structure already in Box, so existing files move across unchanged.';
+      }
+    }
+  }
+  const folders=DOCS_ENTRIES.filter(e=>e.type==='folder').sort((a,b)=>a.name.localeCompare(b.name));
+  const files  =DOCS_ENTRIES.filter(e=>e.type==='file'  ).sort((a,b)=>a.name.localeCompare(b.name));
+  const cnt=document.getElementById('docs-count');
+  if(cnt) cnt.textContent = DOCS_ENTRIES.length
+    ? folders.length+' folder'+(folders.length===1?'':'s')+' \u00b7 '+files.length+' file'+(files.length===1?'':'s') : '';
+  if(!DOCS_ENTRIES.length){
+    tb.innerHTML='<tr class="empty-row"><td colspan="4">'
+      +(DOCS_AT_ROOT&&!IS_ADMIN ? 'Nothing here yet. Use Upload to add your files.'
+        : 'This folder is empty. Use New Folder or Upload to start filing.')+'</td></tr>';
+    return;
+  }
+  const canEdit = IS_ADMIN || !viewingAsExternal() || true;   // permission is decided server-side
+  const row=(e)=>{
+    const isF=e.type==='folder';
+    const nm = isF
+      ? '<a href="#" onclick="docsOpen('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+');return false;" style="color:var(--olive-900);font-weight:700;text-decoration:none;">'
+        +'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:7px;"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
+        +esc(e.name)+'</a>'
+      : '<a class="attach-link" href="#" onclick="openBoxFile('+esc(JSON.stringify(e.id))+',event);return false;">'+fileIcon(e.name)+'<span class="attach-name">'+esc(e.name)+'</span></a>';
+    return '<tr>'
+      +'<td>'+nm+'</td>'
+      +'<td class="nw">'+(isF?'—':fmtBytes(e.size))+'</td>'
+      +'<td class="nw">'+(e.modified_at?esc(fmtDMY(String(e.modified_at).slice(0,10))):'—')+'</td>'
+      +'<td class="nw" style="text-align:right;">'
+        +'<button class="row-act" onclick="docsRename('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.type))+','+esc(JSON.stringify(e.name))+')">Rename</button>'
+      +'</td></tr>';
+  };
+  tb.innerHTML=folders.map(row).join('')+files.map(row).join('');
+}
+
+// Every party on the project gets a folder named for their company; that name
+// is how the server decides who may see it.
+function docsPartyNames(){
+  const out=new Set(['Fidevia']);
+  const cfg=(currentProject&&currentProject.config)||{};
+  (cfg.contractors||[]).filter(c=>c.active!==false).forEach(c=>{ if(c.name) out.add(String(c.name).trim()); });
+  (allData.contacts||[]).forEach(c=>{ if(c['Company']) out.add(String(c['Company']).trim()); });
+  if(cfg.owner) out.add(String(cfg.owner).trim());
+  return [...out].filter(Boolean);
+}
+async function docsSetupParties(){
+  const names=docsPartyNames();
+  const have=new Set(DOCS_ENTRIES.filter(e=>e.type==='folder').map(e=>String(e.name).trim().toLowerCase()));
+  const missing=names.filter(n=>!have.has(n.toLowerCase()));
+  if(!missing.length){ alert('Every party on this project already has a folder.'); return; }
+  if(!confirm('Create a folder for:\n\n  \u2022 '+missing.join('\n  \u2022 ')
+    +'\n\nEach party sees only their own. Fidevia sees all of them.')) return;
+  const prog=document.getElementById('docs-progress'); prog.style.display='block';
+  for(const n of missing){
+    prog.textContent='Creating '+n+'\u2026';
+    try{ await proxyCall('ensureFolder',{parentId:docsHere(), name:n}); }catch(e){}
+  }
+  prog.style.display='none';
+  await loadDocs();
+}
+// The precon structure Fidevia already keeps in Box, so existing folders can be
+// moved across without rearranging them first.
+const PRECON_FOLDERS=['Agreements','Bidding','Budget','Constructability','Design','Drawings',
+  'Meetings','Misc','Phasing','Photos','Reports','RFPs_Proposals','Schedule'];
+async function docsCreatePrecon(){
+  const have=new Set(DOCS_ENTRIES.filter(e=>e.type==='folder').map(e=>String(e.name).trim().toLowerCase()));
+  const missing=PRECON_FOLDERS.filter(n=>!have.has(n.toLowerCase()));
+  if(!missing.length){ alert('The precon folders are already here.'); return; }
+  if(!confirm('Create the precon structure here?\n\n  \u2022 '+missing.join('\n  \u2022 ')
+    +'\n\nMatches the folders already in Box, so existing precon files can be moved across as they are.')) return;
+  const prog=document.getElementById('docs-progress'); prog.style.display='block';
+  for(const n of missing){
+    prog.textContent='Creating '+n+'\u2026';
+    try{ await proxyCall('ensureFolder',{parentId:docsHere(), name:n}); }catch(e){}
+  }
+  prog.style.display='none';
+  await loadDocs();
+}
+
+async function docsNewFolder(){
+  const name=prompt('Name for the new folder:'); if(name===null) return;
+  const nm=String(name).trim(); if(!nm) return;
+  try{
+    await proxyCall('ensureFolder',{parentId:docsHere(), name:nm});
+    await loadDocs();
+  }catch(e){ alert(e.message||'Could not create that folder.'); }
+}
+async function docsRename(id, kind, current){
+  const name=prompt('Rename to:', current); if(name===null) return;
+  const nm=String(name).trim(); if(!nm || nm===current) return;
+  try{
+    await proxyCall('docsRename',{id, kind, name:nm});
+    await loadDocs();
+  }catch(e){ alert(e.message||'Could not rename that.'); }
+}
+async function docsUpload(input){
+  const files=[...(input.files||[])]; if(!files.length) return;
+  const prog=document.getElementById('docs-progress');
+  prog.style.display='block';
+  let done=0;
+  for(const f of files){
+    try{
+      prog.textContent='Uploading '+f.name+(files.length>1?' ('+(done+1)+' of '+files.length+')':'')+'\u2026';
+      await boxUploadBinary(f, docsHere(), t=>{ prog.textContent=t; });
+      done++;
+    }catch(e){ prog.textContent='Could not upload '+f.name+': '+(e.message||''); await new Promise(r=>setTimeout(r,2500)); }
+  }
+  input.value='';
+  prog.textContent=done+' file'+(done===1?'':'s')+' uploaded.';
+  setTimeout(()=>{ prog.style.display='none'; }, 2500);
+  await loadDocs();
+}
+
+// Documents is a live folder browser now; the old index table is gone. Kept as
+// a no-op so renderAll and anything else still calling it does not throw.
+function renderGenDocs(){}
 function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(5);return;}
@@ -5665,6 +5854,7 @@ function navTo(sec){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.getAttribute('data-section')===sec));
   document.querySelectorAll('.section').forEach(el=>el.classList.toggle('active',el.id==='section-'+sec));
   const active=document.getElementById('section-'+sec); animateSection(active);
+  if(sec==='gendocs'){ try{ loadDocs(); }catch(e){} }
   if(sec==='settings'){
     try{ relocateDatesPanel(); }catch(e){}
     // Both panes load their own data; doing it here means switching tabs is
