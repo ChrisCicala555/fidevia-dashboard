@@ -326,6 +326,11 @@
     letter-spacing:.4px;color:var(--muted);font-weight:600;}
   .cd-addl input{border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;
     font-family:inherit;background:var(--white);color:var(--ink);text-transform:none;letter-spacing:0;font-weight:400;}
+  .draft-card{border-style:dashed;background:#FCFBF6;}
+  .draft-tag{display:inline-block;margin-top:8px;padding:2px 9px;border-radius:20px;font-size:10.5px;
+    font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#F3EFE0;color:#7A6B2E;
+    border:1px solid #E4DCC2;}
+  .draft-meta{font-size:12px;color:var(--muted);margin-top:8px;}
   .cd-strand{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
     font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#FBEAEA;color:#8C3A3A;
     border:1px solid #F0D2D2;vertical-align:middle;cursor:pointer;}
@@ -760,7 +765,8 @@
       <button class="btn-secondary" id="wiz-back" onclick="wizNav(-1)" style="display:none;">Back</button>
       <button class="btn-primary" id="wiz-next" onclick="wizNav(1)">Next</button>
       <button class="btn-primary" id="wiz-create" onclick="createProject()" style="display:none;">Create Project</button>
-      <button class="btn-secondary" onclick="showScreen('screen-picker')">Cancel</button>
+      <button class="btn-secondary" id="wiz-draft" onclick="wizSaveDraft(event)">Save &amp; Close</button>
+      <button class="btn-secondary" onclick="wizCancel()">Cancel</button>
     </div>
     <div class="status-msg" id="new-proj-status"></div>
   </div>
@@ -2042,7 +2048,7 @@ async function loadPicker(){
       if(subEl) subEl.textContent='Projects you have been granted access to.';
       if(toggle) toggle.style.display='none';
       PICKER_PROJECTS = (await proxyCall('myProjects',{})).projects || [];
-      PICKER_ARCHIVED = new Set();
+      PICKER_ARCHIVED = new Set(); PICKER_DRAFTS = [];
     } else {
       renderAccountChip('pk-chip','pk-avatar','user-name-display');
       if(toggle) toggle.style.display='';
@@ -2051,6 +2057,8 @@ async function loadPicker(){
       PICKER_PROJECTS = (pr.projects||[]).map(p=>({id:String(p.id), name:p.name, type:'folder', logoFileId:p.logoFileId||''}));
       let arch=[]; try{ arch=(await proxyCall('getArchived',{},{quiet:true})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
+      // A failed draft list must not stop the picker loading real projects.
+      try{ PICKER_DRAFTS=(await proxyCall('listDrafts',{},{quiet:true})).drafts||[]; }catch(e){ PICKER_DRAFTS=[]; }
     }
     renderPickerGrid();
     try{ animateSection(document.getElementById('screen-picker')); }catch(e){}
@@ -2070,7 +2078,7 @@ async function loadPicker(){
 // stay there rather than bouncing back into the project.
 let _resumed=false;
 const SYSTEM_FOLDERS=['Contact Directory Snapshots'];
-let PICKER_PROJECTS=[]; let PICKER_ARCHIVED=new Set(); let PICKER_VIEW='current';
+let PICKER_PROJECTS=[]; let PICKER_ARCHIVED=new Set(); let PICKER_VIEW='current'; let PICKER_DRAFTS=[];
 const ADD_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 function setPickerView(v){ PICKER_VIEW=v; document.querySelectorAll('#picker-view-toggle button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-v')===v)); renderPickerGrid(); }
 // Logo URLs are short-lived, so keep them for the life of the page only.
@@ -2118,6 +2126,26 @@ function renderPickerGrid(){
   if(archivedView){
     if(!list.length){ grid.innerHTML='<div class="loading-state" style="color:var(--muted)">No archived projects.</div>'; }
     return;
+  }
+  // Setups that were started and not finished. They have no Box folder yet, so
+  // they are not projects — they sit alongside as something to pick back up.
+  if(IS_ADMIN && !EXTERNAL && !archivedView){
+    PICKER_DRAFTS.forEach(d=>{
+      const card=document.createElement('div'); card.className='project-card draft-card';
+      const when=d.at?new Date(d.at).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+      const nm=String(d.name||'Untitled').replace(/'/g,"\\'");
+      card.innerHTML='<div class="pname-row"><span class="pname">'+esc(d.name||'Untitled')+'</span></div>'
+        +'<span class="draft-tag">Being built</span>'
+        +'<span class="popen">Resume setup</span>'
+        +'<div class="draft-meta">Step '+(d.step||1)+' of 6'
+          +(d.by?' \u00b7 '+esc(d.by.split('@')[0]):'')+(when?' \u00b7 '+esc(when):'')+'</div>'
+        +'<div class="proj-menu"><button class="proj-menu-btn" onclick="toggleProjMenu(event,\'d'+esc(d.id)+'\')" aria-label="Options">\u22EE</button>'
+        +'<div class="proj-menu-dd" id="pm-d'+esc(d.id)+'">'
+        +'<button class="danger" onclick="event.stopPropagation();discardDraft(\''+esc(d.id)+'\',\''+esc(nm)+'\')">Discard Setup</button>'
+        +'</div></div>';
+      card.onclick=()=>resumeDraft(d.id);
+      grid.appendChild(card);
+    });
   }
   if(!EXTERNAL){
     const add=document.createElement('div'); add.className='add-project-card';
@@ -2325,7 +2353,99 @@ const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC',
 let WIZ_STEP = 1;
 function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
-function openNewProject(){ initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
+function openNewProject(){ WIZ_DRAFT_ID=''; initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
+
+// ── Pausing a setup ───────────────────────────────────────────────────────
+// The wizard held everything in the page, so closing it lost the lot. The
+// state is captured through the same gather functions the create path uses,
+// which means a draft cannot drift from what would actually be built.
+let WIZ_DRAFT_ID='';
+const WIZ_SIMPLE=['np-name','np-owner','np-jobnum','np-addr1','np-addr2','np-city','np-state','np-zip',
+  'np-cm','np-scope','np-contractdate','np-pencil','np-formal','np-rsp-gc','np-rsp-arch','np-rsp-eng','np-rsp-sub'];
+function wizCaptureState(){
+  const f={};
+  WIZ_SIMPLE.forEach(id=>{ const el=document.getElementById(id); if(el) f[id]=el.value; });
+  const bd=document.getElementById('np-board');
+  const inv=document.getElementById('np-invite');
+  return {
+    fields:f,
+    board: !!(bd&&bd.checked),
+    invite: !!(inv&&inv.checked),
+    contacts: wizGatherContacts(),
+    contractors: wizGatherContractors(),
+    milestones: wizGatherMilestones(),
+    workflows: wfGather('npwf')
+    // The logo is deliberately not kept: a file input cannot be restored, and
+    // carrying the bytes through a draft to reattach them is more machinery
+    // than the case deserves. Re-pick it when finishing.
+  };
+}
+function wizRestoreState(st){
+  st=st||{};
+  Object.keys(st.fields||{}).forEach(id=>{ const el=document.getElementById(id); if(el) el.value=st.fields[id]; });
+  const bd=document.getElementById('np-board'); if(bd) bd.checked=!!st.board;
+  const inv=document.getElementById('np-invite'); if(inv) inv.checked=st.invite!==false;
+  const cw=document.getElementById('np-contacts'); cw.innerHTML='';
+  (st.contacts&&st.contacts.length?st.contacts:[null]).forEach(c=>{
+    wizAddContact();
+    if(!c) return;
+    const row=cw.lastElementChild;
+    const set=(sel,v)=>{ const el=row.querySelector(sel); if(el) el.value=v||''; };
+    set('.ct-name',c['Name']); set('.ct-role',c['Role']); set('.ct-company',c['Company']);
+    set('.ct-email',c['Email']); set('.ct-phone',c['Phone']);
+    const nt=row.querySelector('.ct-notify'); if(nt) nt.checked = String(c['Notify - RFI']||'')==='Yes';
+  });
+  const nw=document.getElementById('np-contractors'); nw.innerHTML='';
+  (st.contractors&&st.contractors.length?st.contractors:[null]).forEach(c=>{
+    wizAddContractor();
+    if(!c) return;
+    const row=nw.lastElementChild;
+    const set=(sel,v)=>{ const el=row.querySelector(sel); if(el) el.value=v==null?'':v; };
+    set('.cn-role',c.role); set('.cn-name',c.name); set('.cn-contract',c.contract);
+  });
+  renderWizMilestones((st.milestones||[]).map(m=>m.name));
+  (st.milestones||[]).forEach((m,i)=>{
+    const row=document.querySelectorAll('#np-ms-rows .ms-row')[i];
+    if(row){ const d=row.querySelector('.ms-contract'); if(d) d.value=m.contract||''; }
+  });
+  wfRenderAll('npwf','np-workflows',st.workflows||null,[]);
+}
+async function wizSaveDraft(ev){
+  const name=wizVal('np-name');
+  if(!name){ alert('Give the project a name first — it is how you will recognise the draft.'); return; }
+  await withBusy(ev,'Saving…', async()=>{
+    const d=await proxyCall('saveDraft',{ id:WIZ_DRAFT_ID, name, step:WIZ_STEP, state:wizCaptureState() });
+    WIZ_DRAFT_ID=d.id||WIZ_DRAFT_ID;
+    showScreen('screen-picker');
+    await loadPicker();
+  }).catch(e=>alert('Could not save the draft: '+e.message));
+}
+function wizCancel(){
+  // Only worth asking if there is something to lose.
+  const touched = wizVal('np-name') || wizVal('np-owner') || wizGatherContacts().length;
+  if(touched && !WIZ_DRAFT_ID && !confirm('Leave without saving? Use Save & Close to come back to this later.')) return;
+  showScreen('screen-picker');
+}
+async function resumeDraft(id){
+  try{
+    const d=await proxyCall('getDraft',{id});
+    WIZ_DRAFT_ID=id;
+    initWizard();
+    wizRestoreState((d.draft&&d.draft.state)||{});
+    WIZ_STEP=parseInt((d.draft&&d.draft.step),10)||1;
+    showScreen('screen-new-project');
+    wizGo(WIZ_STEP);
+    loadFideviaPeople();
+    // The job number is only suggested into a field left blank, so a number
+    // already chosen in the draft survives.
+    wizFillJobNumber();
+  }catch(e){ alert(e.message); loadPicker(); }
+}
+async function discardDraft(id, name){
+  if(!confirm('Discard the setup for '+(name||'this project')+'? Nothing has been created yet, so only the saved progress is lost.')) return;
+  try{ await proxyCall('deleteDraft',{id}); await loadPicker(); }
+  catch(e){ alert('Could not discard: '+e.message); }
+}
 
 // The next job code, read from what every project actually carries rather than
 // from a stored counter — a project renumbered by hand or removed cannot then
@@ -2709,6 +2829,8 @@ async function createProject(){
     // fail the project, so it is deliberately swallowed; rebuildJobNumbers()
     // repairs the index from Box if it ever matters.
     try{ await proxyCall('recordJobNumber',{ jobNumber:config.jobNumber, project:wizVal('np-name') },{quiet:true}); }catch(e){}
+    // The setup is finished, so the draft it came from is no longer a setup.
+    if(WIZ_DRAFT_ID){ try{ await proxyCall('deleteDraft',{id:WIZ_DRAFT_ID},{quiet:true}); }catch(e){} WIZ_DRAFT_ID=''; }
     // After the project exists, not before: an invitation pointing at a project
     // that failed to create would be worse than no invitation.
     let invited=0;

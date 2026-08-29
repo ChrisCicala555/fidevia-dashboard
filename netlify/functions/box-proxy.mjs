@@ -198,6 +198,10 @@ const grantsStore = () => getStore('access-grants');
 // The job-number high-water mark and the codes in use. Kept out of Box so
 // suggesting the next number costs no Box calls at all.
 const jobNumStore = () => getStore('job-numbers');
+// A project setup that was started and not finished. Held server-side rather
+// than in the browser so it can be started on one machine and finished on
+// another, and so a colleague can pick it up.
+const draftStore = () => getStore('project-drafts');
 // Highest well-formed YY-NNN sequence in a set of codes. Anything in another
 // shape is a code someone set by hand and does not drive the sequence.
 function highestOf(usedMap) {
@@ -735,6 +739,51 @@ export default async (req) => {
     }
 
     // ---- ADMIN OPS ----
+    if (op === 'listDrafts') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const store = draftStore();
+      const out = [];
+      try {
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try {
+            const d = await store.get(b.key, { type: 'json' });
+            if (d) out.push({ id: b.key, name: d.name || '', by: d.by || '', at: d.at || '', step: d.step || 1 });
+          } catch (e) {}
+        }
+      } catch (e) {}
+      out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      return json({ drafts: out });
+    }
+    if (op === 'getDraft') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const d = await draftStore().get(String(body.id || ''), { type: 'json' });
+      if (!d) return json({ error: 'That draft is no longer there. Someone may have finished or discarded it.' }, 404);
+      return json({ draft: d });
+    }
+    if (op === 'saveDraft') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const id = String(body.id || '').trim() || ('d' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+      const rec = {
+        id,
+        name: String(body.name || '').slice(0, 200),
+        step: parseInt(body.step, 10) || 1,
+        // The wizard's own shape, stored as given. The server has no business
+        // knowing the field layout, and a draft that outlives a change to the
+        // wizard is better than one the server rejects.
+        state: body.state && typeof body.state === 'object' ? body.state : {},
+        by: who.email || '',
+        at: new Date().toISOString()
+      };
+      await draftStore().setJSON(id, rec);
+      return json({ ok: true, id, at: rec.at });
+    }
+    if (op === 'deleteDraft') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const id = String(body.id || ''); if (!id) return json({ error: 'id required' }, 400);
+      await draftStore().delete(id);
+      return json({ ok: true });
+    }
     // The next job code, from a stored high-water mark. Counting projects
     // would be just as cheap and wrong: delete one and the count drops, so the
     // next number lands on a code already in use, which surfaces as two change
