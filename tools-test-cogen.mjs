@@ -126,6 +126,25 @@ ok('the wordmark remains a fallback',           /if\(!logoOK\)\{[\s\S]{0,200}doc
 ok('the header height follows which was used',  /y\+= logoOK \? 62 : 38;/.test(build));
 ok('the builder is awaited',                    /await buildChangeOrderPDF\(r,\{/.test(src));
 
+
+console.log('Regenerating makes a revision, not an error');
+const nm=grab('async function nextCoDocName');
+ok('it reads the folder first',        /await boxList\(folderId\)/.test(nm));
+ok('the first document is unnumbered', /if\(!taken\(base\+'\.pdf'\)\) return \{ name: base\+'\.pdf', rev: 1 \}/.test(nm));
+ok('the next is Rev 2',                /base\+' \(Rev '\+v\+'\)\.pdf'/.test(nm));
+ok('it starts counting at 2',          /for\(let v=2;/.test(nm));
+ok('name matching ignores case',       /x\.toLowerCase\(\)===n\.toLowerCase\(\)/.test(nm));
+ok('it gives up gracefully rather than looping', /Date\.now\(\)/.test(nm));
+ok('a folder it cannot read does not block generation', /catch\(e\)\{\}/.test(nm));
+
+console.log('And says so beforehand');
+ok('the notice exists',            html.includes('id="cogen-rev"'));
+ok('it is resolved when the form opens', /const p=await nextCoDocName\(r, contractor, fid\)/.test(src));
+ok('it only appears for a repeat',  /if\(p\.rev>1\)\{/.test(src));
+ok('it explains the earlier one stays', /may already be out for signature/.test(src));
+ok('the version note records the revision', /Change order document regenerated \\u2014 revision/.test(src));
+ok('the result says which revision',        /Generated revision '\+picked\.rev/.test(src));
+
 fs.rmSync('.cg.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

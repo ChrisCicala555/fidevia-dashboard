@@ -1513,6 +1513,7 @@
       <div id="cogen-blocked" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:16px;font-size:13.5px;color:var(--olive-900);"></div>
       <div id="cogen-form">
         <div id="cogen-summary" style="background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;"></div>
+        <div id="cogen-rev" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:10px 14px;margin:-8px 0 18px;font-size:13px;color:var(--olive-900);"></div>
 
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Who signs</div>
         <div class="field-row">
@@ -5021,6 +5022,26 @@ async function buildChangeOrderPDF(r, opts){
   return doc;
 }
 
+function coDocBaseName(r, company){
+  return 'CO '+(r['CO #']||r['PCO #']||'')+' \u2014 '+company;
+}
+// The next revision that does not already exist in the item's folder. Box
+// refuses a duplicate name, and that refusal used to surface as a raw error
+// after the document had already been built.
+async function nextCoDocName(r, company, folderId){
+  const base=coDocBaseName(r, company);
+  let existing=[];
+  try{ existing=(await boxList(folderId)).filter(i=>i.type==='file').map(i=>String(i.name||'')); }catch(e){}
+  const taken=n=>existing.some(x=>x.toLowerCase()===n.toLowerCase());
+  if(!taken(base+'.pdf')) return { name: base+'.pdf', rev: 1 };
+  for(let v=2; v<=99; v++){
+    const n=base+' (Rev '+v+').pdf';
+    if(!taken(n)) return { name:n, rev:v };
+  }
+  // Ninety-nine revisions in, stop guessing and make it unique by time.
+  return { name: base+' ('+Date.now()+').pdf', rev: 0 };
+}
+
 async function generateChangeOrder(){
   const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
   const btn=document.getElementById('cogen-go'); btn.disabled=true;
@@ -5077,8 +5098,11 @@ async function generateChangeOrder(){
     }
 
     say('Saving to Box\u2026');
-    const fname='CO '+(r['CO #']||r['PCO #']||'')+' \u2014 '+math.company+'.pdf';
     const fid=await itemFolderId('co', currentProject.folders.co, r['CO #']||r['PCO #']);
+    // Resolved against the folder rather than assumed, so a regeneration lands
+    // beside the first document instead of colliding with it.
+    const picked=await nextCoDocName(r, math.company, fid);
+    const fname=picked.name;
     const file=new File([bytes], fname, {type:'application/pdf'});
     const up=await boxUploadBinary(file, fid);
     const ent=up.entries?up.entries[0]:up;
@@ -5091,7 +5115,8 @@ async function generateChangeOrder(){
       let vs=_versions(r);
       vs.push({v:vs.length+1, fileId:ent.id||'', fileName:fname, status:r['Status']||'',
                date:etToday(), by:ME_NAME||ME_EMAIL||'', co:ME_COMPANY||'Fidevia',
-               note:'Change order document generated.'});
+               note: picked.rev>1 ? ('Change order document regenerated \u2014 revision '+picked.rev+'.')
+                                  : 'Change order document generated.'});
       r['Version History']=JSON.stringify(vs);
       r['Signed File ID']=ent.id||''; r['Signed File Name']=fname;
       const existing=await findFile(currentProject.folders.co, MODULES.co.log);
@@ -5099,7 +5124,7 @@ async function generateChangeOrder(){
     }catch(e){}
     try{ auditLog('Generated change order','co',r,fname); }catch(e){}
 
-    showStatus('cogen-status','Generated.'+mergeNote,'success');
+    showStatus('cogen-status', (picked.rev>1 ? 'Generated revision '+picked.rev+'.' : 'Generated.')+mergeNote,'success');
     renderAll();
     try{ openBoxFile(ent.id); }catch(e){}
     setTimeout(closeCoGen, 1200);
@@ -5158,6 +5183,26 @@ function openCoGen(idx){
   }
   const st=document.getElementById('cogen-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   document.getElementById('cogen-backdrop').classList.add('open');
+
+  // Say which revision this will be before it is made, rather than failing on a
+  // name collision after the document has been built.
+  const rev=document.getElementById('cogen-rev');
+  if(rev){
+    rev.style.display='none'; rev.textContent='';
+    (async()=>{
+      try{
+        const fid=await itemFolderId('co', currentProject.folders.co, r['CO #']||r['PCO #']);
+        const p=await nextCoDocName(r, contractor, fid);
+        if(p.rev>1){
+          rev.style.display='block';
+          rev.innerHTML='<strong>This will be revision '+p.rev+'.</strong> '
+            +esc(p.rev-1===1?'One document has':'Documents have')
+            +' already been generated for this change order. The earlier '
+            +(p.rev-1===1?'one stays':'ones stay')+' in place \u2014 it may already be out for signature.';
+        }
+      }catch(e){}
+    })();
+  }
 }
 function closeCoGen(){ document.getElementById('cogen-backdrop').classList.remove('open'); }
 
