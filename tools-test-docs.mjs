@@ -80,5 +80,19 @@ console.log('What each party is told');
 ok('Fidevia is told they see all',  /You see all of them/.test(src));
 ok('a party is told theirs is private', /Only your company and Fidevia can see what is here/.test(src));
 
+
+console.log('A project that predates the module');
+const ld=grab(src,'async function loadDocs');
+ok('a missing folder is created for admins', /root=await ensureModuleFolder\('gendocs'\)/.test(ld));
+ok('externals are told rather than shown an error', /Documents are not set up on this project yet/.test(ld));
+ok('a failure offers a retry',                /Try again<\/a>/.test(ld));
+const em=grab(src,'async function ensureModuleFolder');
+ok('it does nothing when one exists',         /if\(currentProject\.folders\[key\]\) return currentProject\.folders\[key\];/.test(em));
+ok('it uses the module’s own folder name',    /name:mod\.folder/.test(em));
+ok('and remembers it for the session',        /currentProject\.folders\[key\]=id/.test(em));
+// New Folder and Upload can be pressed before the browser has loaded.
+ok('New Folder sets up first',  /if\(!docsRootId\(\)\)\{ await loadDocs\(\); if\(!docsRootId\(\)\) return; \}/.test(src));
+ok('Upload sets up first',      /if\(!docsRootId\(\)\)\{ await loadDocs\(\); if\(!docsRootId\(\)\)\{ input\.value=''; return; \} \}/.test(src));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

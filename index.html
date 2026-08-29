@@ -3411,13 +3411,36 @@ let DOCS_ENTRIES=[], DOCS_AT_ROOT=true;
 function docsRootId(){ return (currentProject&&currentProject.folders&&currentProject.folders.gendocs)||''; }
 function docsHere(){ return DOCS_PATH.length ? DOCS_PATH[DOCS_PATH.length-1].id : docsRootId(); }
 
+// Create a module's Box folder if the project predates that module, and record
+// it so the rest of the session can use it.
+async function ensureModuleFolder(key){
+  const mod=MODULES[key]; if(!mod || !currentProject) return '';
+  if(currentProject.folders[key]) return currentProject.folders[key];
+  const d=await proxyCall('ensureFolder',{parentId:currentProject.folderId, name:mod.folder});
+  const id=d.id||'';
+  if(id) currentProject.folders[key]=id;
+  return id;
+}
 async function loadDocs(){
   const tb=document.getElementById('tbody-docs'); if(!tb) return;
-  const root=docsRootId();
-  if(!root){ tb.innerHTML='<tr class="empty-row"><td colspan="4">No documents folder on this project.</td></tr>'; return; }
+  let root=docsRootId();
+  if(!root){
+    // Older projects were created before this module existed.
+    if(!IS_ADMIN || viewingAsExternal()){
+      tb.innerHTML='<tr class="empty-row"><td colspan="4">Documents are not set up on this project yet. A Fidevia administrator can add them.</td></tr>';
+      return;
+    }
+    tb.innerHTML='<tr class="loading-row"><td colspan="4">Setting up the documents folder…</td></tr>';
+    try{ root=await ensureModuleFolder('gendocs'); }catch(e){ root=''; }
+    if(!root){
+      tb.innerHTML='<tr class="empty-row"><td colspan="4">Could not create the documents folder. '
+        +'<a href="#" onclick="loadDocs();return false;">Try again</a>.</td></tr>';
+      return;
+    }
+  }
   tb.innerHTML='<tr class="loading-row"><td colspan="4">Loading…</td></tr>';
   try{
-    const d=await proxyCall('docsList',{folderId:docsHere()});
+    const d=await proxyCall('docsList',{folderId:docsHere()||root});
     DOCS_ENTRIES=d.entries||[]; DOCS_AT_ROOT=!!d.atRoot;
   }catch(e){
     DOCS_ENTRIES=[];
@@ -3545,6 +3568,7 @@ async function docsCreatePrecon(){
 }
 
 async function docsNewFolder(){
+  if(!docsRootId()){ await loadDocs(); if(!docsRootId()) return; }
   const name=prompt('Name for the new folder:'); if(name===null) return;
   const nm=String(name).trim(); if(!nm) return;
   try{
@@ -3562,6 +3586,7 @@ async function docsRename(id, kind, current){
 }
 async function docsUpload(input){
   const files=[...(input.files||[])]; if(!files.length) return;
+  if(!docsRootId()){ await loadDocs(); if(!docsRootId()){ input.value=''; return; } }
   const prog=document.getElementById('docs-progress');
   prog.style.display='block';
   let done=0;
