@@ -2341,7 +2341,7 @@ async function wizFillJobNumber(){
     WIZ_JOBNUMS=d.used||[];
     // Only fill a field the user has not already typed into.
     if(!el.value.trim()){ el.value=d.next||''; el.dataset.suggested=d.next||''; }
-    if(note){ note.textContent='Next in sequence after '+(d.count||0)+' project'+((d.count===1)?'':'s')+'. Change it if the job has its own number.'; }
+    if(note){ note.textContent='Next in sequence. '+(d.count||0)+' number'+((d.count===1)?'':'s')+' issued so far. Change it if the job has its own number.'; }
   }catch(e){
     WIZ_JOBNUMS=[];
     if(note){ note.textContent='Could not work out the next number — enter one manually.'; note.style.color='var(--danger)'; }
@@ -2610,6 +2610,11 @@ async function createProject(){
                   engineer: parseInt(wizVal('np-rsp-eng'),10)||10, submittal: parseInt(wizVal('np-rsp-sub'),10)||14 }
     };
     await writeProjectConfig(projId, config);
+    // Record the number that was actually issued, not the one that was
+    // suggested — they differ whenever it is typed over. Failing here must not
+    // fail the project, so it is deliberately swallowed; rebuildJobNumbers()
+    // repairs the index from Box if it ever matters.
+    try{ await proxyCall('recordJobNumber',{ jobNumber:config.jobNumber, project:wizVal('np-name') },{quiet:true}); }catch(e){}
     // After the project exists, not before: an invitation pointing at a project
     // that failed to create would be worse than no invitation.
     let invited=0;
@@ -3486,6 +3491,21 @@ async function ensureModuleFolder(key){
   if(id) currentProject.folders[key]=id;
   return id;
 }
+// ── Repair the job-number index from what the projects actually say ───────
+// The index is the source for the next number, so that suggesting one costs no
+// Box calls. It is written whenever a number is issued or edited in the
+// dashboard. If a number is ever changed outside the app, this reconciles it.
+// The mark only ever rises, so a rebuild cannot reissue a number already used.
+async function rebuildJobNumbers(){
+  if(!IS_ADMIN || viewingAsExternal()){ console.warn('Fidevia administrators only.'); return; }
+  const d=await proxyCall('rebuildJobNumbers',{});
+  console.log('%cJob numbers \u2014 read '+(d.scanned||0)+' project'+((d.scanned===1)?'':'s'), 'font-weight:700');
+  if((d.used||[]).length) console.table(d.used);
+  else console.log('No project carries a job number yet.');
+  console.log('%cNext number: '+d.next, 'color:#3b6d11;font-weight:700');
+  return d.next;
+}
+
 // ── ONE-OFF: names that the old guessed split may have got wrong ──────────
 // Before given and family name were edited separately, saving a directory row
 // re-derived the split as "first word given, remainder family". That is right
@@ -5803,6 +5823,7 @@ async function saveProjectSettings(){
     c.location=[c.address.line1, c.address.line2,
       [c.address.city,c.address.state].filter(Boolean).join(', '), c.address.zip].filter(Boolean).join(' \u00b7 ');
     await writeProjectConfig(currentProject.folderId, c);
+    try{ await proxyCall('recordJobNumber',{ jobNumber:c.jobNumber, project:currentProject.name },{quiet:true}); }catch(e){}
     showStatus('ps-status','Saved.','success');
     renderAll();
   }catch(e){ showStatus('ps-status','Error: '+e.message,'error'); }
