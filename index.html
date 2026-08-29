@@ -811,7 +811,8 @@
       <div style="font-weight:700;color:var(--olive-700);margin-bottom:4px;">New contact</div>
       <p class="form-desc" style="margin:0 0 14px;max-width:620px;">For someone who does not have a dashboard account yet. They will show in the directory straight away and can be added to projects. When they sign up with this email their account picks these details up.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
-        <label class="cd-addl">Name<input id="cdn-name" class="cd-inp" placeholder="Jane Okafor"></label>
+        <label class="cd-addl">First name<input id="cdn-first" class="cd-inp" placeholder="Jane"></label>
+        <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" placeholder="Okafor"></label>
         <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com"></label>
         <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Summit Builders"></label>
         <label class="cd-addl">Role<input id="cdn-role" class="cd-inp" placeholder="Project Engineer"></label>
@@ -4458,8 +4459,8 @@ function cdToggleAdd(show){
   box.style.display = show ? 'block' : 'none';
   const err=document.getElementById('cdn-error'); if(err) err.style.display='none';
   if(show){
-    ['name','email','company','role','phone'].forEach(f=>{ const el=document.getElementById('cdn-'+f); if(el) el.value=''; });
-    const n=document.getElementById('cdn-name'); if(n) n.focus();
+    ['first','last','email','company','role','phone'].forEach(f=>{ const el=document.getElementById('cdn-'+f); if(el) el.value=''; });
+    const n=document.getElementById('cdn-first'); if(n) n.focus();
     box.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
 }
@@ -4468,8 +4469,8 @@ async function cdAddContact(ev){
   const val=f=>String((document.getElementById('cdn-'+f)||{}).value||'').trim();
   const fail=m=>{ if(err){ err.textContent=m; err.style.display='block'; } };
   if(err) err.style.display='none';
-  const name=val('name'), email=val('email').toLowerCase();
-  if(!name) return fail('A name is required.');
+  const first=val('first'), last=val('last'), email=val('email').toLowerCase();
+  if(!first && !last) return fail('A name is required.');
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Enter a valid email address.');
   // Checked here as well as on the server so the answer is instant and names
   // the person already holding the address.
@@ -4477,7 +4478,7 @@ async function cdAddContact(ev){
   if(clash) return fail(esc(clash.name)+' is already in the directory with that email.');
   await withBusy(ev,'Adding…', async()=>{
     try{
-      await proxyCall('addContact',{ password:CD_PW, name, email,
+      await proxyCall('addContact',{ password:CD_PW, first, last, email,
         company:val('company'), role:val('role'), phone:fmtPhone(val('phone')) });
     }catch(e){ fail(e.message); throw e; }
     cdToggleAdd(false);
@@ -4547,7 +4548,9 @@ function renderContactDir(){
     // sign-in account and to their project grants. Changing it here would not
     // change how they log in — it would only break the link between the two.
     return '<tr class="cd-row" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
-      +(CD_UNLOCKED?fld(idx,'name',c.name,150):esc(c.name))
+      +(CD_UNLOCKED
+          ? '<span style="display:flex;gap:6px;">'+fld(idx,'first',c.first,88)+fld(idx,'last',c.last,110)+'</span>'
+          : esc(c.name))
       +(c.pending?'<span class="cd-pend" title="Added by Fidevia. No dashboard account yet — this record merges into their account when they sign up with this email.">No account</span>':'')
       +'<span class="cd-open" onclick="event.stopPropagation();openPerson('+idx+')" title="View projects and access">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
@@ -4572,6 +4575,8 @@ function cdEdit(idx, field, val){
   const original=(c._orig&&c._orig[field]!==undefined)?c._orig[field]:c[field];
   c._orig=c._orig||{}; if(c._orig[field]===undefined) c._orig[field]=original;
   c[field]=val;
+  // Name is stored as two fields but displayed, searched and grouped as one.
+  if(field==='first'||field==='last') c.name=((c.first||'')+' '+(c.last||'')).trim();
   const changed=String(val||'')!==String(c._orig[field]||'');
   CD_DIRTY[c.sub]=CD_DIRTY[c.sub]||{};
   if(changed) CD_DIRTY[c.sub][field]=val; else delete CD_DIRTY[c.sub][field];

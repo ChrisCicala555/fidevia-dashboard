@@ -1550,7 +1550,7 @@ export default async (req) => {
       try {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
-          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) }); } catch (e) {}
+          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, first: pr.first_name || '', last: pr.last_name || '', email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) }); } catch (e) {}
         }
       } catch (e) {}
       out.sort((a, b) => a.name.localeCompare(b.name));
@@ -1566,10 +1566,13 @@ export default async (req) => {
       if (body.company !== undefined) pr.company = String(body.company).slice(0, 200);
       if (body.role !== undefined) pr.title = String(body.role).slice(0, 200);
       if (body.phone !== undefined) pr.phone = String(body.phone).slice(0, 60);
-      // The directory shows one name; the profile stores two. First word is the
-      // given name, the remainder the family name, which round-trips cleanly
-      // for both "Chris Celmer" and "Mary Jo Van Der Berg".
-      if (body.name !== undefined) Object.assign(pr, splitName(body.name));
+      // Given and family name are edited separately, so they are stored as
+      // typed. Guessing the split from one string got "Mary Jo Van Der Berg"
+      // wrong every time it was saved.
+      if (body.first !== undefined) pr.first_name = String(body.first).slice(0, 200).trim();
+      if (body.last  !== undefined) pr.last_name  = String(body.last).slice(0, 200).trim();
+      // Older callers that send a single name still work, on the old guess.
+      if (body.first === undefined && body.last === undefined && body.name !== undefined) Object.assign(pr, splitName(body.name));
       // Email is intentionally not accepted. It identifies the Auth0 account
       // and keys the access grants; editing it here would desynchronise both
       // while leaving the person signing in with the old address.
@@ -1603,6 +1606,9 @@ export default async (req) => {
           } catch (e) {}
         }
       } catch (e) {}
+      const first = String(body.first || '').slice(0, 200).trim();
+      const last  = String(body.last  || '').slice(0, 200).trim();
+      if (!first && !last && !String(body.name || '').trim()) return json({ error: 'A name is required.' }, 400);
       const rec = Object.assign({
         phone: String(body.phone || '').slice(0, 60),
         company: String(body.company || '').slice(0, 200),
@@ -1616,7 +1622,7 @@ export default async (req) => {
         pending: true,
         added_by: who.email || '',
         added_at: new Date().toISOString()
-      }, splitName(body.name || ''));
+      }, (first || last) ? { first_name: first, last_name: last } : splitName(body.name || ''));
       await store.setJSON(PENDING_PREFIX + email, rec);
       return json({ ok: true, sub: PENDING_PREFIX + email });
     }

@@ -53,6 +53,8 @@ ok(/password:CD_PW/.test(html.split('async function cdAddContact')[1].slice(0,12
    'client sends the unlock password');
 const cdadd = html.split('async function cdAddContact')[1].split('async function cdRemoveContact')[0];
 ok(/A name is required/.test(cdadd), 'client requires a name');
+ok(/first, last, email/.test(cdadd), 'client sends first and last separately, not a joined string');
+ok(!/const name=val\('name'\)/.test(cdadd), 'the single joined name field is gone from the add form');
 ok(/already in the directory with that email/.test(cdadd), 'client catches a duplicate before the round trip');
 ok(/allContacts/.test(cdadd), 'directory reloads after a successful add');
 const cdrm = html.split('async function cdRemoveContact')[1].slice(0,900);
@@ -80,6 +82,33 @@ ok(!/cdn-email/.test(html.split('function renderContactDir')[1]||''),
 // ── prefill on adoption ──
 ok(/localProf&&localProf\.first_name/.test(html), 'profile screen prefers the adopted record over Auth0 guesses');
 ok(/set\('prof-company', localProf\.company\)/.test(html), 'company carries across to the profile screen');
+
+// ── first/last are stored as typed, never re-guessed ──
+const scm = srv.split("if (op === 'setContactMeta')")[1].split("if (op === 'addContact')")[0];
+ok(/body\.first !== undefined\) pr\.first_name/.test(scm), 'setContactMeta stores first_name as given');
+ok(/body\.last  !== undefined\) pr\.last_name/.test(scm), 'setContactMeta stores last_name as given');
+ok(/body\.first === undefined && body\.last === undefined && body\.name !== undefined/.test(scm),
+   'the old single-name path is only a fallback');
+ok(/first: pr\.first_name/.test(ac) && /last: pr\.last_name/.test(ac),
+   'allContacts returns both name fields');
+ok(/name: \(\(\(pr\.first_name/.test(ac), 'allContacts still returns the joined name for display and search');
+
+// the compound given name that the old guess got wrong
+{
+  const splitGuess = (full) => { const p=String(full||'').trim().split(/\s+/).filter(Boolean);
+    return { first: p.length?p[0]:'', last: p.length>1?p.slice(1).join(' '):'' }; };
+  const g = splitGuess('Mary Jo Van Der Berg');
+  ok(g.first === 'Mary' && g.last === 'Jo Van Der Berg',
+     'the old guess really did mangle a compound given name (documents why this changed)');
+}
+
+// ── the directory edits the two fields, and keeps the joined one in step ──
+ok(/fld\(idx,'first',c\.first,88\)/.test(html) && /fld\(idx,'last',c\.last,110\)/.test(html),
+   'directory row edits first and last separately');
+ok(/if\(field==='first'\|\|field==='last'\) c\.name=/.test(html),
+   'cdEdit recomputes the joined name so search and grouping stay correct');
+ok(/Object\.assign\(\{sub, password:CD_PW\}, CD_DIRTY\[sub\]\)/.test(html),
+   'dirty fields pass through to setContactMeta unchanged, so first/last reach the server');
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-addcontact.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
