@@ -2022,8 +2022,21 @@ async function loadPicker(){
     }
     renderPickerGrid();
     try{ animateSection(document.getElementById('screen-picker')); }catch(e){}
+    // If the address names a project, go straight back into it. Resolved against
+    // the list the person is actually allowed to see, so a stale or borrowed
+    // link lands on the picker rather than anywhere it should not.
+    const want=projectFromHash();
+    if(want && !_resumed){
+      _resumed=true;
+      const hit=PICKER_PROJECTS.find(p=>String(p.id)===String(want));
+      if(hit) return openProject(hit.id, hit.name);
+      clearProjectHash();
+    }
   }catch(e){ grid.innerHTML='<div class="loading-state" style="color:var(--danger)">Failed to load: '+esc(e.message)+'</div>'; }
 }
+// Only on the first load. Afterwards, deliberately going to the picker should
+// stay there rather than bouncing back into the project.
+let _resumed=false;
 const SYSTEM_FOLDERS=['Contact Directory Snapshots'];
 let PICKER_PROJECTS=[]; let PICKER_ARCHIVED=new Set(); let PICKER_VIEW='current';
 const ADD_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
@@ -2218,6 +2231,7 @@ function resetProjectPhotos(){
 }
 
 async function openProject(folderId, name){
+  try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
   showScreen('screen-dashboard');
@@ -6043,7 +6057,16 @@ function viewerFilter(rows, field){
   return rows.filter(r=>String(r[field]||'').trim().toLowerCase()===VIEWER_COMPANY.trim().toLowerCase());
 }
 
-function showScreen(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
+// The address carries the open project; clear it whenever we are not in one.
+function clearProjectHash(){
+  try{ if(location.hash.startsWith('#p=')) history.replaceState({app:1,screen:currentScreenId()}, '', location.pathname); }catch(e){}
+}
+function projectFromHash(){
+  const m=String(location.hash||'').match(/^#p=([^&]+)$/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function showScreen(id){
+  if(id!=='screen-dashboard'){ try{ clearProjectHash(); }catch(e){} } document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id)); }
 function goHome(){ if(EXTERNAL){ navTo('overview'); } else { showScreen('screen-picker'); loadPicker(); } }
 function toggleMenu(e,id){ if(e){ e.stopPropagation(); } const el=document.getElementById(id); if(el) el.classList.toggle('open'); }
 document.addEventListener('click',function(e){
@@ -6112,6 +6135,7 @@ function armHistoryGuard(){
       if(!target) return;                 // already at the floor: stay put
       if(target==='screen-picker'){
         if(EXTERNAL && here==='screen-dashboard'){ navTo('overview'); return; }
+        clearProjectHash();
         showScreen('screen-picker');
         loadPicker();
       }
