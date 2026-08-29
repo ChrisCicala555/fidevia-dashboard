@@ -693,7 +693,7 @@
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
       <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
-      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" placeholder="e.g. Andre Martin"></div>
+      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" list="fidevia-people" id="np-cm" placeholder="Start typing a name"></div>
       <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
       <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
     </div>
@@ -784,6 +784,7 @@
 </div>
 
 <!-- ══ CONTACT DIRECTORY ══ -->
+<datalist id="fidevia-people"></datalist>
 <div id="screen-contactdir" class="screen">
   <div class="cd-page">
     <div class="cd-page-head">
@@ -1263,7 +1264,7 @@
             </div>
             <div class="field-row">
               <div class="field" style="flex:1;"><label>Contract date</label><input type="date" id="ps-contractdate"><p class="file-hint" style="margin-top:3px;">The date of the agreement. Printed on change orders.</p></div>
-              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off"></div>
+              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off" list="fidevia-people" placeholder="Start typing a name"></div>
             </div>
             <div class="field"><label>Street address</label><input id="ps-line1" autocomplete="off"></div>
             <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="ps-line2" autocomplete="off"></div>
@@ -2325,7 +2326,7 @@ const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC',
 let WIZ_STEP = 1;
 function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
-function openNewProject(){ initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); }
+function openNewProject(){ initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
 
 // The next job code, read from what every project actually carries rather than
 // from a stored counter — a project renumbered by hand or removed cannot then
@@ -5809,6 +5810,7 @@ function fillProjectSettings(){
   set('ps-contractdate',c.contractDate); set('ps-scope',c.scope);
   set('ps-line1',a.line1); set('ps-line2',a.line2); set('ps-city',a.city); set('ps-state',a.state); set('ps-zip',a.zip);
   const st=document.getElementById('ps-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  loadFideviaPeople();
 }
 async function saveProjectSettings(){
   const v=id=>String((document.getElementById(id)||{}).value||'').trim();
@@ -7449,6 +7451,25 @@ function wfCompanyOf(person){
   return (c&&c['Company'])?c['Company']:'';
 }
 let CD_PICK=[];
+// Fidevia's own people, offered as you type in the Onsite CM fields.
+// Recognised by email domain rather than by the company field, which is free
+// text and arrives as 'Fidevia', 'Fidevia LLC' and worse. A native datalist
+// rather than a custom dropdown: it works on mobile, needs no key handling,
+// and leaves the field free text, so a name not in the directory still types.
+const FIDEVIA_EMAIL=/@fidevia\.com$/i;
+async function loadFideviaPeople(){
+  try{
+    if(!CD_PICK.length){ const d=await proxyCall('allContacts',{},{quiet:true}); CD_PICK=d.contacts||[]; }
+  }catch(e){ return; }
+  const dl=document.getElementById('fidevia-people'); if(!dl) return;
+  const names=CD_PICK
+    .filter(c=>FIDEVIA_EMAIL.test(String(c.email||'').trim()))
+    .map(c=>String(c.name||'').trim())
+    .filter(Boolean)
+    .filter((v,i,a)=>a.indexOf(v)===i)
+    .sort((a,b)=>a.localeCompare(b));
+  dl.innerHTML=names.map(nm=>'<option value="'+esc(nm)+'"></option>').join('');
+}
 async function cdPickLoad(){
   const box=document.getElementById('f-dirresults'); const inp=document.getElementById('f-dirsearch');
   if(inp) inp.value=''; if(box){ box.style.display='none'; box.innerHTML=''; }
