@@ -3445,6 +3445,34 @@ async function ensureModuleFolder(key){
   if(id) currentProject.folders[key]=id;
   return id;
 }
+// ── ONE-OFF: names that the old guessed split may have got wrong ──────────
+// Before given and family name were edited separately, saving a directory row
+// re-derived the split as "first word given, remainder family". That is right
+// for most people and wrong for a compound given name. The damage is invisible
+// because the directory rejoins the two fields for display, so this lists the
+// records where the split is worth a human glance.
+//
+//   checkNames()      list anything with a multi-word half
+async function checkNames(){
+  if(!IS_ADMIN || viewingAsExternal()){ console.warn('Fidevia administrators only.'); return; }
+  let list=CONTACT_DIR;
+  if(!list || !list.length){
+    try{ const d=await proxyCall('allContacts',{}); list=CONTACT_DIR=d.contacts||[]; }
+    catch(e){ console.warn('Could not read the directory:', e.message); return; }
+  }
+  const multi=w=>String(w||'').trim().split(/\s+/).filter(Boolean).length>1;
+  const susp=list
+    .filter(c=>multi(c.first)||multi(c.last))
+    .map(c=>({ name:c.name, 'given name':c.first||'', 'family name':c.last||'', email:c.email }));
+  console.log('%cName split check \u2014 '+list.length+' contacts', 'font-weight:700');
+  if(!susp.length){ console.log('Every name is a single word either side. Nothing the old split could have got wrong.'); return 0; }
+  console.table(susp);
+  console.log('%cThese are only candidates, not errors \u2014 a multi-word surname is usually correct.\n'
+    +'Read down the two columns; fix any that are wrong by unlocking the directory and editing the fields directly.',
+    'color:#8a8550');
+  return susp.length;
+}
+
 // ── ONE-OFF: bring an older project up to the current module set ──────────
 // A project created before a module existed has no Box folder for it, so that
 // tab has nothing to open. Reports by default; pass {apply:true} to create.
