@@ -322,6 +322,13 @@
   /* Only the columns that genuinely must stay on one line. Applying this to
      every cell stopped wide tables from ever shrinking. */
   .cd-card td.nw, .cd-card th.nw{white-space:nowrap;}
+  .cd-addl{display:flex;flex-direction:column;gap:5px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.4px;color:var(--muted);font-weight:600;}
+  .cd-addl input{border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;
+    font-family:inherit;background:var(--white);color:var(--ink);text-transform:none;letter-spacing:0;font-weight:400;}
+  .cd-pend{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#F3EFE0;color:#7A6B2E;
+    border:1px solid #E4DCC2;vertical-align:middle;}
   .cd-card td.cd-email{max-width:24ch; overflow:hidden; text-overflow:ellipsis;}
   /* Notification toggles: three narrow columns that only need to fit Yes/No. */
   .cd-card th.notify-col, .cd-card td.notify-col{width:58px; text-align:center; padding-left:6px; padding-right:6px;}
@@ -800,6 +807,22 @@
     </div>
     <div id="cd-pane-directory">
     <div id="cd-lockbar" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:18px;"></div>
+    <div id="cd-addform" style="display:none;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+      <div style="font-weight:700;color:var(--olive-700);margin-bottom:4px;">New contact</div>
+      <p class="form-desc" style="margin:0 0 14px;max-width:620px;">For someone who does not have a dashboard account yet. They will show in the directory straight away and can be added to projects. When they sign up with this email their account picks these details up.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
+        <label class="cd-addl">Name<input id="cdn-name" class="cd-inp" placeholder="Jane Okafor"></label>
+        <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com"></label>
+        <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Summit Builders"></label>
+        <label class="cd-addl">Role<input id="cdn-role" class="cd-inp" placeholder="Project Engineer"></label>
+        <label class="cd-addl">Phone<input id="cdn-phone" class="cd-inp" onblur="this.value=fmtPhone(this.value)" placeholder="(717) 555-0100"></label>
+      </div>
+      <div id="cdn-error" style="display:none;color:var(--danger);font-size:13px;margin-top:12px;"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn-add" id="cdn-save" onclick="cdAddContact(event)">Add to directory</button>
+        <button class="btn-secondary" onclick="cdToggleAdd(false)" style="padding:9px 15px;">Cancel</button>
+      </div>
+    </div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;">
       <span class="cd-search-wrap">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -4413,7 +4436,9 @@ function renderCdLockBar(){
   const el=document.getElementById('cd-lockbar'); if(!el) return;
   const lockSVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   const openSVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
-  if(CD_UNLOCKED){ el.innerHTML='<span style="display:inline-flex;align-items:center;color:var(--olive-700);font-weight:600;font-size:13px;">'+openSVG+'Editing unlocked</span> <button class="btn-secondary" style="padding:6px 13px;margin-left:10px;" onclick="lockContactDir()">Lock</button>'; }
+  if(CD_UNLOCKED){ el.innerHTML='<span style="display:inline-flex;align-items:center;color:var(--olive-700);font-weight:600;font-size:13px;">'+openSVG+'Editing unlocked</span>'
+    +' <button class="btn-add" style="padding:6px 13px;margin-left:10px;" onclick="cdToggleAdd(true)">+ Add Contact</button>'
+    +' <button class="btn-secondary" style="padding:6px 13px;margin-left:8px;" onclick="lockContactDir()">Lock</button>'; }
   else{ el.innerHTML='<span style="display:inline-flex;align-items:center;color:var(--muted);font-size:13px;">'+lockSVG+'Locked.</span> <input type="password" id="cd-pw" autocomplete="off" placeholder="Password to edit" style="width:190px;margin:0 8px;padding:8px 11px;" onkeydown="if(event.key===\'Enter\')unlockContactDir()"> <button class="btn-secondary" style="padding:8px 15px;" onclick="unlockContactDir()">Unlock</button> <span id="cd-lock-msg" style="color:var(--danger);font-size:12px;margin-left:8px;"></span>'; }
 }
 async function unlockContactDir(){
@@ -4421,7 +4446,52 @@ async function unlockContactDir(){
   try{ await proxyCall('adminPanelUnlock',{password:pw}); CD_UNLOCKED=true; CD_PW=pw; document.body.classList.add('cd-unlocked'); renderCdLockBar(); renderContactDir(); }
   catch(e){ const m=document.getElementById('cd-lock-msg'); if(m) m.textContent='Incorrect password.'; }
 }
-function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; document.body.classList.remove('cd-unlocked'); renderCdLockBar(); renderContactDir(); }
+function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; document.body.classList.remove('cd-unlocked'); cdToggleAdd(false); renderCdLockBar(); renderContactDir(); }
+
+// ── Adding someone who has no account yet ──────────────────────────────────
+// The directory is built from profiles, and a profile only existed once the
+// person signed up — so anyone Fidevia knew about but who had not yet joined
+// was invisible here and could not be put on a project. This writes a
+// placeholder profile that their real account absorbs on first sign-in.
+function cdToggleAdd(show){
+  const box=document.getElementById('cd-addform'); if(!box) return;
+  box.style.display = show ? 'block' : 'none';
+  const err=document.getElementById('cdn-error'); if(err) err.style.display='none';
+  if(show){
+    ['name','email','company','role','phone'].forEach(f=>{ const el=document.getElementById('cdn-'+f); if(el) el.value=''; });
+    const n=document.getElementById('cdn-name'); if(n) n.focus();
+    box.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+}
+async function cdAddContact(ev){
+  const err=document.getElementById('cdn-error');
+  const val=f=>String((document.getElementById('cdn-'+f)||{}).value||'').trim();
+  const fail=m=>{ if(err){ err.textContent=m; err.style.display='block'; } };
+  if(err) err.style.display='none';
+  const name=val('name'), email=val('email').toLowerCase();
+  if(!name) return fail('A name is required.');
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Enter a valid email address.');
+  // Checked here as well as on the server so the answer is instant and names
+  // the person already holding the address.
+  const clash=CONTACT_DIR.find(c=>String(c.email||'').trim().toLowerCase()===email);
+  if(clash) return fail(esc(clash.name)+' is already in the directory with that email.');
+  await withBusy(ev,'Adding…', async()=>{
+    try{
+      await proxyCall('addContact',{ password:CD_PW, name, email,
+        company:val('company'), role:val('role'), phone:fmtPhone(val('phone')) });
+    }catch(e){ fail(e.message); throw e; }
+    cdToggleAdd(false);
+    const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir();
+  }).catch(()=>{});
+}
+async function cdRemoveContact(idx, ev){
+  const c=CONTACT_DIR[idx]; if(!c) return;
+  if(!c.pending){ alert('This person has an account, so removing them here would not remove their sign-in. Revoke their project access instead.'); return; }
+  await withBusy(ev,'Removing…', async()=>{
+    await proxyCall('deleteContact',{ password:CD_PW, sub:c.sub });
+    const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir();
+  }, 'Remove '+(c.name||c.email)+' from the directory? They have no account, so nothing else is affected.').catch(e=>alert('Could not remove: '+e.message));
+}
 async function exportContactsNow(){
   const btn=document.getElementById('btn-cd-export'); const orig=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Exporting…'; }
   try{ const d=await proxyCall('exportContacts',{}); alert('Saved '+(d.count||0)+' contacts to Box as '+(d.file||'a snapshot')+'.'); }
@@ -4478,14 +4548,20 @@ function renderContactDir(){
     // change how they log in — it would only break the link between the two.
     return '<tr class="cd-row" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
       +(CD_UNLOCKED?fld(idx,'name',c.name,150):esc(c.name))
+      +(c.pending?'<span class="cd-pend" title="Added by Fidevia. No dashboard account yet — this record merges into their account when they sign up with this email.">No account</span>':'')
       +'<span class="cd-open" onclick="event.stopPropagation();openPerson('+idx+')" title="View projects and access">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
       +'<td class="cd-email" title="'+esc(c.email||'')+'">'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'
-      +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td></tr>'; };
+      +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td>'
+      +(CD_UNLOCKED?'<td style="white-space:nowrap;text-align:right;">'
+          +(c.pending?'<button class="btn-secondary" style="padding:5px 11px;font-size:12px;" onclick="event.stopPropagation();cdRemoveContact('+idx+',event)">Remove</button>':'<span style="color:var(--muted)">—</span>')
+        +'</td>':'')+'</tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
-  el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th></tr></thead><tbody>'
-    +letters.map(L=>'<tr class="cd-band"><td colspan="5"><span class="cdb-key"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'</span><span class="cdb-n">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
+  const NCOL = CD_UNLOCKED ? 6 : 5;
+  el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th>'
+    +(CD_UNLOCKED?'<th class="nw" style="text-align:right;">Actions</th>':'')+'</tr></thead><tbody>'
+    +letters.map(L=>'<tr class="cd-band"><td colspan="'+NCOL+'"><span class="cdb-key"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'</span><span class="cdb-n">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table></div>';
 }
 // Edits are held until Save, so a mistyped field can be abandoned and several
@@ -6296,8 +6372,18 @@ async function saveProfile(){
       if(r.ok){ const d=await r.json(); if(d.profile){ localProf=d.profile; localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(d.profile)); } }
     }catch(e){}
     if(!meta.onboarded && !(localProf&&localProf.onboarded)){
-      if(user.given_name){ const el=document.getElementById('prof-first'); if(el) el.value=user.given_name; }
-      if(user.family_name){ const el=document.getElementById('prof-last'); if(el) el.value=user.family_name; }
+      // If Fidevia added this person to the directory before they signed up,
+      // the server has just handed that record back under their real account.
+      // Prefer it over Auth0's guess at the name, and carry the company and
+      // role across so they are confirming details rather than retyping them.
+      const set=(id,v)=>{ const el=document.getElementById(id); if(el && v) el.value=v; };
+      set('prof-first', (localProf&&localProf.first_name) || user.given_name);
+      set('prof-last',  (localProf&&localProf.last_name)  || user.family_name);
+      if(localProf){
+        set('prof-company', localProf.company);
+        set('prof-title',   localProf.title);
+        set('prof-phone',   fmtPhone(localProf.phone||''));
+      }
       const em=document.getElementById('prof-email'); if(em) em.value=user.email||'';
       showScreen('screen-profile'); return;
     }

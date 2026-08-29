@@ -20,7 +20,25 @@ export default async (req) => {
   const store = getStore('profiles');
 
   if (req.method === 'GET') {
-    const profile = await store.get(sub, { type: 'json' });
+    let profile = await store.get(sub, { type: 'json' });
+    // First sign-in: if Fidevia added this person to the directory before they
+    // had an account, adopt that record under their real sub. Without this the
+    // placeholder would linger and the directory would show them twice.
+    if (!profile) {
+      const em = String(userinfo.email || '').trim().toLowerCase();
+      if (em) {
+        const key = 'pending|' + em;
+        const placeholder = await store.get(key, { type: 'json' });
+        if (placeholder) {
+          delete placeholder.pending;
+          placeholder.sub = sub;
+          placeholder.email = userinfo.email || em;
+          await store.setJSON(sub, placeholder);
+          await store.delete(key);
+          profile = placeholder;
+        }
+      }
+    }
     return json({ profile: profile || null });
   }
 

@@ -219,6 +219,10 @@ function companyComplete(rec){
 }
 async function getBlobAdmins(){ try{ const d=await adminListStore().get('emails',{type:'json'}); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
 const PANEL_PW = () => process.env.ADMIN_PANEL_PASSWORD || '';
+// Reserved key prefix for a directory entry that has no Auth0 account behind
+// it yet. Never equals a real token sub, so such a record can never satisfy an
+// identity check; access is keyed on email in access-grants and is unaffected.
+const PENDING_PREFIX = 'pending|';
 async function getProfileBySub(sub){ try{ return await getStore('profiles').get(sub, { type:'json' }); }catch(e){ return null; } }
 async function addContactToProject(H, projectId, contact){
   const CH = ['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal'];
@@ -1546,7 +1550,7 @@ export default async (req) => {
       try {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
-          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '' }); } catch (e) {}
+          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) }); } catch (e) {}
         }
       } catch (e) {}
       out.sort((a, b) => a.name.localeCompare(b.name));
@@ -1573,6 +1577,60 @@ export default async (req) => {
       await store.setJSON(sub, pr);
       return json({ ok: true });
     }
+    // Add someone to the directory before they have an account. Stored in the
+    // same profiles bucket under a reserved key so there is still one directory
+    // and one place to edit it; profile.mjs adopts the record, under the real
+    // Auth0 sub, the first time that email signs in.
+    if (op === 'addContact') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'A valid email address is required.' }, 400);
+      const store = getStore('profiles');
+      // Refuse a duplicate. The email is the identity, so two records for one
+      // address would show twice in the directory and race on adoption.
+      try {
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try {
+            const pr = await store.get(b.key, { type: 'json' });
+            if (pr && String(pr.email || '').trim().toLowerCase() === email) {
+              return json({ error: String(b.key).startsWith(PENDING_PREFIX)
+                ? 'That email is already in the directory.'
+                : 'That email already has an account and is in the directory.' }, 409);
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const rec = Object.assign({
+        phone: String(body.phone || '').slice(0, 60),
+        company: String(body.company || '').slice(0, 200),
+        title: String(body.role || '').slice(0, 200),
+        involvement: '',
+        email,
+        // Deliberately not onboarded: when this person signs up the profile
+        // screen still opens, pre-filled with what was typed here, so they
+        // confirm their own details rather than inheriting them silently.
+        onboarded: false,
+        pending: true,
+        added_by: who.email || '',
+        added_at: new Date().toISOString()
+      }, splitName(body.name || ''));
+      await store.setJSON(PENDING_PREFIX + email, rec);
+      return json({ ok: true, sub: PENDING_PREFIX + email });
+    }
+    // Only placeholders can be removed here. Deleting a real account is a
+    // larger action — it has grants and a sign-in behind it — and is not this.
+    if (op === 'deleteContact') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      const sub = String(body.sub || '');
+      if (!sub.startsWith(PENDING_PREFIX)) return json({ error: 'Only contacts without an account can be removed here.' }, 400);
+      await getStore('profiles').delete(sub);
+      return json({ ok: true });
+    }
     if (op === 'accountEmails') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');
@@ -1585,6 +1643,10 @@ export default async (req) => {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
           try {
+            // A placeholder is a directory entry Fidevia typed, not an account.
+            // Counting it here would tick the Account column and hide the Invite
+            // button for someone who still cannot sign in.
+            if (String(b.key).startsWith(PENDING_PREFIX)) continue;
             const pr = await store.get(b.key, { type: 'json' });
             if (pr && pr.email) {
               const em = String(pr.email).trim().toLowerCase();
