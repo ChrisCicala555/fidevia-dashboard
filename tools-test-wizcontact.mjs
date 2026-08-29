@@ -1,65 +1,102 @@
-// Wizard contact rows recognise someone already in the directory.
+// Directory suggestions on the wizard contact rows and the Onsite CM fields.
 import fs from 'fs';
 const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
-ok(/<datalist id="dir-names"><\/datalist>/.test(html), 'the name list exists');
-ok(/<datalist id="dir-emails"><\/datalist>/.test(html), 'the email list exists');
-ok(/list="dir-names" class="ct-name"/.test(html), 'the name field offers directory names');
-ok(/list="dir-emails" type="email" class="ct-email"/.test(html), 'the email field offers directory emails');
-ok(/wizContactLookup\(this,\\'name\\'\)/.test(html), 'typing a name triggers the lookup');
-ok(/wizContactLookup\(this,\\'email\\'\)/.test(html), 'typing an email triggers it too');
-ok(/function wizContactLookup/.test(html), 'the lookup exists');
+// The datalist approach is gone — Chrome put its own autofill on those fields.
+// Other fields in the app use a datalist and are left alone; what matters is
+// that the three added for directory suggestions are gone.
+ok(!/id="dir-names"/.test(html) && !/id="dir-emails"/.test(html) && !/id="fidevia-people"/.test(html),
+   'the three suggestion datalists are gone');
+ok(!/list="dir-names"/.test(html) && !/list="fidevia-people"/.test(html), 'no list= attributes remain');
+ok(!/function wizContactLookup/.test(html), 'the datalist-era lookup is gone');
 
-const fn = html.split('function wizContactLookup')[1].split('function wizAddContractor')[0];
-ok(/if\(v\.length<2\) return;/.test(fn), 'it does not fire on a single character');
-ok(/!f\.value\.trim\(\)/.test(fn), 'only blank fields are written');
-ok(/all\.length===1 \? all\[0\] : null/.test(fn), 'an ambiguous name fills nothing rather than guessing');
-ok(/if\(field!=='name'\)  put\('\.ct-name'/.test(fn), 'looking up by email fills the name');
-ok(/if\(field!=='email'\) put\('\.ct-email'/.test(fn), 'looking up by name fills the email');
-ok(/ct-from/.test(fn) && /Filled in from the contact directory/.test(fn),
-   'the row says where the values came from');
-ok(/Anything you had already typed was kept/.test(fn), 'and that nothing was overwritten');
-ok(/fmtPhone\(hit\.phone/.test(fn), 'the phone is formatted on the way in');
+ok(/function dirSuggest/.test(html), 'the dropdown exists');
+ok(/function dirPick/.test(html) && /function dirKey/.test(html) && /function dirClose/.test(html),
+   'pick, keyboard and close are all present');
 
-// behaviour, run for real
+// wiring
+ok(/class="ct-name" oninput="dirSuggest\(this,\\'name\\'\)"/.test(html), 'the name field is wired');
+ok(/class="ct-email" oninput="dirSuggest\(this,\\'email\\'\)"/.test(html), 'the email field is wired');
+ok(/id="np-cm"[^>]*dirSuggest\(this,'name',\{fideviaOnly:true\}\)/.test(html), 'wizard Onsite CM is Fidevia-only');
+ok(/id="ps-cm"[^>]*dirSuggest\(this,'name',\{fideviaOnly:true\}\)/.test(html), 'settings Onsite CM is Fidevia-only');
+ok((html.match(/onkeydown="dirKey\(event,this\)"/g)||[]).length===4, 'all four fields take the keyboard');
+ok((html.match(/onblur="setTimeout\(dirClose,120\)"/g)||[]).length===4,
+   'blur closes on a delay so a click on the list still lands');
+ok(/mousedown/.test(html.split('function dirSuggest')[1].split('function dirPaint')[0]),
+   'selection is on mousedown, which beats blur');
+
+const m = html.split('function dirMatches')[1].split('function dirSuggest')[0];
+ok(/s\.length<2/.test(m), 'one character does not open the list');
+ok(/opts&&opts\.fideviaOnly/.test(m), 'the Fidevia-only filter is honoured');
+ok(/\.slice\(0,8\)/.test(m), 'the list is capped');
+ok(/starts\.concat\(contains\)/.test(m), 'prefix matches rank above substring matches');
+
+const pk = html.split('function dirPick')[1].split('window.addEventListener')[0];
+ok(/!f\.value\.trim\(\)/.test(pk), 'only blank fields are written');
+ok(/if\(!row\)\{/.test(pk), 'a standalone field takes just the name');
+ok(/Filled in from the contact directory/.test(pk), 'the row says where the values came from');
+
+// matching behaviour, run for real
 {
-  const CD=[
-    {name:'Andre Martin', email:'amartin@fidevia.com', company:'Fidevia', role:'Onsite Construction Manager', phone:'7175550101'},
+  const CD_PICK=[
+    {name:'Angie Luvsan', email:'aluvsan@fidevia.com', company:'Fidevia', role:'Director of Finance', phone:'7173140606'},
+    {name:'Andre Martin', email:'amartin@fidevia.com', company:'Fidevia', role:'Onsite Construction Manager', phone:''},
     {name:'Aisha Rahman', email:'arahman@keystone-demo.test', company:'Keystone Engineering', role:'MEP Engineer', phone:''},
-    {name:'Chris Celmer', email:'a@x.test', company:'Summit Builders', role:'PM', phone:''},
-    {name:'Chris Celmer', email:'b@y.test', company:'Other Co', role:'Super', phone:''}
+    {name:'Chris Celmer', email:'consultcjc@gmail.com', company:'Summit Builders', role:'Tester', phone:''}
   ];
-  const byEmail=v=>CD.find(c=>c.email.toLowerCase()===v.toLowerCase())||null;
-  const byName=v=>{ const all=CD.filter(c=>c.name.toLowerCase()===v.toLowerCase()); return all.length===1?all[0]:null; };
-
-  ok(byName('Andre Martin').company==='Fidevia', 'a unique name resolves');
-  ok(byName('andre martin').company==='Fidevia', 'matching ignores case');
-  ok(byName('Chris Celmer')===null, 'a shared name resolves to nothing (got '+JSON.stringify(byName('Chris Celmer'))+')');
-  ok(byEmail('b@y.test').company==='Other Co', 'email disambiguates where the name cannot');
-  ok(byName('Andre')===null, 'a partial name does not resolve — only an exact pick does');
-  ok(byEmail('arahman@keystone-demo.test').role==='MEP Engineer', 'a non-Fidevia contact resolves too');
-
-  // blank-only writes
-  const put=(cur,val)=> (!String(cur||'').trim() && val) ? val : cur;
-  ok(put('', 'Fidevia')==='Fidevia', 'a blank field is filled');
-  ok(put('School District', 'Fidevia')==='School District', 'a typed value is kept');
-  ok(put('   ', 'Fidevia')==='Fidevia', 'whitespace counts as blank');
-  ok(put('', '')==='', 'a blank source leaves the field blank rather than writing empty');
+  const FID=/@fidevia\.com$/i;
+  const match=(q,opts)=>{
+    const s=q.trim().toLowerCase(); if(s.length<2) return [];
+    let pool=CD_PICK;
+    if(opts&&opts.fideviaOnly) pool=pool.filter(c=>FID.test(String(c.email||'').trim()));
+    const hit=c=>((c.name||'')+' '+(c.company||'')+' '+(c.email||'')).toLowerCase().includes(s);
+    const starts=[], contains=[];
+    pool.filter(hit).forEach(c=>{ (String(c.name||'').toLowerCase().startsWith(s)?starts:contains).push(c); });
+    return starts.concat(contains).slice(0,8);
+  };
+  // the exact thing that failed in the screenshot
+  ok(match('Ang').length===1 && match('Ang')[0].name==='Angie Luvsan',
+     '"Ang" finds Angie Luvsan (got '+JSON.stringify(match('Ang').map(c=>c.name))+')');
+  ok(match('Chri')[0].name==='Chris Celmer', '"Chri" finds Chris Celmer');
+  ok(match('A').length===0, 'a single letter returns nothing');
+  ok(match('summit')[0].name==='Chris Celmer', 'company text matches too');
+  ok(match('keystone-demo')[0].name==='Aisha Rahman', 'email text matches too');
+  ok(match('a', {fideviaOnly:true}).length===0, 'the Fidevia filter still respects the minimum length');
+  ok(match('ar', {fideviaOnly:true}).every(c=>FID.test(c.email)),
+     'the Onsite CM list never offers an outside contact');
+  ok(match('ar').some(c=>c.name==='Aisha Rahman'), 'without the filter, outside contacts are offered');
+  // ranking
+  {
+    const r=match('an').map(c=>c.name);
+    ok(r[0]==='Andre Martin' || r[0]==='Angie Luvsan', 'a name beginning with the text ranks first (got '+r.join(', ')+')');
+  }
+  ok(match('  ').length===0, 'whitespace alone opens nothing');
 }
 
-// the list is built from the whole directory, not just Fidevia
+// ── the Onsite CM fields, folded in from the datalist-era test ──
+ok(!/placeholder="e\.g\. Andre Martin"/.test(html), 'the hard-coded example name is gone');
+ok(!/<select[^>]*np-cm/.test(html), 'the wizard Onsite CM is still an input, not a dropdown');
+ok(/const FIDEVIA_EMAIL=\/@fidevia\\\.com\$\/i/.test(html), 'Fidevia is recognised by email domain');
 {
-  const lf = html.split('async function loadFideviaPeople')[1].split('function openNewProject')[0];
-  ok(/dn\.innerHTML=CD_PICK\.map/.test(lf), 'the name list covers everyone');
-  ok(/de\.innerHTML=CD_PICK\.map/.test(lf), 'the email list covers everyone');
-  ok(/FIDEVIA_EMAIL\.test/.test(lf), 'the Onsite CM list is still filtered to Fidevia');
-  ok(lf.indexOf('dn.innerHTML') < lf.indexOf("const dl=document.getElementById('fidevia-people')"),
-     'the shared lists are built before the early return that guards the Fidevia one');
+  const lf = html.split('async function loadFideviaPeople')[1].split('async function cdPickLoad')[0];
+  ok(/if\(!CD_PICK\.length\)/.test(lf), 'the directory is fetched once and reused');
+  ok(/catch\(e\)\{ CD_PICK=\[\]; \}/.test(lf), 'a failed fetch leaves an empty list rather than throwing');
+  ok(!/company/i.test(lf), 'the free-text company field is not used to decide who is Fidevia');
 }
-ok(/class="ct-name"/.test(html) && !/<select[^>]*ct-name/.test(html),
-   'the name field is still free text for someone not in the directory');
+{
+  const ds = html.split('async function dirSuggest')[1].split('function dirPaint')[0];
+  ok(/if\(!CD_PICK\.length\)\{ try\{ await loadFideviaPeople/.test(ds),
+     'typing before the directory has loaded fetches it rather than showing nothing');
+  ok(/if\(document\.activeElement!==el\) return;/.test(ds),
+     'a list is not opened under a field the user has already left');
+}
+ok(/wizFillJobNumber\(\); loadFideviaPeople\(\);/.test(html), 'the directory is warmed when the wizard opens');
+{
+  const fps = html.split('function fillProjectSettings')[1].slice(0, 900);
+  ok(/loadFideviaPeople\(\)/.test(fps), 'and when the settings pane opens');
+}
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-wizcontact.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

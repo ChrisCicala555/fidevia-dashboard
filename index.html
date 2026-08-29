@@ -693,7 +693,7 @@
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
       <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
-      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" list="fidevia-people" id="np-cm" placeholder="Start typing a name"></div>
+      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
       <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
       <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
     </div>
@@ -784,9 +784,6 @@
 </div>
 
 <!-- ══ CONTACT DIRECTORY ══ -->
-<datalist id="fidevia-people"></datalist>
-<datalist id="dir-names"></datalist>
-<datalist id="dir-emails"></datalist>
 <div id="screen-contactdir" class="screen">
   <div class="cd-page">
     <div class="cd-page-head">
@@ -1266,7 +1263,7 @@
             </div>
             <div class="field-row">
               <div class="field" style="flex:1;"><label>Contract date</label><input type="date" id="ps-contractdate"><p class="file-hint" style="margin-top:3px;">The date of the agreement. Printed on change orders.</p></div>
-              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off" list="fidevia-people" placeholder="Start typing a name"></div>
+              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
             </div>
             <div class="field"><label>Street address</label><input id="ps-line1" autocomplete="off"></div>
             <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="ps-line2" autocomplete="off"></div>
@@ -2382,8 +2379,8 @@ function wizAddContact(){
   const div=document.createElement('div');
   div.className='wiz-contact-row';
   div.style='border:1px solid var(--khaki-300);border-radius:6px;padding:10px;margin-bottom:8px;position:relative;';
-  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" list="dir-names" class="ct-name" oninput="wizContactLookup(this,\'name\')" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
-    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" list="dir-emails" type="email" class="ct-email" oninput="wizContactLookup(this,\'email\')"></div></div>'
+  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
+    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" type="email" class="ct-email" oninput="dirSuggest(this,\'email\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
     +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">&times;</button>':'');
   wrap.appendChild(div);
@@ -2392,31 +2389,96 @@ function wizAddContact(){
 // rest of the row. Only blank fields are written: anything already typed is
 // the more recent intent and is left alone. Filling on an ambiguous name would
 // be a guess, so a shared name fills nothing.
-function wizContactLookup(el, field){
-  const row=el.closest('.wiz-contact-row'); if(!row) return;
-  const v=String(el.value||'').trim(); if(v.length<2) return;
-  let hit=null;
-  if(field==='email'){
-    const e=v.toLowerCase();
-    hit=CD_PICK.find(c=>String(c.email||'').trim().toLowerCase()===e) || null;
-  }else{
-    const nm=v.toLowerCase();
-    const all=CD_PICK.filter(c=>String(c.name||'').trim().toLowerCase()===nm);
-    hit = all.length===1 ? all[0] : null;
+// ── Directory suggestions ────────────────────────────────────────────────
+// This was a datalist first and nothing appeared when typing. Rather than keep
+// guessing at why — it depends on the list being populated before the field is
+// used, which is hard to verify from outside the browser — the list is built
+// here explicitly. It also carries more than a bare name: the company is shown
+// underneath, so two people with similar names can be told apart.
+let DIR_SUG={ el:null, box:null, items:[], i:-1, field:'', opts:null };
+function dirClose(){
+  if(DIR_SUG.box){ DIR_SUG.box.remove(); }
+  DIR_SUG={ el:null, box:null, items:[], i:-1, field:'', opts:null };
+}
+function dirMatches(q, opts){
+  const s=String(q||'').trim().toLowerCase(); if(s.length<2) return [];
+  let pool=CD_PICK||[];
+  if(opts&&opts.fideviaOnly) pool=pool.filter(c=>FIDEVIA_EMAIL.test(String(c.email||'').trim()));
+  const hit=c=>((c.name||'')+' '+(c.company||'')+' '+(c.email||'')).toLowerCase().includes(s);
+  // A name beginning with what was typed is the better match, so those lead.
+  const starts=[], contains=[];
+  pool.filter(hit).forEach(c=>{
+    (String(c.name||'').toLowerCase().startsWith(s)?starts:contains).push(c);
+  });
+  return starts.concat(contains).slice(0,8);
+}
+async function dirSuggest(el, field, opts){
+  // The directory may not have arrived yet if the wizard was opened quickly.
+  if(!CD_PICK.length){ try{ await loadFideviaPeople(); }catch(e){} }
+  dirClose();
+  if(document.activeElement!==el) return;
+  const list=dirMatches(el.value||'', opts);
+  if(!list.length) return;
+  const box=document.createElement('div');
+  box.className='dir-sug';
+  const r=el.getBoundingClientRect();
+  box.style.cssText='position:absolute;z-index:9999;background:var(--white);border:1px solid var(--border);'
+    +'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.13);overflow:hidden;'
+    +'left:'+(r.left+window.scrollX)+'px;top:'+(r.bottom+window.scrollY+4)+'px;width:'+r.width+'px;';
+  box.innerHTML=list.map((c,i)=>
+    '<div class="dir-sug-i" data-i="'+i+'" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #F1F0E8;">'
+    +'<div style="font-weight:600;color:var(--ink);font-size:14px;">'+esc(c.name||c.email)+'</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'
+      +esc([c.company, c.role].filter(Boolean).join(' \u00b7 ') || c.email)+'</div>'
+    +'</div>').join('');
+  document.body.appendChild(box);
+  DIR_SUG={ el, box, items:list, i:-1, field, opts };
+  [...box.querySelectorAll('.dir-sug-i')].forEach(it=>{
+    // mousedown, not click: blur fires first and would take the list away.
+    it.addEventListener('mousedown', e=>{ e.preventDefault(); dirPick(parseInt(it.dataset.i,10)); });
+    it.addEventListener('mouseenter', ()=>{ DIR_SUG.i=parseInt(it.dataset.i,10); dirPaint(); });
+  });
+}
+function dirPaint(){
+  if(!DIR_SUG.box) return;
+  [...DIR_SUG.box.querySelectorAll('.dir-sug-i')].forEach((it,i)=>{
+    it.style.background = (i===DIR_SUG.i) ? '#F3F1E7' : 'transparent';
+  });
+}
+function dirKey(e, el){
+  if(!DIR_SUG.box || DIR_SUG.el!==el) return;
+  const n=DIR_SUG.items.length; if(!n) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); DIR_SUG.i=(DIR_SUG.i+1)%n; dirPaint(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); DIR_SUG.i=(DIR_SUG.i-1+n)%n; dirPaint(); }
+  else if(e.key==='Enter'){ if(DIR_SUG.i>=0){ e.preventDefault(); dirPick(DIR_SUG.i); } }
+  else if(e.key==='Escape'){ dirClose(); }
+}
+function dirPick(i){
+  const c=DIR_SUG.items[i], el=DIR_SUG.el, field=DIR_SUG.field;
+  if(!c||!el) return;
+  const row=el.closest && el.closest('.wiz-contact-row');
+  if(!row){
+    // A standalone field, such as Onsite CM: it wants the name and nothing else.
+    el.value=c.name||''; dirClose(); return;
   }
-  if(!hit) return;
+  // Only blank fields are written. Anything already typed is the more recent
+  // intent and is left alone.
   const put=(sel,val)=>{ const f=row.querySelector(sel); if(f && !f.value.trim() && val) f.value=val; };
-  if(field!=='name')  put('.ct-name', hit.name);
-  if(field!=='email') put('.ct-email', hit.email);
-  put('.ct-company', hit.company);
-  put('.ct-role', hit.role);
-  put('.ct-phone', fmtPhone(hit.phone||''));
-  // Say where it came from, so a filled-in row does not look like magic.
+  el.value = (field==='email') ? (c.email||'') : (c.name||'');
+  put('.ct-name', c.name); put('.ct-email', c.email);
+  put('.ct-company', c.company); put('.ct-role', c.role);
+  put('.ct-phone', fmtPhone(c.phone||''));
   let note=row.querySelector('.ct-from');
   if(!note){ note=document.createElement('div'); note.className='ct-from';
     note.style='font-size:12px;color:var(--muted);margin-top:7px;'; row.appendChild(note); }
   note.textContent='Filled in from the contact directory. Anything you had already typed was kept.';
+  dirClose();
 }
+// The list is positioned against the viewport, so it has to go when the page
+// moves underneath it.
+window.addEventListener('scroll', ()=>{ if(DIR_SUG.box) dirClose(); }, true);
+window.addEventListener('resize', ()=>{ if(DIR_SUG.box) dirClose(); });
+
 function wizAddContractor(){
   const wrap=document.getElementById('np-contractors');
   const idx=wrap.children.length;
@@ -7491,22 +7553,7 @@ const FIDEVIA_EMAIL=/@fidevia\.com$/i;
 async function loadFideviaPeople(){
   try{
     if(!CD_PICK.length){ const d=await proxyCall('allContacts',{},{quiet:true}); CD_PICK=d.contacts||[]; }
-  }catch(e){ return; }
-  const opt=v=>'<option value="'+esc(v)+'"></option>';
-  const dn=document.getElementById('dir-names');
-  if(dn) dn.innerHTML=CD_PICK.map(c=>String(c.name||'').trim()).filter(Boolean)
-    .filter((v,i,a)=>a.indexOf(v)===i).sort((a,b)=>a.localeCompare(b)).map(opt).join('');
-  const de=document.getElementById('dir-emails');
-  if(de) de.innerHTML=CD_PICK.map(c=>String(c.email||'').trim()).filter(Boolean)
-    .filter((v,i,a)=>a.indexOf(v)===i).sort((a,b)=>a.localeCompare(b)).map(opt).join('');
-  const dl=document.getElementById('fidevia-people'); if(!dl) return;
-  const names=CD_PICK
-    .filter(c=>FIDEVIA_EMAIL.test(String(c.email||'').trim()))
-    .map(c=>String(c.name||'').trim())
-    .filter(Boolean)
-    .filter((v,i,a)=>a.indexOf(v)===i)
-    .sort((a,b)=>a.localeCompare(b));
-  dl.innerHTML=names.map(nm=>'<option value="'+esc(nm)+'"></option>').join('');
+  }catch(e){ CD_PICK=[]; }
 }
 async function cdPickLoad(){
   const box=document.getElementById('f-dirresults'); const inp=document.getElementById('f-dirsearch');
