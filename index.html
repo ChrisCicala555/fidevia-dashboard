@@ -4546,9 +4546,16 @@ function renderContactDir(){
   if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">'+(q?'No contacts match your search.':'No accounts yet.')+'</div>'; return; }
   const mode=((document.getElementById('cd-group')||{}).value)||'name';
   const groups={};
+  // Grouped and sorted on the family name, the way a directory is read. Falls
+  // back to whatever there is when someone has only one name recorded.
+  const sortKey=c=>((c.last||'').trim() || (c.first||'').trim() || (c.name||'').trim());
+  const byName=(x,y)=>{
+    const c=sortKey(x).localeCompare(sortKey(y));
+    return c || String(x.first||x.name||'').localeCompare(String(y.first||y.name||''));
+  };
   list.forEach(c=>{
     let key;
-    if(mode==='name'){ key=(c.name||'#').trim().charAt(0).toUpperCase(); if(!/[A-Z]/.test(key)) key='#'; }
+    if(mode==='name'){ key=(sortKey(c)||'#').charAt(0).toUpperCase(); if(!/[A-Z]/.test(key)) key='#'; }
     else { key=String(c[mode]||'').trim() || '— No '+(mode==='company'?'company':'role')+' —'; }
     (groups[key]=groups[key]||[]).push(c);
   });
@@ -4558,9 +4565,7 @@ function renderContactDir(){
     if(au!==bu) return au?1:-1;
     return a.localeCompare(b);
   });
-  // Within a group, order by whatever is not the grouping field.
-  const within = mode==='name' ? 'name' : 'name';
-  letters.forEach(L=>groups[L].sort((x,y)=>String(x[within]||'').localeCompare(String(y[within]||''))));
+  letters.forEach(L=>groups[L].sort(byName));
   const cnt=document.getElementById('cd-count');
   if(cnt) cnt.textContent = list.length+' contact'+(list.length===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s');
   const fld=(idx,field,val,w)=> CD_UNLOCKED

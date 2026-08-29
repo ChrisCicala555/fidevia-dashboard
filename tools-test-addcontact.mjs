@@ -110,5 +110,34 @@ ok(/if\(field==='first'\|\|field==='last'\) c\.name=/.test(html),
 ok(/Object\.assign\(\{sub, password:CD_PW\}, CD_DIRTY\[sub\]\)/.test(html),
    'dirty fields pass through to setContactMeta unchanged, so first/last reach the server');
 
+// ── the directory reads by family name ──
+ok(/const sortKey=c=>\(\(c\.last\|\|''\)/.test(html), 'sort key is the family name');
+ok(/key=\(sortKey\(c\)\|\|'#'\)/.test(html), 'the A-Z bands are keyed on the family name');
+ok(/letters\.forEach\(L=>groups\[L\]\.sort\(byName\)\)/.test(html), 'rows within a band use the same order');
+ok(!/const within = mode==='name'/.test(html), 'the old always-first-name comparator is gone');
+
+// behaviour of the comparator, run for real
+{
+  const sortKey=c=>((c.last||'').trim() || (c.first||'').trim() || (c.name||'').trim());
+  const byName=(x,y)=>{ const c=sortKey(x).localeCompare(sortKey(y));
+    return c || String(x.first||x.name||'').localeCompare(String(y.first||y.name||'')); };
+  const people=[
+    {first:'Aisha', last:'Rahman', name:'Aisha Rahman'},
+    {first:'Andre', last:'Martin', name:'Andre Martin'},
+    {first:'Brenda',last:'Santiago',name:'Brenda Santiago'},
+    {first:'Chris', last:'Celmer', name:'Chris Celmer'},
+    {first:'Zoe',   last:'Celmer', name:'Zoe Celmer'}
+  ];
+  const got=people.slice().sort(byName).map(p=>p.name);
+  ok(got[0]==='Chris Celmer' && got[1]==='Zoe Celmer',
+     'same surname falls back to the given name (got '+got.slice(0,2).join(', ')+')');
+  ok(got.join('|')==='Chris Celmer|Zoe Celmer|Andre Martin|Aisha Rahman|Brenda Santiago',
+     'ordered by surname, not given name (got '+got.join(', ')+')');
+  ok(sortKey({first:'Jane', last:'', name:'Jane'})==='Jane',
+     'someone with no surname still sorts on what there is');
+  ok(sortKey({first:'', last:'', name:'billing@acme.test'})==='billing@acme.test',
+     'a record with no name at all falls back to the display value');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-addcontact.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
