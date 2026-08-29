@@ -326,6 +326,14 @@
     letter-spacing:.4px;color:var(--muted);font-weight:600;}
   .cd-addl input{border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;
     font-family:inherit;background:var(--white);color:var(--ink);text-transform:none;letter-spacing:0;font-weight:400;}
+  .cd-strand{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#FBEAEA;color:#8C3A3A;
+    border:1px solid #F0D2D2;vertical-align:middle;cursor:pointer;}
+  .cd-strand:hover{background:#F5DADA;}
+  .cd-diff{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
+    font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#EAF0F6;color:#3D5A73;
+    border:1px solid #D3E0EC;vertical-align:middle;cursor:pointer;}
+  .cd-diff:hover{background:#DDE8F1;}
   .cd-pend{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
     font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#F3EFE0;color:#7A6B2E;
     border:1px solid #E4DCC2;vertical-align:middle;}
@@ -811,8 +819,8 @@
       <div style="font-weight:700;color:var(--olive-700);margin-bottom:4px;">New contact</div>
       <p class="form-desc" style="margin:0 0 14px;max-width:620px;">For someone who does not have a dashboard account yet. They will show in the directory straight away and can be added to projects. When they sign up with this email their account picks these details up.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
-        <label class="cd-addl">First name<input id="cdn-first" class="cd-inp" placeholder="Jane"></label>
-        <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" placeholder="Okafor"></label>
+        <label class="cd-addl">First name<input id="cdn-first" class="cd-inp" oninput="cdNameWarned=''" placeholder="Jane"></label>
+        <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" oninput="cdNameWarned=''" placeholder="Okafor"></label>
         <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com"></label>
         <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Summit Builders"></label>
         <label class="cd-addl">Role<input id="cdn-role" class="cd-inp" placeholder="Project Engineer"></label>
@@ -4482,11 +4490,15 @@ function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; document.body.classList.
 // person signed up — so anyone Fidevia knew about but who had not yet joined
 // was invisible here and could not be put on a project. This writes a
 // placeholder profile that their real account absorbs on first sign-in.
+// Set to the name that has already been warned about, so a second press goes
+// through rather than looping on the same warning.
+let cdNameWarned='';
 function cdToggleAdd(show){
   const box=document.getElementById('cd-addform'); if(!box) return;
   box.style.display = show ? 'block' : 'none';
   const err=document.getElementById('cdn-error'); if(err) err.style.display='none';
   if(show){
+    cdNameWarned='';
     ['first','last','email','company','role','phone'].forEach(f=>{ const el=document.getElementById('cdn-'+f); if(el) el.value=''; });
     const n=document.getElementById('cdn-first'); if(n) n.focus();
     box.scrollIntoView({behavior:'smooth', block:'nearest'});
@@ -4504,6 +4516,19 @@ async function cdAddContact(ev){
   // the person already holding the address.
   const clash=CONTACT_DIR.find(c=>String(c.email||'').trim().toLowerCase()===email);
   if(clash) return fail(esc(clash.name)+' is already in the directory with that email.');
+  // A second address for one person is the mistake that strands a record:
+  // grants are keyed on email, so access given here would never reach the
+  // account they actually sign in with. Warn, but allow — two people really
+  // can share a name.
+  const full=((first+' '+last).trim()).toLowerCase();
+  const sameName=CONTACT_DIR.filter(c=>String(c.name||'').trim().toLowerCase()===full);
+  if(sameName.length && !cdNameWarned){
+    cdNameWarned=full;
+    return fail(sameName.length===1
+      ? sameName[0].name+' is already in the directory as '+sameName[0].email
+        +'. If that is the same person, edit that record instead — adding a second address would split their access. Press Add again to create them anyway.'
+      : sameName.length+' people named '+((first+' '+last).trim())+' are already in the directory. Press Add again to create another.');
+  }
   await withBusy(ev,'Adding…', async()=>{
     try{
       await proxyCall('addContact',{ password:CD_PW, first, last, email,
@@ -4512,6 +4537,54 @@ async function cdAddContact(ev){
     cdToggleAdd(false);
     const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir();
   }).catch(()=>{});
+}
+// What was entered for this person before they joined, against what they
+// chose at signup. Theirs stands — this only makes the change visible.
+async function cdShowEntered(idx, ev){
+  const c=CONTACT_DIR[idx]; if(!c||!c.was) return;
+  const LABEL={first:'First name', last:'Last name', company:'Company', role:'Role', phone:'Phone'};
+  const lines=Object.keys(c.was).map(k=>{
+    const now=(k==='phone')?fmtPhone(c[k]||''):(c[k]||'—');
+    const was=(k==='phone')?fmtPhone(c.was[k]||''):(c.was[k]||'—');
+    return '  '+LABEL[k]+':\n    entered: '+was+'\n    theirs:  '+now;
+  });
+  const who=c.enteredBy?(' by '+c.enteredBy):'';
+  const msg=(c.name||c.email)+' changed these when they created their account.\n\n'
+    +lines.join('\n\n')
+    +'\n\nTheir version is what the dashboard uses. What was entered'+who+' is shown only for comparison.'
+    +'\n\nDismiss this flag?';
+  if(!confirm(msg)) return;
+  if(!CD_UNLOCKED){ alert('Unlock editing to dismiss the flag.'); return; }
+  try{
+    await proxyCall('clearEntered',{ password:CD_PW, sub:c.sub });
+    const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir();
+  }catch(e){ alert('Could not dismiss: '+e.message); }
+}
+// Move a stranded placeholder's project access onto the account the person
+// actually signs in with, then drop the placeholder.
+async function cdMergeStranded(idx, ev){
+  const c=CONTACT_DIR[idx]; const real=c&&c._stranded;
+  if(!c||!real) return;
+  if(!CD_UNLOCKED){ alert('Unlock editing to merge these records.'); return; }
+  let plan;
+  try{ plan=await proxyCall('mergeContact',{ password:CD_PW, fromSub:c.sub, toSub:real.sub, dryRun:true }); }
+  catch(e){ alert('Could not check the merge: '+e.message); return; }
+  const moved=plan.moved||[];
+  const msg='There are two records for '+(c.name||'this person')+':\n\n'
+    +'  directory entry, no account:  '+c.email+'\n'
+    +'  the account they sign in to:  '+real.email+'\n\n'
+    +(moved.length
+        ? 'Project access on '+c.email+' is not reaching them. These would move to '+real.email+':\n\n  \u2022 '+moved.join('\n  \u2022 ')+'\n\n'
+        : 'No project access is sitting on the directory entry, so nothing needs to move.\n\n')
+    +'The directory entry is then removed. Their account and any access it already has are untouched.\n\nGo ahead?';
+  if(!confirm(msg)) return;
+  await withBusy(ev,'Merging…', async()=>{
+    const d=await proxyCall('mergeContact',{ password:CD_PW, fromSub:c.sub, toSub:real.sub });
+    const r=await proxyCall('allContacts',{}); CONTACT_DIR=r.contacts||[]; renderContactDir();
+    alert('Merged into '+d.toEmail+'.'
+      +((d.moved||[]).length?'\n\nMoved: '+d.moved.join(', '):'\n\nNo project access needed moving.')
+      +((d.filled||[]).length?'\nFilled in from the directory entry: '+d.filled.join(', '):''));
+  }).catch(e=>alert('Merge failed: '+e.message));
 }
 async function cdRemoveContact(idx, ev){
   const c=CONTACT_DIR[idx]; if(!c) return;
@@ -4548,6 +4621,12 @@ function renderContactDir(){
   const groups={};
   // Grouped and sorted on the family name, the way a directory is read. Falls
   // back to whatever there is when someone has only one name recorded.
+  // A placeholder that shares a name with a real account is almost certainly
+  // the same person under a second address. Access was granted on the
+  // placeholder's email, so they are signing in to nothing.
+  const realByName={};
+  CONTACT_DIR.forEach(c=>{ if(!c.pending){ const k=String(c.name||'').trim().toLowerCase(); if(k) (realByName[k]=realByName[k]||[]).push(c); } });
+  CONTACT_DIR.forEach(c=>{ c._stranded = c.pending ? (realByName[String(c.name||'').trim().toLowerCase()]||[])[0] : null; });
   const sortKey=c=>((c.last||'').trim() || (c.first||'').trim() || (c.name||'').trim());
   const byName=(x,y)=>{
     const c=sortKey(x).localeCompare(sortKey(y));
@@ -4585,6 +4664,8 @@ function renderContactDir(){
           ? '<span style="display:flex;gap:6px;">'+fld(idx,'first',c.first,88)+fld(idx,'last',c.last,110)+'</span>'
           : esc(c.name))
       +(c.pending?'<span class="cd-pend" title="Added by Fidevia. No dashboard account yet — this record merges into their account when they sign up with this email.">No account</span>':'')
+      +(c._stranded?'<span class="cd-strand" onclick="event.stopPropagation();cdMergeStranded('+idx+',event)" title="A dashboard account exists under this name at a different address. Any access granted here is not reaching them.">Not reaching them</span>':'')
+      +(c.was?'<span class="cd-diff" onclick="event.stopPropagation();cdShowEntered('+idx+',event)" title="Their signup details differ from what was entered for them. Click to see.">Changed at signup</span>':'')
       +'<span class="cd-open" onclick="event.stopPropagation();openPerson('+idx+')" title="View projects and access">View access →</span></td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'

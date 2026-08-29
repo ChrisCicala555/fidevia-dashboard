@@ -49,7 +49,7 @@ ok(/delete placeholder\.pending/.test(prof), 'the pending flag is cleared on ado
 // ── client ──
 ok(/function cdAddContact/.test(html) && /function cdToggleAdd/.test(html), 'client add helpers exist');
 ok(/proxyCall\('addContact'/.test(html), 'client calls addContact');
-ok(/password:CD_PW/.test(html.split('async function cdAddContact')[1].slice(0,1200)),
+ok(/password:CD_PW/.test(html.split('async function cdAddContact')[1].split('async function cdShowEntered')[0]),
    'client sends the unlock password');
 const cdadd = html.split('async function cdAddContact')[1].split('async function cdRemoveContact')[0];
 ok(/A name is required/.test(cdadd), 'client requires a name');

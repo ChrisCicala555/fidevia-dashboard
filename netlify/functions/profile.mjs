@@ -33,6 +33,18 @@ export default async (req) => {
           delete placeholder.pending;
           placeholder.sub = sub;
           placeholder.email = userinfo.email || em;
+          // Keep what Fidevia typed. The person is about to see these values on
+          // the profile screen and may overwrite any of them; without this the
+          // original entry would vanish with nothing to compare against.
+          placeholder.entered = {
+            first_name: placeholder.first_name || '',
+            last_name:  placeholder.last_name  || '',
+            company:    placeholder.company    || '',
+            title:      placeholder.title      || '',
+            phone:      placeholder.phone      || '',
+            by:         placeholder.added_by   || '',
+            at:         placeholder.added_at   || ''
+          };
           await store.setJSON(sub, placeholder);
           await store.delete(key);
           profile = placeholder;
@@ -46,6 +58,9 @@ export default async (req) => {
     let body;
     try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
     const s = (v) => String(v ?? '').slice(0, 200);
+    // The record is rebuilt from a fixed field list, so anything not named here
+    // is lost on save. The original entry has to survive that.
+    const prev = await store.get(sub, { type: 'json' });
     const profile = {
       first_name: s(body.first_name),
       last_name: s(body.last_name),
@@ -58,6 +73,7 @@ export default async (req) => {
       onboarded: true,
       updated_at: new Date().toISOString()
     };
+    if (prev && prev.entered) profile.entered = prev.entered;
     await store.setJSON(sub, profile);
     return json({ ok: true });
   }

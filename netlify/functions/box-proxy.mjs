@@ -1550,7 +1550,26 @@ export default async (req) => {
       try {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
-          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) out.push({ sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, first: pr.first_name || '', last: pr.last_name || '', email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) }); } catch (e) {}
+          try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) {
+              const row = { sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, first: pr.first_name || '', last: pr.last_name || '', email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) };
+              // What Fidevia originally entered, where the person has since
+              // signed up and changed it. Only the fields that actually differ,
+              // so the directory can show the disagreement and nothing else.
+              if (pr.entered) {
+                const was = {};
+                const cmp = (k, mine, theirs) => {
+                  const a = String(theirs || '').trim(), b2 = String(mine || '').trim();
+                  if (a && a.toLowerCase() !== b2.toLowerCase()) was[k] = a;
+                };
+                cmp('first', pr.first_name, pr.entered.first_name);
+                cmp('last', pr.last_name, pr.entered.last_name);
+                cmp('company', pr.company, pr.entered.company);
+                cmp('role', pr.title, pr.entered.title);
+                cmp('phone', pr.phone, pr.entered.phone);
+                if (Object.keys(was).length) { row.was = was; row.enteredBy = pr.entered.by || ''; }
+              }
+              out.push(row);
+            } } catch (e) {}
         }
       } catch (e) {}
       out.sort((a, b) => a.name.localeCompare(b.name));
@@ -1625,6 +1644,67 @@ export default async (req) => {
       }, (first || last) ? { first_name: first, last_name: last } : splitName(body.name || ''));
       await store.setJSON(PENDING_PREFIX + email, rec);
       return json({ ok: true, sub: PENDING_PREFIX + email });
+    }
+    // A placeholder was created for someone who then signed up under a
+    // different address, so the record they were given access on is not the one
+    // they log in with. Move the grants across, then drop the placeholder.
+    if (op === 'mergeContact') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      const fromSub = String(body.fromSub || '');
+      const toSub = String(body.toSub || '');
+      if (!fromSub.startsWith(PENDING_PREFIX)) return json({ error: 'Only a contact without an account can be merged away.' }, 400);
+      if (toSub.startsWith(PENDING_PREFIX)) return json({ error: 'Merge into an account, not into another placeholder.' }, 400);
+      const store = getStore('profiles');
+      const from = await store.get(fromSub, { type: 'json' });
+      const to = await store.get(toSub, { type: 'json' });
+      if (!from || !to) return json({ error: 'not found' }, 404);
+      const fromEmail = String(from.email || '').trim().toLowerCase();
+      const toEmail = String(to.email || '').trim().toLowerCase();
+      if (!fromEmail || !toEmail) return json({ error: 'Both records need an email address.' }, 400);
+      if (fromEmail === toEmail) return json({ error: 'Both records already share an address.' }, 400);
+      // Grants are keyed on email, so this is the part that actually matters:
+      // without it the person keeps signing in to nothing.
+      const gstore = grantsStore();
+      const fg = (await gstore.get(fromEmail, { type: 'json' })) || { projects: [] };
+      const tg = (await gstore.get(toEmail, { type: 'json' })) || { projects: [] };
+      const moved = [];
+      for (const proj of (fg.projects || [])) {
+        const ex = (tg.projects || []).find(p => String(p.id) === String(proj.id));
+        // An existing grant on the real account is left alone. It was made
+        // deliberately and may carry a different role.
+        if (ex) continue;
+        tg.projects = tg.projects || [];
+        tg.projects.push(proj);
+        moved.push(proj.name || proj.id);
+      }
+      if (body.dryRun) return json({ ok: true, dryRun: true, moved, fromEmail, toEmail });
+      if (moved.length) await gstore.setJSON(toEmail, tg);
+      await gstore.delete(fromEmail);
+      await store.delete(fromSub);
+      // Anything the placeholder recorded that the account has not, carried
+      // over rather than discarded.
+      let filled = [];
+      for (const [pk, ck] of [['company','company'], ['title','title'], ['phone','phone']]) {
+        if (!String(to[ck] || '').trim() && String(from[pk] || '').trim()) { to[ck] = from[pk]; filled.push(ck); }
+      }
+      if (filled.length) await store.setJSON(toSub, to);
+      return json({ ok: true, moved, filled, fromEmail, toEmail });
+    }
+    // Once the difference has been looked at, drop the original so the badge
+    // clears. Their current details are untouched — this only forgets what was
+    // typed before they joined.
+    if (op === 'clearEntered') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pw = PANEL_PW();
+      if (!pw || String(body.password || '') !== pw) return json({ error: 'Incorrect password' }, 403);
+      const sub = String(body.sub || ''); if (!sub) return json({ error: 'sub required' }, 400);
+      const store = getStore('profiles');
+      const pr = await store.get(sub, { type: 'json' }); if (!pr) return json({ error: 'not found' }, 404);
+      delete pr.entered;
+      await store.setJSON(sub, pr);
+      return json({ ok: true });
     }
     // Only placeholders can be removed here. Deleting a real account is a
     // larger action — it has grants and a sign-in behind it — and is not this.
