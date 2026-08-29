@@ -722,6 +722,40 @@ export default async (req) => {
     }
 
     // ---- ADMIN OPS ----
+    // The next job code. Reads every project's number rather than keeping a
+    // counter, so a project created outside the wizard, renumbered by hand, or
+    // deleted can never put the sequence out of step with reality.
+    if (op === 'nextJobNumber') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+      if (!r.ok) return json({ error: 'Could not read the projects folder' }, 502);
+      const projs = ((await r.json()).entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name));
+      const used = [];
+      await Promise.all(projs.map(async pr => {
+        try {
+          const lr = await boxFetch(`https://api.box.com/2.0/folders/${pr.id}/items?limit=1000&fields=id,name,type`, { headers: H });
+          if (!lr.ok) return;
+          const cf = ((await lr.json()).entries || []).find(e => e.type === 'file' && e.name === 'Project Info.json');
+          if (!cf) return;
+          const cr = await boxFetch(`https://api.box.com/2.0/files/${cf.id}/content`, { headers: H });
+          if (!cr.ok) return;
+          const cfg = JSON.parse(await cr.text()) || {};
+          const jn = String(cfg.jobNumber || '').trim();
+          if (jn) used.push({ jobNumber: jn, project: pr.name });
+        } catch (e) {}
+      }));
+      // YY-NNN, counter continuing across years. Only well-formed codes feed
+      // the counter; anything set by hand in another shape is still reported
+      // back so the client can warn about a clash.
+      let highest = 100;
+      for (const u of used) {
+        const m = /^(\d{2})-(\d+)$/.exec(u.jobNumber);
+        if (m) highest = Math.max(highest, parseInt(m[2], 10));
+      }
+      const yy = String(new Date().getFullYear() % 100).padStart(2, '0');
+      const next = yy + '-' + String(highest + 1).padStart(3, '0');
+      return json({ next, used, count: used.length });
+    }
     if (op === 'adminListProjects' || op === 'adminListGrants' || op === 'adminGrant' || op === 'adminRevoke') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
 

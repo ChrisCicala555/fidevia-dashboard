@@ -689,7 +689,7 @@
     <div class="wiz-step" data-step="1">
       <h3 style="font-size:16px;margin:0 0 12px;">Project Basics</h3>
       <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Lebanon Intermediate School Additions"></div>
-      <div class="field-row"><div class="field"><label>Owner / Client</label><input autocomplete="off" id="np-owner" placeholder="e.g. Lebanon School District"></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" placeholder="e.g. 24-108"></div></div>
+      <div class="field-row"><div class="field"><label>Owner / Client</label><input autocomplete="off" id="np-owner" placeholder="e.g. Lebanon School District"></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" oninput="wizCheckJobNumber()" placeholder="e.g. 26-108"><div id="np-jobnum-note" style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4;"></div></div></div>
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
       <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
@@ -2325,10 +2325,43 @@ const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC',
 let WIZ_STEP = 1;
 function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
-function openNewProject(){ initWizard(); showScreen('screen-new-project'); }
+function openNewProject(){ initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); }
+
+// The next job code, read from what every project actually carries rather than
+// from a stored counter — a project renumbered by hand or removed cannot then
+// put the sequence out of step. Prefilled and editable: a client or a contract
+// sometimes sets the number for us.
+let WIZ_JOBNUMS=[];
+async function wizFillJobNumber(){
+  const el=document.getElementById('np-jobnum'); if(!el) return;
+  const note=document.getElementById('np-jobnum-note');
+  if(note){ note.textContent='Finding the next number…'; note.style.color='var(--muted)'; }
+  try{
+    const d=await proxyCall('nextJobNumber',{},{quiet:true});
+    WIZ_JOBNUMS=d.used||[];
+    // Only fill a field the user has not already typed into.
+    if(!el.value.trim()){ el.value=d.next||''; el.dataset.suggested=d.next||''; }
+    if(note){ note.textContent='Next in sequence after '+(d.count||0)+' project'+((d.count===1)?'':'s')+'. Change it if the job has its own number.'; }
+  }catch(e){
+    WIZ_JOBNUMS=[];
+    if(note){ note.textContent='Could not work out the next number — enter one manually.'; note.style.color='var(--danger)'; }
+  }
+  wizCheckJobNumber();
+}
+function wizCheckJobNumber(){
+  const el=document.getElementById('np-jobnum'); const note=document.getElementById('np-jobnum-note');
+  if(!el||!note) return;
+  const v=el.value.trim();
+  if(!v){ note.textContent='Optional, but a job number appears on every change order and pay application.'; note.style.color='var(--muted)'; return; }
+  const clash=WIZ_JOBNUMS.find(u=>String(u.jobNumber).trim().toLowerCase()===v.toLowerCase());
+  if(clash){ note.textContent='Already used by '+clash.project+'. Two projects sharing a number will be hard to tell apart on paperwork.'; note.style.color='var(--danger)'; return; }
+  if(v===el.dataset.suggested){ note.textContent='Next in sequence. Change it if the job has its own number.'; note.style.color='var(--muted)'; return; }
+  note.textContent='Not the suggested number, and not in use. That is fine.'; note.style.color='var(--muted)';
+}
 function initWizard(){
   WIZ_STEP = 1;
   ['np-name','np-owner','np-jobnum','np-addr1','np-addr2','np-city','np-state','np-zip','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const jn=document.getElementById('np-jobnum'); if(jn) delete jn.dataset.suggested;
   const lf=document.getElementById('np-logo'); if(lf) lf.value='';
   const bd=document.getElementById('np-board'); if(bd) bd.checked=false;
   document.getElementById('np-contacts').innerHTML=''; wizAddContact();
