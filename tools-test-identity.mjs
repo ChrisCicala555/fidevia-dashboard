@@ -43,7 +43,9 @@ ok('setContactMeta still accepts company, role and phone',
 const html = fs.readFileSync('index.html','utf8');
 ok('the directory renders email as locked, not as an input', html.includes('class="cd-locked"'));
 ok('the directory no longer offers an email input', !/fld\(idx,'email'/.test(html));
-ok('the directory offers a name input', /fld\(idx,'name'/.test(html));
+// Name is editable, now as two fields rather than one guessed split.
+ok('the directory offers given and family name inputs',
+   /fld\(idx,'first'/.test(html) && /fld\(idx,'last'/.test(html));
 
 fs.rmSync('.filters.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
