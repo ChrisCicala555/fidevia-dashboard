@@ -1535,10 +1535,15 @@
           </div>
         </div>
 
-        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13.5px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Supporting document</div>
+        <label id="cg-attach-row" style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
           <input type="checkbox" id="cg-attach-pco" style="width:auto;" checked>
           <span id="cg-attach-label">Attach the originating PCO behind the change order</span>
         </label>
+        <p id="cg-attach-none" style="display:none;font-size:13px;color:var(--muted);margin:0;">
+          Nothing is attached to this change order, so the document will be the change order page alone.
+          Attach the PCO to the change order first if it should travel with it.
+        </p>
       </div>
     </div>
     <div class="modal-footer">
@@ -5135,11 +5140,22 @@ function openCoGen(idx){
   document.getElementById('cg-sign-owner').innerHTML=signOptions(owner,'owner|representative|director');
 
   document.getElementById('cg-subcomp-same').checked=true; coGenSubToggle();
+  // With nothing to attach, a disabled checkbox beside a sentence that is not
+  // an option reads as a setting you have failed to switch on. Say it plainly
+  // instead and take the control away.
   const pco=r['Attachment Name']||'';
+  const row=document.getElementById('cg-attach-row');
+  const none=document.getElementById('cg-attach-none');
   const lbl=document.getElementById('cg-attach-label');
   const box=document.getElementById('cg-attach-pco');
-  if(pco){ lbl.textContent='Attach the originating PCO behind the change order \u2014 '+pco; box.checked=true; box.disabled=false; }
-  else { lbl.textContent='No supporting document is attached to this change order'; box.checked=false; box.disabled=true; }
+  if(pco){
+    row.style.display='flex'; none.style.display='none';
+    lbl.textContent='Attach the originating PCO behind the change order \u2014 '+pco;
+    box.checked=true; box.disabled=false;
+  } else {
+    row.style.display='none'; none.style.display='block';
+    box.checked=false; box.disabled=true;
+  }
   const st=document.getElementById('cogen-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   document.getElementById('cogen-backdrop').classList.add('open');
 }

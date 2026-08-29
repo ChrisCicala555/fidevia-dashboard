@@ -85,7 +85,14 @@ ok('it is merged when it is a PDF',     /nm\.endsWith\('\.pdf'\) && window\.PDFL
 ok('pdf-lib is loaded',                 html.includes('pdf-lib'));
 ok('a non-PDF is not silently dropped', /not a PDF, so it remains attached/.test(src));
 ok('a failed merge is reported',        /could not be merged/.test(src));
-ok('the checkbox disables with no attachment', /box\.checked=false; box\.disabled=true;/.test(src));
+// A disabled checkbox beside a sentence that is not an option reads as a
+// setting you failed to switch on. With nothing to attach, say so in plain text.
+ok('the control is hidden when there is nothing to attach', /row\.style\.display='none'; none\.style\.display='block';/.test(src));
+ok('and shown when there is',                               /row\.style\.display='flex'; none\.style\.display='none';/.test(src));
+ok('the note explains the consequence',                     /the document will be the change order page alone/.test(html));
+ok('and says how to change it',                             /Attach the PCO to the change order first/.test(html));
+ok('the box cannot be submitted checked by accident',       /box\.checked=false; box\.disabled=true;/.test(src));
+ok('the section is labelled',                               />Supporting document</.test(html));
 
 console.log('What happens to the result');
 ok('it is filed in the change order’s own folder', /itemFolderId\('co'/.test(src));
