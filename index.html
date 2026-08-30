@@ -2268,7 +2268,7 @@ async function confirmDeleteProject(){
 }
 
 // True only once a project's data has actually arrived. Guards against
-// rendering conclusions — "Nailed it!" above all — from an empty allData.
+// rendering conclusions — "no outstanding items" above all — from an empty allData.
 let DATA_READY=false;
 let _loadGateTimer=null;
 function showProjectLoading(name){
@@ -4909,7 +4909,11 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   const coLabel=attentionCompany();
   if(!list.length){
     const nothingOpen=!(openR.length||openC.length||openS.length||openP.length);
-    el.innerHTML='<div class="att-card clear"><div class="nailed"><div class="txt"><strong>'+(nothingOpen?'Nailed it!':'Nothing needs '+(coLabel||'you')+' right now')+'</strong><div style="font-size:13px;color:var(--muted);">'+(nothingOpen?'No outstanding items on this project.':'Open items are with other companies.')+'</div></div></div></div>';
+    // One line, saying the thing itself. The heading above it was celebrating
+    // rather than reporting, and the sentence underneath already said it.
+    el.innerHTML='<div class="att-card clear"><div class="nailed"><div class="txt"><strong>'
+      +(nothingOpen?'No outstanding items on this project.':'Nothing needs '+esc(coLabel||'you')+' right now \u2014 open items are with other companies.')
+      +'</strong></div></div></div>';
     return;
   }
   el.innerHTML='<div class="att-card"><div class="att-head">Needs '+esc(coLabel||'your')+' attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
