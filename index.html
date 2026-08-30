@@ -8135,7 +8135,38 @@ function rowCompany(r){
   return m?m[1].trim():'';
 }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
-function wfIsDone(r){ return String(r['Workflow Status']||'').toLowerCase()==='complete'; }
+// A decision against the item. Status and Workflow Status are separate fields,
+// so rejecting a change order used to leave its signature chain sitting at
+// 'In Review' — the row contradicted itself, and anyone opening it could still
+// sign a change that had been killed.
+const DECIDED_AGAINST=/reject|denied|\bden\b|void|withdrawn|cancell?ed/i;
+function wfIsStopped(r){ return DECIDED_AGAINST.test(String((r&&r['Workflow Status'])||'')); }
+function wfIsDone(r){
+  const st=String((r&&r['Workflow Status'])||'').toLowerCase();
+  return st==='complete' || wfIsStopped(r);
+}
+// Called wherever a status is written. Closes the chain out when the decision
+// went against the item, and reopens it if the decision is later reversed.
+function wfApplyDecision(key, row, status, by){
+  if(!row || !MODULES[key] || !MODULES[key].headers.includes('Workflow Step')) return '';
+  const decided=DECIDED_AGAINST.test(String(status||''));
+  const wasStopped=wfIsStopped(row);
+  if(decided && !wasStopped){
+    row['Workflow Status']='Rejected';
+    row['Workflow Done']=JSON.stringify([]);
+    try{ auditLog('Workflow closed \u2014 decided against', key, row, String(status||'')+(by?(' by '+by):'')); }catch(e){}
+    return 'stopped';
+  }
+  if(!decided && wasStopped){
+    // Reopened. Back to the step it was parked on rather than to the start,
+    // since the signatures already collected were not undone.
+    const steps=wfStepsFor(key, rowCompany(row));
+    row['Workflow Status']=steps.length?'In Review':'';
+    try{ auditLog('Workflow reopened', key, row, String(status||'')+(by?(' by '+by):'')); }catch(e){}
+    return 'reopened';
+  }
+  return '';
+}
 function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel group containing idx
   let start=idx; while(start>0 && steps[start] && steps[start].parallel) start--;
   let end=start; while(end+1<steps.length && steps[end+1] && steps[end+1].parallel) end++;
@@ -8152,21 +8183,33 @@ function wfCanAdvance(steps, gs, ge){
 }
 function wfProgressHTML(key,r,i){
   const steps=wfStepsFor(key, rowCompany(r)); if(!steps.length) return '';
-  const done=wfIsDone(r); const cur=wfActiveIdx(r);
+  // A stopped chain is not a finished one. wfIsDone covers both so archiving
+  // and 'is this still open' agree, but the tick marks must not claim every
+  // step was signed when the item was killed partway through.
+  const stopped=wfIsStopped(r);
+  const complete=!stopped && wfIsDone(r);
+  const done=complete;
+  const cur=wfActiveIdx(r);
   const [gs,ge]=wfGroupAt(steps,cur);
   const items=steps.map((s,n)=>{
-    const isDone = done || n<gs; const isCur = !done && n>=gs && n<=ge;
+    const isDone = complete || n<gs;
+    const isCur = !complete && !stopped && n>=gs && n<=ge;
+    const isDead = stopped && n>=gs;
     const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
-    const mark = isDone?'\u2713':(isCur?'\u25cf':'\u25cb');
+    const mark = isDone?'\u2713':(isCur?'\u25cf':(isDead?'\u2014':'\u25cb'));
     return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
       +(s.person?'<span style="color:var(--muted);">— '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +'</div>';
   }).join('');
-  const status = done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
+  const status = stopped
+    ? '<span style="color:var(--muted);font-weight:700;">Closed \u2014 '+esc(String(r['Status']||'decided against'))
+      +'. No further signatures are needed.</span>'
+    : done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
-  const btn = (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();withBusy(event,\'Approving\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
+  const btn = stopped ? ''
+    : (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();withBusy(event,\'Approving\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
@@ -8174,6 +8217,13 @@ function wfProgressHTML(key,r,i){
 async function wfAdvance(key, i){
   const _r0=(allData[key]||[])[i];
   const steps=wfStepsFor(key, rowCompany(_r0)); if(!steps.length) return;
+  // The decision went against this item. Signing it now would carry a dead
+  // change order through to an owner signature.
+  if(wfIsStopped(_r0)){
+    alert('This was marked '+String(_r0['Status']||'rejected')+', so its review chain is closed.\n\n'
+      +'If that was wrong, change the status back first and the chain reopens where it left off.');
+    return;
+  }
   const mod=MODULES[key], fid=currentProject.folders[key];
   if(EXTERNAL){
     const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
@@ -8409,6 +8459,7 @@ async function submitReply(){
     vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, co:co, note:note});
     row['Version History']=JSON.stringify(vs);
     row['Attachment File ID']=newFid; row['Attachment Name']=newName; row['Status']=status;
+    const _wfChange=wfApplyDecision(key, row, status, by);
     prog.textContent='Updating log…';
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
     allData[key]=rows;
@@ -8419,6 +8470,8 @@ async function submitReply(){
     }
     try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name), _rOpts); }catch(e){}
     renderAll(); closeReply();
+    if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
+    if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
 }

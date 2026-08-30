@@ -1320,6 +1320,12 @@ export default async (req) => {
       const headers = parsed.headers, rows = parsed.rows;
       const row = rows.find(r => String(r[idField] || '') === String(idValue || ''));
       if (!row) return json({ error: 'item not found' }, 404);
+      // A chain closed by a decision against the item must not be advanced,
+      // including from outside. The client refuses too; this is the copy that
+      // matters, since the client's is only a courtesy.
+      if (/reject|denied|\bden\b|void|withdrawn|cancell?ed/i.test(String(row['Workflow Status'] || ''))) {
+        return json({ error: 'This item was decided against, so its review chain is closed.' }, 409);
+      }
       if (String(row['Workflow Status'] || '').toLowerCase() === 'complete') return json({ error: 'Workflow already complete' }, 400);
       const steps = wfForCompany(rowCompanyOf(row));
       if (!steps.length) return json({ error: 'No workflow configured' }, 400);
