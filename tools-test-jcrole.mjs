@@ -32,7 +32,8 @@ ok(/\.jc-role-sub\{[^}]*white-space:nowrap/.test(html), 'a long title stays on o
 ok(/\.jc-role-sub\{[^}]*text-overflow:ellipsis/.test(html), 'and is clipped rather than wrapped');
 ok(/class="jc-role-sub" title=/.test(rc), 'the full title is still available on hover');
 ok(!/max-width:150px/.test(rc), 'the inline width that caused the ragged column is gone');
-ok((rc.match(/<td class="jc-role-cell"/g)||[]).length===2, 'both branches use the same cell class');
+ok((rc.match(/<td class="jc-role-cell"/g)||[]).length===3,
+   'all three branches — staff, external, Fidevia picker — use the same cell class');
 ok(/architect-engineer'\?'<option value="architect-engineer" selected/.test(rc),
    'a legacy grant stays selectable rather than being silently rewritten');
 ok(/granted===k\?' selected'/.test(rc), 'the current role is preselected');
@@ -69,6 +70,27 @@ ok(/The Role column shows granted access, so searching it should too/.test(html)
 // the staleness this makes moot
 ok(/self-declared and inconsistent/.test(html),   // the note sits above the function
    'the reason for the change is recorded where the next person will read it');
+
+// ── Fidevia staff ──
+{
+  const fid = rc.split('if(em && FIDEVIA_EMAIL.test(em))')[1].split('if(!IS_ADMIN')[0];
+  ok(/>Fidevia</.test(fid), 'a Fidevia address reads as Fidevia rather than a dash');
+  ok(!/<select/.test(fid), 'no picker is offered for staff');
+  ok(/title="Fidevia staff/.test(fid), 'the cell explains why');
+  ok(/IS_ADMIN && !viewingAsExternal\(\)/.test(fid), 'the typed title is still Fidevia-only');
+  ok(rc.indexOf('FIDEVIA_EMAIL.test(em)') < rc.indexOf('if(!IS_ADMIN'),
+     'staff are resolved before the granted-role branches');
+}
+{
+  // the behaviour, not the source
+  const FID=/@fidevia\.com$/i;
+  const roleFor=(email, granted)=> FID.test(email) ? 'Fidevia' : (granted || '—');
+  ok(roleFor('dcicala@fidevia.com','')==='Fidevia', 'a Fidevia address with no grant still reads Fidevia');
+  ok(roleFor('DCicala@Fidevia.com','')==='Fidevia', 'matching ignores case');
+  ok(roleFor('sdraper@example.com','')==='—', 'an outside contact with no grant still shows a dash');
+  ok(roleFor('x@notfidevia.com','')==='—', 'a lookalike domain is not treated as staff');
+  ok(roleFor('mtorres@example.com','Contractor')==='Contractor', 'a granted contact is unaffected');
+}
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-jcrole.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
