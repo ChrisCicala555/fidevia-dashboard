@@ -345,6 +345,17 @@
   .jc-role-fid{color:var(--olive-700);}
   /* Disabled, but stating a fact rather than being unavailable — so it should
      not read as greyed out. */
+  .cd-justadded td{background:#EDF4E4 !important; transition:background 1.2s;}
+  .ct-head{display:flex; align-items:center; gap:9px; cursor:pointer; padding:2px 0 0; user-select:none;}
+  .ct-caret{color:var(--muted); font-size:12px; transition:transform .15s; flex:0 0 auto;}
+  .wiz-contact-row.collapsed .ct-caret{transform:rotate(-90deg);}
+  .wiz-contact-row.collapsed .ct-body{display:none;}
+  .wiz-contact-row:not(.collapsed) .ct-head{margin-bottom:10px; padding-bottom:8px;
+    border-bottom:1px solid var(--khaki-300);}
+  .ct-sum{font-size:14px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ct-sum-sub{color:var(--muted); font-size:13px;}
+  .ct-sum-acc{margin-left:9px; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:700;
+    letter-spacing:.4px; text-transform:uppercase; background:#F3EFE0; color:#7A6B2E; border:1px solid #E4DCC2;}
   .ct-access-fid{color:var(--olive-700); font-weight:600; opacity:1;
     background:var(--khaki-50,#F7F5EF); -webkit-text-fill-color:var(--olive-700);}
   .cd-strand{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
@@ -2421,6 +2432,9 @@ function wizRestoreState(st){
     const set=(sel,v)=>{ const el=row.querySelector(sel); if(el) el.value=v==null?'':v; };
     set('.cn-role',c.role); set('.cn-name',c.name); set('.cn-contract',c.contract);
   });
+  // Restored rows are all complete, so fold them all and let the person open
+  // whichever they want. Summaries are built after the values are in place.
+  [...cw.querySelectorAll('.wiz-contact-row')].forEach((r,i,a)=>ctCollapse(r, a.length>1));
   renderWizMilestones((st.milestones||[]).map(m=>m.name));
   (st.milestones||[]).forEach((m,i)=>{
     const row=document.querySelectorAll('#np-ms-rows .ms-row')[i];
@@ -2517,12 +2531,40 @@ function wizAddContact(){
   const div=document.createElement('div');
   div.className='wiz-contact-row';
   div.style='border:1px solid var(--khaki-300);border-radius:6px;padding:10px;margin-bottom:8px;position:relative;';
-  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" '+NOFILL+' class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
+  div.innerHTML='<div class="ct-head" onclick="ctToggle(this)"><span class="ct-caret">\u25BE</span><span class="ct-sum">New contact</span></div>'
+    +'<div class="ct-body"><div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" '+NOFILL+' class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
     +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" '+NOFILL+' class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" '+NOFILL+' type="text" inputmode="email" class="ct-email" oninput="dirSuggest(this,\'email\');wizEmailTyped(this)" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
     +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" '+NOFILL+' type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
     +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Dashboard access</label><select class="ct-access" onchange="wizAccessNote(this)">'+accessOptions()+'</select></div><div class="field" style="margin:0;display:flex;align-items:flex-end;padding-bottom:2px;"><div class="ct-access-note" style="font-size:12px;color:var(--muted);line-height:1.45;"></div></div></div>'
-    +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">&times;</button>':'');
+    +'</div>'
+    +(idx>0?'<button type="button" title="Remove this contact" onclick="event.stopPropagation();this.closest(\'.wiz-contact-row\').remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;z-index:2;">&times;</button>':'');
+  // Everything already entered folds away, so a team of eight is a short list
+  // rather than eight full forms. The one being worked on stays open.
+  [...wrap.querySelectorAll('.wiz-contact-row')].forEach(r=>ctCollapse(r, true));
   wrap.appendChild(div);
+  ctCollapse(div, false);
+}
+function ctSummary(row){
+  const g=sel=>{ const el=row.querySelector(sel); return el?String(el.value||'').trim():''; };
+  const name=g('.ct-name'), co=g('.ct-company'), role=g('.ct-role'), em=g('.ct-email');
+  if(!name && !em) return 'New contact';
+  const acc=row.querySelector('.ct-access');
+  const accTxt=(acc && acc.value && ROLE_LABELS[acc.value]) ? ROLE_LABELS[acc.value]
+    : (acc && acc.dataset.fid ? 'Fidevia' : '');
+  const bits=[co, role].filter(Boolean).join(' \u00b7 ');
+  return '<strong>'+esc(name||em)+'</strong>'
+    +(bits?'<span class="ct-sum-sub"> \u2014 '+esc(bits)+'</span>':'')
+    +(accTxt?'<span class="ct-sum-acc">'+esc(accTxt)+'</span>':'');
+}
+function ctCollapse(row, yes){
+  if(!row || !row.classList) return;
+  row.classList.toggle('collapsed', !!yes);
+  const sum=row.querySelector('.ct-sum');
+  if(sum) sum.innerHTML=ctSummary(row);
+}
+function ctToggle(head){
+  const row=head.closest('.wiz-contact-row'); if(!row) return;
+  ctCollapse(row, !row.classList.contains('collapsed'));
 }
 // Recognise a directory contact from the name or the email, and fill in the
 // rest of the row. Only blank fields are written: anything already typed is
@@ -2631,6 +2673,7 @@ function dirPick(i){
   if(!note){ note=document.createElement('div'); note.className='ct-from';
     note.style='font-size:12px;color:var(--muted);margin-top:7px;'; row.appendChild(note); }
   note.textContent='Filled in from the contact directory for '+(c.name||c.email)+'.';
+  const sum=row.querySelector('.ct-sum'); if(sum) sum.innerHTML=ctSummary(row);
   dirClose();
 }
 // The list is positioned against the viewport, so it has to go when the page
@@ -5041,8 +5084,34 @@ async function cdAddContact(ev){
       await proxyCall('addContact',{ password:CD_PW, first, last, email,
         company:val('company'), role:val('role'), phone:fmtPhone(val('phone')) });
     }catch(e){ fail(e.message); throw e; }
+    const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[];
+    // The directory is grouped by surname, so a new entry lands wherever that
+    // letter falls — which looked like nothing having happened at all. Clear
+    // any search that would hide it, then go to the row and mark it.
+    const sb=document.getElementById('cd-search'); if(sb) sb.value='';
+    renderContactDir();
+    const added=CONTACT_DIR.find(c=>String(c.email||'').trim().toLowerCase()===email);
+    if(!added){
+      // The write reported success but the record is not in the list that came
+      // back. Say so rather than closing the form and looking as if it worked.
+      fail('The contact was saved but is not showing in the directory. Reload the page; if it is still missing, tell Chris.');
+      return;
+    }
     cdToggleAdd(false);
-    const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir();
+    const row=document.querySelector('.cd-row[data-em="'+String(email).replace(/"/g,'')+'"]');
+    if(row){
+      row.scrollIntoView({behavior:'smooth', block:'center'});
+      row.classList.add('cd-justadded');
+      setTimeout(()=>{ try{ row.classList.remove('cd-justadded'); }catch(e){} }, 2600);
+    }
+    const bar=document.getElementById('cd-lockbar');
+    if(bar){
+      let n=document.getElementById('cd-added-note');
+      if(!n){ n=document.createElement('span'); n.id='cd-added-note';
+        n.style.cssText='margin-left:12px;font-size:13px;color:#3b6d11;font-weight:600;'; bar.appendChild(n); }
+      n.textContent=(added.name||email)+' added.';
+      setTimeout(()=>{ try{ n.remove(); }catch(e){} }, 5000);
+    }
   }).catch(()=>{});
 }
 // What was entered for this person before they joined, against what they
@@ -5166,7 +5235,7 @@ function renderContactDir(){
     // Email is deliberately never editable: it is the key to the person's
     // sign-in account and to their project grants. Changing it here would not
     // change how they log in — it would only break the link between the two.
-    return '<tr class="cd-row" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
+    return '<tr class="cd-row" data-em="'+esc(String(c.email||'').trim().toLowerCase())+'" onclick="rowActivate(event,()=>openPerson('+idx+'))" title="View projects and access"><td class="cd-name">'
       +(CD_UNLOCKED
           ? '<span style="display:flex;gap:6px;">'+fld(idx,'first',c.first,88)+fld(idx,'last',c.last,110)+'</span>'
           : esc(c.name))

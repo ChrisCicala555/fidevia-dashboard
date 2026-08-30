@@ -88,7 +88,9 @@ ok('the press point is captured in the capture phase', /mousedown'[\s\S]{0,100},
 ok('the press target is captured too', /_pressTarget=e\.target/.test(src));
 ok('fields are excluded by selector', /NOT_A_ROW_PRESS='input,textarea,select,button,a,label/.test(src));
 ok('the View access link opens directly', /class="cd-open" onclick="event\.stopPropagation\(\);openPerson/.test(src));
-ok('the contact row is guarded',   /class="cd-row" onclick="rowActivate\(event,\(\)=>openPerson/.test(src));
+// data-em now sits between the class and the handler, so the assertion allows
+// attributes in between rather than pinning the exact string.
+ok('the contact row is guarded',   /class="cd-row"[^>]*onclick="rowActivate\(event,\(\)=>openPerson/.test(src));
 ok('every expandable row is guarded', (src.match(/rowActivate\(event,\(\)=>toggleThread/g)||[]).length===4);
 ok('no bare row handlers remain',  !/onclick="toggleThread\(/.test(src) && !/onclick="openPerson\(/.test(src));
 ok('buttons inside rows still stop propagation', /onclick="event\.stopPropagation\(\)"/.test(src));

@@ -139,5 +139,55 @@ ok(!/const within = mode==='name'/.test(html), 'the old always-first-name compar
      'a record with no name at all falls back to the display value');
 }
 
+// ── a successful add has to be visible ──
+{
+  const ca = html.split('async function cdAddContact')[1].split('async function cdRemoveContact')[0];
+  ok(/const sb=document\.getElementById\('cd-search'\); if\(sb\) sb\.value=''/.test(ca),
+     'an active search cannot hide the row that was just added');
+  ok(/const added=CONTACT_DIR\.find/.test(ca), 'the reloaded list is checked for the new record');
+  ok(/The contact was saved but is not showing/.test(ca),
+     'a write that reports success but does not appear says so rather than looking fine');
+  ok(ca.indexOf('if(!added)') < ca.indexOf('cdToggleAdd(false)'),
+     'the form stays open when the record cannot be found');
+  ok(/scrollIntoView\(\{behavior:'smooth', block:'center'\}\)/.test(ca), 'the view moves to the new row');
+  ok(/cd-justadded/.test(ca), 'and marks it');
+  ok(/' added\.'/.test(ca), 'a confirmation names who was added');
+}
+ok(/data-em="'\+esc\(String\(c\.email/.test(html), 'rows carry their email so the new one can be found');
+ok(/\.cd-justadded td\{background:#EDF4E4/.test(html), 'the highlight is defined');
+
+// ── contact rows fold away ──
+ok(/class="ct-head" onclick="ctToggle\(this\)"/.test(html), 'each contact row has a header that toggles it');
+ok(/\.wiz-contact-row\.collapsed \.ct-body\{display:none;\}/.test(html), 'collapsing hides the fields');
+ok(/function ctSummary/.test(html) && /function ctCollapse/.test(html), 'summary and collapse helpers exist');
+{
+  const ac = html.split('function wizAddContact')[1].split('function ctSummary')[0];
+  ok(/forEach\(r=>ctCollapse\(r, true\)\)/.test(ac), 'adding a contact folds the ones already entered');
+  ok(/ctCollapse\(div, false\)/.test(ac), 'and leaves the new one open');
+  ok(ac.indexOf('ctCollapse(r, true)') < ac.indexOf('wrap.appendChild(div)'),
+     'existing rows are folded before the new one is added, so it is not folded too');
+}
+{
+  const cs = html.split('function ctSummary')[1].split('function ctCollapse')[0];
+  ok(/if\(!name && !em\) return 'New contact'/.test(cs), 'an empty row reads as new rather than blank');
+  ok(/acc\.dataset\.fid \? 'Fidevia'/.test(cs), 'a Fidevia row summarises as Fidevia');
+  ok(/esc\(name\|\|em\)/.test(cs), 'the summary escapes what it shows');
+}
+ok(/\[\.\.\.cw\.querySelectorAll\('\.wiz-contact-row'\)\]\.forEach\(\(r,i,a\)=>ctCollapse\(r, a\.length>1\)\)/.test(html),
+   'a restored draft folds its rows too');
+ok(/const sum=row\.querySelector\('\.ct-sum'\); if\(sum\) sum\.innerHTML=ctSummary\(row\)/.test(html),
+   'picking someone refreshes the folded summary');
+{
+  // the summary itself
+  const build=(name,co,role,em)=>{ if(!name&&!em) return 'New contact';
+    const bits=[co,role].filter(Boolean).join(' \u00b7 ');
+    return (name||em)+(bits?' \u2014 '+bits:''); };
+  ok(build('','','','')==='New contact', 'nothing entered reads as New contact');
+  ok(build('Chris Celmer','Summit Builders','GC','')==='Chris Celmer \u2014 Summit Builders \u00b7 GC',
+     'name, company and role are joined (got '+build('Chris Celmer','Summit Builders','GC','')+')');
+  ok(build('','','','a@x.test')==='a@x.test', 'an email-only row falls back to the address');
+  ok(build('Chris Celmer','','','')==='Chris Celmer', 'a bare name has no trailing separator');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-addcontact.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
