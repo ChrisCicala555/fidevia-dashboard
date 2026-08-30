@@ -1312,6 +1312,25 @@
               <div class="field" style="flex:1;"><label>ZIP</label><input id="ps-zip" autocomplete="off"></div>
             </div>
             <div class="field"><label>Scope</label><input id="ps-scope" autocomplete="off"></div>
+            <div class="field-row">
+              <div class="field" style="flex:2;"><label>Project administrator</label><input id="ps-admin" autocomplete="off" placeholder="name@fidevia.com"><p class="file-hint" style="margin-top:3px;">Named at the top of the job contact sheet.</p></div>
+              <div class="field" style="flex:1;display:flex;align-items:flex-end;padding-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin:0;">
+                  <input type="checkbox" id="ps-board" style="width:auto;margin:0;">Board Reports tab</label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Project logo</label>
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+                <div id="ps-logo-preview" style="width:104px;height:64px;border:1px solid var(--border);border-radius:8px;
+                  display:flex;align-items:center;justify-content:center;background:var(--white);overflow:hidden;
+                  font-size:11.5px;color:var(--muted);text-align:center;padding:4px;">Checking…</div>
+                <label class="btn-secondary" style="cursor:pointer;padding:9px 15px;">Choose image
+                  <input type="file" accept="image/*" id="ps-logo" style="display:none" onchange="psLogoPick(this)"></label>
+                <button type="button" class="btn-secondary" id="ps-logo-remove" style="display:none;padding:9px 15px;" onclick="psLogoRemove()">Remove</button>
+                <span id="ps-logo-note" style="font-size:12.5px;color:var(--muted);"></span>
+              </div>
+            </div>
             <div style="margin-top:14px;"><button class="btn-primary" id="ps-save" onclick="saveProjectSettings()">Save</button>
               <span class="status-msg" id="ps-status" style="margin-left:8px;"></span></div>
           </div>
@@ -3756,6 +3775,64 @@ function renderContacts(){
     });
   });
   tb.innerHTML=html;
+}
+// ── Project logo, after creation ─────────────────────────────────────────
+// The wizard could set one and nothing could change it afterwards, so there
+// was no way to add a logo later — or even to check whether one was uploaded,
+// since the answer only showed on the project picker.
+let PS_LOGO_PENDING=null;
+async function psLogoShow(){
+  const box=document.getElementById('ps-logo-preview'); if(!box) return;
+  const rm=document.getElementById('ps-logo-remove');
+  const note=document.getElementById('ps-logo-note');
+  const id=(currentProject&&currentProject.config&&currentProject.config.logoFileId)||'';
+  if(PS_LOGO_PENDING){
+    box.innerHTML='<img src="'+esc(PS_LOGO_PENDING.url)+'" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">';
+    if(rm) rm.style.display='inline-block';
+    if(note){ note.textContent='Not saved yet — press Save.'; note.style.color='var(--danger)'; }
+    return;
+  }
+  if(note){ note.textContent=''; note.style.color='var(--muted)'; }
+  if(!id){
+    box.textContent='No logo';
+    if(rm) rm.style.display='none';
+    return;
+  }
+  box.textContent='Checking…';
+  try{
+    let url=PICKER_LOGOS[id];
+    if(!url){ const d=await proxyCall('downloadUrl',{fileId:id},{quiet:true}); url=d&&d.url; if(url) PICKER_LOGOS[id]=url; }
+    if(url){
+      box.innerHTML='<img src="'+esc(url)+'" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">';
+      if(rm) rm.style.display='inline-block';
+    } else {
+      // A recorded id that will not load is worth saying plainly: it looks
+      // identical to having no logo, and the two need different fixes.
+      box.textContent='Logo missing';
+      if(note){ note.textContent='A logo is recorded but the file could not be loaded. Choose a new one.'; note.style.color='var(--danger)'; }
+      if(rm) rm.style.display='inline-block';
+    }
+  }catch(e){ box.textContent='Logo missing'; if(rm) rm.style.display='inline-block'; }
+}
+function psLogoPick(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  if(PS_LOGO_PENDING&&PS_LOGO_PENDING.url) try{ URL.revokeObjectURL(PS_LOGO_PENDING.url); }catch(e){}
+  PS_LOGO_PENDING={file:f, url:URL.createObjectURL(f)};
+  psLogoShow();
+}
+function psLogoRemove(){
+  if(PS_LOGO_PENDING){
+    try{ URL.revokeObjectURL(PS_LOGO_PENDING.url); }catch(e){}
+    PS_LOGO_PENDING=null;
+    const inp=document.getElementById('ps-logo'); if(inp) inp.value='';
+    psLogoShow();
+    return;
+  }
+  if(!confirm('Remove the project logo? The image stays in Box; the project simply stops using it.')) return;
+  PS_LOGO_PENDING={remove:true, url:''};
+  const box=document.getElementById('ps-logo-preview'); if(box) box.textContent='No logo';
+  const note=document.getElementById('ps-logo-note');
+  if(note){ note.textContent='Not saved yet — press Save.'; note.style.color='var(--danger)'; }
 }
 async function saveContactField(i, field, val){
   const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
@@ -6463,7 +6540,9 @@ function fillProjectSettings(){
   const c=(currentProject&&currentProject.config)||{}, a=c.address||{};
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
   set('ps-owner',c.owner); set('ps-jobnum',c.jobNumber); set('ps-cm',c.onsiteCM);
-  set('ps-contractdate',c.contractDate); set('ps-scope',c.scope);
+  set('ps-contractdate',c.contractDate); set('ps-scope',c.scope); set('ps-admin',c.projectAdmin);
+  const bd=document.getElementById('ps-board'); if(bd) bd.checked=!!c.boardReportsEnabled;
+  psLogoShow();
   set('ps-line1',a.line1); set('ps-line2',a.line2); set('ps-city',a.city); set('ps-state',a.state); set('ps-zip',a.zip);
   const st=document.getElementById('ps-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   loadFideviaPeople();
@@ -6475,12 +6554,31 @@ async function saveProjectSettings(){
   try{
     const c=currentProject.config=currentProject.config||{};
     c.owner=v('ps-owner'); c.jobNumber=v('ps-jobnum'); c.onsiteCM=v('ps-cm');
-    c.contractDate=v('ps-contractdate'); c.scope=v('ps-scope');
+    c.contractDate=v('ps-contractdate'); c.scope=v('ps-scope'); c.projectAdmin=v('ps-admin');
+    const _bd=document.getElementById('ps-board'); if(_bd) c.boardReportsEnabled=!!_bd.checked;
     c.address={line1:v('ps-line1'), line2:v('ps-line2'), city:v('ps-city'), state:v('ps-state'), zip:v('ps-zip')};
     // Kept in step so anything still reading the joined string agrees with the parts.
     c.location=[c.address.line1, c.address.line2,
       [c.address.city,c.address.state].filter(Boolean).join(', '), c.address.zip].filter(Boolean).join(' \u00b7 ');
+    if(PS_LOGO_PENDING){
+      if(PS_LOGO_PENDING.remove){ c.logoFileId=''; }
+      else{
+        showStatus('ps-status','Uploading logo…','info');
+        const up=await boxUploadBinary(PS_LOGO_PENDING.file, currentProject.folderId);
+        const e0=up.entries?up.entries[0]:up;
+        c.logoFileId=e0.id||'';
+      }
+    }
     await writeProjectConfig(currentProject.folderId, c);
+    if(PS_LOGO_PENDING){
+      if(PS_LOGO_PENDING.url) try{ URL.revokeObjectURL(PS_LOGO_PENDING.url); }catch(e){}
+      PS_LOGO_PENDING=null;
+      const inp=document.getElementById('ps-logo'); if(inp) inp.value='';
+      // The picker caches by file id, so a replaced logo would otherwise keep
+      // showing the old image until a reload.
+      try{ delete PICKER_LOGOS[c.logoFileId]; }catch(e){}
+      psLogoShow();
+    }
     try{ await proxyCall('recordJobNumber',{ jobNumber:c.jobNumber, project:currentProject.name },{quiet:true}); }catch(e){}
     showStatus('ps-status','Saved.','success');
     renderAll();
