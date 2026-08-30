@@ -105,6 +105,14 @@ ok(/let GRANT_ROLES=\{\}/.test(html), 'existing grants are loaded');
   ok(/FIDEVIA_EMAIL\.test\(em\)/.test(af) && /acc\.disabled=true/.test(af),
      'Fidevia staff get no picker');
   ok(/Nothing to grant/.test(af), 'and are told why');
+  ok(/acc\.innerHTML='<option value="">Fidevia \\u2014 full access<\/option>'/.test(af),
+     'the picker states the position rather than reading No access while disabled');
+  ok(/acc\.value=''/.test(af),
+     'its value stays empty, so creation attempts no grant for a Fidevia address');
+  ok(/if\(acc\.dataset\.fid\)\{[\s\S]{0,120}acc\.innerHTML=accessOptions\(\)/.test(af),
+     'changing the address back restores the real choices');
+  ok(/ct-access-fid/.test(af) && /\.ct-access-fid\{[^}]*opacity:1/.test(html),
+     'it does not read as greyed out, since it is stating a fact not refusing one');
   ok(/GRANT_ROLES\[em\]/.test(af), 'an existing grant is preferred');
   ok(/Already '\+ROLE_LABELS\[held\.role\]\+' on '\+held\.count/.test(af),
      'the note says what they already are and on how many projects');

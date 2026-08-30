@@ -343,6 +343,10 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
   .jc-role-flat{font-weight:600;}
   .jc-role-fid{color:var(--olive-700);}
+  /* Disabled, but stating a fact rather than being unavailable — so it should
+     not read as greyed out. */
+  .ct-access-fid{color:var(--olive-700); font-weight:600; opacity:1;
+    background:var(--khaki-50,#F7F5EF); -webkit-text-fill-color:var(--olive-700);}
   .cd-strand{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
     font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#FBEAEA;color:#8C3A3A;
     border:1px solid #F0D2D2;vertical-align:middle;cursor:pointer;}
@@ -2673,10 +2677,22 @@ function applyAccessFor(row, c){
   const note=row.querySelector('.ct-access-note');
   const em=String((c&&c.email)||'').trim().toLowerCase();
   if(em && FIDEVIA_EMAIL.test(em)){
-    acc.value=''; acc.disabled=true;
-    if(note){ note.textContent='Fidevia staff \u2014 full access to every project already. Nothing to grant.';
+    // Showing 'No dashboard access', greyed out, beside a note saying they
+    // have full access read as a contradiction. The picker now states the
+    // position instead. Its value stays empty, which is what creation reads,
+    // so no grant is attempted — correctly, since one would do nothing.
+    acc.innerHTML='<option value="">Fidevia \u2014 full access</option>';
+    acc.value=''; acc.disabled=true; acc.dataset.fid='1';
+    acc.classList.add('ct-access-fid');
+    if(note){ note.textContent='Full access to every project by virtue of their Fidevia address. Nothing to grant here.';
       note.style.color='var(--olive-700)'; }
     return;
+  }
+  // Coming back from a Fidevia address: put the real choices back.
+  if(acc.dataset.fid){
+    acc.innerHTML=accessOptions();
+    delete acc.dataset.fid;
+    acc.classList.remove('ct-access-fid');
   }
   acc.disabled=false;
   const held=GRANT_ROLES[em];
