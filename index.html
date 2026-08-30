@@ -2504,7 +2504,7 @@ function wizAddContact(){
   div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
     +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" type="email" class="ct-email" oninput="dirSuggest(this,\'email\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
     +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
-    +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Dashboard access</label><select class="ct-access" onchange="wizAccessNote(this)">'+ACCESS_OPTIONS+'</select></div><div class="field" style="margin:0;display:flex;align-items:flex-end;padding-bottom:2px;"><div class="ct-access-note" style="font-size:12px;color:var(--muted);line-height:1.45;"></div></div></div>'
+    +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Dashboard access</label><select class="ct-access" onchange="wizAccessNote(this)">'+accessOptions()+'</select></div><div class="field" style="margin:0;display:flex;align-items:flex-end;padding-bottom:2px;"><div class="ct-access-note" style="font-size:12px;color:var(--muted);line-height:1.45;"></div></div></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">&times;</button>':'');
   wrap.appendChild(div);
 }
@@ -2618,8 +2618,13 @@ window.addEventListener('resize', ()=>{ if(DIR_SUG.box) dirClose(); });
 // The Role field above is free text and documents what someone does. This is
 // the separate thing that decides what they can see, and it starts at nothing:
 // access is never a side effect of a job title someone typed.
-const ACCESS_OPTIONS='<option value="">No dashboard access</option>'
-  +['contractor','architect','engineer','owner','custom'].map(r=>'<option value="'+r+'">'+ROLE_LABELS[r]+'</option>').join('');
+// A function, not a const: this is read when a row is built, and ROLE_LABELS
+// is declared further down the file. As a top-level const it ran before that
+// declaration existed and threw, which killed the whole script on load.
+function accessOptions(){
+  return '<option value="">No dashboard access</option>'
+    +['contractor','architect','engineer','owner','custom'].map(r=>'<option value="'+r+'">'+ROLE_LABELS[r]+'</option>').join('');
+}
 // What a written role most likely means, used only to preselect. Anything not
 // recognised leaves the picker on No access rather than guessing.
 const ACCESS_HINTS=[
