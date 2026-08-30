@@ -14,6 +14,15 @@ ok(/No access/.test(rc), 'someone with no grant is shown as such rather than bla
 ok(/color:var\(--muted\)[^']*'>'\+esc\(typed\)/.test(rc) || /esc\(typed\)/.test(rc),
    'the typed title is kept as secondary text');
 ok(/if\(!IS_ADMIN \|\| viewingAsExternal\(\)\)/.test(rc), 'only Fidevia gets the editor');
+// Outside Fidevia the cell is a single line: the granted role, or nothing.
+{
+  const ext = rc.split('if(!IS_ADMIN || viewingAsExternal())')[1].split('const opts=')[0];
+  ok(!/sub/.test(ext), 'externals do not get the typed title as a second line');
+  ok(!/>No access</.test(ext), 'externals are not told who cannot sign in');
+  ok(/u2014/.test(ext), 'an ungranted contact shows a dash rather than a status');
+  ok(/roleLabelOf\(granted\)/.test(ext), 'externals still see the granted role');
+}
+ok(/sub/.test(rc.split('const opts=')[1]||''), 'Fidevia keeps the second line');
 ok(/<select class="jc-role"/.test(rc), 'Fidevia gets a picker');
 ok(/architect-engineer'\?'<option value="architect-engineer" selected/.test(rc),
    'a legacy grant stays selectable rather than being silently rewritten');

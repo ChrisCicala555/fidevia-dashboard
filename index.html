@@ -3562,10 +3562,12 @@ function roleCell(r, i){
   const typed=String(r['Role']||'').trim();
   const sub = typed ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+esc(typed)+'</div>' : '';
   if(!IS_ADMIN || viewingAsExternal()){
-    const label = granted
+    // One line outside Fidevia. The second line is a Fidevia working detail,
+    // and 'No access' is a fact about someone's account rather than about the
+    // project — not a contractor's business who can and cannot sign in.
+    return '<td>'+(granted
       ? '<span style="font-weight:600;">'+roleLabelOf(granted)+'</span>'
-      : '<span style="color:var(--muted)">No access</span>';
-    return '<td>'+label+sub+'</td>';
+      : '<span style="color:var(--muted)">\u2014</span>')+'</td>';
   }
   const opts='<option value="">No access</option>'
     +['contractor','architect','engineer','owner','custom'].map(k=>
