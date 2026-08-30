@@ -762,6 +762,12 @@
     <div class="wiz-step" data-step="5" style="display:none;">
       <h3 style="font-size:16px;margin:0 0 6px;">Review Workflows</h3>
       <p class="form-desc" style="margin-bottom:10px;">Define who reviews each item type, in order. Mark a step “parallel” to notify it at the same time as the step above it. Editable later in Workflow Settings.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">
+        <label style="font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">These steps apply to</label>
+        <select id="npwf-scope" onchange="wizWfScopeChange()" style="border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;font-family:inherit;background:var(--white);color:var(--ink);"></select>
+        <button type="button" class="btn-secondary" id="npwf-revert" onclick="wizWfRevert()" style="display:none;padding:7px 13px;">Use the default instead</button>
+      </div>
+      <div id="npwf-scope-hint" style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;line-height:1.45;"></div>
       <div id="np-workflows"></div>
     </div>
 
@@ -2411,7 +2417,9 @@ function wizCaptureState(){
     contacts: wizGatherContacts(),
     contractors: wizGatherContractors(),
     milestones: wizGatherMilestones(),
-    workflows: wfGather('npwf')
+    workflows: (NPWF_SCOPE ? (NPWF_DEFAULT||{}) : wfGather('npwf')),
+    workflowsByCompany: (()=>{ const b=Object.assign({}, NPWF_BYCO);
+      if(NPWF_SCOPE) b[NPWF_SCOPE]=wfGather('npwf'); return b; })()
     // The logo is deliberately not kept: a file input cannot be restored, and
     // carrying the bytes through a draft to reattach them is more machinery
     // than the case deserves. Re-pick it when finishing.
@@ -2450,7 +2458,9 @@ function wizRestoreState(st){
     const row=document.querySelectorAll('#np-ms-rows .ms-row')[i];
     if(row){ const d=row.querySelector('.ms-contract'); if(d) d.value=m.contract||''; }
   });
-  wfRenderAll('npwf','np-workflows',st.workflows||null,[]);
+  NPWF_SCOPE=''; NPWF_BYCO=st.workflowsByCompany||{}; NPWF_DEFAULT=st.workflows||null;
+  wfRenderAll('npwf','np-workflows',NPWF_DEFAULT,[]);
+  try{ wizWfScopeOptions(); }catch(e){}
 }
 async function wizSaveDraft(ev){
   const name=wizVal('np-name');
@@ -2525,6 +2535,7 @@ function initWizard(){
   WIZ_STEP = 1;
   ['np-name','np-owner','np-jobnum','np-addr1','np-addr2','np-city','np-state','np-zip','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const jn=document.getElementById('np-jobnum'); if(jn) delete jn.dataset.suggested;
+  NPWF_SCOPE=''; NPWF_BYCO={}; NPWF_DEFAULT=null;
   const lf=document.getElementById('np-logo'); if(lf) lf.value='';
   const bd=document.getElementById('np-board'); if(bd) bd.checked=false;
   document.getElementById('np-contacts').innerHTML=''; wizAddContact();
@@ -2807,8 +2818,10 @@ function wizNav(dir){
   if(dir>0 && WIZ_STEP===1 && !wizVal('np-name')){ showStatus('new-proj-status','Project name is required.','error'); return; }
   showStatus('new-proj-status','',''); document.getElementById('new-proj-status').className='status-msg';
   WIZ_STEP = Math.max(1, Math.min(WIZ_MAX, WIZ_STEP+dir));
+  // Leaving step 5 must not lose steps typed under whichever scope was open.
+  if(WIZ_STEP!==5 && dir!==0) { try{ if(document.getElementById('npwf-co-rows')) wizWfCapture(); }catch(e){} }
   if(WIZ_STEP===4) wizSeedContractors();
-  if(WIZ_STEP===5) wfSyncWizardPeople();
+  if(WIZ_STEP===5){ wizWfScopeOptions(); wfSyncWizardPeople(); }
   wizShow();
 }
 function wizGatherContacts(){
@@ -2860,6 +2873,56 @@ function wizSeedNote(n){
     ? (n===1 ? 'Added 1 company from the team step. Fill in the contract amount.'
              : 'Added '+n+' companies from the team step. Fill in the contract amounts.')
     : '';
+}
+// ── Per-contractor chains, set at creation ───────────────────────────────
+// A change order follows a different path depending on who raised it, and the
+// dashboard has always supported that through workflowsByCompany. It was only
+// missing from the wizard, so a project had to be created and then edited to
+// get what was wanted from the start. Same store, same shape.
+let NPWF_SCOPE='';                 // '' = the default chain
+let NPWF_BYCO={};                  // company -> gathered chains
+function wizWfScopeOptions(){
+  const sel=document.getElementById('npwf-scope'); if(!sel) return;
+  const names=wizGatherContractors().map(c=>c.name).filter(Boolean);
+  sel.innerHTML='<option value="">Every company (default)</option>'
+    +names.map(n=>'<option value="'+esc(n)+'"'+(NPWF_SCOPE===n?' selected':'')
+      +'>'+esc(n)+(NPWF_BYCO[n]?' \u2014 custom':'')+'</option>').join('');
+  sel.value=NPWF_SCOPE;
+  const rv=document.getElementById('npwf-revert');
+  if(rv) rv.style.display=(NPWF_SCOPE && NPWF_BYCO[NPWF_SCOPE])?'inline-block':'none';
+  const hint=document.getElementById('npwf-scope-hint');
+  if(hint){
+    hint.innerHTML = NPWF_SCOPE
+      ? 'Only items raised by <strong>'+esc(NPWF_SCOPE)+'</strong> follow these steps. Everyone else follows the default.'
+      : (names.length
+          ? 'Applies to every company without its own chain. Pick a contractor above to give them a different one.'
+          : 'Applies to everyone. Add contractors on the previous step to give any of them their own chain.');
+  }
+}
+// Keep whatever is on screen before switching away from it.
+function wizWfCapture(){
+  const g=wfGather('npwf');
+  if(NPWF_SCOPE) NPWF_BYCO[NPWF_SCOPE]=g; else NPWF_DEFAULT=g;
+}
+let NPWF_DEFAULT=null;
+function wizWfScopeChange(){
+  const sel=document.getElementById('npwf-scope'); if(!sel) return;
+  wizWfCapture();
+  NPWF_SCOPE=sel.value||'';
+  // A contractor with no chain of their own starts from the default, so an
+  // override is a change to what they would otherwise have followed.
+  const start = NPWF_SCOPE ? (NPWF_BYCO[NPWF_SCOPE] || NPWF_DEFAULT) : NPWF_DEFAULT;
+  wfRenderAll('npwf','np-workflows', start, []);
+  wizWfScopeOptions();
+  wfSyncWizardPeople();
+}
+function wizWfRevert(){
+  if(!NPWF_SCOPE) return;
+  if(!confirm(NPWF_SCOPE+' will follow the default chain again. The steps entered for them are discarded.')) return;
+  delete NPWF_BYCO[NPWF_SCOPE];
+  wfRenderAll('npwf','np-workflows', NPWF_DEFAULT, []);
+  wizWfScopeOptions();
+  wfSyncWizardPeople();
 }
 function wizGatherContractors(){
   return [...document.querySelectorAll('#np-contractors .wiz-contractor-row')].map(row=>{
@@ -3047,10 +3110,22 @@ async function createProject(){
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
       contractDate: wizVal('np-contractdate'),
       milestones: wizGatherMilestones(), contractors: wizGatherContractors(), projectAdmin: 'ccicala@fidevia.com',
-      workflows: (()=>{ const g=wfGather('npwf');
+      workflows: (()=>{ const g=(WIZ_STEP===5 && !NPWF_SCOPE) ? wfGather('npwf') : (NPWF_DEFAULT||wfGather('npwf'));
         // Anything left untouched in the wizard falls back to the standard chain.
         Object.keys(WF_TEMPLATES).forEach(k=>{ if(!(g[k]&&g[k].length)) g[k]=WF_TEMPLATES[k].map(x=>Object.assign({},x)); });
         return g; })(),
+      // Per-contractor chains, in the same shape the dashboard reads and writes.
+      workflowsByCompany: (()=>{
+        try{ if(NPWF_SCOPE) NPWF_BYCO[NPWF_SCOPE]=wfGather('npwf'); }catch(e){}
+        const out={};
+        Object.keys(NPWF_BYCO||{}).forEach(co=>{
+          const g=NPWF_BYCO[co];
+          // A chain with no steps at all is not an override; it would silently
+          // give that contractor nothing rather than the default.
+          if(g && Object.keys(g).some(k=>(g[k]||[]).length)) out[co]=g;
+        });
+        return out;
+      })(),
       billing: { pencilDay: parseInt(wizVal('np-pencil'),10)||20, formalDay: parseInt(wizVal('np-formal'),10)||25 },
       response: { gc: parseInt(wizVal('np-rsp-gc'),10)||7, architect: parseInt(wizVal('np-rsp-arch'),10)||7,
                   engineer: parseInt(wizVal('np-rsp-eng'),10)||10, submittal: parseInt(wizVal('np-rsp-sub'),10)||14 }
