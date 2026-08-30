@@ -987,6 +987,36 @@ export default async (req) => {
     }
 
     // ---- EXTERNAL: the projects this caller has been granted ----
+    // Who holds what role on one project. The job contact sheet shows the
+    // granted role in place of a self-declared job title, and that column was
+    // blank for everyone outside Fidevia because the only source was an
+    // admin-only op.
+    //
+    // Readable by anyone already granted on the project. It says nothing the
+    // contact sheet does not: those people, their companies and addresses are
+    // already listed there, and a role is less revealing than an address.
+    // People with no grant are simply absent, so this cannot be used to work
+    // out who has been refused access.
+    if (op === 'projectRoles') {
+      const pid = String(body.projectId || '');
+      if (!pid) return json({ error: 'projectId required' }, 400);
+      if (!who.isAdmin) {
+        const mine = await getGrants(who.email);
+        if (!mine.some(g => String(g.id) === pid)) return json({ error: 'Access denied' }, 403);
+      }
+      const out = {};
+      try {
+        const { blobs } = await grantsStore().list();
+        for (const b of (blobs || [])) {
+          try {
+            const g = await grantsStore().get(b.key, { type: 'json' });
+            const hit = ((g && g.projects) || []).find(p => String(p.id) === pid);
+            if (hit && hit.role) out[String(b.key).trim().toLowerCase()] = normRole(hit.role);
+          } catch (e) {}
+        }
+      } catch (e) {}
+      return json({ roles: out });
+    }
     if (op === 'myProjects') {
       const grants = await getGrants(who.email);
       const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });

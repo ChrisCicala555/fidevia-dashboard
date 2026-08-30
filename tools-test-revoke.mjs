@@ -18,7 +18,9 @@ ok('only adminRevoke removes a grant server-side',
 
 console.log('Access is now visible');
 ok('project grants are loaded for admins', /async function loadProjectAccess/.test(src));
-ok('loaded when a project opens',          /if\(!EXTERNAL\) loadProjectAccess\(\);/.test(src));
+// No longer gated on being internal: externals need it for the Role column,
+// and it takes a non-admin path for them.
+ok('loaded when a project opens',          /\n    loadProjectAccess\(\);/.test(src));
 ok('non-admins do not attempt it',         /if\(!IS_ADMIN \|\| !currentProject\) return;/.test(src));
 ok('there is an Access column',            html.includes('>Access</th>'));
 ok('Account and Access are separate',      html.includes('>Account</th>') && html.includes('>Access</th>'));

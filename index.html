@@ -2380,7 +2380,9 @@ async function openProject(folderId, name){
     toggleBoardTab(); loadLogo();
     if(!EXTERNAL) loadProjectPhotos();
     if(!EXTERNAL) loadAccountEmails();
-    if(!EXTERNAL) loadProjectAccess();
+    // Externals need this too: it is what fills the Role column on the contact
+    // sheet. It asks a different, non-admin op for them.
+    loadProjectAccess();
     if(!EXTERNAL) loadProjectOrgs();
     projectLoadingStep('Loading project records…');
     // loadDashboard lifts the gate itself once records are in and rendered.
@@ -4001,7 +4003,18 @@ let PROJECT_ACCESS=new Set();
 let PROJECT_ROLES={};
 async function loadProjectAccess(){
   PROJECT_ACCESS=new Set(); PROJECT_ROLES={};
-  if(!IS_ADMIN || !currentProject) return;
+  if(!currentProject) return;
+  // Outside Fidevia the grant list is not readable, so the Role column on the
+  // contact sheet was blank for every external. This asks only for the roles
+  // on the open project, which the caller is already granted on.
+  if(!IS_ADMIN || viewingAsExternal()){
+    try{
+      const d=await proxyCall('projectRoles',{projectId:String(currentProject.folderId)},{quiet:true});
+      Object.keys(d.roles||{}).forEach(em=>{ PROJECT_ROLES[em]=d.roles[em]; PROJECT_ACCESS.add(em); });
+    }catch(e){}
+    try{ renderContacts(); }catch(e){}
+    return;
+  }
   try{
     const d=await proxyCall('adminListGrants',{},{quiet:true});
     const pid=String(currentProject.folderId);
