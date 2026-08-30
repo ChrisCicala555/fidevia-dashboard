@@ -2380,7 +2380,17 @@ const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC',
 let WIZ_STEP = 1;
 function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
-function openNewProject(){ WIZ_DRAFT_ID=''; initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
+// Leaving a project did not clear its loaded rows, so anything reading allData
+// while the wizard was open saw the last project's contacts. The wizard builds
+// a different project and should start from nothing.
+function wizClearProjectContext(){
+  currentProject=null;
+  Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
+  try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
+}
+function openNewProject(){
+  wizClearProjectContext();
+  WIZ_DRAFT_ID=''; initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
 
 // ── Pausing a setup ───────────────────────────────────────────────────────
 // The wizard held everything in the page, so closing it lost the lot. The
@@ -2461,6 +2471,7 @@ function wizCancel(){
 async function resumeDraft(id){
   try{
     const d=await proxyCall('getDraft',{id});
+    wizClearProjectContext();
     WIZ_DRAFT_ID=id;
     initWizard();
     wizRestoreState((d.draft&&d.draft.state)||{});
@@ -8013,11 +8024,13 @@ function _versions(r){
   return h;
 }
 const WF_KEYMAP={rfi:'rfi',co:'co',sub:'sub',pay_apps:'payapp'};
-function wfCompanyOf(person){
+function wfCompanyOf(person, inWizard){
   if(!person) return '';
   const key=String(person).trim().toLowerCase();
-  let c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===key);
-  if(!c){ try{ c=wizGatherContacts().find(x=>(x['Name']||'').trim().toLowerCase()===key); }catch(e){} }
+  const fromWizard=()=>{ try{ return wizGatherContacts().find(x=>(x['Name']||'').trim().toLowerCase()===key); }catch(e){ return null; } };
+  let c = inWizard ? fromWizard()
+    : (allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===key);
+  if(!inWizard && !c) c=fromWizard();
   return (c&&c['Company'])?c['Company']:'';
 }
 let CD_PICK=[];
@@ -8075,9 +8088,21 @@ function cdPickSearch(){
     };
   });
 }
-function wfPeopleList(){
-  let list=(allData.contacts||[]).filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''}));
-  if(!list.length){ try{ list=wizGatherContacts().filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''})); }catch(e){} }
+// Which set of people a workflow field should offer. Inside the new-project
+// wizard it is the team being entered on step 2 and nothing else; the last
+// project opened is irrelevant to a project that does not exist yet.
+function wfInWizard(el){
+  try{ return !!(el && el.closest && el.closest('#np-workflows')); }catch(e){ return false; }
+}
+function wfPeopleList(inWizard){
+  const fromWizard=()=>{ try{ return wizGatherContacts().filter(c=>c['Name'])
+    .map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''})); }catch(e){ return []; } };
+  // The wizard asks for its own team outright. It used to prefer
+  // allData.contacts and fall back to the team only when that was empty, so
+  // opening any project first left its contacts offered here instead.
+  let list = inWizard ? fromWizard()
+    : (allData.contacts||[]).filter(c=>c['Name']).map(c=>({name:c['Name'],company:c['Company']||'',role:c['Role']||''}));
+  if(!inWizard && !list.length) list=fromWizard();
   const seen=new Set();
   return list.filter(p=>{ const k=p.name.trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
              .sort((a,b)=>a.name.localeCompare(b.name));
@@ -8086,7 +8111,7 @@ function wfCloseAC(){ document.querySelectorAll('.wf-ac').forEach(el=>el.remove(
 function wfShowAC(inp){
   wfCloseAC();
   const q=(inp.value||'').trim().toLowerCase();
-  const people=wfPeopleList();
+  const people=wfPeopleList(wfInWizard(inp));
   const matches=q ? people.filter(p=>p.name.toLowerCase().startsWith(q)) : people;
   if(!matches.length) return;
   const box=document.createElement('div');
@@ -8101,7 +8126,7 @@ function wfShowAC(inp){
   });
 }
 document.addEventListener('click',function(e){ if(!e.target.closest('.wf-row')) wfCloseAC(); });
-function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value)||''; }
+function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value, wfInWizard(inp))||''; }
 // Project default chains.
 function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
 // Per-contractor overrides live alongside the defaults, so projects without any
