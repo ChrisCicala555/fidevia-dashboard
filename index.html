@@ -2885,7 +2885,12 @@ const WF_TEMPLATES={
     {name:'Owner Signature', person:''}
   ]
 };
-const WF_DEFAULTS={rfi:['Fidevia CM','Architect'],co:['Fidevia CM','Owner'],sub:['Fidevia CM','Architect'],payapp:['Fidevia CM']};
+// WF_DEFAULTS used to live here: a four-entry list of bare step names that
+// predated the agreed workflows. It was what the wizard drew, so a new project
+// was built on it — and because the creation path only falls back to
+// WF_TEMPLATES when the gathered steps are empty, and these rows were not
+// empty, WF_TEMPLATES never applied to anything made in the wizard. One set of
+// defaults now, in WF_TEMPLATES, rendered and saved.
 function wfStepRow(prefix,key,name,person,parallel,requireAll){
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
@@ -2905,7 +2910,8 @@ function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+
 function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
   const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
-  el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,(workflows&&workflows[k])||(WF_DEFAULTS[k]||[]).map(n=>({name:n,person:'',parallel:false})))).join('');
+  el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,
+    (workflows&&workflows[k]) || (WF_TEMPLATES[k]||[]).map(x=>Object.assign({},x)))).join('');
   el.querySelectorAll('.wf-person').forEach(inp=>wfUpdateCo(inp));
 }
 function wfGather(prefix){
