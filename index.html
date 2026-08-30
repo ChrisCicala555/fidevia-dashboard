@@ -3436,7 +3436,10 @@ function renderContacts(){
   const q=String((document.getElementById('jc-search')||{}).value||'').trim().toLowerCase();
   // Filter but keep each row's original index, which the action buttons use.
   const keep=all.map((r,i)=>i).filter(i=>{ if(!q) return true; const r=all[i];
-    return ['Name','Company','Role','Email','Phone'].some(f=>String(r[f]||'').toLowerCase().includes(q)); });
+    if(['Name','Company','Role','Email','Phone'].some(f=>String(r[f]||'').toLowerCase().includes(q))) return true;
+    // The Role column shows granted access, so searching it should too.
+    const g=PROJECT_ROLES[contactEmail(r)]||'';
+    return !!g && (ROLE_LABELS[g]||g).toLowerCase().includes(q); });
   const cnt=document.getElementById('jc-count');
   if(cnt) cnt.textContent = all.length
     ? (q ? keep.length+' of '+all.length+' contacts' : all.length+' contact'+(all.length===1?'':'s'))
@@ -3469,7 +3472,7 @@ function renderContacts(){
     html+='<tr class="cd-band"><td colspan="11"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
-        +editCell(i,'Company',r['Company'],110)+editCell(i,'Role',r['Role'],120)
+        +editCell(i,'Company',r['Company'],110)+roleCell(r,i)
         +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+esc(r['Email'])+'</td>'
         +'<td class="nw">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'
         +tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')
@@ -3541,6 +3544,62 @@ function nameCell(r){
 // Having an account and having access to this project are different things.
 // Showing only the first made it look as though a checkmark meant "can open
 // this project", which is exactly the assumption that made deleting confusing.
+// The Role column shows the access Fidevia granted on this project, not the
+// job title the person typed into their own profile. Those titles were
+// self-declared and inconsistent — 'GC' and 'General Contractor' for the same
+// thing — and told you nothing about what the person can actually do here.
+// Their own title is kept underneath, in smaller type: two people can both be
+// Contractors while one is the superintendent and one the PM, and a job
+// contact sheet is exactly where that distinction earns its place.
+function roleCell(r, i){
+  const em=contactEmail(r);
+  const granted=em ? (PROJECT_ROLES[em]||'') : '';
+  const typed=String(r['Role']||'').trim();
+  const sub = typed ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+esc(typed)+'</div>' : '';
+  if(!IS_ADMIN || viewingAsExternal()){
+    const label = granted
+      ? '<span style="font-weight:600;">'+roleLabelOf(granted)+'</span>'
+      : '<span style="color:var(--muted)">No access</span>';
+    return '<td>'+label+sub+'</td>';
+  }
+  const opts='<option value="">No access</option>'
+    +['contractor','architect','engineer','owner','custom'].map(k=>
+      '<option value="'+k+'"'+(granted===k?' selected':'')+'>'+ROLE_LABELS[k]+'</option>').join('')
+    // A grant written before Architect and Engineer were separate still reads
+    // as Architect; keep it selectable rather than silently rewriting it.
+    +(granted==='architect-engineer'?'<option value="architect-engineer" selected>Architect</option>':'');
+  return '<td><select class="jc-role" onchange="setContactAccess('+i+',this)" '
+    +'style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;'
+    +'font-family:inherit;background:var(--white);color:var(--ink);max-width:150px;">'+opts+'</select>'+sub+'</td>';
+}
+async function setContactAccess(i, sel){
+  const r=(allData.contacts||[])[i]; if(!r) return;
+  const em=contactEmail(r);
+  const want=sel.value, had=(PROJECT_ROLES[em]||'');
+  if(!em){ alert('This contact has no email address, so there is nothing to grant access to.'); sel.value=had; return; }
+  const nm=r['Name']||em;
+  if(!want){
+    if(!confirm('Remove '+nm+"'s access to this project?\n\nThey stay on the contact sheet. Anything they have already submitted is unaffected."))
+      { sel.value=had; return; }
+  } else if(had && had!==want){
+    if(!confirm('Change '+nm+' from '+roleLabelOf(had)+' to '+ROLE_LABELS[want]+' on this project?\n\n'
+      +'This changes what they can see and do here. Their access on other projects is untouched.'))
+      { sel.value=had; return; }
+  }
+  sel.disabled=true;
+  try{
+    if(!want){
+      await proxyCall('adminRevoke',{ email:em, projectId:String(currentProject.folderId) });
+    }else{
+      await proxyCall('adminGrant',{ email:em,
+        projects:[{id:String(currentProject.folderId), name:currentProject.name}],
+        company:String(r['Company']||'').trim(), role:want,
+        modules: want==='custom' ? [] : null });
+    }
+    await loadProjectAccess();
+  }catch(e){ alert('Could not change access: '+e.message); sel.value=had; }
+  sel.disabled=false;
+}
 function accessCell(r){
   if(!IS_ADMIN) return '<td class="hide-external nw"></td>';
   const yes=contactHasAccess(r);
