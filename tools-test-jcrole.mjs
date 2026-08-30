@@ -24,6 +24,15 @@ ok(/if\(!IS_ADMIN \|\| viewingAsExternal\(\)\)/.test(rc), 'only Fidevia gets the
 }
 ok(/sub/.test(rc.split('const opts=')[1]||''), 'Fidevia keeps the second line');
 ok(/<select class="jc-role"/.test(rc), 'Fidevia gets a picker');
+// Layout: the picker and its caption share a width so the column lines up,
+// and a long title cannot make one row taller than the rest.
+ok(/\.jc-role-cell\{width:172px;\}/.test(html), 'the role column has one width');
+ok(/\.jc-role\{width:100%/.test(html), 'the picker fills that width');
+ok(/\.jc-role-sub\{[^}]*white-space:nowrap/.test(html), 'a long title stays on one line');
+ok(/\.jc-role-sub\{[^}]*text-overflow:ellipsis/.test(html), 'and is clipped rather than wrapped');
+ok(/class="jc-role-sub" title=/.test(rc), 'the full title is still available on hover');
+ok(!/max-width:150px/.test(rc), 'the inline width that caused the ragged column is gone');
+ok((rc.match(/<td class="jc-role-cell"/g)||[]).length===2, 'both branches use the same cell class');
 ok(/architect-engineer'\?'<option value="architect-engineer" selected/.test(rc),
    'a legacy grant stays selectable rather than being silently rewritten');
 ok(/granted===k\?' selected'/.test(rc), 'the current role is preselected');

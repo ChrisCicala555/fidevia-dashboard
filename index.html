@@ -331,6 +331,17 @@
     font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#F3EFE0;color:#7A6B2E;
     border:1px solid #E4DCC2;}
   .draft-meta{font-size:12px;color:var(--muted);margin-top:8px;}
+  /* Role cell: the picker and the caption beneath it share a left edge and a
+     width, so the column reads as one thing rather than two loose pieces. */
+  .jc-role-cell{width:172px;}
+  .jc-role{width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px;
+    padding:7px 9px; font-size:13px; font-family:inherit; background:var(--white); color:var(--ink);
+    line-height:1.25;}
+  /* A long title wrapped to two lines and made that row taller than its
+     neighbours. One line, clipped, with the full text on hover. */
+  .jc-role-sub{font-size:12px; color:var(--muted); margin-top:5px; line-height:1.3;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+  .jc-role-flat{font-weight:600;}
   .cd-strand{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;font-size:10.5px;
     font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:#FBEAEA;color:#8C3A3A;
     border:1px solid #F0D2D2;vertical-align:middle;cursor:pointer;}
@@ -3560,13 +3571,13 @@ function roleCell(r, i){
   const em=contactEmail(r);
   const granted=em ? (PROJECT_ROLES[em]||'') : '';
   const typed=String(r['Role']||'').trim();
-  const sub = typed ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+esc(typed)+'</div>' : '';
+  const sub = typed ? '<div class="jc-role-sub" title="'+esc(typed)+'">'+esc(typed)+'</div>' : '';
   if(!IS_ADMIN || viewingAsExternal()){
     // One line outside Fidevia. The second line is a Fidevia working detail,
     // and 'No access' is a fact about someone's account rather than about the
     // project — not a contractor's business who can and cannot sign in.
-    return '<td>'+(granted
-      ? '<span style="font-weight:600;">'+roleLabelOf(granted)+'</span>'
+    return '<td class="jc-role-cell">'+(granted
+      ? '<span class="jc-role-flat">'+roleLabelOf(granted)+'</span>'
       : '<span style="color:var(--muted)">\u2014</span>')+'</td>';
   }
   const opts='<option value="">No access</option>'
@@ -3575,9 +3586,8 @@ function roleCell(r, i){
     // A grant written before Architect and Engineer were separate still reads
     // as Architect; keep it selectable rather than silently rewriting it.
     +(granted==='architect-engineer'?'<option value="architect-engineer" selected>Architect</option>':'');
-  return '<td><select class="jc-role" onchange="setContactAccess('+i+',this)" '
-    +'style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;'
-    +'font-family:inherit;background:var(--white);color:var(--ink);max-width:150px;">'+opts+'</select>'+sub+'</td>';
+  return '<td class="jc-role-cell"><select class="jc-role" onchange="setContactAccess('+i+',this)">'
+    +opts+'</select>'+sub+'</td>';
 }
 async function setContactAccess(i, sel){
   const r=(allData.contacts||[])[i]; if(!r) return;
