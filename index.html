@@ -710,7 +710,7 @@
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
       <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
-      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
+      <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" readonly onfocus="this.removeAttribute('readonly')" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
       <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
       <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
     </div>
@@ -1281,7 +1281,7 @@
             </div>
             <div class="field-row">
               <div class="field" style="flex:1;"><label>Contract date</label><input type="date" id="ps-contractdate"><p class="file-hint" style="margin-top:3px;">The date of the agreement. Printed on change orders.</p></div>
-              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" autocomplete="off" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
+              <div class="field" style="flex:1;"><label>Onsite CM</label><input id="ps-cm" readonly onfocus="this.removeAttribute('readonly')" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
             </div>
             <div class="field"><label>Street address</label><input id="ps-line1" autocomplete="off"></div>
             <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="ps-line2" autocomplete="off"></div>
@@ -2513,9 +2513,9 @@ function wizAddContact(){
   const div=document.createElement('div');
   div.className='wiz-contact-row';
   div.style='border:1px solid var(--khaki-300);border-radius:6px;padding:10px;margin-bottom:8px;position:relative;';
-  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
-    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" type="email" class="ct-email" oninput="dirSuggest(this,\'email\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
-    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
+  div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" '+NOFILL+' class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
+    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" '+NOFILL+' class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" '+NOFILL+' type="text" inputmode="email" class="ct-email" oninput="dirSuggest(this,\'email\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
+    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" '+NOFILL+' type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
     +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Dashboard access</label><select class="ct-access" onchange="wizAccessNote(this)">'+accessOptions()+'</select></div><div class="field" style="margin:0;display:flex;align-items:flex-end;padding-bottom:2px;"><div class="ct-access-note" style="font-size:12px;color:var(--muted);line-height:1.45;"></div></div></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">&times;</button>':'');
   wrap.appendChild(div);
@@ -2530,6 +2530,14 @@ function wizAddContact(){
 // used, which is hard to verify from outside the browser — the list is built
 // here explicitly. It also carries more than a bare name: the company is shown
 // underneath, so two people with similar names can be told apart.
+// Safari ignores autocomplete="off" on anything it reads as a contact detail —
+// a field labelled Name, or typed as email or tel — and drops its own card over
+// whatever is beneath, which here is our list. A field that is read-only at the
+// moment Safari decides whether to offer a fill is not a candidate; clearing it
+// on focus restores normal typing. type="email" is also dropped for the same
+// reason, with inputmode keeping the right keyboard on a phone.
+const NOFILL='readonly onfocus="this.removeAttribute(\'readonly\')" '
+  +'autocapitalize="off" autocorrect="off" spellcheck="false"';
 let DIR_SUG={ el:null, box:null, items:[], i:-1, field:'', opts:null };
 function dirClose(){
   if(DIR_SUG.box){ DIR_SUG.box.remove(); }
@@ -2557,9 +2565,17 @@ async function dirSuggest(el, field, opts){
   const box=document.createElement('div');
   box.className='dir-sug';
   const r=el.getBoundingClientRect();
+  // Eight rows can run past the bottom of the window, so the list scrolls on
+  // its own. Positioned above the field instead when there is more room there.
+  const below=window.innerHeight-r.bottom, above=r.top;
+  const maxH=Math.max(120, Math.min(288, (below<160 && above>below ? above : below)-12));
+  const top = (below<160 && above>below)
+    ? (r.top+window.scrollY-maxH-4)
+    : (r.bottom+window.scrollY+4);
   box.style.cssText='position:absolute;z-index:9999;background:var(--white);border:1px solid var(--border);'
-    +'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.13);overflow:hidden;'
-    +'left:'+(r.left+window.scrollX)+'px;top:'+(r.bottom+window.scrollY+4)+'px;width:'+r.width+'px;';
+    +'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.13);overflow-y:auto;overscroll-behavior:contain;'
+    +'max-height:'+maxH+'px;'
+    +'left:'+(r.left+window.scrollX)+'px;top:'+top+'px;width:'+r.width+'px;';
   box.innerHTML=list.map((c,i)=>
     '<div class="dir-sug-i" data-i="'+i+'" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #F1F0E8;">'
     +'<div style="font-weight:600;color:var(--ink);font-size:14px;">'+esc(c.name||c.email)+'</div>'
@@ -2578,6 +2594,8 @@ function dirPaint(){
   if(!DIR_SUG.box) return;
   [...DIR_SUG.box.querySelectorAll('.dir-sug-i')].forEach((it,i)=>{
     it.style.background = (i===DIR_SUG.i) ? '#F3F1E7' : 'transparent';
+    // Arrowing past the visible edge should follow, now that the list scrolls.
+    if(i===DIR_SUG.i && it.scrollIntoView) it.scrollIntoView({block:'nearest'});
   });
 }
 function dirKey(e, el){
@@ -2624,7 +2642,14 @@ function dirPick(i){
 }
 // The list is positioned against the viewport, so it has to go when the page
 // moves underneath it.
-window.addEventListener('scroll', ()=>{ if(DIR_SUG.box) dirClose(); }, true);
+// Capture phase catches scrolling anywhere, including inside the list itself —
+// which closed it the moment you tried to reach the item you wanted.
+window.addEventListener('scroll', e=>{
+  if(!DIR_SUG.box) return;
+  if(e.target && DIR_SUG.box.contains && DIR_SUG.box.contains(e.target)) return;
+  if(e.target===DIR_SUG.box) return;
+  dirClose();
+}, true);
 window.addEventListener('resize', ()=>{ if(DIR_SUG.box) dirClose(); });
 
 // The Role field above is free text and documents what someone does. This is

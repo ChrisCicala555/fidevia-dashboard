@@ -98,5 +98,35 @@ ok(/wizFillJobNumber\(\); loadFideviaPeople\(\);/.test(html), 'the directory is 
   ok(/loadFideviaPeople\(\)/.test(fps), 'and when the settings pane opens');
 }
 
+// ── the list has to be reachable ──
+{
+  const ds = html.split('async function dirSuggest')[1].split('function dirPaint')[0];
+  ok(/overflow-y:auto/.test(ds), 'a long list scrolls rather than running off the screen');
+  ok(/max-height:'\+maxH/.test(ds), 'its height is capped to the space available');
+  ok(/overscroll-behavior:contain/.test(ds), 'scrolling the list does not scroll the page behind it');
+  ok(/below<160 && above>below/.test(ds), 'it flips above the field when there is more room there');
+}
+{
+  const sc = html.split("window.addEventListener('scroll'")[1].split('window.addEventListener(\'resize\'')[0];
+  ok(/DIR_SUG\.box\.contains\(e\.target\)\) return;/.test(sc),
+     'scrolling inside the list no longer closes it');
+  ok(/e\.target===DIR_SUG\.box\) return;/.test(sc), 'nor scrolling the container itself');
+  ok(/dirClose\(\);/.test(sc), 'scrolling the page still closes it');
+}
+ok(/it\.scrollIntoView\(\{block:'nearest'\}\)/.test(html),
+   'arrowing past the visible edge follows the highlight');
+
+// ── Safari puts its own autofill card over ours unless the field is not a target ──
+ok(/const NOFILL='readonly onfocus="this\.removeAttribute/.test(html),
+   'contact fields are read-only until focused, so autofill does not claim them');
+ok(!/type="email" class="ct-email"/.test(html),
+   'the email field is not typed as email, which Safari treats as a fill target');
+ok(/inputmode="email"/.test(html), 'but still gets an email keyboard on a phone');
+ok((html.match(/\+NOFILL\+/g)||[]).length===4,
+   'name, email, phone and company are all covered');
+ok(/id="np-cm" readonly onfocus/.test(html), 'the wizard Onsite CM field too');
+ok(/id="ps-cm" readonly onfocus/.test(html), 'and the settings one');
+ok(/removeAttribute\(\\'readonly\\'\)/.test(html), 'focus makes them editable again');
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-wizcontact.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
