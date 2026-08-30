@@ -6,7 +6,9 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // ── the picker exists and defaults to nothing ──
 ok(/class="ct-access"/.test(html), 'each contact row has an access picker');
-ok(/const ACCESS_OPTIONS='<option value="">No dashboard access<\/option>'/.test(html),
+// A function rather than a const, so it is evaluated after ROLE_LABELS exists.
+ok(/function accessOptions\(\)/.test(html), 'the options are built lazily');
+ok(/return '<option value="">No dashboard access<\/option>'/.test(html),
    'the first option is no access, so it is the default');
 ok(/\['contractor','architect','engineer','owner','custom'\]/.test(html), 'all five access roles are offered');
 
