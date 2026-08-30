@@ -2796,6 +2796,7 @@ function wizNav(dir){
   if(dir>0 && WIZ_STEP===1 && !wizVal('np-name')){ showStatus('new-proj-status','Project name is required.','error'); return; }
   showStatus('new-proj-status','',''); document.getElementById('new-proj-status').className='status-msg';
   WIZ_STEP = Math.max(1, Math.min(WIZ_MAX, WIZ_STEP+dir));
+  if(WIZ_STEP===4) wizSeedContractors();
   if(WIZ_STEP===5) wfSyncWizardPeople();
   wizShow();
 }
@@ -2807,6 +2808,47 @@ function wizGatherContacts(){
     const acc=row.querySelector('.ct-access');
     return {'Name':g('.ct-name'),'Company':g('.ct-company'),'Role':g('.ct-role'),'Email':g('.ct-email'),'Phone':g('.ct-phone'),'Notify - RFI':notify,'Notify - CO':notify,'Notify - Submittal':notify, _access:(acc&&acc.value)||''};
   }).filter(Boolean);
+}
+// The companies of everyone given Contractor access on the team step are the
+// prime contractors, so retyping them here was busywork and a chance to spell
+// one of them differently. Additive only: an existing row is never changed or
+// removed, since a contract amount may already be in it, and only the one
+// blank starter row is reused.
+function wizSeedContractors(){
+  const wrap=document.getElementById('np-contractors'); if(!wrap) return;
+  const norm=v=>String(v||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\s+/g,' ');
+  const have=new Set([...wrap.querySelectorAll('.cn-name')]
+    .map(el=>norm(el.value)).filter(Boolean));
+  const wanted=[];
+  wizGatherContacts().forEach(c=>{
+    if(c._access!=='contractor') return;
+    const co=String(c['Company']||'').trim();
+    if(!co || have.has(norm(co)) || wanted.some(w=>norm(w)===norm(co))) return;
+    wanted.push(co);
+  });
+  if(!wanted.length){ wizSeedNote(0); return; }
+  wanted.forEach(co=>{
+    // Reuse the untouched starter row before adding another.
+    let row=[...wrap.querySelectorAll('.wiz-contractor-row')]
+      .find(r=>!String(r.querySelector('.cn-name').value||'').trim());
+    if(!row){ wizAddContractor(); row=wrap.lastElementChild; }
+    const nm=row.querySelector('.cn-name'); if(nm) nm.value=co;
+    have.add(norm(co));
+  });
+  wizSeedNote(wanted.length);
+}
+function wizSeedNote(n){
+  let el=document.getElementById('np-contr-note');
+  if(!el){
+    const wrap=document.getElementById('np-contractors'); if(!wrap) return;
+    el=document.createElement('div'); el.id='np-contr-note';
+    el.style.cssText='font-size:12.5px;color:var(--muted);margin:2px 0 12px;line-height:1.45;';
+    wrap.parentElement.insertBefore(el, wrap);
+  }
+  el.textContent = n
+    ? (n===1 ? 'Added 1 company from the team step. Fill in the contract amount.'
+             : 'Added '+n+' companies from the team step. Fill in the contract amounts.')
+    : '';
 }
 function wizGatherContractors(){
   return [...document.querySelectorAll('#np-contractors .wiz-contractor-row')].map(row=>{
