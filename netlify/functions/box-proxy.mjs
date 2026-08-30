@@ -1829,6 +1829,42 @@ export default async (req) => {
       await store.setJSON(sub, pr);
       return json({ ok: true });
     }
+    // Create a directory placeholder if there is not already a record for this
+    // address. Used by the project wizard, so someone entered there appears in
+    // the directory straight away rather than only once they sign up.
+    //
+    // No panel password, unlike addContact. That password guards editing the
+    // directory screen; this creates a record and never changes one. The
+    // caller is already an administrator and the same wizard grants project
+    // access, which is the more powerful act by some distance.
+    if (op === 'ensureContact') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'A valid email address is required.' }, 400);
+      // Fidevia addresses are administrators and are not directory contacts.
+      if (email.endsWith(FIDEVIA_DOMAIN)) return json({ ok: true, skipped: 'fidevia' });
+      const store = getStore('profiles');
+      try {
+        const { blobs } = await store.list();
+        for (const b of (blobs || [])) {
+          try {
+            const pr = await store.get(b.key, { type: 'json' });
+            if (pr && String(pr.email || '').trim().toLowerCase() === email) {
+              return json({ ok: true, skipped: 'exists' });
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      const rec = Object.assign({
+        phone: String(body.phone || '').slice(0, 60),
+        company: String(body.company || '').slice(0, 200),
+        title: String(body.role || '').slice(0, 200),
+        involvement: '', email, onboarded: false, pending: true,
+        added_by: who.email || '', added_at: new Date().toISOString()
+      }, splitName(body.name || ''));
+      await store.setJSON(PENDING_PREFIX + email, rec);
+      return json({ ok: true, created: true });
+    }
     // Only placeholders can be removed here. Deleting a real account is a
     // larger action — it has grants and a sign-in behind it — and is not this.
     if (op === 'deleteContact') {

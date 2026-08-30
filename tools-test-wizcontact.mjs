@@ -18,7 +18,8 @@ ok(/function dirPick/.test(html) && /function dirKey/.test(html) && /function di
 
 // wiring
 ok(/class="ct-name" oninput="dirSuggest\(this,\\'name\\'\)"/.test(html), 'the name field is wired');
-ok(/class="ct-email" oninput="dirSuggest\(this,\\'email\\'\)"/.test(html), 'the email field is wired');
+ok(/class="ct-email" oninput="dirSuggest\(this,\\'email\\'\);wizEmailTyped\(this\)"/.test(html),
+   'the email field suggests and reacts to a Fidevia address being typed');
 ok(/id="np-cm"[^>]*dirSuggest\(this,'name',\{fideviaOnly:true\}\)/.test(html), 'wizard Onsite CM is Fidevia-only');
 ok(/id="ps-cm"[^>]*dirSuggest\(this,'name',\{fideviaOnly:true\}\)/.test(html), 'settings Onsite CM is Fidevia-only');
 ok((html.match(/onkeydown="dirKey\(event,this\)"/g)||[]).length===4, 'all four fields take the keyboard');
@@ -34,7 +35,8 @@ ok(/\.slice\(0,8\)/.test(m), 'the list is capped');
 ok(/starts\.concat\(contains\)/.test(m), 'prefix matches rank above substring matches');
 
 const pk = html.split('function dirPick')[1].split('window.addEventListener')[0];
-ok(/!f\.value\.trim\(\)/.test(pk), 'only blank fields are written');
+ok(/const put=\(sel,val\)=>\{ const f=row\.querySelector\(sel\); if\(f\) f\.value=val\|\|''; \};/.test(pk),
+   'picking someone replaces the whole row rather than filling gaps');
 ok(/if\(!row\)\{/.test(pk), 'a standalone field takes just the name');
 ok(/Filled in from the contact directory/.test(pk), 'the row says where the values came from');
 

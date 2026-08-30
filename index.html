@@ -2514,7 +2514,7 @@ function wizAddContact(){
   div.className='wiz-contact-row';
   div.style='border:1px solid var(--khaki-300);border-radius:6px;padding:10px;margin-bottom:8px;position:relative;';
   div.innerHTML='<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Name</label><input autocomplete="off" '+NOFILL+' class="ct-name" oninput="dirSuggest(this,\'name\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Role</label><input autocomplete="off" class="ct-role" placeholder="e.g. Onsite CM, Business Manager"></div></div>'
-    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" '+NOFILL+' class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" '+NOFILL+' type="text" inputmode="email" class="ct-email" oninput="dirSuggest(this,\'email\')" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
+    +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Company</label><input autocomplete="off" '+NOFILL+' class="ct-company" placeholder="e.g. Fidevia, School District"></div><div class="field" style="margin:0;"><label style="font-size:12px;">Email</label><input autocomplete="off" '+NOFILL+' type="text" inputmode="email" class="ct-email" oninput="dirSuggest(this,\'email\');wizEmailTyped(this)" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)"></div></div>'
     +'<div class="field-row" style="margin-bottom:8px;"><div class="field" style="margin:0;"><label style="font-size:12px;">Phone</label><input autocomplete="off" '+NOFILL+' type="tel" class="ct-phone"></div><div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;padding-bottom:9px;"><input type="checkbox" class="ct-notify" style="width:auto;"><label style="font-size:13px;margin:0;">Notify on RFIs / COs / Submittals</label></div></div>'
     +'<div class="field-row" style="margin:0;"><div class="field" style="margin:0;"><label style="font-size:12px;">Dashboard access</label><select class="ct-access" onchange="wizAccessNote(this)">'+accessOptions()+'</select></div><div class="field" style="margin:0;display:flex;align-items:flex-end;padding-bottom:2px;"><div class="ct-access-note" style="font-size:12px;color:var(--muted);line-height:1.45;"></div></div></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:17px;">&times;</button>':'');
@@ -2614,30 +2614,19 @@ function dirPick(i){
     // A standalone field, such as Onsite CM: it wants the name and nothing else.
     el.value=c.name||''; dirClose(); return;
   }
-  // Only blank fields are written. Anything already typed is the more recent
-  // intent and is left alone.
-  const put=(sel,val)=>{ const f=row.querySelector(sel); if(f && !f.value.trim() && val) f.value=val; };
+  // Picking someone from the list is an explicit statement of who this row is,
+  // so it replaces the row rather than filling the gaps. Half this person and
+  // half whoever was there before is the state nobody wants.
+  const put=(sel,val)=>{ const f=row.querySelector(sel); if(f) f.value=val||''; };
   el.value = (field==='email') ? (c.email||'') : (c.name||'');
   put('.ct-name', c.name); put('.ct-email', c.email);
   put('.ct-company', c.company); put('.ct-role', c.role);
   put('.ct-phone', fmtPhone(c.phone||''));
-  // Preselect what their written role suggests, but only onto an untouched
-  // picker. A guess may inform the choice; it must never make it silently.
-  const acc=row.querySelector('.ct-access');
-  if(acc && !acc.value && !acc.dataset.touched){
-    const hint=accessHintFor(c.role, c.email);
-    if(hint){
-      acc.value=hint;
-      const note=row.querySelector('.ct-access-note');
-      if(note){ note.textContent='Suggested from \u201c'+esc(c.role||'')+'\u201d. Check it before creating the project.';
-        note.style.color='#8a6d3b'; }
-    }
-  }
-  if(acc) acc.addEventListener('change', ()=>{ acc.dataset.touched='1'; }, {once:true});
+  applyAccessFor(row, c);
   let note=row.querySelector('.ct-from');
   if(!note){ note=document.createElement('div'); note.className='ct-from';
     note.style='font-size:12px;color:var(--muted);margin-top:7px;'; row.appendChild(note); }
-  note.textContent='Filled in from the contact directory. Anything you had already typed was kept.';
+  note.textContent='Filled in from the contact directory for '+(c.name||c.email)+'.';
   dirClose();
 }
 // The list is positioned against the viewport, so it has to go when the page
@@ -2676,6 +2665,35 @@ function accessHintFor(roleText, company){
   for(const [re,role] of ACCESS_HINTS){ if(re.test(t)) return role; }
   return '';
 }
+// Preselect from the access they already hold elsewhere, falling back to what
+// their written role suggests. Fidevia staff are administrators, so they are
+// shown as such rather than offered a grant that would do nothing.
+function applyAccessFor(row, c){
+  const acc=row.querySelector('.ct-access'); if(!acc) return;
+  const note=row.querySelector('.ct-access-note');
+  const em=String((c&&c.email)||'').trim().toLowerCase();
+  if(em && FIDEVIA_EMAIL.test(em)){
+    acc.value=''; acc.disabled=true;
+    if(note){ note.textContent='Fidevia staff \u2014 full access to every project already. Nothing to grant.';
+      note.style.color='var(--olive-700)'; }
+    return;
+  }
+  acc.disabled=false;
+  const held=GRANT_ROLES[em];
+  if(held && ROLE_LABELS[held.role]){
+    acc.value=held.role;
+    if(note){ note.textContent='Already '+ROLE_LABELS[held.role]+' on '+held.count
+        +' other project'+(held.count===1?'':'s')+'. Change it if this job is different.';
+      note.style.color='var(--olive-700)'; }
+    return;
+  }
+  const hint=accessHintFor(c&&c.role, c&&c.email);
+  acc.value=hint||'';
+  if(hint && note){
+    note.textContent='Suggested from \u201c'+String((c&&c.role)||'')+'\u201d. No access anywhere yet, so worth checking.';
+    note.style.color='#8a6d3b';
+  } else { wizAccessNote(acc); }
+}
 function wizAccessNote(sel){
   const row=sel.closest('.wiz-contact-row'); if(!row) return;
   const note=row.querySelector('.ct-access-note'); if(!note) return;
@@ -2685,6 +2703,14 @@ function wizAccessNote(sel){
   if(v==='custom'){ note.textContent='Custom access is granted here, then narrowed to specific tabs in Manage Access.'; note.style.color='var(--muted)'; return; }
   note.textContent='Sees this project as '+ROLE_LABELS[v]+(co?(', scoped to '+co):'')+'. Live as soon as they have an account.';
   note.style.color='var(--olive-700)';
+}
+// Typing a Fidevia address by hand should land the same way as picking one.
+function wizEmailTyped(el){
+  const row=el.closest && el.closest('.wiz-contact-row'); if(!row) return;
+  const acc=row.querySelector('.ct-access'); if(!acc) return;
+  const em=String(el.value||'').trim().toLowerCase();
+  if(FIDEVIA_EMAIL.test(em)){ applyAccessFor(row, {email:em}); return; }
+  if(acc.disabled){ acc.disabled=false; wizAccessNote(acc); }
 }
 function wizAddContractor(){
   const wrap=document.getElementById('np-contractors');
@@ -2921,6 +2947,20 @@ async function createProject(){
     if(WIZ_DRAFT_ID){ try{ await proxyCall('deleteDraft',{id:WIZ_DRAFT_ID},{quiet:true}); }catch(e){} WIZ_DRAFT_ID=''; }
     // After the project exists, not before: an invitation pointing at a project
     // that failed to create would be worse than no invitation.
+    // Someone entered here who is not in the directory would otherwise appear
+    // only on this project, and only reach the directory if they eventually
+    // signed up. Same placeholder the directory's own Add Contact writes, so
+    // the two routes leave the same record.
+    let listed=0;
+    for(const c of contacts){
+      const em=String(c['Email']||'').trim();
+      if(!em) continue;
+      try{
+        const d=await proxyCall('ensureContact',{ email:em, name:c['Name'],
+          company:c['Company'], role:c['Role'], phone:c['Phone'] },{quiet:true});
+        if(d && d.created) listed++;
+      }catch(e){ console.warn('Could not add', em, 'to the directory \u2014', e.message); }
+    }
     // Access chosen on the team step. Grants are keyed on email, so one made
     // now is simply waiting: it takes effect the moment that address signs up.
     // Nothing here is inferred — only what was actually selected is granted.
@@ -2950,6 +2990,7 @@ async function createProject(){
       for(const c of contacts){ if(await notifyContactAdded(c, name)) invited++; }
     }
     showStatus('new-proj-status','Project created!'
+      +(listed?' '+listed+' added to the directory.':'')
       +(granted?' '+granted+' given access.':'')
       +(invited?' '+invited+' invitation'+(invited===1?'':'s')+' sent.':''),'success');
     setTimeout(()=>{ btn.disabled=false; showScreen('screen-picker'); loadPicker(); }, 1200);
@@ -7853,10 +7894,26 @@ let CD_PICK=[];
 // rather than a custom dropdown: it works on mobile, needs no key handling,
 // and leaves the field free text, so a name not in the directory still types.
 const FIDEVIA_EMAIL=/@fidevia\.com$/i;
+// email -> the access they most often hold elsewhere, and on how many projects.
+let GRANT_ROLES={};
 async function loadFideviaPeople(){
   try{
     if(!CD_PICK.length){ const d=await proxyCall('allContacts',{},{quiet:true}); CD_PICK=d.contacts||[]; }
   }catch(e){ CD_PICK=[]; }
+  // What each person already has on other projects. A better guide to the
+  // access they need here than a job title someone typed about themselves.
+  if(!Object.keys(GRANT_ROLES).length){
+    try{
+      const d=await proxyCall('adminListGrants',{},{quiet:true});
+      (d.grants||[]).forEach(g=>{
+        const em=String(g.email||'').trim().toLowerCase(); if(!em) return;
+        const tally={};
+        (g.projects||[]).forEach(p=>{ const r=String(p.role||'').trim().toLowerCase(); if(r) tally[r]=(tally[r]||0)+1; });
+        const best=Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0];
+        if(best) GRANT_ROLES[em]={ role:best, count:tally[best] };
+      });
+    }catch(e){}
+  }
 }
 async function cdPickLoad(){
   const box=document.getElementById('f-dirresults'); const inp=document.getElementById('f-dirsearch');
