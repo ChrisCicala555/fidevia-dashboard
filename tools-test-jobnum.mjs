@@ -74,7 +74,8 @@ ok(/function wizFillJobNumber/.test(html), 'the wizard asks for the next number'
   // Pinned to order rather than to the exact line, which now also loads the
   // Onsite CM list: clearing the fields must come first or the suggestion is
   // wiped straight after it is written.
-  const onp = html.split('function openNewProject()')[1].split('\n')[0];
+  // openNewProject is several lines now, so take the whole function body.
+  const onp = html.split('function openNewProject()')[1].split('// \u2500\u2500 Pausing a setup')[0];
   ok(/initWizard\(\)/.test(onp) && /wizFillJobNumber\(\)/.test(onp),
      'the wizard opener both clears and fills');
   ok(onp.indexOf('initWizard()') < onp.indexOf('wizFillJobNumber()'),
