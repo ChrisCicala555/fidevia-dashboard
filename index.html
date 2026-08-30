@@ -2106,7 +2106,9 @@ async function loadPicker(){
       if(toggle) toggle.style.display='';
       const pr = await proxyCall('adminListProjects',{});
       if(pr.rootId) sessionStorage.setItem('root_id', pr.rootId);
-      PICKER_PROJECTS = (pr.projects||[]).map(p=>({id:String(p.id), name:p.name, type:'folder', logoFileId:p.logoFileId||''}));
+      const _lo=logoOverrides();
+      PICKER_PROJECTS = (pr.projects||[]).map(p=>({id:String(p.id), name:p.name, type:'folder',
+        logoFileId:(Object.prototype.hasOwnProperty.call(_lo,String(p.id)) ? _lo[String(p.id)] : (p.logoFileId||''))}));
       let arch=[]; try{ arch=(await proxyCall('getArchived',{},{quiet:true})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
       // A failed draft list must not stop the picker loading real projects.
@@ -2135,6 +2137,17 @@ const ADD_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path
 function setPickerView(v){ PICKER_VIEW=v; document.querySelectorAll('#picker-view-toggle button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-v')===v)); renderPickerGrid(); }
 // Logo URLs are short-lived, so keep them for the life of the page only.
 const PICKER_LOGOS={};
+// Logos changed in this session, so the picker is correct before the server's
+// ten-minute cache expires. Session-scoped: it is a staleness patch, not a
+// second source of truth.
+function rememberLogo(projectId, fileId){
+  let m={}; try{ m=JSON.parse(sessionStorage.getItem('logo_overrides')||'{}')||{}; }catch(e){}
+  m[String(projectId)]=String(fileId||'');
+  try{ sessionStorage.setItem('logo_overrides', JSON.stringify(m)); }catch(e){}
+}
+function logoOverrides(){
+  try{ return JSON.parse(sessionStorage.getItem('logo_overrides')||'{}')||{}; }catch(e){ return {}; }
+}
 async function loadPickerLogo(projectId, fileId){
   const slot=document.getElementById('plogo-'+projectId); if(!slot) return;
   try{
@@ -6577,6 +6590,12 @@ async function saveProjectSettings(){
       // The picker caches by file id, so a replaced logo would otherwise keep
       // showing the old image until a reload.
       try{ delete PICKER_LOGOS[c.logoFileId]; }catch(e){}
+      // Two caches sit between here and the picker. The server keeps the logo
+      // id for ten minutes; ask it to forget this project. That only reaches
+      // the instance that answers, so the id is also remembered here and laid
+      // over whatever the picker is told, which is right immediately.
+      try{ await proxyCall('logoChanged',{projectId:String(currentProject.folderId)},{quiet:true}); }catch(e){}
+      try{ rememberLogo(currentProject.folderId, c.logoFileId||''); }catch(e){}
       psLogoShow();
     }
     try{ await proxyCall('recordJobNumber',{ jobNumber:c.jobNumber, project:currentProject.name },{quiet:true}); }catch(e){}

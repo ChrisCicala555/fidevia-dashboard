@@ -739,6 +739,16 @@ export default async (req) => {
     }
 
     // ---- ADMIN OPS ----
+    // The logo id is cached for ten minutes to keep the picker cheap. A logo
+    // changed in Settings would not show until that expired — and worse, the
+    // downloadUrl guard uses the same cache to decide whether a file is a
+    // logo, so a new one could be refused to external users meanwhile.
+    if (op === 'logoChanged') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const id = String(body.projectId || '');
+      if (id) _logoCache.delete(id);
+      return json({ ok: true });
+    }
     if (op === 'listDrafts') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = draftStore();

@@ -58,5 +58,38 @@ ok(/PS_LOGO_PENDING=\{remove:true/.test(rm), 'removal is staged rather than appl
   covered.forEach(k=>ok(new RegExp('id="'+ids[k]+'"').test(html), k+' is editable in Settings'));
 }
 
+// ── the caches between saving and seeing it ──
+const srv = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
+ok(/if \(op === 'logoChanged'\)/.test(srv), 'the server can be told to forget a cached logo id');
+{
+  const lc = srv.split("if (op === 'logoChanged')")[1].split("if (op === 'listDrafts')")[0];
+  ok(/who\.isAdmin/.test(lc), 'and only by an admin');
+  ok(/_logoCache\.delete\(id\)/.test(lc), 'it clears the entry');
+  ok(/downloadUrl guard uses the same cache/.test(srv),
+     'the second consequence of that cache is recorded');
+}
+ok(/proxyCall\('logoChanged'/.test(html), 'saving a logo tells the server');
+ok(/function rememberLogo/.test(html) && /function logoOverrides/.test(html),
+   'and remembers it locally, since clearing only reaches one instance');
+{
+  const lp = html.split('const _lo=logoOverrides\(\);')[1] || html.split('const _lo=logoOverrides();')[1] || '';
+  ok(/hasOwnProperty\.call\(_lo,String\(p\.id\)\)/.test(lp),
+     'an override wins even when it is empty, so a removed logo disappears too');
+}
+{
+  // the overlay itself
+  const overlay=(serverList, overrides)=>serverList.map(p=>({id:p.id,
+    logoFileId: Object.prototype.hasOwnProperty.call(overrides,p.id) ? overrides[p.id] : (p.logoFileId||'')}));
+  const server=[{id:'1',logoFileId:''},{id:'2',logoFileId:'old'},{id:'3',logoFileId:'keep'}];
+  const got=overlay(server,{'1':'new','2':''});
+  ok(got[0].logoFileId==='new', 'a logo added this session shows immediately');
+  ok(got[1].logoFileId==='', 'a logo removed this session disappears immediately');
+  ok(got[2].logoFileId==='keep', 'a project not touched is left alone');
+  ok(overlay(server,{}).map(p=>p.logoFileId).join('|')==='|old|keep',
+     'with no overrides the server answer stands');
+}
+ok(/sessionStorage/.test(html.split('function rememberLogo')[1].slice(0,400)),
+   'the overrides are session-scoped, not a second source of truth');
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-pslogo.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
