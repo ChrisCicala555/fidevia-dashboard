@@ -346,6 +346,11 @@
   .jc-role-dirty{border-color:var(--danger); box-shadow:0 0 0 2px rgba(192,57,43,.12);}
   /* Disabled, but stating a fact rather than being unavailable — so it should
      not read as greyed out. */
+  .cd-band-warn td{background:#FBF3E7 !important; border-bottom:1px solid #EBDCC2;}
+  .cd-band-warn .cdb-key{color:#8A6D3B;}
+  .cd-band-warn .cdb-n{background:#F0E0C4; color:#7A5E28;}
+  .cd-band-note{font-size:12.5px;color:#8A6D3B;font-weight:400;margin-top:4px;line-height:1.45;
+    text-transform:none;letter-spacing:0;max-width:70ch;}
   .cd-justadded td{background:#EDF4E4 !important; transition:background 1.2s;}
   .ct-head{display:flex; align-items:center; gap:9px; cursor:pointer; padding:2px 0 0; user-select:none;}
   .ct-caret{color:var(--muted); font-size:12px; transition:transform .15s; flex:0 0 auto;}
@@ -5542,8 +5547,23 @@ function renderContactDir(){
     return a.localeCompare(b);
   });
   letters.forEach(L=>groups[L].sort(byName));
+  // Accounts that exist but are on nothing. Two kinds land here and both want
+  // looking at: someone invited who signed up and was never placed, and
+  // someone who found the sign-up page and was never invited at all. Fidevia
+  // addresses are excluded — they are administrators by domain and would fill
+  // this permanently without meaning anything.
+  const unassigned = list.filter(c =>
+    !c.pending &&
+    !FIDEVIA_EMAIL.test(String(c.email||'').trim()) &&
+    !Number(c.projects||0));
+  const unassignedSubs = new Set(unassigned.map(c=>c.sub));
+  list = list.filter(c=>!unassignedSubs.has(c.sub));
   const cnt=document.getElementById('cd-count');
-  if(cnt) cnt.textContent = list.length+' contact'+(list.length===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s');
+  if(cnt){
+    const total=list.length+unassigned.length;
+    cnt.textContent = total+' contact'+(total===1?'':'s')+' · '+letters.length+' group'+(letters.length===1?'':'s')
+      +(unassigned.length?(' · '+unassigned.length+' unassigned'):'');
+  }
   const fld=(idx,field,val,w)=> CD_UNLOCKED
     ? '<input class="cd-inp" onclick="event.stopPropagation()" style="min-width:'+(w||130)+'px" value="'+esc(val||'')+'"'
       +(field==='phone'?' onblur="this.value=fmtPhone(this.value)"':'')
@@ -5573,8 +5593,17 @@ function renderContactDir(){
         +'</td>':'')+'</tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
   const NCOL = CD_UNLOCKED ? 6 : 5;
+  // Pinned above the A-Z, because the point of it is to be noticed.
+  const unassignedRows = unassigned.length
+    ? '<tr class="cd-band cd-band-warn"><td colspan="'+NCOL+'">'
+        +'<span class="cdb-key">Unassigned accounts</span><span class="cdb-n">'+unassigned.length+'</span>'
+        +'<div class="cd-band-note">Signed up, but not on any project. Give them access from a project\u2019s contact sheet \u2014 or if you were not expecting them, treat it as someone who found the sign-up page.</div>'
+      +'</td></tr>'
+      + unassigned.slice().sort(byName).map(rowHtml).join('')
+    : '';
   el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th>'
     +(CD_UNLOCKED?'<th class="nw" style="text-align:right;">Actions</th>':'')+'</tr></thead><tbody>'
+    +unassignedRows
     +letters.map(L=>'<tr class="cd-band"><td colspan="'+NCOL+'"><span class="cdb-key"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'</span><span class="cdb-n">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table></div>';
 }

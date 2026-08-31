@@ -1715,12 +1715,28 @@ export default async (req) => {
     if (op === 'allContacts') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const store = getStore('profiles');
+      // How many projects each address is granted on. One walk of the grants
+      // store, so the directory can show accounts that are not on anything —
+      // people who signed up and were never placed, and anyone who signed up
+      // without being invited at all.
+      const grantCount = {};
+      try {
+        const { blobs } = await grantsStore().list();
+        for (const b of (blobs || [])) {
+          try {
+            const g = await grantsStore().get(b.key, { type: 'json' });
+            grantCount[String(b.key).trim().toLowerCase()] = ((g && g.projects) || []).length;
+          } catch (e) {}
+        }
+      } catch (e) {}
       const out = [];
       try {
         const { blobs } = await store.list();
         for (const b of (blobs || [])) {
           try { const pr = await store.get(b.key, { type: 'json' }); if (pr && pr.email) {
-              const row = { sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, first: pr.first_name || '', last: pr.last_name || '', email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX) };
+              const row = { sub: b.key, name: (((pr.first_name || '') + ' ' + (pr.last_name || '')).trim()) || pr.email, first: pr.first_name || '', last: pr.last_name || '', email: pr.email, company: pr.company || '', role: pr.title || '', phone: pr.phone || '', pending: String(b.key).startsWith(PENDING_PREFIX),
+                projects: grantCount[String(pr.email || '').trim().toLowerCase()] || 0,
+                joined: pr.updated_at || pr.added_at || '' };
               // What Fidevia originally entered, where the person has since
               // signed up and changed it. Only the fields that actually differ,
               // so the directory can show the disagreement and nothing else.
