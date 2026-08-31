@@ -4675,9 +4675,23 @@ function scheduleStats(){
   const sc=find('substantial');
   const end=sc?d(sc.contract):null;
   const today=new Date();
-  let duration=null,expended=null,remaining=null,pct=null;
-  if(start&&end){ duration=Math.round((end-start)/86400000); expended=Math.round((today-start)/86400000); remaining=Math.round((end-today)/86400000); pct=duration>0?Math.min(1,Math.max(0,expended/duration)):0; }
-  return {start,end,duration,expended,remaining,pct};
+  let duration=null,expended=null,remaining=null,pct=null,started=null,finished=null;
+  if(start&&end){
+    duration=Math.round((end-start)/86400000);
+    started = today>=start;
+    finished = today>end;
+    // A project that has not started had a negative days expended, which read
+    // as though time were owed back. Nothing is spent until it begins, and the
+    // whole duration is still ahead.
+    if(!started){
+      expended=0; remaining=duration; pct=0;
+    } else {
+      expended=Math.round((today-start)/86400000);
+      remaining=Math.max(0, Math.round((end-today)/86400000));
+      pct=duration>0?Math.min(1,Math.max(0,expended/duration)):0;
+    }
+  }
+  return {start,end,duration,expended,remaining,pct,started,finished};
 }
 // Feeds the Home KPI header. Mirrors the Financial Summary deliberately: the
 // same company scoping and the same allowance-aware change order maths, so the
@@ -4734,8 +4748,23 @@ function renderSchedule(){
   const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
   tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td><td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
+  if(kp && !document.getElementById('sched-kpi-note')){
+    const nt=document.createElement('div'); nt.id='sched-kpi-note';
+    nt.style.cssText='font-size:12.5px;color:var(--muted);margin:-6px 0 16px;';
+    if(kp.parentElement) kp.parentElement.insertBefore(nt, kp.nextSibling);
+  }
   if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
-    kp.innerHTML=card('Construction Duration',(s.duration!=null?s.duration+' days':'—'))+card('Days Expended',(s.expended!=null?s.expended:'—'))+card('Days Remaining',(s.remaining!=null?s.remaining:'—'))+card('% Expended',(s.pct!=null?(s.pct*100).toFixed(1)+'%':'—')); }
+    // Before the start date the counters are not wrong, they are not yet
+    // meaningful — so they say so rather than showing a number.
+    const notYet = (s.started===false);
+    kp.innerHTML=card('Construction Duration',(s.duration!=null?s.duration+' days':'—'))
+      +card('Days Expended', notYet ? 'N/A' : (s.expended!=null?s.expended:'—'))
+      +card('Days Remaining',(s.remaining!=null?s.remaining:'—'))
+      +card('% Expended', notYet ? 'N/A' : (s.pct!=null?(s.pct*100).toFixed(1)+'%':'—'));
+    const sub=document.getElementById('sched-kpi-note');
+    if(sub) sub.textContent = notYet
+      ? 'Not started — construction begins '+fmtDMY(s.start.toISOString().slice(0,10))+'.'
+      : (s.finished ? 'Past the contract completion date.' : ''); }
 }
 // The Owner's Home is the financial picture only: no attention panel, no RFI
 // or submittal counts, no feed of items they cannot open.
@@ -4793,8 +4822,10 @@ function renderExec(){
   const cards=[];
   const own = f.scoped ? 'Your ' : '';
   if(f.revised){ cards.push(card(own+'Revised Contract',fmtMoney(f.revised))); cards.push(card(own+'% Billed',(f.pctBilled*100).toFixed(1)+'%')); }
+  // The Home header follows the same rule as the Schedule tab: before the
+  // start date, elapsed time is not a number worth showing.
   if(s.remaining!=null) cards.push(card('Days Remaining',s.remaining));
-  if(s.pct!=null) cards.push(card('% Time Elapsed',(s.pct*100).toFixed(1)+'%'));
+  if(s.pct!=null) cards.push(card('% Time Elapsed', s.started===false ? 'N/A' : (s.pct*100).toFixed(1)+'%'));
   el.style.display=cards.length?'':'none'; el.innerHTML=cards.join('');
 }
 // ── EDIT SCHEDULE (admin) ──
