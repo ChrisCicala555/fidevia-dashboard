@@ -8,7 +8,7 @@ ok(/\+roleCell\(r,i\)/.test(html), 'the Role column is rendered by roleCell');
 ok(!/editCell\(i,'Role',r\['Role'\],120\)/.test(html), 'it no longer prints the typed title as the role');
 ok(/function roleCell/.test(html), 'roleCell exists');
 
-const rc = html.split('function roleCell')[1].split('async function setContactAccess')[0];
+const rc = html.split('function roleCell')[1].split('// Access changes are held until Save')[0];
 ok(/PROJECT_ROLES\[em\]/.test(rc), 'it reads the granted role for this project');
 ok(/No access/.test(rc), 'someone with no grant is shown as such rather than blank');
 ok(/color:var\(--muted\)[^']*'>'\+esc\(typed\)/.test(rc) || /esc\(typed\)/.test(rc),
@@ -23,7 +23,7 @@ ok(/if\(!IS_ADMIN \|\| viewingAsExternal\(\)\)/.test(rc), 'only Fidevia gets the
   ok(/roleLabelOf\(granted\)/.test(ext), 'externals still see the granted role');
 }
 ok(/sub/.test(rc.split('const opts=')[1]||''), 'Fidevia keeps the second line');
-ok(/<select class="jc-role"/.test(rc), 'Fidevia gets a picker');
+ok(/<select class="jc-role'\+\(dirty\?' jc-role-dirty':''\)\+'"/.test(rc), 'Fidevia gets a picker');
 // Layout: the picker and its caption share a width so the column lines up,
 // and a long title cannot make one row taller than the rest.
 ok(/\.jc-role-cell\{width:172px;\}/.test(html), 'the role column has one width');
@@ -38,20 +38,8 @@ ok(/architect-engineer'\?'<option value="architect-engineer" selected/.test(rc),
    'a legacy grant stays selectable rather than being silently rewritten');
 ok(/granted===k\?' selected'/.test(rc), 'the current role is preselected');
 
-const sa = html.split('async function setContactAccess')[1].split('function accessCell')[0];
-ok(/adminRevoke/.test(sa) && /adminGrant/.test(sa), 'it can both grant and remove');
-ok(/if\(!em\)/.test(sa), 'a contact with no email is refused rather than silently failing');
-ok(/Remove .*access to this project\?/.test(sa), 'removal is confirmed');
-ok(/They stay on the contact sheet/.test(sa), 'and says what is not affected');
-ok(/Change '\+nm\+' from '\+roleLabelOf\(had\)\+' to '/.test(sa), 'a change names both roles');
-ok(/access on other projects is untouched/.test(sa), 'and that it is scoped to this project');
-ok(/sel\.value=had/.test(sa), 'declining puts the picker back');
-ok(/catch\(e\)\{ alert\('Could not change access/.test(sa) && /sel\.value=had/.test(sa),
-   'a failure restores the previous value rather than showing a lie');
-ok(/company:String\(r\['Company'\]\|\|''\)\.trim\(\)/.test(sa),
-   'the grant carries the company, which is what scopes their folders');
-ok(/await loadProjectAccess\(\)/.test(sa), 'the table refreshes from the server, not from the picker');
-ok(/sel\.disabled=true/.test(sa), 'the picker is locked while the change is in flight');
+// setContactAccess no longer writes; staging and saving are covered further
+// down, under "changes are staged, then saved together".
 
 // search
 ok(/The Role column shows granted access, so searching it should too/.test(html),
@@ -90,6 +78,50 @@ ok(/self-declared and inconsistent/.test(html),   // the note sits above the fun
   ok(roleFor('sdraper@example.com','')==='—', 'an outside contact with no grant still shows a dash');
   ok(roleFor('x@notfidevia.com','')==='—', 'a lookalike domain is not treated as staff');
   ok(roleFor('mtorres@example.com','Contractor')==='Contractor', 'a granted contact is unaffected');
+}
+
+// ── changes are staged, then saved together ──
+ok(/id="jc-savebar"/.test(html), 'there is a save bar');
+ok(/onclick="jcSaveAccess\(event\)"/.test(html) && /onclick="jcDiscardAccess\(\)"/.test(html),
+   'with save and discard');
+ok(/let JC_ACCESS_DIRTY=\{\}/.test(html), 'changes are held');
+{
+  const sca = html.split('function setContactAccess')[1].split('function jcUpdateSaveBar')[0];
+  ok(!/proxyCall/.test(sca), 'changing a picker no longer writes anything');
+  ok(/if\(want===had\) delete JC_ACCESS_DIRTY\[em\]/.test(sca),
+     'setting a value back to what it was clears the change rather than staging a no-op');
+  ok(/if\(!em\)/.test(sca), 'a contact with no email is still refused');
+}
+{
+  const sv = html.split('async function jcSaveAccess')[1].split('function accessCell')[0];
+  ok(/lines\.join/.test(sv) && /Apply these access changes/.test(sv),
+     'one summary lists every change instead of a dialog per row');
+  ok(/access removed/.test(sv) && /given '\+ROLE_LABELS/.test(sv) && /roleLabelOf\(d\.had\)\+' to '/.test(sv),
+     'each line reads correctly for a grant, a change and a removal');
+  ok(/Other projects are untouched/.test(sv), 'and says what is not affected');
+  ok(/failed\.push/.test(sv) && /Those are still listed as unsaved/.test(sv),
+     'a partial failure stays staged rather than being dropped silently');
+  ok(/delete JC_ACCESS_DIRTY\[em\]/.test(sv), 'successful ones are cleared individually');
+  ok(/await loadProjectAccess\(\)/.test(sv), 'the table refreshes from the server afterwards');
+}
+{
+  const rc2 = html.split('function roleCell')[1].split('let JC_ACCESS_DIRTY')[0];
+  ok(/hasOwnProperty\.call\(JC_ACCESS_DIRTY,em\)/.test(rc2),
+     'the picker shows a staged value, keyed on presence so a removal shows as removed');
+  ok(/const granted = \(staged!==null\) \? staged : saved;/.test(rc2), 'staged wins over saved');
+  ok(/jc-role-dirty/.test(rc2) && /Unsaved/.test(rc2), 'an unsaved row is marked');
+}
+ok(/\.jc-role-dirty\{border-color:var\(--danger\)/.test(html), 'the unsaved style exists');
+ok(/try\{ jcUpdateSaveBar\(\); \}catch\(e\)\{\}/.test(html), 'the bar is refreshed whenever the table is drawn');
+
+// staging behaviour
+{
+  let D={};
+  const set=(em,want,had)=>{ if(want===had) delete D[em]; else D[em]={want,had}; };
+  set('a@x','owner','contractor');   ok(Object.keys(D).length===1, 'a change is staged');
+  set('a@x','contractor','contractor'); ok(Object.keys(D).length===0, 'putting it back clears it');
+  set('b@x','','architect');         ok(D['b@x'].want==='', 'a removal is staged as an empty want');
+  set('c@x','engineer','');          ok(D['c@x'].had==='', 'a new grant is staged with no previous role');
 }
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-jcrole.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));

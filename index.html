@@ -343,6 +343,7 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
   .jc-role-flat{font-weight:600;}
   .jc-role-fid{color:var(--olive-700);}
+  .jc-role-dirty{border-color:var(--danger); box-shadow:0 0 0 2px rgba(192,57,43,.12);}
   /* Disabled, but stating a fact rather than being unavailable — so it should
      not read as greyed out. */
   .cd-justadded td{background:#EDF4E4 !important; transition:background 1.2s;}
@@ -1141,6 +1142,12 @@
             <input id="jc-search" autocomplete="off" placeholder="Search name, company, email, role…" oninput="renderContacts()">
           </span>
           <span id="jc-count" style="font-size:12.5px;color:var(--muted);"></span>
+        </div>
+        <div id="jc-savebar" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;background:var(--khaki-100);
+          border:1px solid var(--khaki-300);border-radius:8px;padding:11px 15px;margin-bottom:14px;">
+          <button class="btn-primary" id="btn-jc-save" style="padding:8px 16px;" onclick="jcSaveAccess(event)">Save access changes</button>
+          <button class="btn-secondary" style="padding:8px 14px;" onclick="jcDiscardAccess()">Discard</button>
+          <span id="jc-dirty-note" style="font-size:13px;color:var(--danger);font-weight:600;"></span>
         </div>
         <div class="cd-card">
           <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
@@ -3790,6 +3797,7 @@ function renderContacts(){
     });
   });
   tb.innerHTML=html;
+  try{ jcUpdateSaveBar(); }catch(e){}
 }
 // ── Project logo, after creation ─────────────────────────────────────────
 // The wizard could set one and nothing could change it afterwards, so there
@@ -3921,7 +3929,12 @@ function nameCell(r){
 // contact sheet is exactly where that distinction earns its place.
 function roleCell(r, i){
   const em=contactEmail(r);
-  const granted=em ? (PROJECT_ROLES[em]||'') : '';
+  const saved=em ? (PROJECT_ROLES[em]||'') : '';
+  // An unsaved change is what the row should show, or moving between tabs
+  // would look as though it had been thrown away.
+  const staged=(em && Object.prototype.hasOwnProperty.call(JC_ACCESS_DIRTY,em)) ? JC_ACCESS_DIRTY[em].want : null;
+  const granted = (staged!==null) ? staged : saved;
+  const dirty = (staged!==null);
   const typed=String(r['Role']||'').trim();
   const sub = typed ? '<div class="jc-role-sub" title="'+esc(typed)+'">'+esc(typed)+'</div>' : '';
   // Fidevia's own people are administrators by email domain, not by a grant,
@@ -3947,36 +3960,72 @@ function roleCell(r, i){
     // A grant written before Architect and Engineer were separate still reads
     // as Architect; keep it selectable rather than silently rewriting it.
     +(granted==='architect-engineer'?'<option value="architect-engineer" selected>Architect</option>':'');
-  return '<td class="jc-role-cell"><select class="jc-role" onchange="setContactAccess('+i+',this)">'
-    +opts+'</select>'+sub+'</td>';
+  return '<td class="jc-role-cell"><select class="jc-role'+(dirty?' jc-role-dirty':'')+'" onchange="setContactAccess('+i+',this)">'
+    +opts+'</select>'+(dirty?'<div class="jc-role-sub" style="color:var(--danger);font-weight:600;">Unsaved</div>':sub)+'</td>';
 }
-async function setContactAccess(i, sel){
+// Access changes are held until Save. Each one used to apply on the spot with
+// its own confirmation, so four changes were four dialogs, with no way to see
+// them together or back out of the set.
+let JC_ACCESS_DIRTY={};   // email -> { want, had, name, company }
+function setContactAccess(i, sel){
   const r=(allData.contacts||[])[i]; if(!r) return;
   const em=contactEmail(r);
-  const want=sel.value, had=(PROJECT_ROLES[em]||'');
+  const had=(PROJECT_ROLES[em]||'');
   if(!em){ alert('This contact has no email address, so there is nothing to grant access to.'); sel.value=had; return; }
-  const nm=r['Name']||em;
-  if(!want){
-    if(!confirm('Remove '+nm+"'s access to this project?\n\nThey stay on the contact sheet. Anything they have already submitted is unaffected."))
-      { sel.value=had; return; }
-  } else if(had && had!==want){
-    if(!confirm('Change '+nm+' from '+roleLabelOf(had)+' to '+ROLE_LABELS[want]+' on this project?\n\n'
-      +'This changes what they can see and do here. Their access on other projects is untouched.'))
-      { sel.value=had; return; }
-  }
-  sel.disabled=true;
-  try{
-    if(!want){
-      await proxyCall('adminRevoke',{ email:em, projectId:String(currentProject.folderId) });
-    }else{
-      await proxyCall('adminGrant',{ email:em,
-        projects:[{id:String(currentProject.folderId), name:currentProject.name}],
-        company:String(r['Company']||'').trim(), role:want,
-        modules: want==='custom' ? [] : null });
+  const want=sel.value;
+  if(want===had) delete JC_ACCESS_DIRTY[em];
+  else JC_ACCESS_DIRTY[em]={ want, had, name:r['Name']||em, company:String(r['Company']||'').trim() };
+  jcUpdateSaveBar();
+}
+function jcUpdateSaveBar(){
+  const bar=document.getElementById('jc-savebar'); if(!bar) return;
+  const keys=Object.keys(JC_ACCESS_DIRTY);
+  bar.style.display = keys.length ? 'flex' : 'none';
+  const note=document.getElementById('jc-dirty-note');
+  if(note) note.textContent = keys.length
+    ? keys.length+' access change'+(keys.length===1?'':'s')+' not yet saved'
+    : '';
+}
+function jcDiscardAccess(){
+  JC_ACCESS_DIRTY={};
+  jcUpdateSaveBar();
+  renderContacts();
+}
+async function jcSaveAccess(ev){
+  const keys=Object.keys(JC_ACCESS_DIRTY);
+  if(!keys.length) return;
+  // One summary rather than a dialog per row, so the whole set can be read
+  // before any of it happens.
+  const lines=keys.map(em=>{
+    const d=JC_ACCESS_DIRTY[em];
+    if(!d.want) return '  \u2022 '+d.name+' \u2014 access removed';
+    if(!d.had)  return '  \u2022 '+d.name+' \u2014 given '+ROLE_LABELS[d.want]+' access';
+    return '  \u2022 '+d.name+' \u2014 '+roleLabelOf(d.had)+' to '+ROLE_LABELS[d.want];
+  });
+  if(!confirm('Apply these access changes to this project?\n\n'+lines.join('\n')
+    +'\n\nOther projects are untouched, and anything already submitted is unaffected.')) return;
+  await withBusy(ev,'Saving…', async()=>{
+    const failed=[];
+    for(const em of keys){
+      const d=JC_ACCESS_DIRTY[em];
+      try{
+        if(!d.want){
+          await proxyCall('adminRevoke',{ email:em, projectId:String(currentProject.folderId) });
+        }else{
+          await proxyCall('adminGrant',{ email:em,
+            projects:[{id:String(currentProject.folderId), name:currentProject.name}],
+            company:d.company, role:d.want, modules: d.want==='custom' ? [] : null });
+        }
+        delete JC_ACCESS_DIRTY[em];
+      }catch(e){ failed.push(d.name+' ('+e.message+')'); }
     }
+    // Anything that failed stays staged, so a partial save is visible rather
+    // than quietly dropping whatever did not go through.
     await loadProjectAccess();
-  }catch(e){ alert('Could not change access: '+e.message); sel.value=had; }
-  sel.disabled=false;
+    jcUpdateSaveBar();
+    if(failed.length) alert('Could not change access for:\n\n  \u2022 '+failed.join('\n  \u2022 ')
+      +'\n\nThose are still listed as unsaved. Everything else went through.');
+  }).catch(e=>alert('Could not save: '+e.message));
 }
 function accessCell(r){
   if(!IS_ADMIN) return '<td class="hide-external nw"></td>';
