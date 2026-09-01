@@ -3003,26 +3003,35 @@ function wizWfRevert(){
 // One implementation, rendered into the wizard and into Settings, so the two
 // cannot drift into disagreeing about what an allowance is.
 function alwRow(prefix, co, idx, a){
-  return '<div class="alw-row" data-co="'+esc(co)+'" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
-    +'<div style="flex:0 0 92px;padding-bottom:10px;font-weight:700;color:var(--olive-700);font-size:13.5px;">Allowance '+esc(allowanceLetter(idx))+'</div>'
+  // The letter is stored on the row, not derived from its position. Deriving
+  // it meant deleting Allowance A turned B into A, and every change order
+  // already recorded against B was silently re-attributed.
+  const id=String((a&&a.id)||allowanceLetter(idx));
+  return '<div class="alw-row" data-co="'+esc(co)+'" data-id="'+esc(id)+'" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
+    +'<div style="flex:0 0 92px;padding-bottom:10px;font-weight:700;color:var(--olive-700);font-size:13.5px;">Allowance '+esc(id)+'</div>'
     +'<div class="field" style="flex:2;margin:0;"><label style="font-size:11px;color:#888;">Name</label>'
       +'<input class="alw-name" autocomplete="off" value="'+esc((a&&a.name)||'')+'" placeholder="e.g. Door hardware"></div>'
     +'<div class="field" style="flex:1;margin:0;"><label style="font-size:11px;color:#888;">Amount ($)</label>'
       +'<input class="alw-amt" autocomplete="off" value="'+esc((a&&a.amount)?String(a.amount):'')+'" placeholder="25000"></div>'
     +'<button type="button" class="btn-secondary" style="padding:9px 12px;" title="Remove"'
-      +' onclick="const w=this.closest(\'.alw-rows\');this.closest(\'.alw-row\').remove();alwReletter(w);">\u00d7</button>'
+      +' onclick="alwRemove(this)">\u00d7</button>'
     +'</div>';
 }
-// The letters are positional, so removing B has to make the old C into B.
-function alwReletter(wrap){
-  if(!wrap) return;
-  [...wrap.querySelectorAll('.alw-row')].forEach((r,i)=>{
-    const lbl=r.firstElementChild; if(lbl) lbl.textContent='Allowance '+allowanceLetter(i);
-  });
+// Removing one leaves a gap — A and C, with no B. That is correct: a reference
+// already on signed paperwork must not be handed to something else.
+function alwRemove(btn){
+  const row=btn.closest('.alw-row'); if(!row) return;
+  const id=row.getAttribute('data-id')||'';
+  if(!confirm('Remove Allowance '+id+'?\n\nAny change order already drawn against it keeps that reference, and the letter will not be reused.')) return;
+  row.remove();
 }
 function alwAdd(prefix, co){
   const wrap=document.getElementById(prefix+'-alw-'+alwKey(co)); if(!wrap) return;
-  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co, wrap.querySelectorAll('.alw-row').length, null));
+  // The next unused letter, not the next position, so a gap left by a removal
+  // is never filled by a new allowance inheriting an old reference.
+  const used=new Set([...wrap.querySelectorAll('.alw-row')].map(r=>r.getAttribute('data-id')));
+  let i=0; while(used.has(allowanceLetter(i))) i++;
+  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co, i, {id:allowanceLetter(i)}));
 }
 function alwKey(co){ return String(co||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x'; }
 function alwRenderAll(prefix, containerId, contractors){
@@ -3053,7 +3062,7 @@ function alwGather(prefix, contractors){
   (contractors||[]).forEach(c=>{
     const wrap=document.getElementById(prefix+'-alw-'+alwKey(c.name)); if(!wrap) return;
     out[c.name]=[...wrap.querySelectorAll('.alw-row')].map((r,i)=>({
-      id: allowanceLetter(i),
+      id: r.getAttribute('data-id') || allowanceLetter(i),
       name: (r.querySelector('.alw-name').value||'').trim(),
       amount: payNum(r.querySelector('.alw-amt').value)
     })).filter(a=>a.name||a.amount);
@@ -3466,19 +3475,63 @@ function sortByHeader(th){
   sortable.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
   totals.forEach(g=>g.forEach(row=>tbody.appendChild(row)));
 }
+// ── Item numbering ────────────────────────────────────────────────────────
+// RFI-GC-001, SUB-PC-002. The trade code says who raised it at a glance, which
+// a company name appended to the end did not do on a printed log.
+//
+// The sequence runs per code, not per firm: two plumbing contractors share the
+// PC run rather than both producing PC-001.
+const TRADE_OTHER='OC';
+function tradeCodeFor(company){
+  const co=String(company||'').trim();
+  if(!co) return 'CM';
+  if(FIDEVIA_EMAIL.test(co) || /^fidevia\b/i.test(co)) return 'CM';
+  const rec=contractorRec(co);
+  if(rec && rec.role){
+    const r=String(rec.role).trim().toUpperCase();
+    // 'Other' is a label, not a reference — it reads badly in a number.
+    return (r==='OTHER') ? TRADE_OTHER : r;
+  }
+  // Not a contractor. The design team share one code; anyone else is Fidevia's
+  // to raise on their behalf, so falls to CM.
+  const norm=co.toLowerCase();
+  const design=(allData.contacts||[]).some(x=>
+    String(rowCompany(x)||x['Company']||'').trim().toLowerCase()===norm &&
+    /architect|engineer/i.test(String(x['Role']||'')));
+  if(design) return 'AE';
+  const granted=Object.keys(PROJECT_ROLES||{}).some(em=>{
+    const c=(allData.contacts||[]).find(x=>String(x['Email']||'').trim().toLowerCase()===em);
+    return c && String(c['Company']||'').trim().toLowerCase()===norm && DESIGN_ROLES.includes(PROJECT_ROLES[em]);
+  });
+  return granted ? 'AE' : 'CM';
+}
 function nextItemNumber(key, comp){
-  const label={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'PA'}[key];
+  const label={rfi:'RFI',co:'CO',sub:'SUB',pay_apps:'PA'}[key];
   const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
   if(!label || !idField) return '';
-  const rows=allData[key]||[]; const c=(comp||'').trim().toLowerCase(); let max=0;
+  // Pay applications stay per contractor: they are billing against one
+  // contract, so a shared trade run would be wrong.
+  if(key==='pay_apps') return nextItemNumberByCompany(label, idField, comp);
+  const code=tradeCodeFor(comp);
+  const rows=allData[key]||[]; let max=0;
   rows.forEach(r=>{
-    // Pay applications carry the firm in Contractor rather than Company on rows
-    // recorded by Fidevia, so ask for whichever the row actually has.
+    const v=String(r[idField]||'');
+    // The new form carries its own code. Anything numbered before this change
+    // is matched by the company it belongs to, so an existing log continues
+    // into the right run instead of restarting at 001.
+    let m=v.match(/^[A-Za-z]+-([A-Z]{2,5})-(\d+)\s*$/);
+    if(m){ if(m[1].toUpperCase()===code){ const n=parseInt(m[2],10); if(n>max) max=n; } return; }
+    if(tradeCodeFor(rowCompany(r))!==code) return;
+    let o=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*)?(\d+)\s*$/i);
+    if(o){ const n=parseInt(o[1],10); if(n>max) max=n; }
+  });
+  return label+'-'+code+'-'+String(max+1).padStart(3,'0');
+}
+function nextItemNumberByCompany(label, idField, comp){
+  const rows=allData.pay_apps||[]; const c=(comp||'').trim().toLowerCase(); let max=0;
+  rows.forEach(r=>{
     if(rowCompany(r).trim().toLowerCase()!==c) return;
     const v=String(r[idField]||'');
-    // Match the numbered form first, then fall back to a bare number so a log
-    // that was kept by hand as 1, 2, 3 continues from where it left off rather
-    // than restarting and colliding.
     let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
     if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
   });
