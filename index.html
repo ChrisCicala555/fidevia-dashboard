@@ -2442,6 +2442,14 @@ const WIZ_MAX = 6;
 const WIZ_LABELS = ['Basics','Team','Schedule','Contractors','Workflows','Options'];
 const MILESTONE_NAMES = ['Notice to Proceed','Mobilize / Start Onsite','Substantial Completion','Punchlist','Final Completion'];
 const CONTRACTOR_ROLES = [['GC','General Contractor'],['MC','Mechanical'],['PC','Plumbing'],['EC','Electrical'],['Other','Other']];
+// The trade now appears in every RFI, submittal and change order number, so an
+// unset one cannot quietly be whichever option happens to be first in the list.
+// A blank leading option makes "not chosen" visible and refusable.
+function contractorRoleOptions(sel){
+  return '<option value=""'+(sel?'':' selected')+'>— Select trade —</option>'
+    +CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'"'+(sel===r[0]?' selected':'')+'>'
+      +r[1]+' ('+(r[0]==='Other'?'OC':r[0])+')</option>').join('');
+}
 let WIZ_STEP = 1;
 function wizVal(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
@@ -2863,7 +2871,7 @@ function wizAddContractor(){
   const div=document.createElement('div');
   div.className='wiz-contractor-row';
   div.style='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML='<div class="field" style="margin:0;flex:0 0 130px;"><label style="font-size:12px;">Role</label><select autocomplete="off" class="cn-role">'+CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div>'
+  div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select autocomplete="off" class="cn-role">'+contractorRoleOptions('')+'</select></div>'
     +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Lobar"></div>'
     +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:12px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="18799000"></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
@@ -3232,6 +3240,19 @@ function wizGatherMilestones(){
 }
 
 async function createProject(){
+  // Every RFI, submittal and change order number carries the trade, so a
+  // contractor without one has its items numbered CM — as though Fidevia had
+  // raised them. Worth stopping at creation rather than discovering it on a
+  // printed log.
+  {
+    const noTrade=wizGatherContractors().filter(c=>!c.role).map(c=>c.name);
+    if(noTrade.length){
+      alert('Set a trade for:\n\n  \u2022 '+noTrade.join('\n  \u2022 ')
+        +'\n\nThe trade appears in every RFI, submittal and change order number for that firm.');
+      WIZ_STEP=4; wizShow();
+      return;
+    }
+  }
   const name = wizVal('np-name');
   if(!name){ showStatus('new-proj-status','Project name is required.','error'); wizGo(1); return; }
   const btn = document.getElementById('wiz-create'); btn.disabled=true;
@@ -4765,6 +4786,10 @@ function renderFinancials(){
     // A negative balance means the allowance is overdrawn — show it, do not hide it.
     // The total is what the column shows; the letters are on hover, so a
     // contract carrying four allowances does not need four columns to be read.
+    // Reads as a gap rather than as a default, since the trade drives numbering.
+    const tradeCell = c.role
+      ? esc(c.role==='Other'?'OC':c.role)
+      : '<span style="color:var(--danger);font-weight:600;" title="No trade set. Items raised by this firm number as CM until one is chosen.">Not set</span>';
     const allowList = allowancesFor(c.name);
     const allowTip = allowList.length>1
       ? allowList.map(a=>'Allowance '+a.id+(a.name?(' — '+a.name):'')+': '
@@ -4777,7 +4802,7 @@ function renderFinancials(){
         +(allowLeft<0?'<div style="color:var(--danger);font-size:11px;font-weight:600;">Overdrawn</div>':'')
         +'</span>'
       : '<span style="color:var(--muted);">—</span>';
-    out.push('<tr><td>'+esc(c.role||'')+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+allowCell+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
+    out.push('<tr><td>'+tradeCell+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+allowCell+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
   });
   if(!contractors.length){
     tb.innerHTML='<tr class="empty-row"><td colspan="10">'+(EXTERNAL?'No contract information is associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')))+'</td></tr>';
@@ -4802,10 +4827,14 @@ function renderContractorsEditor(){
 function addContractorEditRow(c){
   c=c||{}; const wrap=document.getElementById('contractors-list');
   const div=document.createElement('div'); div.className='contr-edit-row'; div.style='display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML='<div class="field" style="margin:0;flex:0 0 105px;"><label style="font-size:12px;">Role</label><select class="ce-role">'+CONTRACTOR_ROLES.map(r=>'<option value="'+r[0]+'"'+(c.role===r[0]?' selected':'')+'>'+r[1]+'</option>').join('')+'</select></div>'
+  div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select class="ce-role">'+contractorRoleOptions(c.role||'')+'</select></div>'
     +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Name</label><input class="ce-name" value="'+esc(c.name||'')+'"></div>'
     +'<div class="field" style="margin:0;flex:0 0 120px;"><label style="font-size:12px;">Contract ($)</label><input class="ce-contract" value="'+esc(c.contract!=null?c.contract:'')+'"></div>'
-    +'<div class="field" style="margin:0;flex:0 0 115px;"><label style="font-size:12px;" title="Money already inside the contract that change orders can draw against">Allowance ($)</label><input class="ce-allowance" value="'+esc(c.allowance!=null?c.allowance:'')+'"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 115px;"><label style="font-size:12px;">Allowances</label>'
+      +'<div style="padding:9px 0 0;font-size:12.5px;color:var(--muted);">'
+        +(function(){ const a=(c.allowances&&c.allowances.length)?c.allowances.length:(payNum(c.allowance)?1:0);
+          return a? (a+' set') : 'None'; })()
+      +'</div></div>'
     +'<div class="field" style="margin:0;flex:0 0 95px;"><label style="font-size:12px;">Status</label><select class="ce-active"><option value="1"'+(c.active!==false?' selected':'')+'>Active</option><option value="0"'+(c.active===false?' selected':'')+'>Inactive</option></select></div>'
     +'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>';
   wrap.appendChild(div);
@@ -4813,10 +4842,20 @@ function addContractorEditRow(c){
 async function saveContractors(){
   const rows=[...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>{
     const role=r.querySelector('.ce-role').value, name=r.querySelector('.ce-name').value.trim(), contract=parseFloat((r.querySelector('.ce-contract').value||'').replace(/[^0-9.]/g,''))||0, active=r.querySelector('.ce-active').value==='1';
-    const _al=r.querySelector('.ce-allowance');
-    const allowance=parseFloat(((_al&&_al.value)||'').replace(/[^0-9.]/g,''))||0;
-    return name?{role,name,contract,allowance,active}:null;
+    // Allowances are edited in Settings, on their own tab. Whatever is already
+    // recorded is carried through untouched rather than being rebuilt from a
+    // field that no longer exists here.
+    const prev=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+      .find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase());
+    const carry={};
+    if(prev){ if(prev.allowances) carry.allowances=prev.allowances;
+              else if(prev.allowance!=null) carry.allowance=prev.allowance; }
+    return name?Object.assign({role,name,contract,active},carry):null;
   }).filter(Boolean);
+  // A missing trade would silently number that firm's items as Fidevia's.
+  const noTrade=rows.filter(r=>!r.role).map(r=>r.name);
+  if(noTrade.length && !confirm('No trade is set for:\n\n  \u2022 '+noTrade.join('\n  \u2022 ')
+    +'\n\nRFI, submittal and change order numbers carry the trade, so theirs will read CM until it is set. Save anyway?')) return;
   const btn=document.getElementById('contractors-save'); btn.disabled=true;
   try{
     currentProject.config=currentProject.config||{}; currentProject.config.contractors=rows;
