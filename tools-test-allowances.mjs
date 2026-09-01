@@ -39,10 +39,14 @@ ok(/\['project','dates','allowances','workflows','notifs'\]/.test(html), 'the ta
 }
 {
   const ag = html.split('function alwGather')[1].split('function wizGatherContractors')[0];
-  ok(/id: allowanceLetter\(i\)/.test(ag), 'letters are assigned by position, so they always run A, B, C');
+  ok(/id: r\.getAttribute\('data-id'\)/.test(ag),
+     'a letter is read from the row, not recomputed from its position');
   ok(/filter\(a=>a\.name\|\|a\.amount\)/.test(ag), 'an entirely blank row is dropped');
 }
-ok(/function alwReletter/.test(html), 'removing one re-letters the rest');
+// Re-lettering was the bug: deleting A turned B into A and re-attributed every
+// draw recorded against B. Removing one now leaves a gap.
+ok(/function alwRemove/.test(html) && !/function alwReletter/.test(html),
+   'removing one leaves a gap rather than re-lettering the rest');
 
 // ── saving ──
 {

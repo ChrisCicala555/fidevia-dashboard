@@ -10,11 +10,17 @@ const grab=(sig)=>{ const i=src.indexOf(sig); let d=0,on=false,j=i;
 
 fs.writeFileSync('.pn.tmp.mjs', [
   "export let allData={};",
+  "export let currentProject={config:{contractors:[]}};",
+  "export function setContractors(cs){ currentProject.config.contractors=cs; }",
   "export function seed(k,rows){ allData[k]=rows; }",
-  grab('function rowCompany'), grab('function nextItemNumber'),
+  grab('function rowCompany'),
+  grab('function nextItemNumber(key, comp)'), grab('function nextItemNumberByCompany'),
+  grab('function tradeCodeFor'), grab('function contractorRec'),
+  "const FIDEVIA_EMAIL=/@fidevia\\.com$/i; const DESIGN_ROLES=['architect','engineer'];",
+  "const PROJECT_ROLES={};",
   "export { nextItemNumber, rowCompany };"
 ].join('\n'));
-const { nextItemNumber, seed } = await import('./.pn.tmp.mjs');
+const { nextItemNumber, seed, setContractors } = await import('./.pn.tmp.mjs');
 
 let pass=0, fail=0;
 const ok=(n,c)=>{ c?pass++:(fail++,console.log('  FAIL: '+n)); };
@@ -56,9 +62,14 @@ seed('pay_apps',[{'App #':'', Contractor:'Summit Builders'},{'App #':'draft', Co
 ok('unnumbered rows do not break the sequence', nextItemNumber('pay_apps','Summit Builders')==='PA-001_Summit Builders');
 ok('an unknown module yields nothing', nextItemNumber('nonsense','Summit Builders')==='');
 
-console.log('Other modules are untouched');
+console.log('Other modules now carry the trade code');
+setContractors([{name:'Summit Builders', role:'GC'}]);
 seed('rfi',[{'RFI #':'RFI-004_Summit Builders', Company:'Summit Builders'}]);
-ok('RFIs still number as before', nextItemNumber('rfi','Summit Builders')==='RFI-005_Summit Builders');
+// The old form is read for continuity, so the run carries on rather than
+// restarting, but the new number carries the trade instead of the firm.
+ok('an existing RFI continues into the trade run', nextItemNumber('rfi','Summit Builders')==='RFI-GC-005');
+ok('pay applications are unaffected by that change',
+   nextItemNumber('pay_apps','Summit Builders').endsWith('_Summit Builders'));
 
 console.log('Wiring');
 ok('pay apps are in the pre-numbered set', /\['rfi','co','sub','pay_apps'\]\.includes\(key\)/.test(src));
