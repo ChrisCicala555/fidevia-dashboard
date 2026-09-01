@@ -4,7 +4,8 @@ const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
-ok(/if\(WIZ_STEP===4\) wizSeedContractors\(\);/.test(html), 'it runs on arriving at the contractors step');
+ok(/if\(WIZ_STEP===4\)\{ wizSeedContractors\(\); wizRenderAllowances\(\); \}/.test(html),
+   'it runs on arriving at the contractors step, alongside the allowance editor');
 ok(/function wizSeedContractors/.test(html), 'the seeder exists');
 
 const fn = html.split('function wizSeedContractors')[1].split('function wizSeedNote')[0];

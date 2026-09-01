@@ -22,10 +22,10 @@ ok('the reminder content survived', html.includes('id="rem-status"'));
 
 console.log('Architect and Engineer reach it, but only for workflows');
 const st=grab('function setTab');
-ok('non-admins are limited to workflows', /IS_ADMIN \? \['project','dates','workflows','notifs'\] : \['workflows'\]/.test(st));
+ok('non-admins are limited to workflows', /IS_ADMIN \? \['project','dates','allowances','workflows','notifs'\] : \['workflows'\]/.test(st));
 ok('an unpermitted pane falls back',      /if\(!allowed\.includes\(name\)\) name='workflows';/.test(st));
 ok('the nav entry stays readable to A\/E', /data-section="settings">Settings/.test(html) && /admin-only ae-readonly" data-section="settings"/.test(html));
-ok('the other tabs are admin only',       (html.match(/class="set-tab admin-only"/g)||[]).length===3);
+ok('the other tabs are admin only',       (html.match(/class="set-tab admin-only"/g)||[]).length===4);
 ok('workflows is the tab they land on',   /setTab\(IS_ADMIN \? 'project' : 'workflows'\)/.test(src));
 
 console.log('Dates moved out of Notifications');

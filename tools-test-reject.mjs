@@ -65,8 +65,11 @@ ok(/st==='complete' \|\| wfIsStopped\(r\)/.test(html),
 // the money side was already right and must stay that way
 ok(/return st\.indexOf\('approv'\)>=0 \|\| st\.indexOf\('execut'\)>=0;/.test(html),
    'only approved change orders reach the contract value');
-ok(/if\(!coIsApproved\(r\)\) return '';/.test(html),
-   'and no document can be generated for one that was not approved');
+// The generator now produces a PCO before approval and a CO after, so the old
+// approval gate is gone. What must still hold is that a change decided against
+// issues nothing at all.
+ok(/wfIsStopped\(r\)\) return ''/.test(html),
+   'and no document can be generated for one that was decided against');
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-reject.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

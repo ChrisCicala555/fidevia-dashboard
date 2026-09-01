@@ -15,7 +15,13 @@ fs.writeFileSync('.cg.tmp.mjs', [
   "const orgKeyOf=n=>String(n||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\\s+/g,' ');",
   grab('function rowCompany'), grab('function coApprovedAmount'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'),
-  grab('function allowanceFor'), grab('function allowanceUsedBy'), grab('function allowanceRemaining'),
+  // allowanceFor now sums a named list, so its helpers come too.
+  grab('function allowanceLetter'), grab('function contractorRec'), grab('function allowancesFor'),
+  // Signatures are exact: grab matches the first occurrence, and
+  // allowanceRemainingById is declared above allowanceRemaining.
+  grab('function allowanceFor(name)'), grab('function coAllowanceId'),
+  grab('function allowanceUsedById'), grab('function allowanceUsedBy(name)'),
+  grab('function allowanceRemainingById'), grab('function allowanceRemaining(name)'),
   grab('function coContractMathFor'),
   "export { coContractMathFor, coIsApproved };"
 ].join('\n'));
