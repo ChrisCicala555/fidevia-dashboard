@@ -109,8 +109,11 @@ ok('the run is audited',                /auditLog\('Generated change order'/.tes
 console.log('Who can generate, and when');
 const btn=grab('function coGenBtn');
 ok('admins only',                 /if\(!IS_ADMIN \|\| viewingAsExternal\(\)\) return '';/.test(btn));
-ok('only once approved',          /if\(!coIsApproved\(r\)\) return '';/.test(btn));
-ok('regenerating is offered after the first time', /done\?'Regenerate':'Generate CO'/.test(btn));
+// A proposal is producible before approval by design; the label carries the
+// distinction instead, and only a change decided against issues nothing.
+ok('nothing is issued for a rejected change', /wfIsStopped\(r\)\) return ''/.test(btn));
+ok('PCO before approval, CO after',           /const label=appr\?'Generate CO':'Generate PCO'/.test(btn));
+ok('regenerating is offered after the first time', /done\?'Regenerate':label/.test(btn));
 
 
 console.log('Text fits its column');
