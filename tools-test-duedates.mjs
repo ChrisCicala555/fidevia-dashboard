@@ -13,7 +13,13 @@ fs.writeFileSync('.dd.tmp.mjs', [
   "export function setup(cfg,contacts,roles){ currentProject.config=cfg||{}; allData.contacts=contacts||[]; PROJECT_ROLES=roles||{}; }",
   src.slice(src.indexOf('const RESPONSE_DEFAULT'), src.indexOf('function responseDays')),
   grab('function responseDays'), grab('function disciplineOf'),
-  grab('function rfiDueDays'), grab('function parseLocalDate'), grab('function addDays'), grab('function isoDay'),
+  // grab takes the first match, and rfiDueDaysFromWorkflow is declared above
+  // rfiDueDays. The workflow variant comes too, with a stub chain — these
+  // tests are about the periods, not about resolving a project's steps.
+  "export let WF_CHAIN=[]; export function setChain(c){ WF_CHAIN=c||[]; }",
+  "function wfStepsFor(){ return WF_CHAIN; }",
+  grab('function rfiDueDaysFromWorkflow'), grab('function rfiDueDays(personName)'),
+  grab('function parseLocalDate'), grab('function addDays'), grab('function isoDay'),
   "const OPEN_STATES=/open|pending|under review|revise/i;",
   grab('function offContractDays'),
   "const esc=x=>String(x==null?'':x); const fmtDMY=x=>String(x||'');",

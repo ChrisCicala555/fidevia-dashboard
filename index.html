@@ -3839,7 +3839,7 @@ function renderRFIs(){
   const rows=live.map(p=>p.r);
   renderPastPanel('rfi','section-rfis','Past RFIs', past,
     9, ({r,idx})=>'<tr><td style="width:150px;">'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td>'
-      +'<td style="width:130px;">'+esc(r['Assigned To'])+'</td>'
+      +'<td style="width:130px;">'+esc(assignedFirm(r['Assigned To']))+'</td>'
       +'<td style="width:110px;">'+esc(fmtDMY(r['Date Closed']||r['Date Submitted']))+'</td>'
       +'<td style="width:110px;">'+pill(r['Status'],false)+'</td>'
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
@@ -3852,7 +3852,10 @@ function renderRFIs(){
       +'<td>'+esc(r['Subject'])+'</td>'
       +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
-      +'<td>'+twoLine(r['Assigned To'], firmOf(r['Assigned To']))+'</td>'
+      +'<td>'+(function(){ const f=assignedFirm(r['Assigned To']), raw=String(r['Assigned To']||'').trim();
+          // Where a person was recorded, keep their name under the firm rather
+          // than discarding what someone wrote.
+          return (raw && raw.toLowerCase()!==f.toLowerCase()) ? twoLine(f, raw) : esc(f); })()+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
@@ -4267,6 +4270,39 @@ function responseDays(){
 // role is the authority. Where someone has no grant yet — plenty of project
 // contacts have no account — fall back to reading their role on the contact
 // sheet, so assigning to them still produces a date.
+// ── Who an item is with ───────────────────────────────────────────────────
+// Assignment is to a firm, not a person. A named individual went stale the
+// moment the workflow moved past them, and it made one person a bottleneck for
+// work their whole office could answer.
+//
+// Reading is tolerant: anything recorded before this change holds a person's
+// name, so it resolves through their company. Nothing is rewritten — the old
+// value keeps working and reads as the firm it always belonged to.
+function projectFirms(){
+  const seen=new Map();
+  (allData.contacts||[]).forEach(c=>{
+    const co=String(c['Company']||'').trim();
+    if(co && !seen.has(co.toLowerCase())) seen.set(co.toLowerCase(), co);
+  });
+  ((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false).forEach(c=>{
+      const co=String(c.name||'').trim();
+      if(co && !seen.has(co.toLowerCase())) seen.set(co.toLowerCase(), co);
+    });
+  return [...seen.values()].sort((a,b)=>a.localeCompare(b));
+}
+function firmOptions(sel){
+  const list=projectFirms();
+  return '<option value="">— Select firm —</option>'
+    +list.map(co=>'<option'+(String(sel||'').trim().toLowerCase()===co.toLowerCase()?' selected':'')+'>'+esc(co)+'</option>').join('');
+}
+// The firm an item sits with, whichever way it was recorded.
+function assignedFirm(v){
+  const t=String(v||'').trim(); if(!t) return '';
+  if(projectFirms().some(co=>co.toLowerCase()===t.toLowerCase())) return t;
+  const viaPerson=firmOf(t);
+  return viaPerson || t;
+}
 function disciplineOf(personName){
   const nm=String(personName||'').trim(); if(!nm) return '';
   const c=(allData.contacts||[]).find(x=>String(x['Name']||'').trim().toLowerCase()===nm.toLowerCase());
@@ -4282,10 +4318,30 @@ function disciplineOf(personName){
   if(t) return 'gc';
   return '';
 }
+// The chain says who reviews an RFI, so it says which turnaround applies. The
+// assignee used to decide it, which meant the period was set by whoever it was
+// pointed at rather than by the review the project actually runs.
+function rfiDueDaysFromWorkflow(){
+  const d=responseDays();
+  const steps=wfStepsFor('rfi','');
+  for(const st of (steps||[])){
+    // Architect is tested first, matching disciplineOf, which reads the legacy
+    // combined architect-engineer grant as architect. A step called
+    // 'Architect / Engineer Review' would otherwise take the longer period
+    // here and the shorter one there.
+    const nm=String((st&&st.name)||'');
+    const disc=disciplineOf(st&&st.person)
+      || (/architect/i.test(nm) ? 'architect' : /engineer/i.test(nm) ? 'engineer' : '');
+    if(disc) return d[disc];
+  }
+  // Nothing in the chain names a discipline: the architect's period is the
+  // default the contract assumes.
+  return d.architect;
+}
 function rfiDueDays(personName){
   const d=responseDays();
   const disc=disciplineOf(personName);
-  return disc ? d[disc] : d.architect;   // an unknown assignee gets the shorter of the two
+  return disc ? d[disc] : rfiDueDaysFromWorkflow();
 }
 // new Date('2026-08-25') is parsed as UTC midnight, which is still the 24th
 // anywhere behind UTC — so read back through the local calendar every derived
@@ -5181,14 +5237,20 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   });
 
   // Assigned to anyone at our company
-  (rfis||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && personIsOurs(r['Assigned To'])) {
-    items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge: nameMatches(r['Assigned To'])?'Assigned to you':'Assigned to '+r['Assigned To'], cls:'wf', sec:'rfis'}); } });
+  // Assignment is to a firm now. An older row naming a person resolves through
+  // their company, so both read the same way here.
+  (rfis||[]).forEach(r=>{
+    const firm=assignedFirm(r['Assigned To']);
+    if(!notDoneStatus(r['Status'])) return;
+    if(!firm || firm.trim().toLowerCase()!==myCo) return;
+    items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''),
+      badge:'Assigned to '+firm, cls:'wf', sec:'rfis'}); });
   (subs||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && personIsOurs(r['Reviewer'])) {
     items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''), badge: nameMatches(r['Reviewer'])?'Assigned to you':'Assigned to '+r['Reviewer'], cls:'wf', sec:'submittals'}); } });
 
   // Overdue: ours if it is with us, or if we raised it.
   (ovd||[]).forEach(r=>{
-    const withUs=personIsOurs(r['Assigned To']);
+    const withUs=(assignedFirm(r['Assigned To']).trim().toLowerCase()===myCo);
     const raisedByUs=coMatches(r['Company'])||coMatches(coFromLabel(r['Submitted By']));
     if(!myCo || withUs || raisedByUs){
       items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Overdue', cls:'', sec:'rfis'});
@@ -5342,7 +5404,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-assigned"></select></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned firm</label><select autocomplete="off" id="f-assigned"></select><p class="file-hint" style="margin-top:3px;">Everyone there with RFI notifications on is told.</p></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'Submit New Change Order',html:`
@@ -5447,7 +5509,7 @@ function openModal(type){
   const ds=document.getElementById('f-date-sub');
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){
-    const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=contactOptions();
+    const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=firmOptions('');
     // The contractual turnaround depends on who is answering, so the date is
     // recalculated whenever the assignee changes rather than typed.
     const due=document.getElementById('f-due'), hint=document.getElementById('f-due-hint');
@@ -6159,11 +6221,18 @@ async function submitForm(){
       // What the contract gives, kept alongside whatever was actually set, so a
       // shorter turnaround is visible rather than silent — and stays visible if
       // the project's periods change afterwards.
-      const _rcontract = isoDay(addDays(etToday(), rfiDueDays(v('f-assigned')))) || '';
+      const _rcontract = isoDay(addDays(etToday(), rfiDueDaysFromWorkflow())) || '';
       const _rdue = v('f-due') || _rcontract;
       const _rnum = PRE_NUM || nextItemNumber('rfi', _rc);
       newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':_rdue,'Contract Due':_rcontract,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
-      { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Assigned To']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
+      // Everyone at the assigned firm who asked to hear about RFIs, rather than
+      // one named individual who may be on holiday.
+      { const _f=assignedFirm(newRow['Assigned To']).toLowerCase();
+        if(_f && _NOTIF_OPTS) (allData.contacts||[]).forEach(c=>{
+          if(String(c['Company']||'').trim().toLowerCase()!==_f) return;
+          if(String(c['Notify - RFI']||'').toLowerCase()!=='yes') return;
+          const em=String(c['Email']||'').trim(); if(em) _NOTIF_OPTS.extraTo.push(em);
+        }); }
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',fmtDMY(newRow['Due Date'])],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='co'){
 
