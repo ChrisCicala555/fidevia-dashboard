@@ -57,7 +57,8 @@ ok(/function alwRemove/.test(html) && !/function alwReletter/.test(html),
 }
 
 // ── change orders ──
-ok(/'Applied to Allowance','Allowance','Cause'/.test(html), 'the log records which allowance');
+// 'Rolled Into' now sits between them.
+ok(/'Applied to Allowance','Allowance','Rolled Into','Cause'/.test(html), 'the log records which allowance');
 ok(/id="f-allow-id"/.test(html), 'the form asks which');
 ok(/function coAllowOptions/.test(html), 'options come from that contract');
 {
