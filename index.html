@@ -3889,7 +3889,7 @@ function renderSubmittals(){
   const rows=live.map(p=>p.r);
   renderPastPanel('sub','section-submittals','Past Submittals', past,
     9, ({r,idx})=>'<tr><td style="width:160px;">'+esc(r['Submittal #'])+'</td><td>'+esc(r['Description'])+'</td>'
-      +'<td style="width:130px;">'+esc(r['Reviewer'])+'</td>'
+      +'<td style="width:130px;">'+esc(assignedFirm(r['Reviewer']))+'</td>'
       +'<td style="width:110px;">'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td style="width:120px;">'+pill(r['Status'],false)+'</td>'
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
@@ -3904,7 +3904,8 @@ function renderSubmittals(){
       +'<td>'+esc(r['Description'])+'</td>'
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
-      +'<td>'+twoLine(firmOf(r['Reviewer'])||r['Reviewer'], firmOf(r['Reviewer'])?r['Reviewer']:'')+'</td>'
+      +'<td>'+(function(){ const f=assignedFirm(r['Reviewer']), raw=String(r['Reviewer']||'').trim();
+          return (raw && raw.toLowerCase()!==f.toLowerCase()) ? twoLine(f, raw) : esc(f); })()+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
@@ -5245,8 +5246,12 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     if(!firm || firm.trim().toLowerCase()!==myCo) return;
     items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''),
       badge:'Assigned to '+firm, cls:'wf', sec:'rfis'}); });
-  (subs||[]).forEach(r=>{ if(notDoneStatus(r['Status']) && personIsOurs(r['Reviewer'])) {
-    items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''), badge: nameMatches(r['Reviewer'])?'Assigned to you':'Assigned to '+r['Reviewer'], cls:'wf', sec:'submittals'}); } });
+  (subs||[]).forEach(r=>{
+    const firm=assignedFirm(r['Reviewer']);
+    if(!notDoneStatus(r['Status'])) return;
+    if(!firm || firm.trim().toLowerCase()!==myCo) return;
+    items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''),
+      badge:'Assigned to '+firm, cls:'wf', sec:'submittals'}); });
 
   // Overdue: ours if it is with us, or if we raised it.
   (ovd||[]).forEach(r=>{
@@ -5420,7 +5425,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Assigned To</label><select autocomplete="off" id="f-reviewer"></select></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Assigned firm</label><select autocomplete="off" id="f-reviewer"></select><p class="file-hint" style="margin-top:3px;">Everyone there with submittal notifications on is told.</p></div></div>
     <div class="field"><label>Submittal Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="R. Alvarez (Super)"></div></div>
@@ -5542,7 +5547,7 @@ function openModal(type){
     redue();
   }
   if(type==='submittal'){
-    const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=contactOptions();
+    const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=firmOptions('');
     // One review period for the whole project, so this resolves without an assignee.
     const due=document.getElementById('f-sub-due'), hint=document.getElementById('f-sub-due-hint');
     if(due){
@@ -6250,7 +6255,13 @@ async function submitForm(){
       if(!v('f-subject')) throw new Error('Description is required.');
       const _snum = PRE_NUM || nextItemNumber('sub', _sc);
       newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Contract Due':(isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
-      { const _ac=(allData.contacts||[]).find(c=>(c['Name']||'').trim()===(newRow['Reviewer']||'').trim()); if(_ac&&_ac['Email']&&_NOTIF_OPTS) _NOTIF_OPTS.extraTo.push(_ac['Email']); }
+      // Same rule as the RFI: the reviewing office, not one person in it.
+      { const _f=assignedFirm(newRow['Reviewer']).toLowerCase();
+        if(_f && _NOTIF_OPTS) (allData.contacts||[]).forEach(c=>{
+          if(String(c['Company']||'').trim().toLowerCase()!==_f) return;
+          if(String(c['Notify - Submittal']||'').toLowerCase()!=='yes') return;
+          const em=String(c['Email']||'').trim(); if(em) _NOTIF_OPTS.extraTo.push(em);
+        }); }
       sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='daily'){
 
