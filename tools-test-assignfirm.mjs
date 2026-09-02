@@ -23,9 +23,10 @@ ok(/Nothing is rewritten — the old\s*\n\/\/ value keeps working/.test(html) ||
    'the migration approach is recorded: read tolerantly, rewrite nothing');
 
 // the form
-ok(/<label>Assigned firm<\/label>/.test(html), 'the field asks for a firm');
-ok(/firmOptions\(''\)/.test(html), 'and is filled with firms, not contacts');
-ok(/Everyone there with RFI notifications on is told/.test(html), 'it says who will hear about it');
+// The field no longer asks — the workflow decides and this reports it.
+ok(/id="f-assigned" readonly/.test(html), 'the field reports rather than asks');
+ok(/fillAssignedFirm\('rfi','f-assigned'\)/.test(html), 'and is filled from the chain');
+ok(/Set by the workflow, from who reviews first/.test(html), 'it says where the answer came from');
 
 // due date from the workflow
 ok(/function rfiDueDaysFromWorkflow/.test(html), 'the turnaround comes from the chain');
@@ -41,10 +42,10 @@ ok(/addDays\(etToday\(\), rfiDueDaysFromWorkflow\(\)\)/.test(html),
 // notification
 {
   const cp = html.split('async function submitForm')[1] || html;
-  ok(/Notify - RFI'\]\|\|''\)\.toLowerCase\(\)!=='yes'/.test(html),
-     'only people who asked for RFI notices are added');
-  ok(/Everyone at the assigned firm who asked to hear about RFIs/.test(html),
-     'and the reason is recorded');
+  ok(/notifyFirms\(itemAssignedFirms\('rfi', _rc\), 'Notify - RFI'\)/.test(html),
+     'every firm on the first review step is notified');
+  ok(/c\[notifyField\]\|\|''\)\.toLowerCase\(\)!=='yes'/.test(html),
+     'and only people who asked for that kind of notice');
   // Submittals still name an individual Reviewer — a separate field, left as
   // it was. Only the RFI path changed.
   ok(!/newRow\['Assigned To'\]\|\|''\)\.trim\(\)\)/.test(html),

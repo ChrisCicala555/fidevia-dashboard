@@ -4292,10 +4292,55 @@ function projectFirms(){
     });
   return [...seen.values()].sort((a,b)=>a.localeCompare(b));
 }
+// Shown rather than chosen. If the chain names nobody the field says so, which
+// is a setup problem worth seeing before the item is raised.
+function fillAssignedFirm(key, fieldId){
+  const el=document.getElementById(fieldId); if(!el) return;
+  const co = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+  const firms=itemAssignedFirms(key, co);
+  const note=document.getElementById(fieldId+'-note');
+  el.value = firms.length ? firms[0] : '';
+  el.dataset.firms = JSON.stringify(firms);
+  if(!note) return;
+  if(!firms.length){
+    el.placeholder='Nobody set on the first review step';
+    note.textContent='The '+(key==='rfi'?'RFI':'submittal')+' workflow does not name a reviewer, so this will not reach anyone. Set one in Settings → Workflows.';
+    note.style.color='var(--danger)';
+    return;
+  }
+  note.style.color='var(--muted)';
+  note.textContent = firms.length>1
+    ? 'Set by the workflow. Also goes to '+firms.slice(1).join(' and ')+'.'
+    : 'Set by the workflow, from who reviews first.';
+}
 function firmOptions(sel){
   const list=projectFirms();
   return '<option value="">— Select firm —</option>'
     +list.map(co=>'<option'+(String(sel||'').trim().toLowerCase()===co.toLowerCase()?' selected':'')+'>'+esc(co)+'</option>').join('');
+}
+// Who reviews an item is the workflow's business, not the submitter's. The
+// chain is chosen by the submitting company — a contractor with its own
+// override follows that — and its first step group names the reviewers.
+//
+// A group can name more than one firm, an architect and an engineer notified
+// together being the ordinary case. All of them are told; the row records the
+// first, because a log column has room for one.
+function itemAssignedFirms(key, submittingCompany){
+  const steps=wfStepsFor(key, submittingCompany||'');
+  if(!steps.length) return [];
+  const [a,b]=wfGroupAt(steps,0);
+  const out=[];
+  steps.slice(a,b+1).forEach(st=>{
+    const firm=firmOf(st&&st.person)
+      // A step with nobody assigned still says which office it means.
+      || (function(){ const nm=String((st&&st.name)||'');
+            const want=/architect/i.test(nm)?'architect':/engineer/i.test(nm)?'engineer':'';
+            if(!want) return '';
+            const c=(allData.contacts||[]).find(x=>new RegExp(want,'i').test(String(x['Role']||'')));
+            return c?String(c['Company']||'').trim():''; })();
+    if(firm && !out.some(x=>x.toLowerCase()===firm.toLowerCase())) out.push(firm);
+  });
+  return out;
 }
 // The firm an item sits with, whichever way it was recorded.
 function assignedFirm(v){
@@ -5409,7 +5454,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Assigned firm</label><select autocomplete="off" id="f-assigned"></select><p class="file-hint" style="margin-top:3px;">Everyone there with RFI notifications on is told.</p></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-assigned" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'Submit New Change Order',html:`
@@ -5425,7 +5470,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Assigned firm</label><select autocomplete="off" id="f-reviewer"></select><p class="file-hint" style="margin-top:3px;">Everyone there with submittal notifications on is told.</p></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-reviewer" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p></div></div>
     <div class="field"><label>Submittal Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="R. Alvarez (Super)"></div></div>
@@ -5514,7 +5559,7 @@ function openModal(type){
   const ds=document.getElementById('f-date-sub');
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){
-    const sel=document.getElementById('f-assigned'); if(sel) sel.innerHTML=firmOptions('');
+    fillAssignedFirm('rfi','f-assigned');
     // The contractual turnaround depends on who is answering, so the date is
     // recalculated whenever the assignee changes rather than typed.
     const due=document.getElementById('f-due'), hint=document.getElementById('f-due-hint');
@@ -5547,7 +5592,7 @@ function openModal(type){
     redue();
   }
   if(type==='submittal'){
-    const sel=document.getElementById('f-reviewer'); if(sel&&sel.tagName==='SELECT') sel.innerHTML=firmOptions('');
+    fillAssignedFirm('sub','f-reviewer');
     // One review period for the whole project, so this resolves without an assignee.
     const due=document.getElementById('f-sub-due'), hint=document.getElementById('f-sub-due-hint');
     if(due){
@@ -6229,15 +6274,10 @@ async function submitForm(){
       const _rcontract = isoDay(addDays(etToday(), rfiDueDaysFromWorkflow())) || '';
       const _rdue = v('f-due') || _rcontract;
       const _rnum = PRE_NUM || nextItemNumber('rfi', _rc);
-      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':v('f-assigned'),'Date Submitted':etToday(),'Due Date':_rdue,'Contract Due':_rcontract,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
-      // Everyone at the assigned firm who asked to hear about RFIs, rather than
-      // one named individual who may be on holiday.
-      { const _f=assignedFirm(newRow['Assigned To']).toLowerCase();
-        if(_f && _NOTIF_OPTS) (allData.contacts||[]).forEach(c=>{
-          if(String(c['Company']||'').trim().toLowerCase()!==_f) return;
-          if(String(c['Notify - RFI']||'').toLowerCase()!=='yes') return;
-          const em=String(c['Email']||'').trim(); if(em) _NOTIF_OPTS.extraTo.push(em);
-        }); }
+      newRow={'RFI #':_rnum,'Subject':v('f-subject'),'Description':v('f-desc'),'Submitted By':v('f-by'),'Assigned To':(itemAssignedFirms('rfi',_rc)[0]||''),'Date Submitted':etToday(),'Due Date':_rdue,'Contract Due':_rcontract,'Date Closed':'','Status':v('f-status'),'Response Summary':'','Attachment File ID':attachId,'Attachment Name':attachName,'Company':_rc};
+      // The row records one firm; the first review step may name several, and
+      // all of them are told.
+      notifyFirms(itemAssignedFirms('rfi', _rc), 'Notify - RFI');
       sendItemNotif('Notify - RFI','rfi',{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},{project:currentProject.name,number:newRow['RFI #'],title:newRow['Subject'],submitter:newRow['Submitted By']},[['RFI #',newRow['RFI #']],['Submitted By',newRow['Submitted By']],['Assigned To',newRow['Assigned To']],['Due Date',fmtDMY(newRow['Due Date'])],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='co'){
 
@@ -6254,14 +6294,8 @@ async function submitForm(){
       const _sc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
       const _snum = PRE_NUM || nextItemNumber('sub', _sc);
-      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':v('f-reviewer'),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Contract Due':(isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
-      // Same rule as the RFI: the reviewing office, not one person in it.
-      { const _f=assignedFirm(newRow['Reviewer']).toLowerCase();
-        if(_f && _NOTIF_OPTS) (allData.contacts||[]).forEach(c=>{
-          if(String(c['Company']||'').trim().toLowerCase()!==_f) return;
-          if(String(c['Notify - Submittal']||'').toLowerCase()!=='yes') return;
-          const em=String(c['Email']||'').trim(); if(em) _NOTIF_OPTS.extraTo.push(em);
-        }); }
+      newRow={'Submittal #':_snum,'Spec Section':v('f-spec'),'Description':v('f-subject'),'Submitted By (Sub)':v('f-by'),'Reviewer':(itemAssignedFirms('sub',_sc)[0]||''),'Date Submitted':etToday(),'Due Date':(v('f-sub-due')||isoDay(addDays(etToday(), responseDays().submittal))||''),'Contract Due':(isoDay(addDays(etToday(), responseDays().submittal))||''),'Status':v('f-status'),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_sc};
+      notifyFirms(itemAssignedFirms('sub', _sc), 'Notify - Submittal');
       sendItemNotif('Notify - Submittal','sub',{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},{project:currentProject.name,number:newRow['Submittal #'],title:newRow['Description'],submitter:newRow['Submitted By (Sub)']},[['Submittal #',newRow['Submittal #']],['Spec Section',newRow['Spec Section']],['Submitted By',newRow['Submitted By (Sub)']],['Reviewer',newRow['Reviewer']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='daily'){
 
@@ -8716,6 +8750,18 @@ async function sendEmail(toEmails, subject, body, opts){
 function notifCfg(type, def){ const c=(currentProject&&currentProject.notif&&currentProject.notif[type])||{}; return { subject:c.subject||def.subject, intro:c.intro||def.intro }; }
 function applyVars(s, v){ return String(s||'').replace(/\{project\}/g,v.project||'').replace(/\{number\}/g,v.number||'').replace(/\{submitter\}/g,v.submitter||'').replace(/\{title\}/g,v.title||''); }
 let _NOTIF_OPTS=null;
+// Add everyone at these firms who asked to hear about this kind of item.
+// Recipients are de-duplicated when the message is built, so overlapping firms
+// or someone already on the broadcast list cannot produce two copies.
+function notifyFirms(firms, notifyField){
+  if(!_NOTIF_OPTS || !firms || !firms.length) return;
+  const want=new Set(firms.map(f=>String(f||'').trim().toLowerCase()).filter(Boolean));
+  (allData.contacts||[]).forEach(c=>{
+    if(!want.has(String(c['Company']||'').trim().toLowerCase())) return;
+    if(String(c[notifyField]||'').toLowerCase()!=='yes') return;
+    const em=String(c['Email']||'').trim(); if(em) _NOTIF_OPTS.extraTo.push(em);
+  });
+}
 function sendItemNotif(notifyField, type, def, vars, rows, opts){ const c=notifCfg(type,def); notifyContacts(notifyField, applyVars(c.subject,vars), emailTemplate(applyVars(c.intro,vars), rows, currentProject.name), opts||_NOTIF_OPTS); }
 // ══════════════════════════════════════════════
 // VERSION THREAD (RFI / CO / Submittal)
