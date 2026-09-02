@@ -6702,10 +6702,16 @@ async function buildChangeOrderPDF(r, opts){
   if(m.covers && m.covers.length>1){
     lbl(M,y,'Proposals covered by this change order');
     m.covers.forEach(c=>{ y+=14;
-      const num=String(c.num||'');
-      val(M,y,num,9,true);
-      const desc=doc.splitTextToSize(String(c.desc||''), W-2*M-150)[0]||'';
+      val(M,y,String(c.num||''),9,true);
+      const desc=doc.splitTextToSize(String(c.desc||''), W-2*M-210)[0]||'';
       val(M+70,y,desc,9);
+      // Where a proposal was accepted in part, both figures are printed. A
+      // signed document that quietly carries a different number from the
+      // proposal behind it is the thing to avoid.
+      if(c.reduced){
+        set(GY,8);
+        right(W-M-84,y,'proposed '+fmtMoney(c.proposed),8);
+      }
       right(W-M,y,fmtMoney(c.amount),9);
       rule(y+4,M,W-M,0.4,[235,233,225]);
     });
@@ -6788,9 +6794,9 @@ async function generateChangeOrder(){
   const say=t=>showStatus('cogen-status',t,'info');
   try{
     say('Building the document\u2026');
-    const rolledIdx=coGenRolledIdx();
-    const rolled=rolledIdx.map(i=>(allData.co||[])[i]).filter(Boolean);
-    const math=coContractMathFor(r, rolled);
+    const rolledSet=coGenRolledSet();
+    const rolled=rolledSet.map(x=>x.row);
+    const math=coContractMathFor(r, rolledSet);
     const cfg=(currentProject&&currentProject.config)||{};
     const rec=(cfg.contractors||[]).find(c=>orgKeyOf(c.name)===orgKeyOf(math.company));
     const typeLabel=(CONTRACTOR_ROLES.find(x=>x[0]===((rec&&rec.role)||''))||['','General Contractor'])[1];
@@ -6865,9 +6871,15 @@ async function generateChangeOrder(){
       // keeps it out of the candidate list next time, closes it rather than
       // leaving it open forever, and says on the row where it went.
       const coverNum=r['CO #']||r['PCO #']||'';
-      rolled.forEach(x=>{
+      rolledSet.forEach(({row:x, amount, proposed})=>{
         x['Rolled Into']=coverNum;
-        x['Status']='Rolled into '+coverNum;
+        // The proposal keeps its Cost Impact — what it asked for — and records
+        // what was actually accepted, so the negotiation is visible on the row
+        // rather than only in the change order.
+        x['Approved Amount']=String(amount);
+        x['Status']=(amount<proposed)
+          ? ('Rolled into '+coverNum+' (part)')
+          : ('Rolled into '+coverNum);
         x['Date Approved']=x['Date Approved']||etToday();
         try{ wfApplyDecision('co', x, 'rolled', ME_NAME||ME_EMAIL||''); }catch(e){}
       });
@@ -6992,28 +7004,51 @@ function coGenRollList(idx){
     coGenRollTotal(idx); return;
   }
   box.style.display=''; if(none) none.style.display='none';
-  box.innerHTML=cands.map(({x,i})=>
-    '<label style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
+  box.innerHTML=cands.map(({x,i})=>{
+    const proposed=coApprovedAmount(x)||payNum(x['Cost Impact']);
+    return '<div style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
     +'<input type="checkbox" class="cg-roll" value="'+i+'" style="width:auto;margin-top:3px;" onchange="coGenRollTotal('+idx+')">'
-    +'<span><strong>'+esc(x['PCO #']||x['CO #']||('Row '+(i+1)))+'</strong> \u2014 '+esc(x['Description']||'')
-      +'<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'
-        +fmtMoney(coApprovedAmount(x)||payNum(x['Cost Impact']))
+    +'<div style="flex:1;"><strong>'+esc(x['PCO #']||x['CO #']||('Row '+(i+1)))+'</strong> \u2014 '+esc(x['Description']||'')
+      +'<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">Proposed '+fmtMoney(proposed)
         +(coAllowanceDraw(x)?' \u00b7 '+fmtMoney(coAllowanceDraw(x))+' from allowance':'')
-        +' \u00b7 '+esc(x['Status']||'')+'</div></span></label>').join('');
+        +' \u00b7 '+esc(x['Status']||'')+'</div></div>'
+    // A proposal is often accepted in part. The change order carries what was
+    // agreed; the proposal keeps what was asked for.
+    +'<div style="flex:0 0 120px;"><input class="cg-roll-amt" data-i="'+i+'" data-proposed="'+proposed+'"'
+      +' value="'+esc(String(proposed||''))+'" oninput="coGenRollTotal('+idx+')"'
+      +' style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;"'
+      +' title="Amount agreed. Defaults to what was proposed."></div>'
+    +'</div>'; }).join('');
   coGenRollTotal(idx);
 }
 function coGenRolledIdx(){
   return [...document.querySelectorAll('.cg-roll:checked')].map(el=>parseInt(el.value,10)).filter(n=>!isNaN(n));
 }
+// Each rolled proposal with the amount actually agreed, which may be less than
+// it asked for.
+function coGenRolledSet(){
+  return coGenRolledIdx().map(i=>{
+    const row=(allData.co||[])[i];
+    const inp=document.querySelector('.cg-roll-amt[data-i="'+i+'"]');
+    const proposed=payNum(inp&&inp.dataset.proposed);
+    const agreed=inp ? payNum(inp.value) : proposed;
+    return row ? { i, row, amount:agreed, proposed } : null;
+  }).filter(Boolean);
+}
 function coGenRollTotal(idx){
   const el=document.getElementById('cg-roll-total'); if(!el) return;
   const r=(allData.co||[])[idx]; if(!r) return;
-  const rolled=coGenRolledIdx().map(i=>(allData.co||[])[i]).filter(Boolean);
-  if(!rolled.length){ el.textContent=''; return; }
-  const total=coContractImpact(r)+rolled.reduce((s,x)=>s+coContractImpact(x),0);
-  el.innerHTML='This change order will cover <strong>'+(rolled.length+1)+'</strong> proposals, '
-    +'reaching the contract: <strong>'+fmtMoney(total)+'</strong>. '
-    +'Each is listed on the document and marked as covered by it.';
+  const set=coGenRolledSet();
+  if(!set.length){ el.textContent=''; return; }
+  const m=coContractMathFor(r, set);
+  const reduced=set.filter(x=>x.amount<x.proposed);
+  el.innerHTML='This change order will cover <strong>'+(set.length+1)+'</strong> proposals, '
+    +'reaching the contract: <strong>'+fmtMoney(m.thisImpact)+'</strong>. '
+    +'Each is listed on the document and marked as covered by it.'
+    +(reduced.length
+      ? '<div style="color:#8a6d3b;margin-top:5px;">'+reduced.length+' accepted for less than proposed. '
+        +'The proposal keeps what it asked for; the change order carries what was agreed.</div>'
+      : '');
 }
 function coContractMathFor(r, rolled){
   const co=rowCompany(r);
@@ -7028,15 +7063,24 @@ function coContractMathFor(r, rolled){
                      .reduce((sum,x)=>sum+coContractImpact(x),0);
   // Rolled-in proposals are part of this change order, so they count once —
   // here, with it — and are excluded from the running total above.
-  const set=[r].concat((rolled||[]).filter(Boolean));
-  const thisImpact=set.reduce((sum,x)=>sum+coContractImpact(x),0);
+  //
+  // Each carries the amount agreed, which may be less than it proposed. The
+  // allowance draw is capped at the agreed figure for the same reason it is
+  // capped at the approved one: a draw cannot exceed what is being paid.
+  const set=[{row:r, amount:coApprovedAmount(r), proposed:coApprovedAmount(r)}]
+    .concat((rolled||[]).filter(Boolean).map(x=>x.row
+      ? x
+      : { row:x, amount:coApprovedAmount(x), proposed:coApprovedAmount(x) }));
+  const drawOf=e=>Math.min(payNum(e.row&&e.row['Applied to Allowance']), e.amount);
+  const impactOf=e=>Math.max(0, e.amount-drawOf(e));
+  const thisImpact=set.reduce((sum,e)=>sum+impactOf(e),0);
   return { company:co, original, previous, prior:original+previous,
-           approved:set.reduce((sum,x)=>sum+coApprovedAmount(x),0),
-           allowance:set.reduce((sum,x)=>sum+coAllowanceDraw(x),0),
+           approved:set.reduce((sum,e)=>sum+e.amount,0),
+           allowance:set.reduce((sum,e)=>sum+drawOf(e),0),
            thisImpact, after:original+previous+thisImpact,
-           covers:set.map(x=>({ num:x['PCO #']||x['CO #']||'', desc:x['Description']||'',
-                                amount:coApprovedAmount(x)||payNum(x['Cost Impact']),
-                                impact:coContractImpact(x) })),
+           covers:set.map(e=>({ num:e.row['PCO #']||e.row['CO #']||'', desc:e.row['Description']||'',
+                                amount:e.amount, proposed:e.proposed,
+                                reduced:e.amount<e.proposed, impact:impactOf(e) })),
            allowanceTotal:allowanceFor(co), allowanceLeft:allowanceRemaining(co) };
 }
 function orgAddressLines(name){
