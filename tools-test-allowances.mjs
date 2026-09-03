@@ -59,13 +59,19 @@ ok(/function alwRemove/.test(html) && !/function alwReletter/.test(html),
 // ── change orders ──
 // 'Rolled Into' now sits between them.
 ok(/'Applied to Allowance','Allowance','Rolled Into','Cause'/.test(html), 'the log records which allowance');
-ok(/id="f-allow-id"/.test(html), 'the form asks which');
-ok(/function coAllowOptions/.test(html), 'options come from that contract');
+// The allowance is set on the change order now, not the proposal.
+ok(/id="cg-allow-id"/.test(html), 'the change order asks which');
+ok(/id="cg-allow-amt"/.test(html), 'and how much');
+ok(!/id="f-allow-id"/.test(html) && !/id="f-allow"/.test(html),
+   'the proposal form no longer allocates one');
+ok(/function coGenAllowFill/.test(html), 'options come from that contract');
 {
-  const cn = html.split('function coAllowNote')[1].split('function allowanceUsedById')[0];
-  ok(/would exceed it/.test(cn), 'an over-draw is flagged before submitting');
+  const cn = html.split('function coGenAllowNote')[1].split('function coGenRollList')[0];
+  ok(/would exceed it/.test(cn), 'an over-draw is flagged before generating');
   ok(/or the draw cannot be tracked/.test(cn), 'an amount with no allowance named is flagged');
-  ok(/after this draw/.test(cn), 'and what is left afterwards is shown');
+  ok(/after this change order/.test(cn), 'and what is left afterwards is shown');
+  ok(/ignoring this change order's own recorded draw|Math\.min\(payNum\(r\['Applied to Allowance'\]\)/.test(cn),
+     'editing an existing draw does not read as consuming the allowance twice');
 }
 {
   const ub = html.split('function allowanceUsedById')[1].split('function allowanceUsedBy\\(name\\)')[0];

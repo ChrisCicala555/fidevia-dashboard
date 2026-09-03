@@ -1661,6 +1661,15 @@
           </div>
         </div>
 
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
+        <div class="field-row">
+          <div class="field" style="flex:1.3;"><label>Drawn from</label>
+            <select id="cg-allow-id" onchange="coGenAllowNote()"><option value="">— None —</option></select></div>
+          <div class="field" style="flex:1;"><label>Amount ($)</label>
+            <input id="cg-allow-amt" autocomplete="off" placeholder="0" oninput="coGenAllowNote()"></div>
+        </div>
+        <p id="cg-allow-note" style="font-size:12.5px;color:var(--muted);margin:0 0 4px;"></p>
+
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Roll in other PCOs</div>
         <p id="cg-roll-none" style="display:none;font-size:13px;color:var(--muted);margin:0 0 8px;">
           No other open PCOs on this contract. The change order covers this one alone.
@@ -5467,9 +5476,7 @@ const FORMS = {
   co:{title:'Submit New PCO',html:`
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
-    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div><div class="field"><label>Applied to Allowance ($)</label><input autocomplete="off" id="f-allow" placeholder="0" oninput="coAllowNote()"><p class="file-hint" style="margin-top:3px;">Drawn from an allowance. Only the remainder increases the contract.</p></div></div>
-    <div class="field-row"><div class="field"><label>Which allowance</label><select autocomplete="off" id="f-allow-id" onchange="coAllowNote()"><option value="">— None —</option></select><p class="file-hint" style="margin-top:3px;" id="f-allow-note"></p></div><div class="field"></div></div>
-    <div class="field-row"><div class="field"><label>Cause</label><select autocomplete="off" id="f-cause"><option value="">—</option><option>Unforeseen</option><option>Owner Request</option><option>Code</option><option>Error</option><option>Omission</option><option>Other</option></select></div><div class="field"><label>PCO #</label><input autocomplete="off" id="f-pco" placeholder="Auto if left blank"></div></div>
+    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div><div class="field"><label>Cause</label><select autocomplete="off" id="f-cause"><option value="">—</option><option>Unforeseen</option><option>Owner Request</option><option>Code</option><option>Error</option><option>Omission</option><option>Other</option></select></div></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'Submit New Submittal',html:`
@@ -5622,13 +5629,7 @@ function openModal(type){
   // The allowance list belongs to whichever contract the change order is
   // against, so it is filled once the company is known and refreshed if the
   // company is changed.
-  if(type==='co'){
-    const co=EXTERNAL ? ((currentProject&&currentProject.userCompany)||'')
-                      : ((document.getElementById('f-company')||{}).value||'');
-    coAllowOptions(co);
-    const cf=document.getElementById('f-company');
-    if(cf) cf.addEventListener('input', ()=>coAllowOptions(cf.value||''), {once:false});
-  }
+
   if(type==='contact'){ cdPickLoad(); }
   if(type==='cdaily'||type==='payroll'){ const dl=document.getElementById('cd-contr-list'); const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false); if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join(''); const cf=document.getElementById('f-company'); if(cf&&EXTERNAL){ cf.value=(currentProject&&currentProject.userCompany)||''; cf.readOnly=true; } const ds=document.getElementById('f-date-sub'); if(ds&&!ds.value) ds.value=etToday(); }
   if(type==='payapp'){
@@ -6293,7 +6294,9 @@ async function submitForm(){
       if(!v('f-subject')) throw new Error('Description is required.');
       const _cnum = PRE_NUM || nextItemNumber('co', _cc);
       const _appr=(v('f-status')||'').toLowerCase().indexOf('approv')>=0;
-      newRow={'PCO #':(v('f-pco')||_cnum.replace(/^CO/,'PCO')),'CO #':(_appr?_cnum:''),'Description':v('f-subject'),'Submitted By':(v('f-by')||(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||''))),'Cost Impact':v('f-cost'),'Approved Amount':(_appr?v('f-cost'):''),'Applied to Allowance':v('f-allow'),'Allowance':v('f-allow-id'),'Cause':v('f-cause'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':(_appr?etToday():''),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
+      newRow={'PCO #':_cnum.replace(/^CO/,'PCO'),'CO #':(_appr?_cnum:''),'Description':v('f-subject'),'Submitted By':(v('f-by')||(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||''))),'Cost Impact':v('f-cost'),'Approved Amount':(_appr?v('f-cost'):''),// An allowance is allocated when the change is agreed, not when it is
+      // proposed, so a PCO carries neither.
+      'Applied to Allowance':'','Allowance':'','Cause':v('f-cause'),'Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':(_appr?etToday():''),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
       sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:newRow['Submitted By']||''},[['CO #',newRow['CO #']],['Submitted By',newRow['Submitted By']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='submittal'){
 
@@ -6794,6 +6797,10 @@ async function generateChangeOrder(){
   const say=t=>showStatus('cogen-status',t,'info');
   try{
     say('Building the document\u2026');
+    const allowId=String((document.getElementById('cg-allow-id')||{}).value||'');
+    const allowAmt=payNum((document.getElementById('cg-allow-amt')||{}).value);
+    // Applied before the maths so the document and the row agree.
+    r['Allowance']=allowId; r['Applied to Allowance']=allowAmt?String(allowAmt):'';
     const rolledSet=coGenRolledSet();
     const rolled=rolledSet.map(x=>x.row);
     const math=coContractMathFor(r, rolledSet);
@@ -6867,6 +6874,8 @@ async function generateChangeOrder(){
                                   : 'Change order document generated.'});
       r['Version History']=JSON.stringify(vs);
       r['Signed File ID']=ent.id||''; r['Signed File Name']=fname;
+      // The allocation decided on this screen is recorded on the change order.
+      r['Allowance']=allowId; r['Applied to Allowance']=allowAmt?String(allowAmt):'';
       // A rolled-in proposal is covered by this change order. Recording that
       // keeps it out of the candidate list next time, closes it rather than
       // leaving it open forever, and says on the row where it went.
@@ -6947,6 +6956,7 @@ function openCoGen(idx){
     row.style.display='none'; none.style.display='block';
     box.checked=false; box.disabled=true;
   }
+  coGenAllowFill(idx);
   coGenRollList(idx);
   const st=document.getElementById('cogen-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   document.getElementById('cogen-backdrop').classList.add('open');
@@ -6993,6 +7003,49 @@ function coRollCandidates(idx){
       && !wfIsStopped(x)
       && !isArchived(x)
       && !String(x['Rolled Into']||'').trim());
+}
+// The allowance is decided here, where the change is agreed, rather than on the
+// proposal. A contractor proposing work has no business allocating money inside
+// its own contract, and the figure is not settled until the change order is.
+function coGenAllowFill(idx){
+  const r=(allData.co||[])[idx]; if(!r) return;
+  const sel=document.getElementById('cg-allow-id'); if(!sel) return;
+  const list=allowancesFor(rowCompany(r));
+  sel.innerHTML='<option value="">— None —</option>'
+    +list.map(a=>'<option value="'+esc(a.id)+'"'+((String(r['Allowance']||'').toUpperCase()===a.id)?' selected':'')+'>'
+      +'Allowance '+esc(a.id)+(a.name?(' — '+esc(a.name)):'')+'</option>').join('');
+  const amt=document.getElementById('cg-allow-amt');
+  if(amt) amt.value = payNum(r['Applied to Allowance']) ? String(payNum(r['Applied to Allowance'])) : '';
+  const wrap=sel.closest('.field-row');
+  if(wrap) wrap.style.display = list.length ? '' : 'none';
+  const note=document.getElementById('cg-allow-note');
+  if(note && !list.length){ note.textContent='This contract carries no allowances. Add them in Settings → Allowances if any apply.'; }
+  coGenAllowNote();
+}
+function coGenAllowNote(){
+  const note=document.getElementById('cg-allow-note'); if(!note) return;
+  const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
+  const list=allowancesFor(rowCompany(r));
+  if(!list.length) return;
+  const id=(document.getElementById('cg-allow-id')||{}).value||'';
+  const amt=payNum((document.getElementById('cg-allow-amt')||{}).value);
+  if(!id){
+    note.textContent = amt ? 'Choose which allowance this is drawn from, or the draw cannot be tracked.'
+                           : 'Nothing drawn from an allowance — the whole amount increases the contract.';
+    note.style.color = amt ? 'var(--danger)' : 'var(--muted)';
+    coGenRollTotal(COGEN_IDX); return;
+  }
+  // What remains, ignoring this change order's own recorded draw so editing it
+  // does not appear to consume the allowance twice.
+  const left=allowanceRemainingById(rowCompany(r), id) + Math.min(payNum(r['Applied to Allowance']), coApprovedAmount(r));
+  if(amt>left){
+    note.textContent='Only '+fmtMoney(left)+' remains on Allowance '+id+'. Drawing '+fmtMoney(amt)+' would exceed it.';
+    note.style.color='var(--danger)';
+  } else {
+    note.textContent=fmtMoney(left)+' remaining on Allowance '+id+(amt?(', '+fmtMoney(left-amt)+' after this change order.'):'.');
+    note.style.color='var(--muted)';
+  }
+  coGenRollTotal(COGEN_IDX);
 }
 function coGenRollList(idx){
   const box=document.getElementById('cg-roll-list');
@@ -8229,37 +8282,10 @@ function coAllowanceId(r){ return String((r&&r['Allowance'])||'').trim().toUpper
 // Fill the picker from whichever company the change order belongs to, and say
 // what is left so an over-draw is visible before it is submitted rather than
 // after it is approved.
-function coAllowOptions(company){
-  const sel=document.getElementById('f-allow-id'); if(!sel) return;
-  const list=allowancesFor(company);
-  const cur=sel.value;
-  sel.innerHTML='<option value="">— None —</option>'
-    +list.map(a=>'<option value="'+esc(a.id)+'">Allowance '+esc(a.id)+(a.name?(' — '+esc(a.name)):'')+'</option>').join('');
-  if(list.some(a=>a.id===cur)) sel.value=cur;
-  const wrap=sel.closest('.field-row');
-  if(wrap) wrap.style.display = list.length ? '' : 'none';
-  coAllowNote();
-}
-function coAllowNote(){
-  const note=document.getElementById('f-allow-note'); if(!note) return;
-  const sel=document.getElementById('f-allow-id');
-  const amt=payNum((document.getElementById('f-allow')||{}).value);
-  const id=sel?sel.value:'';
-  const co=(document.getElementById('f-company')||document.getElementById('f-contr')||{}).value||'';
-  if(!id){ note.textContent = amt ? 'Enter which allowance this is drawn from, or the draw cannot be tracked.' : '';
-    note.style.color = amt ? 'var(--danger)' : 'var(--muted)'; return; }
-  const left=allowanceRemainingById(co, id);
-  if(amt>left){
-    note.textContent='Only '+fmtMoney(left)+' remains on Allowance '+id+'. Drawing '+fmtMoney(amt)+' would exceed it.';
-    note.style.color='var(--danger)';
-  } else {
-    note.textContent=fmtMoney(left)+' remaining on Allowance '+id+(amt?(', '+fmtMoney(left-amt)+' after this draw'):'')+'.';
-    note.style.color='var(--muted)';
-  }
-}
-// Draws against one allowance. A change order that names none is counted
-// against the contract's total but not against any single letter, so the
-// totals still add up on a project that predates the named list.
+// coAllowOptions and coAllowNote lived here, filling the allowance fields on
+// the proposal form. The allowance is now decided on the change order, where
+// the change is agreed, so both moved to coGenAllowFill and coGenAllowNote.
+
 function allowanceUsedById(name, id){
   const norm=String(name||'').trim().toLowerCase();
   const want=String(id||'').trim().toUpperCase();
