@@ -12,7 +12,10 @@ ok(/co:\{title:'Submit New PCO'/.test(html), 'and so does the form');
 const cc = html.split('function coRollCandidates')[1].split('function coGenRollList')[0];
 ok(/i!==idx/.test(cc), 'the one being generated is not offered to itself');
 ok(/rowCompany\(x\)[^=]*===co/.test(cc), 'only the same contract');
-ok(/!coIsApproved\(x\)/.test(cc), 'nothing already approved');
+// Approved proposals are the main case: agreed, not yet papered.
+ok(!/!coIsApproved\(x\)/.test(cc), 'an approved proposal is still eligible');
+ok(/!String\(x\['Signed File Name'\]\|\|''\)\.trim\(\)/.test(cc),
+   'but one that already has its own change order document is not');
 ok(/!wfIsStopped\(x\)/.test(cc), 'nothing decided against');
 ok(/!isArchived\(x\)/.test(cc), 'nothing archived');
 ok(/!String\(x\['Rolled Into'\]\|\|''\)\.trim\(\)/.test(cc), 'and nothing already rolled into another');

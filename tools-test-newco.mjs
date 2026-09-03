@@ -5,7 +5,7 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // who sees it
-ok(/<button class="btn-add ae-ok" onclick="openNewCo\(\)"/.test(html), 'the button exists');
+ok(/class="btn-add ae-ok hide-contractor" onclick="openNewCo\(\)"/.test(html), 'the button exists');
 ok(/body\.role-ae \.btn-add:not\(\.ae-ok\)\{display:none !important;\}/.test(html)
    || /\.btn-add:not\(\.ae-ok\)/.test(html),
    'the design team see it while their other add buttons stay hidden');
@@ -69,6 +69,21 @@ ok(/class="nc-roll-amt"[^>]*data-proposed/.test(html) || /nc-roll-amt/.test(html
   ok(Math.max(0,gross-10000)===0, 'a draw covering the whole thing reaches the contract as nothing');
   ok(set.filter(e=>e.amount<e.proposed).length===1, 'one of the two was reduced');
 }
+
+// the same eligibility on the issue path
+{
+  const cc = html.split('function newCoCompanyChanged')[1].split('function newCoSet')[0];
+  ok(!/!coIsApproved\(x\)/.test(cc), 'an approved proposal can be covered here too');
+  ok(/!String\(x\['Signed File Name'\]\|\|''\)\.trim\(\)/.test(cc),
+     'one already papered is not offered');
+}
+// button placement and audience
+ok(/<div style="display:flex;gap:8px;">\s*<button class="btn-add" onclick="openModal\('co'\)">\+ New PCO<\/button>/.test(html),
+   'the two buttons sit in one group');
+ok(/class="btn-add ae-ok hide-contractor" onclick="openNewCo\(\)"/.test(html),
+   'a contractor does not get the CO button');
+ok(/body\.role-contractor \.hide-contractor\{display:none !important;\}/.test(html),
+   'and that class is what hides it');
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-newco.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

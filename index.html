@@ -1102,8 +1102,10 @@
       <div class="section" id="section-cos">
         <div class="page-title-row">
           <h2>Change Order Log</h2>
-          <button class="btn-add" onclick="openModal('co')">+ New PCO</button>
-          <button class="btn-add ae-ok" onclick="openNewCo()" style="margin-left:8px;">+ New CO</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-add" onclick="openModal('co')">+ New PCO</button>
+            <button class="btn-add ae-ok hide-contractor" onclick="openNewCo()">+ New CO</button>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
@@ -7084,8 +7086,9 @@ function newCoCompanyChanged(){
   const none=document.getElementById('nc-roll-none');
   const cands=co ? (allData.co||[]).map((x,i)=>({x,i})).filter(({x})=>
         String(rowCompany(x)||'').trim().toLowerCase()===co.toLowerCase()
-        && !coIsApproved(x) && !wfIsStopped(x) && !isArchived(x)
-        && !String(x['Rolled Into']||'').trim())
+        && !wfIsStopped(x) && !isArchived(x)
+        && !String(x['Rolled Into']||'').trim()
+        && !String(x['Signed File Name']||'').trim())
     : [];
   if(!box) return;
   if(!cands.length){ box.style.display='none'; if(none) none.style.display=co?'block':'none'; newCoTotals(); return; }
@@ -7226,10 +7229,15 @@ function coRollCandidates(idx){
   return (allData.co||[]).map((x,i)=>({x,i}))
     .filter(({x,i})=>i!==idx
       && String(rowCompany(x)||'').trim().toLowerCase()===co
-      && !coIsApproved(x)
+      // Approved ones are the point. A proposal that has been agreed and not
+      // yet papered is exactly what a change order rolls up; excluding them
+      // left the picker empty on every project where the agreeing had already
+      // been done.
       && !wfIsStopped(x)
       && !isArchived(x)
-      && !String(x['Rolled Into']||'').trim());
+      && !String(x['Rolled Into']||'').trim()
+      // Already has its own change order document, so it is not loose.
+      && !String(x['Signed File Name']||'').trim());
 }
 // The allowance is decided here, where the change is agreed, rather than on the
 // proposal. A contractor proposing work has no business allocating money inside
