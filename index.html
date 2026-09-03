@@ -507,7 +507,17 @@
   body.external-mode .nav-dailylogs{display:none;}
 
   /* ── MODAL ── */
-  .thread-arrow{display:inline-block;transition:transform .15s ease;color:var(--muted);font-size:11px;margin-right:2px;}
+  /* The arrow sat inline, so the number began after it while the company
+     underneath began at the cell edge — two left edges in one cell. It now has
+     its own gutter and everything after it shares one edge. */
+  .thread-wrap{display:flex; align-items:flex-start; gap:7px;}
+  .thread-arrow{display:inline-block; transition:transform .15s ease; color:var(--muted);
+    font-size:11px; margin-right:2px;}
+  /* Only inside the wrapper does it become a gutter. The documents table, the
+     Past sections and the pay-app groups use the same arrow inline and keep
+     their original spacing. */
+  .thread-wrap .thread-arrow{flex:0 0 9px; margin:0; line-height:1.5;}
+  .thread-body{min-width:0;}
   .thread-main:hover{background:var(--khaki-50,#f7f5ef);}
   #tbody-feed tr[onclick]:hover, #tbody-summary tr[onclick]:hover{background:var(--khaki-50,#f7f5ef);}
   .ver-status{font-weight:600;}
@@ -3835,6 +3845,13 @@ async function openBoxFile(fileId, ev){
 
 // A muted second line beneath the main value. Returns just the primary when
 // there is nothing worth putting underneath, so rows never carry a blank line.
+// The first cell of a threaded row: disclosure arrow in its gutter, everything
+// else aligned beside it.
+function threadCell(key, i, inner){
+  return '<td><div class="thread-wrap">'
+    +'<span class="thread-arrow" id="arw-'+key+'-'+i+'">&#9656;</span>'
+    +'<div class="thread-body">'+inner+'</div></div></td>';
+}
 function twoLine(primary, secondary){
   const a=String(primary==null?'':primary).trim();
   const b=String(secondary==null?'':secondary).trim();
@@ -3907,7 +3924,7 @@ function renderRFIs(){
   if(!rows.length){tb.innerHTML=emptyRow(8);countFooter(0,all.length,'RFI');const n=document.getElementById('note-rfis');if(n){n.innerHTML='';n.style.display='none';}return;}
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'rfi\','+i+'))">'
-      +'<td><span class="thread-arrow" id="arw-rfi-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['RFI #'], rowCompany(r))+'</td>'
+      +threadCell('rfi', i, impFlag(r)+twoLine(r['RFI #'], rowCompany(r)))
       +'<td>'+esc(r['Subject'])+'</td>'
       +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
@@ -3937,7 +3954,7 @@ function renderCOs(){
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
     const cause=r['Cause'] ? '<span class="pill" style="background:var(--khaki-100);color:var(--olive-900);">'+esc(r['Cause'])+'</span>' : '<span style="color:var(--muted);">—</span>';
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))"><td><span class="thread-arrow" id="arw-co-'+i+'">&#9656;</span> '+impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+'</td><td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+coGenBtn(i,r)+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':''))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+cause+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+coGenBtn(i,r)+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,11); }).join('');
   countFooter(rows.length, rows.length, 'change order');
 }
@@ -3958,7 +3975,7 @@ function renderSubmittals(){
   tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     const sp=specParts(r['Spec Section']);
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'sub\','+i+'))">'
-      +'<td><span class="thread-arrow" id="arw-sub-'+i+'">&#9656;</span> '+impFlag(r)+twoLine(r['Submittal #'], rowCompany(r))+'</td>'
+      +threadCell('sub', i, impFlag(r)+twoLine(r['Submittal #'], rowCompany(r)))
       +'<td>'+twoLine(sp.code, sp.name)+'</td>'
       +'<td>'+esc(r['Description'])+'</td>'
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
