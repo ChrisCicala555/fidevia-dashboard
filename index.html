@@ -449,7 +449,7 @@
   body.role-ae .admin-only:not(.ae-readonly):not(.ae-admin-label){display:none !important;}
   body.role-ae .nav-item.ae-readonly{display:block !important;}
   body.role-ae .nav-section-label.ae-admin-label{display:block !important;}
-  body.role-ae .wf-edit,body.role-ae .btn-add,body.role-owner .btn-add{display:none !important;}
+  body.role-ae .wf-edit,body.role-ae .btn-add:not(.ae-ok),body.role-owner .btn-add{display:none !important;}
   .readonly-banner{background:var(--khaki-100);border-left:4px solid var(--olive-700);padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:var(--olive-900);margin-bottom:14px;}
   #access-requests-banner{padding:0 32px;margin-top:16px;}
   .req-banner-item{background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px;color:var(--olive-900);}
@@ -1093,6 +1093,7 @@
         <div class="page-title-row">
           <h2>Change Order Log</h2>
           <button class="btn-add" onclick="openModal('co')">+ New PCO</button>
+          <button class="btn-add ae-ok" onclick="openNewCo()" style="margin-left:8px;">+ New CO</button>
         </div>
         <div class="panel">
           <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
@@ -1628,6 +1629,48 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="newco-backdrop" onclick="if(event.target===this)closeNewCo()">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header"><h3>Issue a Change Order</h3><button class="modal-close" onclick="closeNewCo()">&times;</button></div>
+    <div class="modal-body">
+      <p class="form-desc" style="margin-top:0;">For a change order written outside the dashboard. Upload the signed document, say which proposals it covers, and record what is drawn from an allowance.</p>
+
+      <div class="field-row">
+        <div class="field" style="flex:1.2;"><label>Contract *</label>
+          <select id="nc-company" onchange="newCoCompanyChanged()"></select></div>
+        <div class="field" style="flex:1;"><label>Change order #</label>
+          <input id="nc-num" autocomplete="off" placeholder="Auto if left blank"></div>
+      </div>
+      <div class="field"><label>Description *</label><input id="nc-desc" autocomplete="off" placeholder="Structural revisions per ASI-004"></div>
+      <div class="field-row">
+        <div class="field" style="flex:1;"><label>Date issued</label><input type="date" id="nc-date"></div>
+        <div class="field" style="flex:1;"><label>Schedule impact (days)</label><input id="nc-days" autocomplete="off" placeholder="0"></div>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
+      <div class="field-row">
+        <div class="field" style="flex:1.3;"><label>Drawn from</label>
+          <select id="nc-allow-id" onchange="newCoTotals()"><option value="">— None —</option></select></div>
+        <div class="field" style="flex:1;"><label>Amount ($)</label>
+          <input id="nc-allow-amt" autocomplete="off" placeholder="0" oninput="newCoTotals()"></div>
+      </div>
+      <p id="nc-allow-note" style="font-size:12.5px;color:var(--muted);margin:0;"></p>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Proposals covered</div>
+      <p id="nc-roll-none" style="display:none;font-size:13px;color:var(--muted);margin:0 0 8px;">No open PCOs on this contract. The change order will stand on its own.</p>
+      <div id="nc-roll-list" style="max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;"></div>
+      <p id="nc-total" style="font-size:13px;color:var(--muted);margin:8px 0 0;"></p>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Signed document</div>
+      <div class="field"><input type="file" id="nc-file" accept="application/pdf,image/*"><p class="file-hint">The executed change order, uploaded to Box against this record.</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="nc-go" onclick="submitNewCo()">Record Change Order</button>
+      <button class="btn-secondary" onclick="closeNewCo()">Cancel</button>
+      <span class="status-msg" id="nc-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="cogen-backdrop" onclick="if(event.target===this)closeCoGen()">
   <div class="modal" style="max-width:620px;">
     <div class="modal-header">
@@ -6986,6 +7029,173 @@ function closeCoGen(){ document.getElementById('cogen-backdrop').classList.remov
 // The running contract maths for one contractor, as the document states it.
 // Only change orders approved BEFORE this one count as previous, so a document
 // generated today still reads correctly next month.
+// ── Issuing a change order written elsewhere ──────────────────────────────
+// Fidevia generates its own document; the design team writes theirs and needs
+// somewhere to record it. Same shape either way: the change order covers one or
+// more proposals, each at the amount agreed, and says what it draws from an
+// allowance.
+function newCoMayIssue(){
+  if(viewingAsExternal()) return IS_ADMIN ? false : DESIGN_ROLES.includes(viewingAsRole());
+  return IS_ADMIN || DESIGN_ROLES.includes(viewingAsRole());
+}
+function openNewCo(){
+  if(!newCoMayIssue()){ alert('Only Fidevia and the design team can issue a change order.'); return; }
+  const sel=document.getElementById('nc-company'); if(!sel) return;
+  const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false);
+  sel.innerHTML='<option value="">— Select contract —</option>'
+    +cts.map(c=>'<option>'+esc(c.name)+'</option>').join('');
+  ['nc-num','nc-desc','nc-days','nc-allow-amt'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const d=document.getElementById('nc-date'); if(d) d.value=etToday();
+  const f=document.getElementById('nc-file'); if(f) f.value='';
+  const st=document.getElementById('nc-status'); if(st){ st.textContent=''; st.className='status-msg'; }
+  newCoCompanyChanged();
+  document.getElementById('newco-backdrop').classList.add('open');
+}
+function closeNewCo(){ document.getElementById('newco-backdrop').classList.remove('open'); }
+function newCoCompany(){ return String((document.getElementById('nc-company')||{}).value||'').trim(); }
+function newCoCompanyChanged(){
+  const co=newCoCompany();
+  const sel=document.getElementById('nc-allow-id');
+  if(sel){
+    const list=allowancesFor(co);
+    sel.innerHTML='<option value="">— None —</option>'
+      +list.map(a=>'<option value="'+esc(a.id)+'">Allowance '+esc(a.id)+(a.name?(' — '+esc(a.name)):'')+'</option>').join('');
+    const wrap=sel.closest('.field-row'); if(wrap) wrap.style.display=list.length?'':'none';
+  }
+  const box=document.getElementById('nc-roll-list');
+  const none=document.getElementById('nc-roll-none');
+  const cands=co ? (allData.co||[]).map((x,i)=>({x,i})).filter(({x})=>
+        String(rowCompany(x)||'').trim().toLowerCase()===co.toLowerCase()
+        && !coIsApproved(x) && !wfIsStopped(x) && !isArchived(x)
+        && !String(x['Rolled Into']||'').trim())
+    : [];
+  if(!box) return;
+  if(!cands.length){ box.style.display='none'; if(none) none.style.display=co?'block':'none'; newCoTotals(); return; }
+  box.style.display=''; if(none) none.style.display='none';
+  box.innerHTML=cands.map(({x,i})=>{
+    const proposed=coApprovedAmount(x)||payNum(x['Cost Impact']);
+    return '<div style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
+      +'<input type="checkbox" class="nc-roll" value="'+i+'" style="width:auto;margin-top:3px;" onchange="newCoTotals()">'
+      +'<div style="flex:1;"><strong>'+esc(x['PCO #']||('Row '+(i+1)))+'</strong> \u2014 '+esc(x['Description']||'')
+        +'<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">Proposed '+fmtMoney(proposed)
+        +' \u00b7 '+esc(x['Status']||'')+'</div></div>'
+      +'<div style="flex:0 0 120px;"><input class="nc-roll-amt" data-i="'+i+'" data-proposed="'+proposed+'"'
+        +' value="'+esc(String(proposed||''))+'" oninput="newCoTotals()"'
+        +' style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;"'
+        +' title="Amount agreed. Defaults to what was proposed."></div></div>'; }).join('');
+  newCoTotals();
+}
+function newCoSet(){
+  return [...document.querySelectorAll('.nc-roll:checked')].map(el=>{
+    const i=parseInt(el.value,10);
+    const row=(allData.co||[])[i];
+    const inp=document.querySelector('.nc-roll-amt[data-i="'+i+'"]');
+    const proposed=payNum(inp&&inp.dataset.proposed);
+    return row ? { i, row, amount: inp?payNum(inp.value):proposed, proposed } : null;
+  }).filter(Boolean);
+}
+function newCoTotals(){
+  const el=document.getElementById('nc-total');
+  const note=document.getElementById('nc-allow-note');
+  const co=newCoCompany();
+  const set=newCoSet();
+  const gross=set.reduce((s,e)=>s+e.amount,0);
+  const id=String((document.getElementById('nc-allow-id')||{}).value||'');
+  const amt=payNum((document.getElementById('nc-allow-amt')||{}).value);
+  if(note){
+    if(!co){ note.textContent=''; }
+    else if(!allowancesFor(co).length){ note.textContent='This contract carries no allowances.'; note.style.color='var(--muted)'; }
+    else if(!id){ note.textContent = amt ? 'Choose which allowance this is drawn from.' : 'Nothing drawn from an allowance.';
+      note.style.color = amt ? 'var(--danger)' : 'var(--muted)'; }
+    else {
+      const left=allowanceRemainingById(co, id);
+      if(amt>left){ note.textContent='Only '+fmtMoney(left)+' remains on Allowance '+id+'.'; note.style.color='var(--danger)'; }
+      else { note.textContent=fmtMoney(left)+' remaining on Allowance '+id
+        +(amt?(', '+fmtMoney(left-amt)+' after this change order.'):'.'); note.style.color='var(--muted)'; }
+    }
+  }
+  if(!el) return;
+  if(!set.length){ el.textContent = co ? 'Covering no proposals — the change order stands on its own.' : ''; return; }
+  const reduced=set.filter(e=>e.amount<e.proposed);
+  el.innerHTML='Covers <strong>'+set.length+'</strong> proposal'+(set.length===1?'':'s')+', '
+    +fmtMoney(gross)+' agreed'
+    +(amt?(', '+fmtMoney(amt)+' from the allowance'):'')
+    +' \u2014 reaching the contract: <strong>'+fmtMoney(Math.max(0,gross-amt))+'</strong>.'
+    +(reduced.length?'<div style="color:#8a6d3b;margin-top:5px;">'+reduced.length+' accepted for less than proposed.</div>':'');
+}
+async function submitNewCo(){
+  if(!newCoMayIssue()) return;
+  const co=newCoCompany();
+  const desc=String((document.getElementById('nc-desc')||{}).value||'').trim();
+  const say=(t,k)=>showStatus('nc-status',t,k||'info');
+  if(!co) return say('Choose which contract this change order is against.','error');
+  if(!desc) return say('Give the change order a description.','error');
+  const set=newCoSet();
+  const gross=set.reduce((s,e)=>s+e.amount,0);
+  const allowId=String((document.getElementById('nc-allow-id')||{}).value||'');
+  const allowAmt=payNum((document.getElementById('nc-allow-amt')||{}).value);
+  if(allowAmt && !allowId) return say('Choose which allowance the draw comes from.','error');
+  if(allowAmt > gross && gross) return say('The allowance draw is more than the change order is worth.','error');
+  const btn=document.getElementById('nc-go'); btn.disabled=true;
+  try{
+    const fid=currentProject.folders.co;
+    const existing=await findFile(fid, MODULES.co.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    allData.co=rows;
+    const num=String((document.getElementById('nc-num')||{}).value||'').trim() || nextItemNumber('co', co);
+    let fileId='', fileName='';
+    const f=document.getElementById('nc-file');
+    if(f&&f.files&&f.files[0]){
+      say('Uploading the document\u2026');
+      const up=await boxUploadBinary(f.files[0], await itemFolderId('co', fid, num));
+      const e0=up.entries?up.entries[0]:up;
+      fileId=e0.id||''; fileName=f.files[0].name;
+    }
+    await resolveMe();
+    const by=(ME_NAME||ME_EMAIL||'')+(ME_COMPANY?(' ('+ME_COMPANY+')'):'');
+    const row={};
+    MODULES.co.headers.forEach(h=>row[h]='');
+    row['PCO #']=''; row['CO #']=num; row['Description']=desc; row['Submitted By']=by;
+    row['Cost Impact']=String(gross); row['Approved Amount']=String(gross);
+    row['Applied to Allowance']=allowAmt?String(allowAmt):''; row['Allowance']=allowId;
+    row['Schedule Impact (Days)']=String((document.getElementById('nc-days')||{}).value||'').trim();
+    row['Status']='Approved';
+    row['Date Submitted']=String((document.getElementById('nc-date')||{}).value||'')||etToday();
+    row['Date Approved']=row['Date Submitted'];
+    row['Attachment File ID']=fileId; row['Attachment Name']=fileName;
+    row['Signed File ID']=fileId; row['Signed File Name']=fileName;
+    row['Company']=co;
+    // Issued, not proposed: there is no review chain to run on a change order
+    // that arrives already executed.
+    row['Workflow Status']='Complete'; row['Workflow Step']='0';
+    row['Version History']=JSON.stringify([{v:1, fileId, fileName, status:'Approved',
+      date:etToday(), by:ME_NAME||ME_EMAIL||'', co:ME_COMPANY||'', note:'Change order issued and uploaded.'}]);
+    rows.push(row);
+    // Every covered proposal records the change order that absorbed it, at the
+    // amount agreed rather than the amount asked for.
+    set.forEach(({row:x, amount, proposed})=>{
+      x['Rolled Into']=num;
+      x['Approved Amount']=String(amount);
+      x['Status']=(amount<proposed)?('Rolled into '+num+' (part)'):('Rolled into '+num);
+      x['Date Approved']=x['Date Approved']||etToday();
+      try{ wfApplyDecision('co', x, 'rolled', ME_NAME||ME_EMAIL||''); }catch(e){}
+    });
+    say('Saving\u2026');
+    await boxUploadText(MODULES.co.log, toCSV(MODULES.co.headers, rows), fid, existing?existing.id:null);
+    allData.co=rows;
+    try{ auditLog('Issued change order','co',row, num+(set.length?(' \u2014 covering '+set.map(e=>e.row['PCO #']||'?').join(', ')):'')); }catch(e){}
+    try{ sendItemNotif('Notify - CO','co',{subject:'[Fidevia] Change Order Issued: {number}',intro:'Change Order Issued: {title}'},
+      {project:currentProject.name,number:num,title:desc,submitter:by},
+      [['CO #',num],['Contract',co],['Issued By',by],['Amount',fmtMoney(gross)],
+       ['Covers',set.length?set.map(e=>e.row['PCO #']||'').filter(Boolean).join(', '):'\u2014']]); }catch(e){}
+    showStatus('nc-status','Recorded '+num+(set.length?(' \u2014 covering '+set.length+' proposal'+(set.length===1?'':'s')):'')+'.','success');
+    renderAll();
+    setTimeout(closeNewCo, 1200);
+  }catch(e){ showStatus('nc-status','Error: '+(e.message||e),'error'); }
+  btn.disabled=false;
+}
+
 // ── Rolling several PCOs into one change order ────────────────────────────
 // A change order routinely covers a handful of proposals agreed together. They
 // were separate rows with separate numbers, so the document could only ever
