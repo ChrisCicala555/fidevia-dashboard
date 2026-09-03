@@ -30,5 +30,16 @@ ok(/says so rather than looking cut off/.test(html), 'because a hidden one reads
 }
 ok(/wrapTables\(\); makeSortableTables\(\)/.test(html), 'it still runs on every render');
 
+// The page itself must not move when a table does.
+ok(/\.content\{padding:24px 20px; flex:1; min-width:0;/.test(html),
+   'the content column may shrink below its content width');
+ok(/item defaults to min-width:auto and refuses to shrink/.test(html),
+   'and why that is needed is recorded');
+ok(/\.panel\{[^}]*min-width:0;\}/.test(html), 'the panel may too');
+ok(/\.section\{min-width:0;\}/.test(html), 'and the section');
+ok(/\.tscroll\{[^}]*max-width:100%; min-width:0;/.test(html),
+   'the scroll wrapper is bounded by its parent rather than by its content');
+ok((html.match(/\.panel\{/g)||[]).length===1, 'there is one panel rule, not two');
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-tablescroll.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
