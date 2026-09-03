@@ -217,7 +217,12 @@
   .stat-card.neg .value{color:var(--danger);}
   .stat-card.pos .value{color:var(--olive-700);}
   .panel{background:var(--white); border:1px solid var(--border); border-radius:12px; margin-bottom:24px; overflow:hidden;}
-  .tscroll{overflow-x:auto; width:100%;}
+  .tscroll{overflow-x:auto; overflow-y:hidden; width:100%; -webkit-overflow-scrolling:touch;}
+  /* A visible track, so a table that scrolls says so rather than looking cut off. */
+  .tscroll::-webkit-scrollbar{height:10px;}
+  .tscroll::-webkit-scrollbar-track{background:#F5F3EC; border-radius:0 0 12px 12px;}
+  .tscroll::-webkit-scrollbar-thumb{background:var(--khaki-300,#D8D4C2); border-radius:5px;}
+  .tscroll::-webkit-scrollbar-thumb:hover{background:var(--muted);}
   /* Lighter treatment, matching the Contact Directory: the header names the
      panel rather than shouting it, and the olive is kept for accents. */
   .panel-header{background:var(--white); color:var(--olive-900); padding:14px 18px; font-size:15px; font-weight:700; letter-spacing:0.2px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px;}
@@ -3467,9 +3472,19 @@ async function loadModule(key){
 
 function wrapTables(){
   document.querySelectorAll('.panel > table, #payapp-groups table').forEach(function(t){
-    if(t.parentElement && t.parentElement.classList.contains('tscroll')) return;
-    const w=document.createElement('div'); w.className='tscroll';
-    t.parentNode.insertBefore(w,t); w.appendChild(t);
+    if(!(t.parentElement && t.parentElement.classList.contains('tscroll'))){
+      const w=document.createElement('div'); w.className='tscroll';
+      t.parentNode.insertBefore(w,t); w.appendChild(t);
+    }
+    // The wrapper could always scroll; nothing ever overflowed it. Tables are
+    // width:100%, so a wide one shrank to fit and squashed its columns instead
+    // — which is what made Actions unreadable rather than scrollable.
+    //
+    // A floor per column lets a wide table exceed the wrapper and scroll, while
+    // a narrow one still fills the space rather than being forced to scroll for
+    // no reason.
+    const cols=t.querySelectorAll('thead th').length;
+    t.style.minWidth = cols>=7 ? (cols*116)+'px' : '';
   });
 }
 function fmtMoneyInput(el){
