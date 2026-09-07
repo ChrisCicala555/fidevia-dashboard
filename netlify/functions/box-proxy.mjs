@@ -1625,11 +1625,23 @@ export default async (req) => {
       if (!pid) return json({ error: 'projectId required' }, 400);
       let cur = {};
       try { cur = (await reminderStore().get(pid, { type: 'json' })) || {}; } catch (e) {}
+      const when = new Date().toISOString();
+      const companies = (Array.isArray(body.companies) ? body.companies : []).map(String).slice(0, 60);
+      const prev = cur.lastScheduleSend || {};
+      // Per company, because reminding one contract must not read as having
+      // reminded them all. The flat fields stay for the settings panel, which
+      // only wants to know when anything last went out.
+      const perCompany = Object.assign({}, prev.perCompany || {});
+      companies.forEach(c => {
+        const name = String(c).trim().slice(0, 120);
+        if (name) perCompany[name] = { at: when, by: who.email || '' };
+      });
       cur.lastScheduleSend = {
-        at: new Date().toISOString(),
+        at: when,
         by: who.email || '',
-        companies: (Array.isArray(body.companies) ? body.companies : []).map(String).slice(0, 60),
-        recipients: Math.max(0, parseInt(body.recipients, 10) || 0)
+        companies,
+        recipients: Math.max(0, parseInt(body.recipients, 10) || 0),
+        perCompany
       };
       await reminderStore().setJSON(pid, cur);
       return json({ ok: true, lastScheduleSend: cur.lastScheduleSend });

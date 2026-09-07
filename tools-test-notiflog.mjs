@@ -110,10 +110,14 @@ ok(/function schedChaseTargets\(\)/.test(html), 'the recipients are worked out i
   ok(/r\.state!=='current'/.test(c), 'only contracts that are behind');
   ok(/norm\(c\['Company'\]\)===norm\(r\.company\)/.test(c), 'their people, from the project contact sheet');
   ok(/new Set/.test(c), 'each person once');
-  ok(/\.filter\(r=>r\.emails\.length\)/.test(c), 'a company with no addresses is not a target');
+  // A company with nobody to write to stays in the list so its own row can say
+  // why it cannot be reminded; schedChaseSendable is what the send draws from.
+  // tools-test-schedone.mjs covers the per-contract behaviour in full.
+  ok(/function schedChaseSendable\(\)/.test(html),
+     'the sendable set is separate from the set that is behind');
 }
 {
-  const c = html.split('async function sendScheduleChaseNow()')[1].split('\n}\nfunction scheduleStats')[0];
+  const c = html.split('async function sendScheduleChaseNow(company)')[1].split('\nfunction scheduleStats')[0];
   ok(/if\(!IS_ADMIN \|\| viewingAsExternal\(\)\) return;/.test(c), 'only Fidevia may send it');
   ok(/if\(!targets\.length\) return;/.test(c), 'and not to nobody');
   ok(/confirm\(/.test(c), 'the list is confirmed before anything goes out');
@@ -123,13 +127,19 @@ ok(/function schedChaseTargets\(\)/.test(html), 'the recipients are worked out i
   ok(/emailTemplate\(/.test(c), 'it uses the house email, not a bare message');
 }
 {
-  const c = html.split('function schedChaseFooter()')[1].split('// Sending by hand')[0];
+  const c = html.split('function schedChaseFooter()')[1].split('// company is optional')[0];
   ok(/Everyone is current, so there is nobody to chase/.test(c),
-     'the button explains itself when there is nothing to do');
-  ok(/Nobody behind has an email address/.test(c),
-     'and distinguishes that from having nobody to send to');
-  ok(/disabled/.test(c), 'and is disabled rather than failing when pressed');
-  ok(/No manual reminder has been sent from here yet/.test(c), 'the record reads as empty, not absent');
+     'the footer explains itself when there is nothing to do');
+  ok(/do not match the contact sheet/.test(c),
+     'and tells a name mismatch apart from having nobody to send to');
+  // The reminder is per contract now: the button lives on the row and is
+  // disabled there, and the record of what was sent is per company.
+  // tools-test-schedone.mjs covers both.
+  ok(/use the button on its row/.test(c), 'one outstanding contract is pointed at its own row');
+  ok(/function schedRowRemind\(t\)/.test(html) && /disabled/.test(html.split('function schedRowRemind(t)')[1].slice(0,900)),
+     'and that row button is disabled rather than failing when pressed');
+  ok(/No schedule reminder has been sent by hand on this project/.test(html),
+     'the settings record reads as empty, not absent');
 }
 ok(/lastScheduleSend/.test(srv), 'the stamp is kept server-side');
 {

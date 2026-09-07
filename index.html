@@ -280,6 +280,8 @@
     vertical-align:middle; flex:0 0 auto; opacity:.72;}
   .dl-btn:hover{background:var(--olive-700); color:#fff; opacity:1;}
   .dl-btn.dl-busy{opacity:.4; pointer-events:none;}
+  .sched-remind{padding:4px 12px; font-size:12.5px; white-space:nowrap; flex:0 0 auto;}
+  .sched-remind:disabled{opacity:.45; cursor:not-allowed;}
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
   .btn-invite:hover{background:var(--olive-700);color:#fff;}
   .cd-inp{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;font-family:inherit;width:130px;color:var(--ink);background:var(--white);}
@@ -5419,17 +5421,24 @@ async function renderScheduleUploads(){
     'no-documents':'Documents not set up on this project'
   };
   const good=r=>r.state==='current';
+  const targets=schedChaseTargets();
+  const targetFor=c=>targets.find(t=>String(t.company).trim().toLowerCase()===String(c).trim().toLowerCase());
   box.innerHTML=SCHED_UPLOADS.map(r=>{
     const ok=good(r);
+    const t=ok?null:targetFor(r.company);
+    const last=schedLastFor(r.company);
     return '<div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
       +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
-      +'<span style="flex:1;font-weight:600;">'+esc(r.company)+'</span>'
-      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'+esc(label[r.state]||r.state)
-        +(r.date?(' \u00b7 '+fmtDMY(r.date)):'')+'</span></div>';
+      +'<span style="flex:1;min-width:0;"><span style="font-weight:600;">'+esc(r.company)+'</span>'
+        +(last?('<div style="font-size:12px;color:var(--muted);">Reminded '+esc(fmtDMY(String(last.at).slice(0,10)))
+            +(last.by?(' by '+esc(last.by)):'')+'</div>'):'')+'</span>'
+      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)
+        +(r.date?(' \u00b7 '+fmtDMY(r.date)):'')+'</span>'
+      +(t?schedRowRemind(t):'')+'</div>';
   }).join('')
   +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
     +'Read from each contract\u2019s Schedules folder under Documents. '
-    +'<a href="#" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
+    +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
   +schedChaseFooter();
 }
 // Who a chase would go to right now, and why. Kept separate from the render so
@@ -5437,6 +5446,10 @@ async function renderScheduleUploads(){
 function schedChaseTargets(){
   const norm=s=>String(s||'').trim().toLowerCase();
   const contacts=allData.contacts||[];
+  // Every contract that is behind, including the ones with nobody to write to.
+  // Dropping those hid the reason: the panel said "nobody has an email" without
+  // saying which contract, so a company name that disagrees with the contact
+  // sheet looked the same as a company with no contacts at all.
   return (SCHED_UPLOADS||[])
     .filter(r=>r.state!=='current')
     .map(r=>{
@@ -5444,41 +5457,98 @@ function schedChaseTargets(){
         .filter(c=>norm(c['Company'])===norm(r.company) && c['Email'])
         .map(c=>String(c['Email']).trim().toLowerCase()))];
       return { company:r.company, date:r.date||'', state:r.state, emails };
-    })
-    .filter(r=>r.emails.length);
+    });
 }
+function schedChaseSendable(){ return schedChaseTargets().filter(t=>t.emails.length); }
+// When one contract was last chased by hand. Kept per company so reminding one
+// does not look like reminding all of them.
+function schedLastFor(company){
+  const per=(SCHED_LAST_SEND&&SCHED_LAST_SEND.perCompany)||{};
+  const k=Object.keys(per).find(x=>String(x).trim().toLowerCase()===String(company||'').trim().toLowerCase());
+  return k?per[k]:null;
+}
+// Why a contract has nobody to write to. Usually it is not that the company
+// has no contacts — it is that the contract is named one thing and the contact
+// sheet says another, "Comfort Systems" against "Comfort Systems Inc". A dead
+// button that cannot say which of those it is sends someone hunting.
+function schedNearMiss(company){
+  const loose=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'')
+    .replace(/(inc|llc|llp|ltd|co|corp|company|construction|builders|group)$/,'');
+  const want=loose(company);
+  if(!want) return '';
+  const seen=new Set();
+  (allData.contacts||[]).forEach(c=>{
+    const raw=String(c['Company']||'').trim();
+    if(!raw || !c['Email']) return;
+    if(String(raw).trim().toLowerCase()===String(company).trim().toLowerCase()) return;
+    const got=loose(raw);
+    if(got && want && (got.indexOf(want)>=0 || want.indexOf(got)>=0)) seen.add(raw);
+  });
+  return [...seen][0]||'';
+}
+// The control on a single contract's row.
+function schedRowRemind(t){
+  if(!t) return '';
+  const none=!t.emails.length;
+  const label=schedLastFor(t.company)?'Remind again':'Remind';
+  let why='Nobody at this company has an email address on the project contact sheet.';
+  if(none){
+    const near=schedNearMiss(t.company);
+    if(near) why='The contract is named \u201c'+t.company+'\u201d but the contact sheet says \u201c'+near
+      +'\u201d. They have to match before anyone here can be reminded.';
+  }
+  return '<button class="btn-secondary sched-remind" onclick="event.stopPropagation();sendScheduleChaseNow('
+      +esc(JSON.stringify(String(t.company)))+')"'
+    +(none?' disabled title="'+esc(why)+'"'
+          :' title="Email '+t.emails.length+' '+(t.emails.length===1?'person':'people')+' at '+esc(t.company)+'"')
+    +'>'+label+'</button>';
+}
+// Reminding one contract is the ordinary case, and that button lives on its
+// row. This is only for the day several are behind and all of them should be
+// asked at once, so it says exactly who it would write to.
 function schedChaseFooter(){
-  const targets=schedChaseTargets();
+  const sendable=schedChaseSendable();
   const behind=(SCHED_UPLOADS||[]).filter(r=>r.state!=='current').length;
-  const last=SCHED_LAST_SEND;
-  const stamp=last&&last.at
-    ? 'Last sent manually on '+fmtDMY(String(last.at).slice(0,10))
-        +(last.by?(' by '+esc(last.by)):'')
-        +(last.recipients?(' \u2014 '+last.recipients+' recipient'+(last.recipients===1?'':'s')):'')+'.'
-    : 'No manual reminder has been sent from here yet.';
+  const people=sendable.reduce((n,t)=>n+t.emails.length,0);
   let note;
   if(!behind) note='Everyone is current, so there is nobody to chase.';
-  else if(!targets.length) note='Nobody behind has an email address on the project contact sheet.';
-  else note='Would email '+targets.reduce((n,t)=>n+t.emails.length,0)+' '
-      +(targets.reduce((n,t)=>n+t.emails.length,0)===1?'person':'people')+' at '
-      +targets.length+' '+(targets.length===1?'contract':'contracts')+'.';
+  else if(!sendable.length){
+    const mism=schedChaseTargets().map(t=>({c:t.company, near:schedNearMiss(t.company)})).filter(x=>x.near);
+    note = mism.length
+      ? 'Nobody can be reminded: the contract names do not match the contact sheet \u2014 '
+        + mism.slice(0,3).map(x=>'\u201c'+x.c+'\u201d vs \u201c'+x.near+'\u201d').join(', ') + '.'
+      : 'None of the contracts behind have anyone with an email address on the project contact sheet.';
+  }
+  else if(sendable.length===1) note='Only '+sendable[0].company+' is behind \u2014 use the button on its row.';
+  else note='Reminds all '+sendable.length+' contracts that are behind, at once \u2014 '
+      +people+' '+(people===1?'person':'people')+' in total.';
+  // One outstanding contract does not need a bulk control; its own row has one.
+  const showBulk = sendable.length>1;
   return '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
-    +'<button class="btn-secondary" id="btn-sched-chase" onclick="sendScheduleChaseNow()"'
-      +(targets.length?'':' disabled')+'>Send The Reminder Now</button>'
-    +'<span style="font-size:12.5px;color:var(--muted);flex:1;min-width:200px;">'+esc(note)+' '+stamp+'</span>'
+    +(showBulk?('<button class="btn-secondary" id="btn-sched-chase" onclick="sendScheduleChaseNow()">Remind All '
+        +sendable.length+'</button>'):'')
+    +'<span style="font-size:12.5px;color:var(--muted);flex:1;min-width:200px;">'+esc(note)+'</span>'
     +'<span class="status-msg" id="sched-chase-status"></span></div>';
 }
 // Sending by hand. The automatic chase only runs on the configured day, and
 // sometimes a schedule is wanted before then — or the toggle is off entirely
 // and this is the only way it goes out.
-async function sendScheduleChaseNow(){
+// company is optional: named, it chases that one contract; omitted, every
+// contract that is behind. Chasing one is the ordinary case — a firm that is
+// current should never hear about a firm that is not.
+async function sendScheduleChaseNow(company){
   if(!IS_ADMIN || viewingAsExternal()) return;
-  const targets=schedChaseTargets();
+  const only=String(company||'').trim();
+  let targets=schedChaseSendable();
+  if(only) targets=targets.filter(t=>String(t.company).trim().toLowerCase()===only.toLowerCase());
   if(!targets.length) return;
   const total=targets.reduce((n,t)=>n+t.emails.length,0);
   if(!confirm('Email '+total+' '+(total===1?'person':'people')+' at '
       +targets.map(t=>t.company).join(', ')+'?\n\nThey will be asked to upload this month\u2019s schedule.')) return;
-  const btn=document.getElementById('btn-sched-chase'); if(btn) btn.disabled=true;
+  // Disable every send control while one is running, so a second press cannot
+  // start a parallel run over the same list.
+  const btns=[...document.querySelectorAll('.sched-remind, #btn-sched-chase')];
+  btns.forEach(b=>b.disabled=true);
   showStatus('sched-chase-status','Sending\u2026','');
   let sent=0;
   for(const t of targets){
@@ -5500,10 +5570,17 @@ async function sendScheduleChaseNow(){
   try{
     const d=await proxyCall('recordScheduleSend',
       {projectId:currentProject.folderId, companies:targets.map(t=>t.company), recipients:sent},{quiet:true});
-    SCHED_LAST_SEND=d.lastScheduleSend||{at:new Date().toISOString(), by:ME_EMAIL||'', recipients:sent};
-  }catch(e){ SCHED_LAST_SEND={at:new Date().toISOString(), by:ME_EMAIL||'', recipients:sent}; }
+    if(d && d.lastScheduleSend) SCHED_LAST_SEND=d.lastScheduleSend;
+  }catch(e){
+    // The email went out even if the stamp did not save. Record it locally so
+    // the row does not invite a second send of something already sent.
+    SCHED_LAST_SEND=SCHED_LAST_SEND||{};
+    SCHED_LAST_SEND.perCompany=SCHED_LAST_SEND.perCompany||{};
+    targets.forEach(t=>{ SCHED_LAST_SEND.perCompany[t.company]={at:new Date().toISOString(), by:ME_EMAIL||''}; });
+  }
   try{ auditLog('Sent schedule reminder','gendocs',{}, sent+' recipient'+(sent===1?'':'s')+' at '+targets.map(t=>t.company).join(', ')); }catch(e){}
-  showStatus('sched-chase-status','Sent to '+sent+' '+(sent===1?'person':'people')+'.','success');
+  showStatus('sched-chase-status','Reminded '+targets.map(t=>t.company).join(', ')
+    +' \u2014 '+sent+' '+(sent===1?'person':'people')+'.','success');
   try{ renderScheduleUploads(); }catch(e){}
 }
 function scheduleStats(){
