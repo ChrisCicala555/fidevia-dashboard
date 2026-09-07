@@ -686,13 +686,23 @@ async function callerMayReadFile(H, t, grants, who, fileId) {
   const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=path_collection`, { headers: H });
   if (!r.ok) return false;
   const d = await r.json();
-  const ids = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
+  const path = (d.path_collection && d.path_collection.entries) || [];
+  const ids = path.map(e => String(e.id));
   projectId = ids.find(x => gidset.has(x));
   if (!projectId) return false;
   // The project's own logo is branding, not a record. It lives in
   // Project Info.json rather than any CSV row, so the row check below would
   // deny it to everyone the project is shared with.
   try { const lg = await logoIdFor(H, projectId); if (lg && String(lg) === String(fileId)) return true; } catch (e) {}
+  // Documents holds files in folders, not rows in a log, so nothing there is
+  // ever in the set below — including a file the caller uploaded themselves.
+  // The rule that already governs Documents is whether you may browse the
+  // folder it sits in, so ask that: if you can open the folder, you can open
+  // what is in it.
+  try {
+    const parentId = ids.length ? ids[ids.length - 1] : '';
+    if (parentId && await docsAllows(H, t, grants, who, parentId)) return true;
+  } catch (e) {}
   const allowed = await allowedFileIds(H, t, grants, who, projectId);
   return allowed.has(String(fileId));
 }
