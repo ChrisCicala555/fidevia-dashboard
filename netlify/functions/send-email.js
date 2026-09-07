@@ -1,9 +1,21 @@
+// Every notification the browser sends passes through here, which makes this
+// the one honest place to write down that it happened. The log is written
+// after the fact and never blocks or fails the send.
 exports.handler = async (event) => {
   if(event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
+  let meta = null;
   try {
-    const { to, subject, body, attachments, replyTo } = JSON.parse(event.body);
+    const parsed = JSON.parse(event.body);
+    const { to, subject, body, attachments, replyTo } = parsed;
     if(!to || !subject || !body) return { statusCode: 400, body: 'Missing fields' };
     const toArr = Array.isArray(to) ? to : [to];
+    // Trust the caller for context only — kind, project, who pressed the
+    // button. The recipients and subject come from the message actually sent.
+    meta = {
+      to: toArr, subject,
+      kind: parsed.kind || '', trigger: parsed.trigger || 'auto',
+      projectId: parsed.projectId || '', project: parsed.project || '', by: parsed.by || ''
+    };
     const payload = {
       personalizations: [{ to: toArr.map(e => ({ email: e })) }],
       from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' },
@@ -22,8 +34,16 @@ exports.handler = async (event) => {
       headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    return { statusCode: res.status === 202 ? 202 : res.status, body: 'ok' };
+    const ok = res.status === 202;
+    await record(Object.assign({}, meta, ok ? {} : { ok: false, error: 'SendGrid ' + res.status }));
+    return { statusCode: ok ? 202 : res.status, body: 'ok' };
   } catch(e) {
+    if(meta) await record(Object.assign({}, meta, { ok: false, error: e.message }));
     return { statusCode: 500, body: e.message };
   }
 };
+
+// This file is CommonJS and the log is an ES module, so the import is dynamic.
+async function record(entry){
+  try { const m = await import('./notif-log.mjs'); await m.logNotif(entry); } catch(e) {}
+}

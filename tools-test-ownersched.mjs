@@ -17,7 +17,9 @@ ok(/if \(role !== ROLE_CONTRACTOR && role !== ROLE_CUSTOM\) return JSON\.stringi
 ok(!/milestones/.test(fpc), 'nothing strips milestones for any role');
 
 // Schedule reads config, not a CSV, so no external-read entry is needed.
-const rs = html.split('function renderSchedule')[1].split("// The Owner's Home is the financial picture only")[0];
+// Anchored on the exact signature: 'function renderSchedule' also matches
+// renderScheduleUploads, which is a different function with different rules.
+const rs = html.split('function renderSchedule(){')[1].split("// The Owner's Home is the financial picture only")[0];
 ok(/currentProject\.config\.milestones/.test(rs), 'the tab reads milestones from the config');
 ok(!/allData\./.test(rs.split('scheduleStats')[0]), 'and not from a module CSV');
 ok(!/Schedule\.csv|EXTERNAL_READABLE_CSV/.test(rs), 'so no server read rule is involved');

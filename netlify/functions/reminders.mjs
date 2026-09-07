@@ -1,4 +1,5 @@
 import { getStore } from '@netlify/blobs';
+import { logNotif } from './notif-log.mjs';
 
 // Retry Box calls that come back rate-limited. This job runs unattended, so a
 // silent 429 means a reminder is never sent and nobody finds out.
@@ -63,9 +64,11 @@ async function readCSV(t, folderId, filename) {
   const r = await boxFetch(`https://api.box.com/2.0/files/${f.id}/content`, { headers: { Authorization: 'Bearer ' + t } });
   return r.ok ? parseCSV(await r.text()) : [];
 }
-async function sendEmail(to, subject, html) {
+// meta is only for the notification log — which project this was, and what
+// kind of reminder. Nothing in it reaches the recipient.
+async function sendEmail(to, subject, html, meta) {
   if (!to.length) return;
-  await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const r = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -74,6 +77,8 @@ async function sendEmail(to, subject, html) {
       subject, content: [{ type: 'text/html', value: html }]
     })
   });
+  await logNotif(Object.assign({ to, subject, trigger: 'auto', by: 'Scheduled reminder' }, meta || {},
+    { ok: r.status === 202, error: r.status === 202 ? '' : ('SendGrid ' + r.status) }));
 }
 // ── Monthly schedule chase ────────────────────────────────────────────────
 // Each prime contractor posts an updated schedule into
@@ -83,27 +88,26 @@ function monthStart(now) {
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-01';
 }
 function scheduleChaseHTML(project, company, lastDate) {
+  const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/, '');
   const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
-  const last = lastDate
-    ? `The most recent one there is dated ${lastDate}.`
-    : 'There is no schedule on file yet.';
+  const esc = v => String(v == null ? '' : v).replace(/</g, '&lt;');
+  const row = (i, label, value) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:11px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:180px;border-bottom:1px solid #ece8df">${label}</td><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${esc(value)}</td></tr>`;
+  const rows = row(0, 'Project', project)
+    + row(1, 'Contract', company)
+    + row(2, 'Last schedule on file', lastDate || 'None yet')
+    + row(3, 'Where it goes', 'Documents \u2192 ' + company + ' \u2192 Schedules');
   return `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden">
-      <tr><td style="padding:26px 28px 8px">
-        <div style="font-size:17px;font-weight:600;color:#3c4020;font-family:${sans}">Monthly schedule update</div>
-        <div style="font-size:14px;color:#5c5c52;margin-top:10px;line-height:1.6">
-          ${company} has not posted an updated schedule for ${project} this month. ${last}
-        </div>
-        <div style="font-size:14px;color:#5c5c52;margin-top:14px;line-height:1.6">
-          Upload it to your Documents area, in the Schedules folder.
-        </div>
-        <div style="margin-top:20px">
-          <a href="https://dashboard.fidevia.com" style="background:#515520;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;font-size:14px;font-family:${sans};display:inline-block">Open the dashboard</a>
-        </div>
-      </td></tr>
-      <tr><td style="padding:18px 28px 24px">
-        <div style="font-size:11px;color:#b3b0a4;line-height:1.6">Automated reminder from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div>
-      </td></tr>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
+    <tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-family:${sans};font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>
+    <tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr>
+    <tr><td style="padding:22px 24px 6px">
+      <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:20px;font-weight:700;margin:0 0 4px"><span style="color:#515520">Monthly schedule due:</span> <span style="color:#2f2f2f">${esc(company)}</span></div>
+      <div style="font-family:${sans};font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Project: ${esc(project)}</div>
+      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 16px;font-family:${sans}">No updated schedule has been posted for this month. ${lastDate ? 'The most recent one on file is dated ' + esc(lastDate) + '.' : 'There is no schedule on file yet.'} Please upload the current one.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rows}</table>
+      <div style="text-align:center;margin:22px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:${sans};font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Upload in Dashboard</a></div>
+    </td></tr>
+    <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-family:${sans};font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
     </table></div>`;
 }
 const notDone = s => { const st = (s || '').toLowerCase(); return !(st.indexOf('approv') >= 0 || st.indexOf('reject') >= 0 || st.indexOf('den') >= 0 || st.indexOf('closed') >= 0 || st.indexOf('signed') >= 0); };
@@ -208,7 +212,8 @@ export default async () => {
             .map(r => String(r['Email'] || '').trim().toLowerCase()).filter(Boolean))];
           if (!to.length) continue;
           await sendEmail(to, '[Fidevia] Monthly schedule due — ' + p.name,
-            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : ''));
+            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : ''),
+            { kind: 'schedule', projectId: String(p.id || ''), project: p.name });
           sent++;
         }
       } catch (e) {}
@@ -224,7 +229,8 @@ export default async () => {
     emails = [...new Set(emails.map(e => e.trim().toLowerCase()))].filter(Boolean);
     if (!emails.length) continue;
 
-    await sendEmail(emails, '[Fidevia] Outstanding items — ' + p.name, digestHTML(p.name, out));
+    await sendEmail(emails, '[Fidevia] Outstanding items — ' + p.name, digestHTML(p.name, out),
+      { kind: 'digest', projectId: String(p.id || ''), project: p.name });
     sent++;
   }
   return new Response('reminders sent: ' + sent);

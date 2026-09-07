@@ -1454,6 +1454,24 @@
           </div>
           <div style="margin-top:16px;"><button class="btn-primary" onclick="saveReminderSettings()" id="btn-rem-save">Save Reminders</button></div>
           <div class="status-msg" id="rem-status"></div>
+          <div style="margin-top:12px;font-size:12.5px;color:var(--muted);" id="rem-last-send"></div>
+        </div>
+        <div class="panel" style="padding:20px;margin-top:20px;">
+          <h3 style="font-size:16px;margin:0 0 6px;">Notification Log</h3>
+          <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Every email the dashboard has sent, and who received it. Sends are recorded whether they succeeded or failed.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+            <div class="field" style="margin:0;max-width:210px;"><label>Scope</label>
+              <select id="nlog-scope" onchange="loadNotifLog()"><option value="project">This project</option><option value="all">All projects</option></select></div>
+            <div class="field" style="margin:0;max-width:150px;"><label>Period</label>
+              <select id="nlog-days" onchange="loadNotifLog()"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="180">Last 180 days</option></select></div>
+            <div class="field" style="margin:0;max-width:210px;"><label>Type</label>
+              <select id="nlog-kind" onchange="renderNotifLog()"><option value="">All types</option></select></div>
+            <button class="btn-secondary" onclick="NOTIF_LOG=null;loadNotifLog()">Refresh</button>
+          </div>
+          <div class="tscroll"><table id="nlog-table" style="min-width:860px;">
+            <thead><tr><th>Sent</th><th>Type</th><th>Subject</th><th>Recipients</th><th>Project</th><th>Sent By</th></tr></thead>
+            <tbody id="nlog-body"></tbody></table></div>
+          <div style="padding:11px 0 0;font-size:12.5px;color:var(--muted);" id="nlog-count"></div>
         </div>
         </div>
       </div>
@@ -2475,7 +2493,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; MY_SCHEDULE=null;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null;
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2553,7 +2571,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; MY_SCHEDULE=null;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null;
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -5126,6 +5144,9 @@ function monthStart(d){
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-01';
 }
 let SCHED_UPLOADS=null;
+// When a person last pressed Send, so the panel can say so without reading
+// the whole notification log.
+let SCHED_LAST_SEND=null;
 // The viewer's own obligation, for the attention panel. Fetched once per
 // project; a contractor may ask about their own company and no other.
 let MY_SCHEDULE=null;
@@ -5165,6 +5186,7 @@ async function renderScheduleUploads(){
       const d=await proxyCall('scheduleUploads',
         {projectId:currentProject.folderId, companies:cos, since:monthStart()},{quiet:true});
       SCHED_UPLOADS=d.companies||[];
+      SCHED_LAST_SEND=d.lastScheduleSend||null;
     }catch(e){
       box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Could not check the schedule folders.</div>';
       return;
@@ -5186,7 +5208,82 @@ async function renderScheduleUploads(){
   }).join('')
   +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
     +'Read from each contract\u2019s Schedules folder under Documents. '
-    +'<a href="#" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>';
+    +'<a href="#" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
+  +schedChaseFooter();
+}
+// Who a chase would go to right now, and why. Kept separate from the render so
+// the button and the confirmation prompt cannot disagree about the list.
+function schedChaseTargets(){
+  const norm=s=>String(s||'').trim().toLowerCase();
+  const contacts=allData.contacts||[];
+  return (SCHED_UPLOADS||[])
+    .filter(r=>r.state!=='current')
+    .map(r=>{
+      const emails=[...new Set(contacts
+        .filter(c=>norm(c['Company'])===norm(r.company) && c['Email'])
+        .map(c=>String(c['Email']).trim().toLowerCase()))];
+      return { company:r.company, date:r.date||'', state:r.state, emails };
+    })
+    .filter(r=>r.emails.length);
+}
+function schedChaseFooter(){
+  const targets=schedChaseTargets();
+  const behind=(SCHED_UPLOADS||[]).filter(r=>r.state!=='current').length;
+  const last=SCHED_LAST_SEND;
+  const stamp=last&&last.at
+    ? 'Last sent manually on '+fmtDMY(String(last.at).slice(0,10))
+        +(last.by?(' by '+esc(last.by)):'')
+        +(last.recipients?(' \u2014 '+last.recipients+' recipient'+(last.recipients===1?'':'s')):'')+'.'
+    : 'No manual reminder has been sent from here yet.';
+  let note;
+  if(!behind) note='Everyone is current, so there is nobody to chase.';
+  else if(!targets.length) note='Nobody behind has an email address on the project contact sheet.';
+  else note='Would email '+targets.reduce((n,t)=>n+t.emails.length,0)+' '
+      +(targets.reduce((n,t)=>n+t.emails.length,0)===1?'person':'people')+' at '
+      +targets.length+' '+(targets.length===1?'contract':'contracts')+'.';
+  return '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+    +'<button class="btn-secondary" id="btn-sched-chase" onclick="sendScheduleChaseNow()"'
+      +(targets.length?'':' disabled')+'>Send The Reminder Now</button>'
+    +'<span style="font-size:12.5px;color:var(--muted);flex:1;min-width:200px;">'+esc(note)+' '+stamp+'</span>'
+    +'<span class="status-msg" id="sched-chase-status"></span></div>';
+}
+// Sending by hand. The automatic chase only runs on the configured day, and
+// sometimes a schedule is wanted before then — or the toggle is off entirely
+// and this is the only way it goes out.
+async function sendScheduleChaseNow(){
+  if(!IS_ADMIN || viewingAsExternal()) return;
+  const targets=schedChaseTargets();
+  if(!targets.length) return;
+  const total=targets.reduce((n,t)=>n+t.emails.length,0);
+  if(!confirm('Email '+total+' '+(total===1?'person':'people')+' at '
+      +targets.map(t=>t.company).join(', ')+'?\n\nThey will be asked to upload this month\u2019s schedule.')) return;
+  const btn=document.getElementById('btn-sched-chase'); if(btn) btn.disabled=true;
+  showStatus('sched-chase-status','Sending\u2026','');
+  let sent=0;
+  for(const t of targets){
+    const body=emailTemplate('Monthly Schedule Due: '+esc(t.company),
+      [['Project', esc(currentProject.name)],
+       ['Contract', esc(t.company)],
+       ['Last Schedule On File', t.date?fmtDMY(t.date):'None Yet'],
+       ['Where It Goes', 'Documents \u2192 '+esc(t.company)+' \u2192 Schedules']],
+      esc(currentProject.name),
+      'No updated schedule has been posted for this month. '
+        +(t.date?('The most recent one on file is dated '+fmtDMY(t.date)+'.'):'There is no schedule on file yet.')
+        +' Please upload the current one.');
+    try{
+      await sendEmail(t.emails, '[Fidevia] Monthly schedule due \u2014 '+currentProject.name, body,
+        {kind:'schedule', trigger:'manual'});
+      sent+=t.emails.length;
+    }catch(e){}
+  }
+  try{
+    const d=await proxyCall('recordScheduleSend',
+      {projectId:currentProject.folderId, companies:targets.map(t=>t.company), recipients:sent},{quiet:true});
+    SCHED_LAST_SEND=d.lastScheduleSend||{at:new Date().toISOString(), by:ME_EMAIL||'', recipients:sent};
+  }catch(e){ SCHED_LAST_SEND={at:new Date().toISOString(), by:ME_EMAIL||'', recipients:sent}; }
+  try{ auditLog('Sent schedule reminder','gendocs',{}, sent+' recipient'+(sent===1?'':'s')+' at '+targets.map(t=>t.company).join(', ')); }catch(e){}
+  showStatus('sched-chase-status','Sent to '+sent+' '+(sent===1?'person':'people')+'.','success');
+  try{ renderScheduleUploads(); }catch(e){}
 }
 function scheduleStats(){
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
@@ -6734,6 +6831,7 @@ function loadNotifSettings(){
   document.getElementById('nt-sub-subject').value=g('sub','subject');
   document.getElementById('nt-sub-intro').value=g('sub','intro');
   loadReminderSettings();
+  loadNotifLog();
 }
 async function loadReminderSettings(){
   let s={}; try{ s=(await proxyCall('getReminderSettings',{projectId:currentProject.folderId},{quiet:true})).settings||{}; }catch(e){}
@@ -6747,6 +6845,15 @@ async function loadReminderSettings(){
   el('rem-payapps').checked=(s.payapps!==false);
   if(el('rem-schedules')) el('rem-schedules').checked=!!s.schedules;
   if(el('rem-schedule-day')) el('rem-schedule-day').value=s.scheduleDay||25;
+  const stamp=el('rem-last-send');
+  if(stamp){
+    const l=s.lastScheduleSend;
+    stamp.textContent = l&&l.at
+      ? 'Schedule reminder last sent by hand on '+fmtSentAt(l.at)
+          +(l.by?(' by '+l.by):'')
+          +(l.recipients?(' \u2014 '+l.recipients+' recipient'+(l.recipients===1?'':'s')):'')+'.'
+      : 'No schedule reminder has been sent by hand on this project. Use the button on the Schedule tab.';
+  }
 }
 async function saveReminderSettings(){
   const el=id=>document.getElementById(id);
@@ -6758,6 +6865,83 @@ async function saveReminderSettings(){
   try{ await proxyCall('saveReminderSettings',{projectId:currentProject.folderId, settings:s}); showStatus('rem-status','Reminder settings saved.','success'); }
   catch(e){ showStatus('rem-status','Error: '+e.message,'error'); }
   btn.disabled=false;
+}
+// ── Notification log ──────────────────────────────────────────────────────
+// The audit log says what people did to records. It has never said who was
+// told. This is the other half: every email, whether it was the nightly job,
+// a submission, or somebody pressing Send.
+let NOTIF_LOG=null;
+const NOTIF_KIND_LABEL={
+  schedule:'Monthly schedule', invite:'Invitation', access:'Access granted',
+  'access-request':'Access request', workflow:'Action required', deletion:'Record deleted',
+  digest:'Reminder digest', archive:'Archive warning', rfi:'RFI', submittal:'Submittal',
+  'change-order':'Change order', 'pay-app':'Payment application', other:'Other'
+};
+function notifKindLabel(k){ return NOTIF_KIND_LABEL[String(k||'')]||String(k||'Other'); }
+function fmtSentAt(iso){
+  const d=new Date(iso); if(isNaN(d)) return String(iso||'');
+  const p=n=>String(n).padStart(2,'0');
+  return p(d.getMonth()+1)+'/'+p(d.getDate())+'/'+d.getFullYear()+' '
+    +p(d.getHours())+':'+p(d.getMinutes());
+}
+async function loadNotifLog(){
+  const body=document.getElementById('nlog-body'); if(!body) return;
+  if(!IS_ADMIN || viewingAsExternal()) return;
+  body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Loading\u2026</td></tr>';
+  const scope=(document.getElementById('nlog-scope')||{}).value||'project';
+  const days=parseInt((document.getElementById('nlog-days')||{}).value,10)||30;
+  try{
+    const d=await proxyCall('notifLog',{days,
+      projectId: scope==='project' ? (currentProject&&currentProject.folderId)||'' : ''},{quiet:true});
+    NOTIF_LOG=d.entries||[];
+  }catch(e){
+    NOTIF_LOG=null;
+    body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Could not read the log: '+esc(e.message)+'</td></tr>';
+    return;
+  }
+  // The type filter offers only the types actually present, so it never
+  // promises a category the period contains none of.
+  const sel=document.getElementById('nlog-kind');
+  if(sel){
+    const keep=sel.value;
+    const kinds=[...new Set(NOTIF_LOG.map(r=>r.kind||'other'))]
+      .sort((a,b)=>notifKindLabel(a).localeCompare(notifKindLabel(b)));
+    sel.innerHTML='<option value="">All types</option>'
+      +kinds.map(k=>'<option value="'+esc(k)+'">'+esc(notifKindLabel(k))+'</option>').join('');
+    if(kinds.indexOf(keep)>=0) sel.value=keep;
+  }
+  renderNotifLog();
+}
+function renderNotifLog(){
+  const body=document.getElementById('nlog-body'); if(!body) return;
+  const count=document.getElementById('nlog-count');
+  const kind=(document.getElementById('nlog-kind')||{}).value||'';
+  const rows=(NOTIF_LOG||[]).filter(r=>!kind || (r.kind||'other')===kind);
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Nothing sent in this period.</td></tr>';
+    if(count) count.textContent='';
+    return;
+  }
+  body.innerHTML=rows.map(r=>{
+    const to=(r.to||[]);
+    // One address reads as itself; a long list would swamp the row, so the
+    // rest go in the title attribute where they are still recoverable.
+    const toText = to.length<=2 ? to.join(', ') : (to[0]+' and '+(to.length-1)+' others');
+    const failed = r.ok===false;
+    return '<tr'+(failed?' style="background:#FDF3F2;"':'')+'>'
+      +'<td style="white-space:nowrap;">'+esc(fmtSentAt(r.at))+'</td>'
+      +'<td>'+esc(notifKindLabel(r.kind))
+        +(r.trigger==='manual'?' <span style="font-size:11px;color:var(--muted);">(by hand)</span>':'')
+        +(failed?' <span style="font-size:11px;color:var(--danger);">failed</span>':'')+'</td>'
+      +'<td>'+esc(r.subject||'')+(failed&&r.error?('<div style="font-size:11.5px;color:var(--danger);">'+esc(r.error)+'</div>'):'')+'</td>'
+      +'<td title="'+esc(to.join(', '))+'">'+esc(toText)+'</td>'
+      +'<td>'+esc(r.project||'\u2014')+'</td>'
+      +'<td>'+esc(r.by||'System')+'</td></tr>';
+  }).join('');
+  if(count){
+    const people=rows.reduce((n,r)=>n+((r.to||[]).length),0);
+    count.textContent=rows.length+' email'+(rows.length===1?'':'s')+' to '+people+' recipient'+(people===1?'':'s')+'.';
+  }
 }
 async function saveNotifSettings(){
   const val=id=>document.getElementById(id).value.trim();
@@ -9348,7 +9532,13 @@ async function sendEmail(toEmails, subject, body, opts){
     await fetch('/.netlify/functions/send-email',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({to:toEmails, subject, body, attachments:opts.attachments, replyTo:opts.replyTo})
+      body:JSON.stringify({to:toEmails, subject, body, attachments:opts.attachments, replyTo:opts.replyTo,
+        // Context for the notification log. The server records the send
+        // regardless; this is only what it cannot work out for itself.
+        kind:opts.kind||'', trigger:opts.trigger||'auto',
+        projectId:(currentProject&&currentProject.folderId)||'',
+        project:(currentProject&&currentProject.name)||'',
+        by:opts.by||ME_NAME||ME_EMAIL||''})
     });
   }catch(e){ console.warn('Email notification failed:',e.message); }
 }
@@ -9876,7 +10066,7 @@ function notifyContacts(notifyField, subject, bodyHTML, opts){
   if(opts.extraTo){ (Array.isArray(opts.extraTo)?opts.extraTo:[opts.extraTo]).forEach(e=>{ if(e) emails.push(e); }); }
   const seen=new Set();
   emails=emails.filter(e=>{ const k=(e||'').trim().toLowerCase(); if(!k||seen.has(k)) return false; seen.add(k); return true; });
-  if(emails.length) sendEmail(emails, subject, bodyHTML, {attachments:opts.attachments, replyTo:opts.replyTo});
+  if(emails.length) sendEmail(emails, subject, bodyHTML, {attachments:opts.attachments, replyTo:opts.replyTo, kind:opts.kind, trigger:opts.trigger, by:opts.by});
 }
 
 // Inline SVG so the icons need no second network fetch. Clients that block
@@ -9906,7 +10096,9 @@ function mailIcon(label){
   return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8550" stroke-width="1.7" '
     +'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px">'+MAIL_ICONS[mailIconFor(label)]+'</svg>';
 }
-function emailTemplate(title, rows, projectName){
+// intro is an optional sentence above the table, for messages that are asking
+// for something rather than reporting something.
+function emailTemplate(title, rows, projectName, intro){
   const origin=(typeof location!=='undefined'&&location.origin)?location.origin:'https://dashboard.fidevia.com';
   const serif="Georgia,'Times New Roman',Times,serif";
   const sans="'Helvetica Neue',Helvetica,Arial,sans-serif";
@@ -9936,6 +10128,7 @@ function emailTemplate(title, rows, projectName){
     +'<tr><td style="padding:22px 24px 6px">'
     +'<div style="font-family:'+serif+';font-size:20px;font-weight:700;margin:0 0 4px">'+headingHTML+'</div>'
     +'<div style="font-family:'+sans+';font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Project: '+projectName+'</div>'
+    +(intro?('<p style="font-family:'+sans+';font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 16px">'+intro+'</p>'):'')
     +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">'+rowsHTML+'</table>'
     +wfHTML
     +'<div style="text-align:center;margin:22px 0 4px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:'+sans+';font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Open in Dashboard</a></div>'

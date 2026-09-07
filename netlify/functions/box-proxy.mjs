@@ -1,4 +1,5 @@
 import { getStore } from '@netlify/blobs';
+import { logNotif, readNotifLog } from './notif-log.mjs';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
@@ -281,10 +282,12 @@ async function profileByEmail(email){
 function contactFromSnap(snap, email){
   return { 'Name': (snap && snap.name) || '', 'Company': (snap && snap.company) || '', 'Role': (snap && snap.role) || '', 'Email': email, 'Phone': (snap && snap.phone) || '', 'Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes' };
 }
-async function sendGrantEmail(email, projectName, company, role){
-  return sendGrantEmailMany(email, [projectName], company, role);
+async function sendGrantEmail(email, projectName, company, role, opts){
+  return sendGrantEmailMany(email, [projectName], company, role, opts);
 }
-async function sendGrantEmailMany(email, projectNames, company, role){
+// opts carries only what the log needs: which project, and who pressed the
+// button. It never affects the message itself.
+async function sendGrantEmailMany(email, projectNames, company, role, opts){
   const key = process.env.SENDGRID_KEY; if(!key || !email) return;
   const from = process.env.FROM_EMAIL || 'dashboard@fidevia.com';
   const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/,'');
@@ -323,8 +326,10 @@ async function sendGrantEmailMany(email, projectNames, company, role){
     <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">
       <div style="font-family:${sans};font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
     </table></div>`;
-  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject:'[Fidevia] You have access to ' + (multi ? (names.length + ' projects') : (projectName || 'a project')), content:[{type:'text/html',value:html}] };
-  await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const subject = '[Fidevia] You have access to ' + (multi ? (names.length + ' projects') : (projectName || 'a project'));
+  const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject, content:[{type:'text/html',value:html}] };
+  const r = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  await logNotif({ to:[email], subject, kind:'access', project:names.join(', '), projectId:opts&&opts.projectId, by:opts&&opts.by, ok:r.status===202, error:r.status===202?'':('SendGrid '+r.status) });
 }
 // A request used to be written to storage and nothing else. It surfaced only
 // when an administrator happened to open that particular project, so a request
@@ -376,9 +381,11 @@ async function notifyAdminsOfRequest(projectName, requester, H, projectId){
     </td></tr>
     <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.</div></td></tr>
     </table></div>`;
-  await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+  const subject2 = '[Fidevia] Access request: '+(projectName||'a project');
+  const r2 = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
     body:JSON.stringify({ personalizations:[{to:to.map(e=>({email:e}))}], from:{email:process.env.FROM_EMAIL||'dashboard@fidevia.com',name:'Fidevia Dashboard'},
-      subject:'[Fidevia] Access request: '+(projectName||'a project'), content:[{type:'text/html',value:html}] })});
+      subject:subject2, content:[{type:'text/html',value:html}] })});
+  await logNotif({ to, subject:subject2, kind:'access-request', project:projectName||'', ok:r2.status===202, error:r2.status===202?'':('SendGrid '+r2.status) });
 }
 // The three company-private modules keep a folder per firm. A caller scoped to
 // one company may write inside their own, or directly into the module folder —
@@ -922,7 +929,7 @@ export default async (req) => {
             await addContactToProject(H, proj.id, c);
           } catch(e) {}
         }
-        try { await sendGrantEmailMany(email, list.map(p => p.name), company, role); } catch(e) {}
+        try { await sendGrantEmailMany(email, list.map(p => p.name), company, role, { projectId: list.length === 1 ? String(list[0].id || '') : '', by: who.email || '' }); } catch(e) {}
         return json({ ok: true, granted: added });
       }
       if (op === 'adminRevoke') {
@@ -988,7 +995,7 @@ export default async (req) => {
       if (added) { if (!added.company) added.company = reqCompany; if (!added.role) added.role = normRole(reqRole); }
       await gstore.setJSON(email, g);
       try { await addContactToProject(H, projectId, contactFromSnap(reqRec && reqRec.snap, email)); } catch(e) {}
-      try { await sendGrantEmail(email, body.projectName||'', reqCompany, reqRole); } catch(e) {}
+      try { await sendGrantEmail(email, body.projectName||'', reqCompany, reqRole, { projectId, by: who.email || '' }); } catch(e) {}
       await requestsStore().delete(reqKey(projectId, email));
       return json({ ok: true });
     }
@@ -1068,9 +1075,15 @@ export default async (req) => {
       // when it is due without a second call and without exposing the rest of
       // the reminder configuration.
       let due = { enabled: false, day: 25 };
+      let lastScheduleSend = null;
       try {
         const rs = await reminderStore().get(projectId, { type: 'json' });
-        if (rs) due = { enabled: !!rs.schedules, day: Math.min(28, Math.max(1, parseInt(rs.scheduleDay, 10) || 25)) };
+        if (rs) {
+          due = { enabled: !!rs.schedules, day: Math.min(28, Math.max(1, parseInt(rs.scheduleDay, 10) || 25)) };
+          // Only Fidevia is told who sent what and when. A contractor is
+          // shown their own obligation, not the administration of it.
+          if (who.isAdmin && rs.lastScheduleSend) lastScheduleSend = rs.lastScheduleSend;
+        }
       } catch (e) {}
       const since = String(body.since || '').slice(0, 10);   // YYYY-MM-01
       const listOf = async id => {
@@ -1079,7 +1092,7 @@ export default async (req) => {
       };
       const top = await listOf(projectId);
       const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX));
-      if (!docs) return json({ companies: companies.map(c => ({ company: c, state: 'no-documents' })) });
+      if (!docs) return json({ companies: companies.map(c => ({ company: c, state: 'no-documents' })), due, lastScheduleSend });
       const parties = await listOf(docs.id);
       const out = [];
       for (const co of companies) {
@@ -1105,7 +1118,7 @@ export default async (req) => {
           count: files.length
         });
       }
-      return json({ companies: out, due });
+      return json({ companies: out, due, lastScheduleSend });
     }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
@@ -1592,8 +1605,46 @@ export default async (req) => {
     }
     if (op === 'saveReminderSettings') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
-      await reminderStore().setJSON(String(body.projectId), body.settings || {});
+      const pid = String(body.projectId);
+      const next = body.settings || {};
+      // The record of the last manual chase is written by the server and is
+      // not the settings form's to overwrite. Saving the form must not erase
+      // the history of what was already sent.
+      try {
+        const prev = await reminderStore().get(pid, { type: 'json' });
+        if (prev && prev.lastScheduleSend && !next.lastScheduleSend) next.lastScheduleSend = prev.lastScheduleSend;
+      } catch (e) {}
+      await reminderStore().setJSON(pid, next);
       return json({ ok: true });
+    }
+    // Stamp a manual chase so the settings panel can say when it last went out
+    // without having to read the whole notification log.
+    if (op === 'recordScheduleSend') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const pid = String(body.projectId || '');
+      if (!pid) return json({ error: 'projectId required' }, 400);
+      let cur = {};
+      try { cur = (await reminderStore().get(pid, { type: 'json' })) || {}; } catch (e) {}
+      cur.lastScheduleSend = {
+        at: new Date().toISOString(),
+        by: who.email || '',
+        companies: (Array.isArray(body.companies) ? body.companies : []).map(String).slice(0, 60),
+        recipients: Math.max(0, parseInt(body.recipients, 10) || 0)
+      };
+      await reminderStore().setJSON(pid, cur);
+      return json({ ok: true, lastScheduleSend: cur.lastScheduleSend });
+    }
+    // ---- NOTIFICATION LOG ----
+    // Fidevia only. It names external recipients across every company on the
+    // job, so it is not something a contractor may read about their rivals.
+    if (op === 'notifLog') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const entries = await readNotifLog({
+        days: body.days, limit: body.limit,
+        projectId: body.projectId ? String(body.projectId) : '',
+        kind: body.kind ? String(body.kind) : ''
+      });
+      return json({ entries });
     }
 
     // ---- ORGANIZATIONS ----
@@ -2106,7 +2157,9 @@ export default async (req) => {
         if (emails.length) {
           const origin = 'https://dashboard.fidevia.com';
           const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden"><tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr><tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr><tr><td style="padding:24px"><div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;margin:0 0 12px"><span style="color:#515520">Project closing:</span> <span style="color:#2f2f2f">${body.projectName || 'Project'}</span></div><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">This project will be archived on <strong>${when}</strong>. After that date it will no longer appear in your project list and you will not be able to access its records.</p><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">If you need copies of any documents, please download them before then.</p><div style="text-align:center;margin:22px 0 4px"><a href="${origin}" style="display:inline-block;background:#515520;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Open the Dashboard</a></div></td></tr><tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.</div></td></tr></table></div>`;
-          await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ personalizations: [{ to: emails.map(e => ({ email: e })) }], from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' }, subject: '[Fidevia] ' + (body.projectName || 'Project') + ' will be archived on ' + when, content: [{ type: 'text/html', value: html }] }) });
+          const subject = '[Fidevia] ' + (body.projectName || 'Project') + ' will be archived on ' + when;
+          const r = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ personalizations: [{ to: emails.map(e => ({ email: e })) }], from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' }, subject, content: [{ type: 'text/html', value: html }] }) });
+          await logNotif({ to: emails, subject, kind: 'archive', trigger: 'manual', projectId: pid, project: body.projectName || '', by: who.email || '', ok: r.status === 202, error: r.status === 202 ? '' : ('SendGrid ' + r.status) });
           sent = emails.length;
         }
       } catch (e) {}
