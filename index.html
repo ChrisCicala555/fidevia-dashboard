@@ -2475,7 +2475,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null;
+  SCHED_UPLOADS=null; MY_SCHEDULE=null;
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2503,6 +2503,7 @@ async function openProject(folderId, name){
     // Externals need this too: it is what fills the Role column on the contact
     // sheet. It asks a different, non-admin op for them.
     loadProjectAccess();
+    if(EXTERNAL) loadMySchedule();
     if(!EXTERNAL) loadProjectOrgs();
     projectLoadingStep('Loading project records…');
     // loadDashboard lifts the gate itself once records are in and rendered.
@@ -2552,7 +2553,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null;
+  SCHED_UPLOADS=null; MY_SCHEDULE=null;
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -5125,6 +5126,30 @@ function monthStart(d){
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-01';
 }
 let SCHED_UPLOADS=null;
+// The viewer's own obligation, for the attention panel. Fetched once per
+// project; a contractor may ask about their own company and no other.
+let MY_SCHEDULE=null;
+function ordinalSuffix(n){
+  const v=n%100;
+  if(v>=11&&v<=13) return 'th';
+  return ({1:'st',2:'nd',3:'rd'})[n%10]||'th';
+}
+async function loadMySchedule(){
+  MY_SCHEDULE=null;
+  if(!currentProject || IS_ADMIN) return;      // Fidevia has the panel instead
+  const co=(currentProject&&currentProject.userCompany)||'';
+  if(!co) return;
+  try{
+    const d=await proxyCall('scheduleUploads',
+      {projectId:currentProject.folderId, since:monthStart()},{quiet:true});
+    const row=(d.companies||[])[0];
+    if(!row) return;
+    // Only chased where Fidevia has asked for it on this project.
+    if(!(d.due&&d.due.enabled)) return;
+    MY_SCHEDULE=Object.assign({}, row, {due:d.due});
+  }catch(e){}
+  try{ renderAll(); }catch(e){}
+}
 async function renderScheduleUploads(){
   const panel=document.getElementById('sched-uploads-panel');
   const box=document.getElementById('sched-uploads');
@@ -5541,6 +5566,23 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
       items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Overdue', cls:'', sec:'rfis'});
     }
   });
+
+  // The monthly schedule is an obligation, not an item, so nothing in the logs
+  // would ever surface it. It belongs here rather than in the activity feed:
+  // the feed records what happened, this is what is owed.
+  if(MY_SCHEDULE && MY_SCHEDULE.state && MY_SCHEDULE.state!=='current'){
+    const d=MY_SCHEDULE.due||{};
+    const day=parseInt(d.day,10)||25;
+    const today=new Date().getDate();
+    items.push({
+      label: MY_SCHEDULE.state==='never'
+        ? 'Monthly schedule — none uploaded yet'
+        : 'Monthly schedule — nothing this month'
+          +(MY_SCHEDULE.date?(', last was '+fmtDMY(MY_SCHEDULE.date)):''),
+      badge: today>day ? 'Overdue' : ('Due by the '+day+ordinalSuffix(day)),
+      cls: today>day ? '' : 'wf',
+      sec:'gendocs'});
+  }
 
   // Pay applications awaiting Fidevia's review
   if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), badge:'Awaiting review', cls:'wf', sec:'payapps'}));

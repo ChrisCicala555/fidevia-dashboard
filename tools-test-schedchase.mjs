@@ -68,5 +68,47 @@ ok(/Those that have posted one are not/.test(html), 'the wording says who will n
   ok(clamp(5)===5, 'a sensible day is left alone');
 }
 
+// ── the contractor's own view of it ──
+ok(/let MY_SCHEDULE=null/.test(html), "the viewer's own obligation is held");
+{
+  const ms = html.split('async function loadMySchedule')[1].split('async function renderScheduleUploads')[0];
+  ok(/if\(!currentProject \|\| IS_ADMIN\) return;/.test(ms), 'Fidevia gets the panel instead');
+  ok(/if\(!\(d\.due&&d\.due\.enabled\)\) return;/.test(ms),
+     'and nobody is chased on a project where it was not asked for');
+  ok(/companies/.test(ms) && !/companies:\[/.test(ms),
+     'the contractor does not name a company — the server takes it from the grant');
+}
+{
+  const at = html.split('if(MY_SCHEDULE && MY_SCHEDULE.state')[1].split('// Pay applications awaiting')[0];
+  ok(/state!=='current'/.test(html), 'nothing is shown once this month is posted');
+  ok(/none uploaded yet/.test(at) && /nothing this month/.test(at), 'the two cases read differently');
+  ok(/last was '\+fmtDMY\(MY_SCHEDULE\.date\)/.test(at), 'and it says when the last one was');
+  ok(/today>day \? 'Overdue'/.test(at), 'past the due day it reads as overdue');
+  ok(/'Due by the '\+day\+ordinalSuffix\(day\)/.test(at), 'before it, as due');
+  ok(/sec:'gendocs'/.test(at), 'and clicking goes to Documents');
+}
+ok(/the feed records what happened, this is what is owed/.test(html),
+   'why it is in the attention panel rather than the activity feed');
+ok((html.match(/MY_SCHEDULE=null/g)||[]).length>=3, 'cleared when the project changes');
+
+// the server side of that
+{
+  const op2 = srv.split("if (op === 'scheduleUploads')")[1].split("if (op === 'docsList')")[0];
+  ok(/if \(!who\.isAdmin\) \{/.test(op2), 'a non-admin takes a different path');
+  ok(/companies = \[mine\];/.test(op2), 'restricted to their own company');
+  ok(/Their company comes from the grant, not from what they asked for/.test(op2),
+     'taken from the grant rather than the request');
+  ok(/if \(!mine\) return json\(\{ error: 'Access denied' \}, 403\);/.test(op2),
+     'and refused without one');
+  ok(/due = \{ enabled: !!rs\.schedules/.test(op2), 'the due day travels with the answer');
+  ok(!/agingDays|payapps|overdue/.test(op2), 'without exposing the rest of the reminder settings');
+}
+{
+  const ord=n=>{ const v=n%100; if(v>=11&&v<=13) return 'th'; return ({1:'st',2:'nd',3:'rd'})[n%10]||'th'; };
+  ok(ord(1)==='st'&&ord(2)==='nd'&&ord(3)==='rd'&&ord(4)==='th', 'ordinals read correctly');
+  ok(ord(11)==='th'&&ord(12)==='th'&&ord(13)==='th', 'including the teens');
+  ok(ord(21)==='st'&&ord(22)==='nd', 'and past twenty');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-schedchase.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

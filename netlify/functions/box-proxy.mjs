@@ -1053,10 +1053,25 @@ export default async (req) => {
     // Documents / <company> / Schedules, so it is a walk rather than a lookup —
     // done here in one round trip instead of a dozen from the browser.
     if (op === 'scheduleUploads') {
-      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const projectId = String(body.projectId || '');
-      const companies = Array.isArray(body.companies) ? body.companies.map(String) : [];
+      let companies = Array.isArray(body.companies) ? body.companies.map(String) : [];
+      if (!who.isAdmin) {
+        // A contractor may ask about their own obligation and nobody else's.
+        // Their company comes from the grant, not from what they asked for.
+        const g = await grantFor(t, _grants, 'folder', projectId);
+        const mine = String((g && g.company) || '').trim();
+        if (!mine) return json({ error: 'Access denied' }, 403);
+        companies = [mine];
+      }
       if (!projectId || !companies.length) return json({ companies: [] });
+      // The chase settings travel with the answer, so the dashboard can say
+      // when it is due without a second call and without exposing the rest of
+      // the reminder configuration.
+      let due = { enabled: false, day: 25 };
+      try {
+        const rs = await reminderStore().get(projectId, { type: 'json' });
+        if (rs) due = { enabled: !!rs.schedules, day: Math.min(28, Math.max(1, parseInt(rs.scheduleDay, 10) || 25)) };
+      } catch (e) {}
       const since = String(body.since || '').slice(0, 10);   // YYYY-MM-01
       const listOf = async id => {
         const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(id)}/items?limit=1000&fields=id,name,type,created_at,modified_at`, { headers: H });
@@ -1090,7 +1105,7 @@ export default async (req) => {
           count: files.length
         });
       }
-      return json({ companies: out });
+      return json({ companies: out, due });
     }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
