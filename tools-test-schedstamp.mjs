@@ -8,7 +8,8 @@ ok(/id="sched-updated"/.test(html), 'there is a footer under the table');
 ok(/border-top:1px solid #F1F0E8/.test(html.split('id="sched-updated"')[1].slice(0,200)),
    'separated from the rows rather than floating loose');
 
-const rs = html.split('function renderSchedule')[1].split('function renderMeetings')[0];
+// Exact signature: renderScheduleUploads is declared earlier and would match.
+const rs = html.split('function renderSchedule(){')[1].split('function renderMeetings')[0];
 ok(/cfg\.milestonesUpdatedAt/.test(rs) && /cfg\.milestonesUpdatedBy/.test(rs), 'it reads the stamp');
 ok(/Updated as of '\+fmtDMY\(when\)/.test(rs), 'and prints the date in the usual format');
 ok(/— Onsite CM/.test(rs) || /Onsite CM/.test(rs), 'naming the role when it applies');
