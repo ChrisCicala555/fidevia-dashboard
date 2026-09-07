@@ -14,7 +14,14 @@ ok(/Updated as of '\+fmtDMY\(when\)/.test(rs), 'and prints the date in the usual
 ok(/— Onsite CM/.test(rs) || /Onsite CM/.test(rs), 'naming the role when it applies');
 ok(/cm\.toLowerCase\(\)===who\.toLowerCase\(\)/.test(rs),
    'only when the person who saved it really is the project CM');
-ok(/No update recorded yet/.test(rs), 'a project with milestones but no stamp says so');
+// Before falling back to that, the project's creation date is used: nothing has
+// been edited, so the milestones are as the project was set up.
+ok(/As set when the project was created, '\+fmtDMY\(born\)/.test(rs),
+   'an unedited schedule is dated from the project instead');
+ok(/const born = when \|\| cfg\.createdAt/.test(rs), 'preferring a stamp the wizard wrote');
+ok(/PICKER_PROJECTS\|\|\[\]\)\.find/.test(rs),
+   'falling back to the Box folder date for projects that predate it');
+ok(/No update recorded yet/.test(rs), 'and only says nothing is recorded when even that is missing');
 ok(/up\.style\.display='none'/.test(rs), 'and an empty table shows nothing at all');
 
 const ss = html.split('async function saveSchedule')[1].split('function renderMeetings')[0];
@@ -39,6 +46,25 @@ ok(/try\{ await resolveMe\(\); \}catch\(e\)\{\}/.test(ss),
      'someone else is not credited as the CM');
   ok(line('07/09/2026','','')==='Updated as of 07/09/2026.', 'an unknown editor still gives the date');
   ok(line('','Andre Martin','Andre Martin')==='', 'no date means no line');
+}
+
+ok(/createdAt: etToday\(\),/.test(html), 'a new project records its own creation date');
+{
+  const srv = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
+  ok(/fields=id,name,type,created_at/.test(srv), 'the project listing asks Box for it');
+  ok(/createdAt: e\.created_at \|\| ''/.test(srv), 'and returns it');
+  ok(/only record of when\s*\n?\s*\/\/ a project began/.test(srv) || /only record of when/.test(srv),
+     'with the reason recorded');
+}
+ok(/createdAt:p\.createdAt\|\|''/.test(html), 'the picker carries it through');
+
+// the order of preference
+{
+  const pick=(when,cfgCreated,boxCreated)=>when||cfgCreated||boxCreated||'';
+  ok(pick('07/09/2026','01/01/2026','01/01/2025')==='07/09/2026', 'a real edit wins');
+  ok(pick('','01/01/2026','01/01/2025')==='01/01/2026', 'then the wizard stamp');
+  ok(pick('','','01/01/2025')==='01/01/2025', 'then the Box folder date');
+  ok(pick('','','')==='', 'and nothing means nothing');
 }
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-schedstamp.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));

@@ -2216,6 +2216,7 @@ async function loadPicker(){
       if(pr.rootId) sessionStorage.setItem('root_id', pr.rootId);
       const _lo=logoOverrides();
       PICKER_PROJECTS = (pr.projects||[]).map(p=>({id:String(p.id), name:p.name, type:'folder',
+        createdAt:p.createdAt||'',
         logoFileId:(Object.prototype.hasOwnProperty.call(_lo,String(p.id)) ? _lo[String(p.id)] : (p.logoFileId||''))}));
       let arch=[]; try{ arch=(await proxyCall('getArchived',{},{quiet:true})).ids||[]; }catch(e){}
       PICKER_ARCHIVED = new Set(arch.map(String));
@@ -3358,6 +3359,7 @@ async function createProject(){
       owner:wizVal('np-owner'), location:[wizVal('np-addr1'),wizVal('np-addr2'),[wizVal('np-city'),wizVal('np-state')].filter(Boolean).join(', '),wizVal('np-zip')].filter(Boolean).join(' · '), address:{line1:wizVal('np-addr1'),line2:wizVal('np-addr2'),city:wizVal('np-city'),state:wizVal('np-state'),zip:wizVal('np-zip')}, jobNumber:wizVal('np-jobnum'), scope:wizVal('np-scope'), onsiteCM:wizVal('np-cm'),
       logoFileId, boardReportsEnabled: document.getElementById('np-board').checked,
       contractDate: wizVal('np-contractdate'),
+      createdAt: etToday(),
       milestones: wizGatherMilestones(),
       contractors: (()=>{ const cs=wizGatherContractors(); let a={};
         try{ a=alwGather('np', cs); }catch(e){}
@@ -5158,7 +5160,16 @@ function renderSchedule(){
     const cfg=(currentProject&&currentProject.config)||{};
     const when=cfg.milestonesUpdatedAt||'';
     const who=String(cfg.milestonesUpdatedBy||'').trim();
-    if(when){
+    // Nothing has been edited since setup, so the milestones are as the
+    // project was created — which is a date worth showing rather than an
+    // apology for not having one.
+    const born = when || cfg.createdAt
+      || (function(){ const p=(PICKER_PROJECTS||[]).find(x=>String(x.id)===String(currentProject.folderId));
+            return (p&&p.createdAt)?String(p.createdAt).slice(0,10):''; })();
+    if(!when && born){
+      up.textContent='As set when the project was created, '+fmtDMY(born)+'.';
+      up.style.display='';
+    } else if(when){
       const cm=String(cfg.onsiteCM||'').trim();
       // The person who saved it is the fact. Their being the project's CM is
       // worth saying, but not worth asserting when they are somebody else.
@@ -5166,6 +5177,8 @@ function renderSchedule(){
       up.textContent='Updated as of '+fmtDMY(when)+(who?(' by '+who+role):'')+'.';
       up.style.display='';
     } else if(ms.length){
+      // Milestones exist but nothing says when they arrived, and Box could not
+      // supply a creation date either.
       up.textContent='No update recorded yet. The next edit will note the date and who made it.';
       up.style.display='';
     } else {

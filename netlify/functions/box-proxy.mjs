@@ -859,9 +859,12 @@ export default async (req) => {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
 
       if (op === 'adminListProjects') {
-        const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+        const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type,created_at`, { headers: H });
         const d = await r.json();
-        const projs = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name }));
+        // created_at comes free with the listing and is the only record of when
+        // a project began for anything set up before the dashboard started
+        // stamping its own edits.
+        const projs = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name, createdAt: e.created_at || '' }));
         await Promise.all(projs.map(async pr => { pr.logoFileId = await logoIdFor(H, pr.id); }));
         return json({ rootId: String(process.env.BOX_PROJECTS_ROOT_ID || ''), projects: projs });
       }
