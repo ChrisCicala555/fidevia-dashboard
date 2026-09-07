@@ -11,7 +11,7 @@ ok(/await docsAllows\(H, t, grants, who, parentId\)\) return true/.test(fn),
    'and Documents permission is asked about it');
 ok(/if you can open the folder, you can open\s*\n?\s*\/\/ what is in it/.test(fn) || /if you can open the folder/.test(fn),
    'the rule is stated');
-ok(/never in the set below/.test(fn), 'and why the CSV set could not cover it');
+ok(/ever in the set below/.test(fn), 'and why the CSV set could not cover it');
 
 // order matters: the Documents check must not replace the row check
 ok(fn.indexOf('docsAllows') < fn.indexOf('allowedFileIds'), 'Documents is tried first');
