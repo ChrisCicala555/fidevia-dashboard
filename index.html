@@ -4798,12 +4798,20 @@ function renderDocs(){
       note.textContent='This is your company\u2019s document area on this project. Only your company and Fidevia can see what is here.';
     } else {
       note.style.display='none';
+      const inFidevia = DOCS_PATH.length===1 && String(DOCS_PATH[0].name).trim().toLowerCase()==='fidevia';
+      const hasAll = list=>list.every(n=>DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()));
       // Offer the precon structure inside Fidevia's own folder, where it belongs.
-      if(IS_ADMIN && !viewingAsExternal() && DOCS_PATH.length===1
-         && String(DOCS_PATH[0].name).trim().toLowerCase()==='fidevia'
-         && !PRECON_FOLDERS.every(n=>DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()))){
+      if(IS_ADMIN && !viewingAsExternal() && inFidevia && !hasAll(PRECON_FOLDERS)){
         note.style.display='block';
         note.innerHTML='Setting up precon? <a href="#" onclick="docsCreatePrecon();return false;">Create the standard precon folders</a> \u2014 the same structure already in Box, so existing files move across unchanged.';
+      }
+      // And the standard set inside any other party's folder, offered to
+      // whoever is standing in it — the contractor filing their own work as
+      // readily as Fidevia setting it up for them.
+      else if(DOCS_PATH.length===1 && !inFidevia && !hasAll(PARTY_FOLDERS)){
+        note.style.display='block';
+        note.innerHTML='<a href="#" onclick="docsCreatePartyFolders();return false;">Add the standard folders</a> \u2014 '
+          +esc(PARTY_FOLDERS.join(', '))+'. You can add your own alongside them.';
       }
     }
   }
@@ -4854,6 +4862,31 @@ async function docsSetupParties(){
   if(!missing.length){ alert('Every party on this project already has a folder.'); return; }
   if(!confirm('Create a folder for:\n\n  \u2022 '+missing.join('\n  \u2022 ')
     +'\n\nEach party sees only their own. Fidevia sees all of them.')) return;
+  const prog=document.getElementById('docs-progress'); prog.style.display='block';
+  for(const n of missing){
+    prog.textContent='Creating '+n+'\u2026';
+    try{
+      const d=await proxyCall('ensureFolder',{parentId:docsHere(), name:n});
+      // Seed the standard set as the folder is made, so a contractor arriving
+      // for the first time finds a structure rather than an empty room.
+      if(d && d.id) for(const sub of PARTY_FOLDERS){
+        try{ await proxyCall('ensureFolder',{parentId:d.id, name:sub}); }catch(e){}
+      }
+    }catch(e){}
+  }
+  prog.style.display='none';
+  await loadDocs();
+}
+// What every party's folder starts with. Deliberately short: an empty folder
+// invites a filing system per company, and a single agreed name is worth more
+// than a structure nobody follows. Add to this list as real use asks for it.
+const PARTY_FOLDERS=['Schedules'];
+async function docsCreatePartyFolders(){
+  const have=new Set(DOCS_ENTRIES.filter(e=>e.type==='folder').map(e=>String(e.name).trim().toLowerCase()));
+  const missing=PARTY_FOLDERS.filter(n=>!have.has(n.toLowerCase()));
+  if(!missing.length){ alert('Those folders are already here.'); return; }
+  if(!confirm('Create '+(missing.length===1?'this folder':'these folders')+' here?\n\n  \u2022 '
+    +missing.join('\n  \u2022 '))) return;
   const prog=document.getElementById('docs-progress'); prog.style.display='block';
   for(const n of missing){
     prog.textContent='Creating '+n+'\u2026';
