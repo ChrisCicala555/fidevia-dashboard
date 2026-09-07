@@ -1093,6 +1093,10 @@
           <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
           <div id="sched-updated" style="padding:11px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);"></div>
         </div>
+        <div class="panel admin-only" id="sched-uploads-panel" style="display:none;">
+          <div class="panel-header">Monthly Schedules</div>
+          <div id="sched-uploads" style="padding:4px 0;"></div>
+        </div>
       </div>
 
       <!-- RFIs -->
@@ -1443,6 +1447,11 @@
           <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-overdue" style="margin-right:8px;">Include overdue items (past their due date)</label>
           <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-aging" style="margin-right:8px;">Include open items older than <input type="number" id="rem-aging-days" value="7" min="1" style="width:56px;padding:3px 6px;">days</label>
           <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-payapps" style="margin-right:8px;">Include pending payment applications</label>
+          <label style="display:block;margin:8px 0;font-size:14px;"><input type="checkbox" id="rem-schedules" style="margin-right:8px;">Chase prime contractors for a monthly schedule</label>
+          <div style="margin:4px 0 0 26px;font-size:13px;color:var(--muted);">
+            On day <input id="rem-schedule-day" style="width:64px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;" placeholder="25">
+            of the month, each contract with nothing in its Schedules folder that month is emailed. Those that have posted one are not.
+          </div>
           <div style="margin-top:16px;"><button class="btn-primary" onclick="saveReminderSettings()" id="btn-rem-save">Save Reminders</button></div>
           <div class="status-msg" id="rem-status"></div>
         </div>
@@ -2465,6 +2474,8 @@ function resetProjectPhotos(){
 }
 
 async function openProject(folderId, name){
+  // Answers belong to the project that was asked about.
+  SCHED_UPLOADS=null;
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2541,6 +2552,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
+  SCHED_UPLOADS=null;
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -5104,6 +5116,53 @@ async function saveContractors(){
 }
 
 // ── SCHEDULE & MILESTONES ──
+// ── Monthly schedule uploads ──────────────────────────────────────────────
+// Each prime contractor is expected to post an updated schedule every month.
+// Asking is cheap; knowing who has already done it is what stops the asking
+// becoming noise.
+function monthStart(d){
+  const x=d?new Date(d):new Date();
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-01';
+}
+let SCHED_UPLOADS=null;
+async function renderScheduleUploads(){
+  const panel=document.getElementById('sched-uploads-panel');
+  const box=document.getElementById('sched-uploads');
+  if(!panel||!box) return;
+  if(!IS_ADMIN || viewingAsExternal()){ panel.style.display='none'; return; }
+  const cos=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
+  if(!cos.length){ panel.style.display='none'; return; }
+  panel.style.display='';
+  if(!SCHED_UPLOADS){
+    box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Checking\u2026</div>';
+    try{
+      const d=await proxyCall('scheduleUploads',
+        {projectId:currentProject.folderId, companies:cos, since:monthStart()},{quiet:true});
+      SCHED_UPLOADS=d.companies||[];
+    }catch(e){
+      box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Could not check the schedule folders.</div>';
+      return;
+    }
+  }
+  const label={
+    current:'Uploaded this month', stale:'Nothing this month', never:'Never uploaded',
+    'no-schedules-folder':'No Schedules folder', 'no-folder':'No document folder',
+    'no-documents':'Documents not set up on this project'
+  };
+  const good=r=>r.state==='current';
+  box.innerHTML=SCHED_UPLOADS.map(r=>{
+    const ok=good(r);
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
+      +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
+      +'<span style="flex:1;font-weight:600;">'+esc(r.company)+'</span>'
+      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'+esc(label[r.state]||r.state)
+        +(r.date?(' \u00b7 '+fmtDMY(r.date)):'')+'</span></div>';
+  }).join('')
+  +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
+    +'Read from each contract\u2019s Schedules folder under Documents. '
+    +'<a href="#" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>';
+}
 function scheduleStats(){
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const find=n=>ms.find(m=>(m.name||'').toLowerCase().includes(n));
@@ -5218,6 +5277,7 @@ function renderSchedule(){
       up.style.display='none';
     }
   }
+  try{ renderScheduleUploads(); }catch(e){}
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
   if(kp && !document.getElementById('sched-kpi-note')){
     const nt=document.createElement('div'); nt.id='sched-kpi-note';
@@ -6643,10 +6703,15 @@ async function loadReminderSettings(){
   el('rem-aging').checked=(s.aging!==false);
   el('rem-aging-days').value=s.agingDays||7;
   el('rem-payapps').checked=(s.payapps!==false);
+  if(el('rem-schedules')) el('rem-schedules').checked=!!s.schedules;
+  if(el('rem-schedule-day')) el('rem-schedule-day').value=s.scheduleDay||25;
 }
 async function saveReminderSettings(){
   const el=id=>document.getElementById(id);
-  const s={ enabled:el('rem-enabled').checked, frequency:el('rem-frequency').value, overdue:el('rem-overdue').checked, aging:el('rem-aging').checked, agingDays:parseInt(el('rem-aging-days').value)||7, payapps:el('rem-payapps').checked };
+  const s={ enabled:el('rem-enabled').checked, frequency:el('rem-frequency').value, overdue:el('rem-overdue').checked, aging:el('rem-aging').checked, agingDays:parseInt(el('rem-aging-days').value)||7, payapps:el('rem-payapps').checked,
+    schedules: !!(el('rem-schedules')&&el('rem-schedules').checked),
+    // Clamped to a real day of the month, so 31 does not skip February.
+    scheduleDay: Math.min(28, Math.max(1, parseInt((el('rem-schedule-day')||{}).value,10)||25)) };
   const btn=el('btn-rem-save'); btn.disabled=true;
   try{ await proxyCall('saveReminderSettings',{projectId:currentProject.folderId, settings:s}); showStatus('rem-status','Reminder settings saved.','success'); }
   catch(e){ showStatus('rem-status','Error: '+e.message,'error'); }

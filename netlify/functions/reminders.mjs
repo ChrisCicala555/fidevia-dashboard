@@ -39,9 +39,15 @@ async function serviceToken() {
 }
 
 async function listFolder(t, id) {
-  const r = await boxFetch(`https://api.box.com/2.0/folders/${id}/items?limit=1000&fields=id,name,type`, { headers: { Authorization: 'Bearer ' + t } });
+  // created_at is asked for because the schedule chase needs to know when a
+  // file was handed over, not merely that one exists.
+  const r = await boxFetch(`https://api.box.com/2.0/folders/${id}/items?limit=1000&fields=id,name,type,created_at`, { headers: { Authorization: 'Bearer ' + t } });
   if (!r.ok) return [];
   return (await r.json()).entries || [];
+}
+async function readText(t, fileId) {
+  const r = await boxFetch(`https://api.box.com/2.0/files/${fileId}/content`, { headers: { Authorization: 'Bearer ' + t } });
+  return r.ok ? await r.text() : '';
 }
 function parseCSV(text) {
   if (!text || !text.trim()) return [];
@@ -68,6 +74,37 @@ async function sendEmail(to, subject, html) {
       subject, content: [{ type: 'text/html', value: html }]
     })
   });
+}
+// ── Monthly schedule chase ────────────────────────────────────────────────
+// Each prime contractor posts an updated schedule into
+// Documents / <company> / Schedules. This asks only the ones who have not.
+function monthStart(now) {
+  const d = new Date(now);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-01';
+}
+function scheduleChaseHTML(project, company, lastDate) {
+  const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+  const last = lastDate
+    ? `The most recent one there is dated ${lastDate}.`
+    : 'There is no schedule on file yet.';
+  return `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden">
+      <tr><td style="padding:26px 28px 8px">
+        <div style="font-size:17px;font-weight:600;color:#3c4020;font-family:${sans}">Monthly schedule update</div>
+        <div style="font-size:14px;color:#5c5c52;margin-top:10px;line-height:1.6">
+          ${company} has not posted an updated schedule for ${project} this month. ${last}
+        </div>
+        <div style="font-size:14px;color:#5c5c52;margin-top:14px;line-height:1.6">
+          Upload it to your Documents area, in the Schedules folder.
+        </div>
+        <div style="margin-top:20px">
+          <a href="https://dashboard.fidevia.com" style="background:#515520;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;font-size:14px;font-family:${sans};display:inline-block">Open the dashboard</a>
+        </div>
+      </td></tr>
+      <tr><td style="padding:18px 28px 24px">
+        <div style="font-size:11px;color:#b3b0a4;line-height:1.6">Automated reminder from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div>
+      </td></tr>
+    </table></div>`;
 }
 const notDone = s => { const st = (s || '').toLowerCase(); return !(st.indexOf('approv') >= 0 || st.indexOf('reject') >= 0 || st.indexOf('den') >= 0 || st.indexOf('closed') >= 0 || st.indexOf('signed') >= 0); };
 const ageDays = (d, now) => { const t = Date.parse(d); return isNaN(t) ? 0 : Math.floor((now - t) / 86400000); };
@@ -138,6 +175,44 @@ export default async () => {
       const st = (r['Status'] || '').toLowerCase();
       if (st.indexOf('submit') >= 0 || st.indexOf('pending') >= 0) out.push({ type: 'Pay App', id: r['App #'], title: r['Contractor'], reason: 'Awaiting review' });
     });
+
+    // The schedule chase is separate: it goes to one company at a time, and
+    // only to those who have not posted one, so it does not ride along on a
+    // digest that everybody receives.
+    if (cfg.schedules && new Date().getUTCDate() === (parseInt(cfg.scheduleDay, 10) || 25)) {
+      try {
+        const cfgFile = items.find(i => i.type === 'file' && i.name === 'Project Info.json');
+        let pcfg = {};
+        if (cfgFile) { try { pcfg = JSON.parse(await readText(t, cfgFile.id)) || {}; } catch (e) {} }
+        const cos = (pcfg.contractors || []).filter(c => c && c.active !== false && c.name);
+        const docsF = items.find(i => i.type === 'folder' && i.name.startsWith('12'));
+        const since = monthStart(now);
+        const contacts = conF ? await readCSV(t, conF, 'Job Contacts.csv') : [];
+        for (const c of cos) {
+          let lastDate = '';
+          let current = false;
+          if (docsF) {
+            const party = (await listFolder(t, docsF.id)).find(f => f.type === 'folder'
+              && String(f.name || '').trim().toLowerCase() === String(c.name).trim().toLowerCase());
+            const sched = party ? (await listFolder(t, party.id)).find(f => f.type === 'folder' && /^schedules?$/i.test(f.name || '')) : null;
+            const files = sched ? (await listFolder(t, sched.id)).filter(f => f.type === 'file') : [];
+            if (files.length) {
+              files.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+              lastDate = String(files[0].created_at || '').slice(0, 10);
+              current = !!lastDate && lastDate >= since;
+            }
+          }
+          if (current) continue;
+          const to = [...new Set(contacts
+            .filter(r => String(r['Company'] || '').trim().toLowerCase() === String(c.name).trim().toLowerCase())
+            .map(r => String(r['Email'] || '').trim().toLowerCase()).filter(Boolean))];
+          if (!to.length) continue;
+          await sendEmail(to, '[Fidevia] Monthly schedule due — ' + p.name,
+            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : ''));
+          sent++;
+        }
+      } catch (e) {}
+    }
 
     if (!out.length) continue;
 

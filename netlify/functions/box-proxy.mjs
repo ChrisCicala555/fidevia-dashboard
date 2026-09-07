@@ -1039,6 +1039,49 @@ export default async (req) => {
 
     // Browse one folder in Documents. At the root an external caller is shown
     // only their own company's folder; below it, only what is inside it.
+    // Has each contract posted a schedule this month? The answer lives in
+    // Documents / <company> / Schedules, so it is a walk rather than a lookup —
+    // done here in one round trip instead of a dozen from the browser.
+    if (op === 'scheduleUploads') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const projectId = String(body.projectId || '');
+      const companies = Array.isArray(body.companies) ? body.companies.map(String) : [];
+      if (!projectId || !companies.length) return json({ companies: [] });
+      const since = String(body.since || '').slice(0, 10);   // YYYY-MM-01
+      const listOf = async id => {
+        const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(id)}/items?limit=1000&fields=id,name,type,created_at,modified_at`, { headers: H });
+        return r.ok ? ((await r.json()).entries || []) : [];
+      };
+      const top = await listOf(projectId);
+      const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX));
+      if (!docs) return json({ companies: companies.map(c => ({ company: c, state: 'no-documents' })) });
+      const parties = await listOf(docs.id);
+      const out = [];
+      for (const co of companies) {
+        const party = parties.find(e => e.type === 'folder'
+          && String(e.name || '').trim().toLowerCase() === co.trim().toLowerCase());
+        if (!party) { out.push({ company: co, state: 'no-folder' }); continue; }
+        const subs = await listOf(party.id);
+        const sched = subs.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
+        if (!sched) { out.push({ company: co, state: 'no-schedules-folder' }); continue; }
+        const files = (await listOf(sched.id)).filter(e => e.type === 'file');
+        if (!files.length) { out.push({ company: co, state: 'never' }); continue; }
+        // Newest by upload date. A schedule revised in Box without being
+        // re-uploaded is still the same file, so created_at is the honest
+        // measure of when it was handed over.
+        files.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+        const newest = files[0];
+        const when = String(newest.created_at || '').slice(0, 10);
+        out.push({
+          company: co,
+          state: (since && when >= since) ? 'current' : 'stale',
+          fileName: newest.name || '',
+          date: when,
+          count: files.length
+        });
+      }
+      return json({ companies: out });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
