@@ -3566,11 +3566,34 @@ function makeFilterBars(){
     inp.addEventListener('input',function(){ applyFilter(panel); });
   });
 }
+// Opening a thread from the filter has to move the arrow too, or the row shows
+// its history while still claiming to be closed. Threads the filter opened are
+// remembered so that clearing it collapses those and leaves alone the ones the
+// reader opened themselves.
+// Some detail rows are internal-only and are rendered into an external user's
+// page for the CSS to hide. The filter must not read them: matching on text the
+// viewer cannot see would let them confirm what a hidden note says by watching
+// which rows survive the filter.
+function rowHiddenFromViewer(row){
+  return !!(row && row.classList && row.classList.contains('hide-external')
+    && document.body && document.body.classList.contains('external-mode'));
+}
+function setThreadOpen(detail, open, byFilter){
+  if(!detail) return;
+  if(open && rowHiddenFromViewer(detail)) return;
+  const wasOpen = detail.style.display!=='none';
+  detail.style.display = open ? 'table-row' : 'none';
+  const id=String(detail.id||'');
+  const arw = id.indexOf('td-')===0 ? document.getElementById('arw-'+id.slice(3)) : null;
+  if(arw) arw.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+  if(open){ if(byFilter && !wasOpen) detail._filterOpened=true; }
+  else detail._filterOpened=false;
+}
 function applyFilter(panel){
   const inp=panel.querySelector('.filter-input'); if(!inp) return;
   const q=(inp.value||'').trim().toLowerCase();
   const tbody=panel.querySelector('table tbody'); if(!tbody) return;
-  let shown=0, total=0;
+  let shown=0, total=0, deep=0, hasThreads=false;
   let groups=[], cur=null;
   [...tbody.children].forEach(function(row){
     if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
@@ -3581,15 +3604,32 @@ function applyFilter(panel){
     if(head.classList.contains('empty-row')||head.classList.contains('loading-row')) return;
     if(head.classList.contains('total-row')){ g.forEach(r=>r.style.display=''); return; }
     total++;
-    const match = !q || head.textContent.toLowerCase().includes(q);
+    if(g.length>1) hasThreads=true;
+    const inHead = !q || head.textContent.toLowerCase().includes(q);
+    // The review thread is in the page already, merely collapsed. It holds the
+    // reply notes and the response on file — the part of a submittal anyone is
+    // actually trying to find again — and the filter used to ignore all of it.
+    const inThread = !!q && !inHead
+      && g.slice(1).some(r=>!rowHiddenFromViewer(r) && r.textContent.toLowerCase().includes(q));
+    const match = inHead || inThread;
     if(match) shown++;
+    if(inThread) deep++;
     g.forEach(function(row,idx){
-      if(idx===0) row.style.display = match ? '' : 'none';
-      else if(!match) row.style.display='none';
+      if(idx===0){ row.style.display = match ? '' : 'none'; return; }
+      if(!match){ setThreadOpen(row, false, true); return; }
+      // A row matched on text nobody can see would look arbitrary, so the
+      // thread is opened to show what matched.
+      if(inThread) setThreadOpen(row, true, true);
+      else if(row._filterOpened) setThreadOpen(row, false, true);
     });
   });
+  // Only claim to search the replies where there are replies to search.
+  if(hasThreads && inp.placeholder.indexOf('replies')<0)
+    inp.placeholder='Filter these rows, including the replies\u2026';
   const cnt=panel.querySelector('.filter-count');
-  if(cnt) cnt.textContent = q ? (shown+' of '+total+' shown') : '';
+  if(cnt) cnt.textContent = q
+    ? (shown+' of '+total+' shown'+(deep?(' \u00b7 '+deep+' matched in the replies'):''))
+    : '';
 }
 function reapplyFilters(){ document.querySelectorAll('.panel').forEach(p=>{ const i=p.querySelector('.filter-input'); if(i&&i.value.trim()) applyFilter(p); }); }
 function makeSortableTables(){
