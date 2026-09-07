@@ -273,6 +273,13 @@
   .off-contract.short{background:#F6E6C8; color:#8a5a00;}
   .table-count{padding:11px 18px; font-size:12.5px; color:var(--muted); border-top:1px solid #F1F0E8;}
   .attach-link:hover{background:var(--olive-700); color:#fff;}
+  /* Sits beside a file link. Opening and saving are different intentions, and
+     the link alone left the browser to guess which one was meant. */
+  .dl-btn{display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+    margin-left:5px; border-radius:5px; color:var(--olive-700); text-decoration:none;
+    vertical-align:middle; flex:0 0 auto; opacity:.72;}
+  .dl-btn:hover{background:var(--olive-700); color:#fff; opacity:1;}
+  .dl-btn.dl-busy{opacity:.4; pointer-events:none;}
   .btn-invite{background:none;border:1px solid var(--olive-700);color:var(--olive-700);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;margin-right:4px;font-family:inherit;}
   .btn-invite:hover{background:var(--olive-700);color:#fff;}
   .cd-inp{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px;font-family:inherit;width:130px;color:var(--ink);background:var(--white);}
@@ -3881,6 +3888,77 @@ function impFlag(r){ return (r&&r['Importance']==='High')?'<span title="High imp
 // External contractors have no Box account, so app.box.com links are a dead end
 // for them. Fetch a short-lived pre-authenticated URL through the proxy instead;
 // guardFile still restricts this to files inside a project they were granted.
+// Downloading is not the same act as opening, and the link on its own left the
+// browser to decide which one was meant — a PDF previewed, a spreadsheet saved,
+// and neither was a choice anyone made. This saves, deliberately.
+function saveAs(href, name){
+  const a=document.createElement('a');
+  a.href=href; if(name) a.download=name;
+  a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
+}
+// Windows will not accept these in a filename and macOS is unhappy about the
+// slash, so a file named after an item number has to be cleaned before use.
+function safeFileName(s){
+  return String(s==null?'':s).replace(/[\/\\:*?"<>|\u0000-\u001f]+/g,'-')
+    .replace(/\s+/g,' ').trim()
+    // A stripped character at either end would otherwise leave the name
+    // wearing the separator that replaced it — "estimate-.xlsx".
+    .replace(/^[.\-\s]+/,'').replace(/[.\-\s]+$/,'').slice(0,120);
+}
+// A file lands in someone's downloads folder next to everything else they have
+// ever saved. "scan_0034.pdf" tells them nothing there; the item number does.
+function dlName(original, prefix){
+  const o=String(original==null?'':original).trim();
+  const m=o.match(/\.[A-Za-z0-9]{1,8}$/);
+  const ext=m?m[0]:'';
+  const base=ext?o.slice(0,-ext.length):o;
+  const p=safeFileName(prefix);
+  if(!p) return safeFileName(o)||'download';
+  if(!base) return p+ext;
+  // If whoever uploaded it already named it after the item, saying so twice
+  // helps nobody.
+  if(base.toLowerCase().indexOf(p.toLowerCase())>=0) return safeFileName(o);
+  return safeFileName(p+' - '+base)+ext;
+}
+async function downloadBoxFile(fileId, name, ev){
+  if(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){} }
+  // currentTarget is gone by the time the first await resolves.
+  const el = ev && ev.currentTarget;
+  if(el) el.classList.add('dl-busy');
+  try{
+    const d=await proxyCall('downloadUrl',{fileId:String(fileId)});
+    if(!d||!d.url) throw new Error('No link was returned for this file.');
+    let named=false;
+    // Reading the bytes is what lets the file land under the name the dashboard
+    // knows it by. Box does not always permit the cross-origin read, so this is
+    // an attempt rather than a requirement.
+    try{
+      const r=await fetch(d.url);
+      if(r.ok){
+        const u=URL.createObjectURL(await r.blob());
+        saveAs(u, name);
+        setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 60000);
+        named=true;
+      }
+    }catch(e){}
+    // The signed URL still downloads when that fails — Box serves it as an
+    // attachment. It just keeps the name it was uploaded under.
+    if(!named) saveAs(d.url, name);
+  }catch(e){
+    alert('Could not download that file.\n\n'+(e.message||'Unknown error'));
+  }
+  if(el) el.classList.remove('dl-busy');
+  return false;
+}
+function dlBtn(fileId, fileName, prefix){
+  if(!fileId) return '';
+  const nm=dlName(fileName, prefix);
+  return '<a class="dl-btn" title="Download '+esc(nm)+'" href="#" onclick="downloadBoxFile('
+    +esc(JSON.stringify(String(fileId)))+','+esc(JSON.stringify(nm))+',event);return false;">'
+    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    +'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m7 11 5 5 5-5"/>'
+    +'<path d="M5 20h14"/></svg></a>';
+}
 async function openBoxFile(fileId, ev){
   if(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){} }
   // Open the tab synchronously — doing it after the await trips popup blockers.
@@ -3946,11 +4024,22 @@ function fileIcon(name){
   return '<svg class="file-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
     +'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+FILE_ICONS[fileKind(name)]+'</svg>';
 }
+// Whatever this row calls itself. Rows come from a dozen modules and the cell
+// that renders their attachment is shared, so the number is read from the row
+// rather than passed down through every caller.
+function rowItemNumber(r){
+  if(!r) return '';
+  const keys=['RFI #','Submittal #','CO #','PCO #','App #','Payroll #'];
+  for(const k of keys){ const v=String(r[k]==null?'':r[k]).trim(); if(v) return v; }
+  return '';
+}
 function fileCell(r){
   const fid=r['Attachment File ID']||r['File ID'], fn=r['Attachment Name']||r['File Name'];
   if(!fid) return '<span style="color:var(--muted);">\u2014</span>';
-  return '<a class="attach-link" title="'+esc(fn||'View')+'" href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">'
-    +fileIcon(fn)+'<span class="attach-name">'+esc(fn||'View')+'</span></a>';
+  return '<span style="display:inline-flex;align-items:center;">'
+    +'<a class="attach-link" title="'+esc(fn||'View')+'" href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">'
+    +fileIcon(fn)+'<span class="attach-name">'+esc(fn||'View')+'</span></a>'
+    +dlBtn(fid, fn, rowItemNumber(r))+'</span>';
 }
 // "Showing 1 to 5 of 5 submittals" — makes a long log legible and an empty
 // filter obviously empty rather than looking broken.
@@ -4053,7 +4142,8 @@ function renderDailyLogs(){
   if(!rows.length){ul.innerHTML='<li><span class="desc" style="color:var(--muted);font-style:italic;">No daily logs yet.</span></li>';return;}
   ul.innerHTML=rows.slice().reverse().map(r=>{
     const fid=r['Attachment File ID'],fn=r['Attachment Name'];
-    const link=fid?'<a href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">Open file</a>':'<span class="no-link">No file attached</span>';
+    const link=fid?('<a href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">Open file</a>'
+      +dlBtn(fid, fn, 'Daily log '+String(r['Date']||'').trim())):'<span class="no-link">No file attached</span>';
     return '<li><span class="date">'+esc(fmtDMY(r['Date']))+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
   }).join('');
 }
@@ -4864,7 +4954,10 @@ function renderDocs(){
       ? '<a href="#" onclick="docsOpen('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+');return false;" style="color:var(--olive-900);font-weight:700;text-decoration:none;">'
         +'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:7px;"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
         +esc(e.name)+'</a>'
-      : '<a class="attach-link" href="#" onclick="openBoxFile('+esc(JSON.stringify(e.id))+',event);return false;">'+fileIcon(e.name)+'<span class="attach-name">'+esc(e.name)+'</span></a>';
+      : '<a class="attach-link" href="#" onclick="openBoxFile('+esc(JSON.stringify(e.id))+',event);return false;">'+fileIcon(e.name)+'<span class="attach-name">'+esc(e.name)+'</span></a>'
+        // Filed documents already carry the name they were filed under, so
+        // nothing is prefixed here.
+        +dlBtn(e.id, e.name, '');
     return '<tr>'
       +'<td>'+nm+'</td>'
       +'<td class="nw">'+(isF?'—':fmtBytes(e.size))+'</td>'
@@ -5012,7 +5105,9 @@ function renderDocsTable(key, tbodyId){
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+delBtn(key,i)+'</td></tr>';
     const vs=_docVersions(r);
-    const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>':'')+'</div>';
+    // Each revision is downloadable in its own right — comparing v2 against v4
+    // is exactly why a version history exists.
+    const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;"><strong>v'+esc(v.v)+'</strong>'+(v.date?' &middot; '+esc(v.date):'')+(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'+dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')+'</div>';
     const newBtn = !EXTERNAL ? '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();uploadNewVersion(\''+key+'\','+i+')">Upload New Version</button>' : '';
     const detail='<tr class="thread-detail'+(ext?' hide-external':'')+'" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="7" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'+vs.map(line).join('')+newBtn+'</td></tr>';
     return main+detail;
@@ -9024,8 +9119,13 @@ function renderPayApps(){
       const trs=g.rows.slice().sort((a,b)=>(Date.parse(b['Period']||b['Review Date']||'')||0)-(Date.parse(a['Period']||a['Review Date']||'')||0)).map(r=>{
         const idx=rows.indexOf(r);
         const s=r['Status']||'Submitted';
-        const doc=r['Attachment File ID']?'<a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Attachment File ID'])+'\',event);return false;">Pay App</a>':'—';
-        const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>':'';
+        // The number alone is ambiguous once two contractors are billing, so the
+        // saved file carries the company too.
+        const pfx=[String(r['App #']||'').trim(), String(r['Contractor']||'').trim()].filter(Boolean).join(' ');
+        const doc=r['Attachment File ID']?'<a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Attachment File ID'])+'\',event);return false;">Pay App</a>'
+          +dlBtn(r['Attachment File ID'], r['Attachment Name']||'', pfx):'—';
+        const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>'
+          +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
         const needs=payNeedsDetails(r);
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx):'';
         const appCell=String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>';
@@ -9986,7 +10086,8 @@ function verThreadRows(key,r,i,colspan){
     // and differ, show the firm alongside; where they match, say it once.
     +(v.co && String(v.co).trim().toLowerCase()!==String(v.by||'').trim().toLowerCase()
         ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
-    +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>':'')
+    +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'
+        +dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
   const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
