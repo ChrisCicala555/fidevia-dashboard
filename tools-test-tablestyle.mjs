@@ -62,8 +62,13 @@ ok('dots in name',  fileKind('Notes on Dashboard 7-27-26.pdf')==='pdf');
 console.log('Wiring');
 for(const id of ['RFI-count','changeorder-count','submittal-count']) ok(id+' exists', html.includes('id="'+id+'"'));
 ok('RFIs report their count',       /countFooter\(live\.length, all\.length, 'RFI'\)/.test(src));
-ok('submittals report their count', /countFooter\(live\.length, all\.length, 'submittal'\)/.test(src));
-ok('empty logs still report',       (src.match(/countFooter\(0,/g)||[]).length===3);
+// Submittals count what is on screen, not what exists: the log can be narrowed
+// to a spec section, and a footer reading the full total would contradict it.
+ok('submittals report their visible count', /countFooter\(shown\.length, all\.length, 'submittal'\)/.test(src));
+ok('and the total they are drawn from',     /countFooter\(shown\.length, all\.length/.test(src));
+ok('empty logs still report',       (src.match(/countFooter\(0,/g)||[]).length>=3);
+ok('including a filter that matches nothing',
+   /No submittals under that spec section[\s\S]{0,200}countFooter\(0, all\.length/.test(src));
 ok('actions stayed inline',         src.includes("archiveBtn('sub',i,r)+delBtn('sub',i)"));
 
 fs.rmSync('.ts.tmp.mjs',{force:true});

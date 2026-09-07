@@ -1145,7 +1145,7 @@
           <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All submittals</span><span class="src">Box · 03 - Submittals</span></div>
+          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">All submittals<select id="sub-spec-filter" onchange="setSpecFilter(this.value)" style="font-family:inherit;font-size:12.5px;font-weight:600;color:var(--olive-900);padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--white);max-width:340px;"><option value="">All spec sections</option></select></span><span class="src">Box · 03 - Submittals</span></div>
           <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Review Due</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
           <div class="table-count" id="submittal-count"></div>
@@ -2500,7 +2500,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER='';
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2578,7 +2578,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER='';
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -4004,6 +4004,12 @@ function firmOf(name){
 }
 // CSI sections read "09 51 00 Acoustical Ceilings" or "09 51 00 - Acoustical
 // Ceilings". Split the number from the name so the number can lead.
+// MasterFormat's divisions. The numbers that are missing — 15 to 19, 24,
+// 29, 30, 36 to 39, 47 and 49 — are reserved by CSI and hold no sections,
+// so a gap here is the standard's, not an omission.
+const CSI_DIVISIONS={'00':"Procurement and Contracting Requirements",'01':"General Requirements",'02':"Existing Conditions",'03':"Concrete",'04':"Masonry",'05':"Metals",'06':"Wood, Plastics and Composites",'07':"Thermal and Moisture Protection",'08':"Openings",'09':"Finishes",'10':"Specialties",'11':"Equipment",'12':"Furnishings",'13':"Special Construction",'14':"Conveying Equipment",'21':"Fire Suppression",'22':"Plumbing",'23':"Heating, Ventilating and Air Conditioning",'25':"Integrated Automation",'26':"Electrical",'27':"Communications",'28':"Electronic Safety and Security",'31':"Earthwork",'32':"Exterior Improvements",'33':"Utilities",'34':"Transportation",'35':"Waterway and Marine Construction",'40':"Process Interconnections",'41':"Material Processing and Handling Equipment",'42':"Process Heating, Cooling and Drying Equipment",'43':"Process Gas and Liquid Handling, Purification and Storage Equipment",'44':"Pollution and Waste Control Equipment",'45':"Industry-Specific Manufacturing Equipment",'46':"Water and Wastewater Equipment",'48':"Electrical Power Generation"};
+function specDivision(code){ const m=String(code||'').trim().match(/^(\d{2})/); return m?m[1]:''; }
+function specDivisionLabel(d){ return d ? ('Division '+d+' \u2014 '+(CSI_DIVISIONS[d]||'Unclassified')) : 'No spec section'; }
 function specParts(v){
   const t=String(v||'').trim();
   const m=t.match(/^(\d{2}\s?\d{2}\s?\d{2})\s*[-\u2013:]?\s*(.*)$/);
@@ -4105,6 +4111,54 @@ function renderCOs(){
   countFooter(rows.length, rows.length, 'change order');
 }
 
+// ── Filtering the submittal log by spec section ────────────────────────────
+// The generic row filter could already match a code typed by hand, but it
+// could not say which sections the job actually has, and a typo looked
+// identical to an empty result. This is built from the log itself, so every
+// option leads somewhere.
+let SUB_SPEC_FILTER='';
+function setSpecFilter(v){ SUB_SPEC_FILTER=String(v||''); renderSubmittals(); }
+// A whole division reads '23:', one section reads its code.
+function specMatchesFilter(r){
+  const f=SUB_SPEC_FILTER;
+  if(!f) return true;
+  const code=specParts(r['Spec Section']).code;
+  if(f==='\u2014') return !String(r['Spec Section']||'').trim();
+  if(f.slice(-1)===':') return specDivision(code)===f.slice(0,-1);
+  return code===f;
+}
+function buildSpecFilterOptions(rows){
+  const sel=document.getElementById('sub-spec-filter'); if(!sel) return;
+  const byDiv={}; let none=0;
+  rows.forEach(r=>{
+    const raw=String(r['Spec Section']||'').trim();
+    if(!raw){ none++; return; }
+    const sp=specParts(raw);
+    const d=specDivision(sp.code)||'';
+    (byDiv[d]=byDiv[d]||{})[sp.code]=(byDiv[d][sp.code]||{n:0,name:sp.name});
+    byDiv[d][sp.code].n++;
+    if(!byDiv[d][sp.code].name && sp.name) byDiv[d][sp.code].name=sp.name;
+  });
+  let html='<option value="">All spec sections ('+rows.length+')</option>';
+  Object.keys(byDiv).sort().forEach(d=>{
+    const secs=byDiv[d];
+    const total=Object.keys(secs).reduce((n,k)=>n+secs[k].n,0);
+    html+='<optgroup label="'+esc(specDivisionLabel(d))+'">';
+    // Only worth offering the whole division when it holds more than one
+    // section; otherwise it duplicates the single entry beneath it.
+    if(Object.keys(secs).length>1) html+='<option value="'+esc(d)+':">All of Division '+esc(d)+' ('+total+')</option>';
+    Object.keys(secs).sort().forEach(code=>{
+      html+='<option value="'+esc(code)+'">'+esc(code+(secs[code].name?' '+secs[code].name:''))+' ('+secs[code].n+')</option>';
+    });
+    html+='</optgroup>';
+  });
+  if(none) html+='<option value="\u2014">No spec section ('+none+')</option>';
+  sel.innerHTML=html;
+  // A section can be filtered to and then archived away. Falling back to All
+  // is better than showing a filter that matches nothing.
+  if(SUB_SPEC_FILTER && ![...sel.options].some(o=>o.value===SUB_SPEC_FILTER)) SUB_SPEC_FILTER='';
+  sel.value=SUB_SPEC_FILTER;
+}
 function renderSubmittals(){
   const all=allData.sub||[], tb=document.getElementById('tbody-submittals');
   const {live,past}=splitByArchived(all,'Date Submitted');
@@ -4117,8 +4171,19 @@ function renderSubmittals(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('sub',idx,r)+'</td></tr>');
+  // The picker is built from everything live, not from what survives the
+  // filter — otherwise choosing a division would empty the list you chose it
+  // from and there would be no way back.
+  buildSpecFilterOptions(rows);
   if(!rows.length){tb.innerHTML=emptyRow(10);countFooter(0,all.length,'submittal');return;}
-  tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
+  const shown=live.filter(({r})=>specMatchesFilter(r));
+  if(!shown.length){
+    tb.innerHTML='<tr class="empty-row"><td colspan="10">No submittals under that spec section. '
+      +'<a href="#" onclick="setSpecFilter(\'\');return false;">Show all</a></td></tr>';
+    countFooter(0, all.length, 'submittal');
+    return;
+  }
+  tb.innerHTML=shown.map(({r,idx})=>{ const i=idx;
     const sp=specParts(r['Spec Section']);
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'sub\','+i+'))">'
       +threadCell('sub', i, impFlag(r)+twoLine(r['Submittal #'], rowCompany(r)))
@@ -4134,7 +4199,7 @@ function renderSubmittals(){
       +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
     return main+verThreadRows('sub',r,i,10);
   }).join('');
-  countFooter(live.length, all.length, 'submittal');
+  countFooter(shown.length, all.length, 'submittal');
 }
 
 function renderDailyLogs(){
@@ -10242,60 +10307,729 @@ function emailTemplate(title, rows, projectName, intro){
 </script>
 
 <datalist id="csi-list">
-  <option value="00 00 00 Procurement and Contracting">
+  <option value="00 01 00 Procurement and Contracting Requirements">
+  <option value="00 21 00 Instructions for Procurement">
+  <option value="00 41 00 Bid Forms">
+  <option value="00 52 00 Agreement Forms">
+  <option value="00 62 00 Certificates and Other Forms">
+  <option value="00 72 00 General Conditions">
+  <option value="00 73 00 Supplementary Conditions">
   <option value="01 11 00 Summary of Work">
+  <option value="01 14 00 Work Restrictions">
+  <option value="01 21 00 Allowances">
+  <option value="01 22 00 Unit Prices">
+  <option value="01 23 00 Alternates">
+  <option value="01 26 00 Contract Modification Procedures">
+  <option value="01 29 00 Payment Procedures">
+  <option value="01 31 00 Project Management and Coordination">
+  <option value="01 32 00 Construction Progress Documentation">
+  <option value="01 33 00 Submittal Procedures">
+  <option value="01 35 00 Special Procedures">
+  <option value="01 40 00 Quality Requirements">
+  <option value="01 42 00 References">
+  <option value="01 45 00 Quality Control">
+  <option value="01 50 00 Temporary Facilities and Controls">
+  <option value="01 51 00 Temporary Utilities">
+  <option value="01 56 00 Temporary Barriers and Enclosures">
+  <option value="01 57 00 Temporary Controls">
+  <option value="01 60 00 Product Requirements">
+  <option value="01 66 00 Product Storage and Handling Requirements">
+  <option value="01 70 00 Execution and Closeout Requirements">
+  <option value="01 73 00 Execution">
+  <option value="01 74 00 Cleaning and Waste Management">
+  <option value="01 77 00 Closeout Procedures">
+  <option value="01 78 00 Closeout Submittals">
+  <option value="01 79 00 Demonstration and Training">
+  <option value="01 81 00 Facility Performance Requirements">
+  <option value="01 91 00 Commissioning">
+  <option value="02 21 00 Surveys">
+  <option value="02 26 00 Hazardous Material Assessment">
+  <option value="02 30 00 Subsurface Investigation">
+  <option value="02 32 00 Geotechnical Investigations">
+  <option value="02 40 00 Demolition and Structure Moving">
   <option value="02 41 00 Demolition">
+  <option value="02 41 19 Selective Structure Demolition">
+  <option value="02 42 00 Removal and Salvage of Construction Materials">
+  <option value="02 65 00 Underground Storage Tank Removal">
+  <option value="02 80 00 Facility Remediation">
+  <option value="02 82 00 Asbestos Remediation">
+  <option value="02 83 00 Lead Remediation">
+  <option value="02 84 00 Polychlorinated Biphenyl Remediation">
+  <option value="02 87 00 Biohazard Remediation">
+  <option value="03 01 00 Maintenance of Concrete">
+  <option value="03 10 00 Concrete Forming and Accessories">
+  <option value="03 11 00 Concrete Forming">
+  <option value="03 15 00 Concrete Accessories">
+  <option value="03 20 00 Concrete Reinforcing">
+  <option value="03 21 00 Reinforcing Steel">
+  <option value="03 22 00 Welded Wire Fabric Reinforcing">
+  <option value="03 23 00 Stressing Tendons">
   <option value="03 30 00 Cast-in-Place Concrete">
+  <option value="03 31 00 Structural Concrete">
+  <option value="03 33 00 Architectural Concrete">
+  <option value="03 35 00 Concrete Finishing">
+  <option value="03 37 00 Specialty Placed Concrete">
+  <option value="03 39 00 Concrete Curing">
+  <option value="03 40 00 Precast Concrete">
+  <option value="03 41 00 Precast Structural Concrete">
+  <option value="03 45 00 Precast Architectural Concrete">
+  <option value="03 47 00 Site-Cast Concrete">
+  <option value="03 48 00 Precast Concrete Specialties">
+  <option value="03 50 00 Cast Decks and Underlayment">
+  <option value="03 51 00 Cast Roof Decks">
+  <option value="03 52 00 Lightweight Concrete Roof Insulation">
+  <option value="03 53 00 Concrete Toppings">
+  <option value="03 54 00 Cast Underlayment">
+  <option value="03 60 00 Grouting">
+  <option value="03 62 00 Non-Shrink Grouting">
+  <option value="03 63 00 Epoxy Grouting">
+  <option value="04 01 00 Maintenance of Masonry">
+  <option value="04 05 00 Common Work Results for Masonry">
+  <option value="04 05 13 Masonry Mortaring">
+  <option value="04 05 16 Masonry Grouting">
+  <option value="04 05 19 Masonry Anchorage and Reinforcing">
+  <option value="04 05 23 Masonry Accessories">
+  <option value="04 10 00 Masonry Units">
   <option value="04 20 00 Unit Masonry">
+  <option value="04 21 00 Clay Unit Masonry">
+  <option value="04 22 00 Concrete Unit Masonry">
+  <option value="04 23 00 Glass Unit Masonry">
+  <option value="04 24 00 Adobe Unit Masonry">
+  <option value="04 27 00 Multiple-Wythe Unit Masonry">
+  <option value="04 40 00 Stone Assemblies">
+  <option value="04 41 00 Dry-Placed Stone">
+  <option value="04 42 00 Exterior Stone Cladding">
+  <option value="04 43 00 Stone Masonry">
+  <option value="04 51 00 Flue Liner Masonry">
+  <option value="04 54 00 Refractory Brick Masonry">
+  <option value="04 57 00 Masonry Fireplaces">
+  <option value="04 60 00 Corrosion-Resistant Masonry">
+  <option value="04 70 00 Manufactured Masonry">
+  <option value="04 71 00 Manufactured Brick Masonry">
+  <option value="04 72 00 Cast Stone Masonry">
+  <option value="05 01 00 Maintenance of Metals">
+  <option value="05 05 00 Common Work Results for Metals">
+  <option value="05 05 23 Metal Fastenings">
   <option value="05 10 00 Structural Metal Framing">
-  <option value="05 30 00 Steel Decking">
+  <option value="05 12 00 Structural Steel Framing">
+  <option value="05 13 00 Structural Stainless-Steel Framing">
+  <option value="05 14 00 Structural Aluminum Framing">
+  <option value="05 15 00 Wire Rope Assemblies">
+  <option value="05 16 00 Structural Cabling">
+  <option value="05 20 00 Metal Joists">
+  <option value="05 21 00 Steel Joist Framing">
+  <option value="05 25 00 Aluminum Joist Framing">
+  <option value="05 30 00 Metal Decking">
+  <option value="05 31 00 Steel Decking">
+  <option value="05 33 00 Aluminum Decking">
+  <option value="05 35 00 Raceway Decking Assemblies">
   <option value="05 40 00 Cold-Formed Metal Framing">
+  <option value="05 41 00 Structural Metal Stud Framing">
+  <option value="05 42 00 Cold-Formed Metal Joist Framing">
+  <option value="05 44 00 Cold-Formed Metal Trusses">
   <option value="05 50 00 Metal Fabrications">
+  <option value="05 51 00 Metal Stairs">
+  <option value="05 52 00 Metal Railings">
+  <option value="05 53 00 Metal Gratings">
+  <option value="05 54 00 Metal Floor Plates">
+  <option value="05 55 00 Metal Stair Treads and Nosings">
+  <option value="05 56 00 Metal Castings">
+  <option value="05 58 00 Formed Metal Fabrications">
+  <option value="05 60 00 Metal Support Assemblies">
+  <option value="05 70 00 Decorative Metal">
+  <option value="05 71 00 Decorative Metal Stairs">
+  <option value="05 73 00 Decorative Metal Railings">
+  <option value="05 75 00 Decorative Formed Metal">
+  <option value="06 05 00 Common Work Results for Wood, Plastics and Composites">
+  <option value="06 05 23 Wood, Plastic and Composite Fastenings">
   <option value="06 10 00 Rough Carpentry">
+  <option value="06 11 00 Wood Framing">
+  <option value="06 12 00 Structural Panels">
+  <option value="06 13 00 Heavy Timber Construction">
+  <option value="06 15 00 Wood Decking">
+  <option value="06 16 00 Sheathing">
+  <option value="06 17 00 Shop-Fabricated Structural Wood">
+  <option value="06 18 00 Glued-Laminated Construction">
   <option value="06 20 00 Finish Carpentry">
+  <option value="06 22 00 Millwork">
+  <option value="06 25 00 Prefinished Paneling">
+  <option value="06 26 00 Board Paneling">
+  <option value="06 30 00 Heavy Timber">
+  <option value="06 40 00 Architectural Woodwork">
+  <option value="06 41 00 Architectural Wood Casework">
+  <option value="06 42 00 Wood Paneling">
+  <option value="06 43 00 Wood Stairs and Railings">
+  <option value="06 44 00 Ornamental Woodwork">
+  <option value="06 46 00 Wood Trim">
+  <option value="06 48 00 Wood Frames">
+  <option value="06 49 00 Wood Screens and Shutters">
+  <option value="06 50 00 Structural Plastics">
+  <option value="06 51 00 Structural Plastic Shapes and Plates">
+  <option value="06 60 00 Plastic Fabrications">
+  <option value="06 61 00 Simulated Stone Fabrications">
+  <option value="06 63 00 Plastic Railings">
+  <option value="06 64 00 Plastic Paneling">
+  <option value="06 65 00 Plastic Trim">
+  <option value="06 80 00 Composite Fabrications">
+  <option value="06 81 00 Composite Railings">
+  <option value="06 82 00 Glass-Fiber-Reinforced Plastic">
+  <option value="07 01 00 Operation and Maintenance of Thermal and Moisture Protection">
+  <option value="07 05 00 Common Work Results for Thermal and Moisture Protection">
+  <option value="07 10 00 Dampproofing and Waterproofing">
+  <option value="07 11 00 Dampproofing">
+  <option value="07 12 00 Built-Up Bituminous Waterproofing">
+  <option value="07 13 00 Sheet Waterproofing">
+  <option value="07 14 00 Fluid-Applied Waterproofing">
+  <option value="07 16 00 Cementitious and Reactive Waterproofing">
+  <option value="07 17 00 Bentonite Waterproofing">
+  <option value="07 19 00 Water Repellents">
+  <option value="07 20 00 Thermal Protection">
   <option value="07 21 00 Thermal Insulation">
+  <option value="07 22 00 Roof and Deck Insulation">
+  <option value="07 24 00 Exterior Insulation and Finish Systems">
+  <option value="07 25 00 Weather Barriers">
+  <option value="07 26 00 Vapor Retarders">
+  <option value="07 27 00 Air Barriers">
+  <option value="07 30 00 Steep Slope Roofing">
   <option value="07 31 00 Shingles and Shakes">
+  <option value="07 32 00 Roof Tiles">
+  <option value="07 33 00 Natural Roof Coverings">
+  <option value="07 40 00 Roofing and Siding Panels">
+  <option value="07 41 00 Roof Panels">
+  <option value="07 42 00 Wall Panels">
+  <option value="07 44 00 Faced Panels">
+  <option value="07 46 00 Siding">
+  <option value="07 50 00 Membrane Roofing">
+  <option value="07 51 00 Built-Up Bituminous Roofing">
+  <option value="07 52 00 Modified Bituminous Membrane Roofing">
+  <option value="07 53 00 Elastomeric Membrane Roofing">
   <option value="07 54 00 Thermoplastic Membrane Roofing">
-  <option value="07 62 00 Sheet Metal Flashing">
+  <option value="07 55 00 Protected Membrane Roofing">
+  <option value="07 56 00 Fluid-Applied Roofing">
+  <option value="07 57 00 Coated Foamed Roofing">
+  <option value="07 58 00 Roll Roofing">
+  <option value="07 60 00 Flashing and Sheet Metal">
+  <option value="07 61 00 Sheet Metal Roofing">
+  <option value="07 62 00 Sheet Metal Flashing and Trim">
+  <option value="07 63 00 Sheet Metal Roofing Specialties">
+  <option value="07 65 00 Flexible Flashing">
+  <option value="07 70 00 Roof and Wall Specialties and Accessories">
+  <option value="07 71 00 Roof Specialties">
+  <option value="07 72 00 Roof Accessories">
+  <option value="07 76 00 Roof Pavers">
+  <option value="07 80 00 Fire and Smoke Protection">
+  <option value="07 81 00 Applied Fireproofing">
   <option value="07 84 00 Firestopping">
+  <option value="07 86 00 Smoke Seals">
+  <option value="07 87 00 Smoke Containment Barriers">
+  <option value="07 90 00 Joint Protection">
+  <option value="07 91 00 Preformed Joint Seals">
   <option value="07 92 00 Joint Sealants">
+  <option value="07 95 00 Expansion Control">
+  <option value="08 01 00 Operation and Maintenance of Openings">
+  <option value="08 05 00 Common Work Results for Openings">
+  <option value="08 06 00 Schedules for Openings">
+  <option value="08 10 00 Doors and Frames">
   <option value="08 11 00 Metal Doors and Frames">
+  <option value="08 12 00 Metal Frames">
+  <option value="08 13 00 Metal Doors">
   <option value="08 14 00 Wood Doors">
-  <option value="08 40 00 Entrances and Storefronts">
+  <option value="08 15 00 Plastic Doors">
+  <option value="08 16 00 Composite Doors">
+  <option value="08 17 00 Integrated Door Opening Assemblies">
+  <option value="08 30 00 Specialty Doors and Frames">
+  <option value="08 31 00 Access Doors and Panels">
+  <option value="08 32 00 Sliding Glass Doors">
+  <option value="08 33 00 Coiling Doors and Grilles">
+  <option value="08 34 00 Special Function Doors">
+  <option value="08 34 73 Sound Control Door Assemblies">
+  <option value="08 35 00 Folding Doors and Grilles">
+  <option value="08 36 00 Panel Doors">
+  <option value="08 38 00 Traffic Doors">
+  <option value="08 39 00 Pressure-Resistant Doors">
+  <option value="08 40 00 Entrances, Storefronts and Curtain Walls">
+  <option value="08 41 00 Entrances and Storefronts">
+  <option value="08 42 00 Entrances">
+  <option value="08 43 00 Storefronts">
+  <option value="08 44 00 Curtain Wall and Glazed Assemblies">
+  <option value="08 45 00 Translucent Wall and Roof Assemblies">
   <option value="08 50 00 Windows">
+  <option value="08 51 00 Metal Windows">
+  <option value="08 52 00 Wood Windows">
+  <option value="08 53 00 Plastic Windows">
+  <option value="08 54 00 Composite Windows">
+  <option value="08 56 00 Special Function Windows">
+  <option value="08 60 00 Roof Windows and Skylights">
+  <option value="08 61 00 Roof Windows">
+  <option value="08 62 00 Unit Skylights">
+  <option value="08 63 00 Metal-Framed Skylights">
+  <option value="08 70 00 Hardware">
   <option value="08 71 00 Door Hardware">
+  <option value="08 71 13 Automatic Door Operators">
+  <option value="08 74 00 Access Control Hardware">
+  <option value="08 75 00 Window Hardware">
+  <option value="08 79 00 Hardware Accessories">
   <option value="08 80 00 Glazing">
-  <option value="09 21 00 Gypsum Board Assemblies">
+  <option value="08 81 00 Glass Glazing">
+  <option value="08 83 00 Mirrors">
+  <option value="08 84 00 Plastic Glazing">
+  <option value="08 87 00 Glazing Surface Films">
+  <option value="08 88 00 Special Function Glazing">
+  <option value="08 90 00 Louvers and Vents">
+  <option value="08 91 00 Louvers">
+  <option value="08 95 00 Vents">
+  <option value="09 01 00 Maintenance of Finishes">
+  <option value="09 05 00 Common Work Results for Finishes">
+  <option value="09 06 00 Schedules for Finishes">
+  <option value="09 20 00 Plaster and Gypsum Board">
+  <option value="09 21 00 Plaster and Gypsum Board Assemblies">
   <option value="09 22 00 Supports for Plaster and Gypsum Board">
+  <option value="09 23 00 Gypsum Plastering">
+  <option value="09 24 00 Portland Cement Plastering">
+  <option value="09 25 00 Other Plastering">
+  <option value="09 26 00 Veneer Plastering">
   <option value="09 29 00 Gypsum Board">
+  <option value="09 30 00 Tiling">
+  <option value="09 31 00 Thin-Set Tiling">
+  <option value="09 32 00 Mortar-Bed Tiling">
+  <option value="09 34 00 Waterproofing-Membrane Tiling">
+  <option value="09 35 00 Chemical-Resistant Tiling">
+  <option value="09 50 00 Ceilings">
   <option value="09 51 00 Acoustical Ceilings">
+  <option value="09 53 00 Acoustical Ceiling Suspension Assemblies">
+  <option value="09 54 00 Specialty Ceilings">
+  <option value="09 57 00 Special Function Ceilings">
+  <option value="09 58 00 Integrated Ceiling Assemblies">
+  <option value="09 60 00 Flooring">
+  <option value="09 61 00 Flooring Treatment">
+  <option value="09 62 00 Specialty Flooring">
+  <option value="09 63 00 Masonry Flooring">
+  <option value="09 64 00 Wood Flooring">
   <option value="09 65 00 Resilient Flooring">
+  <option value="09 66 00 Terrazzo Flooring">
+  <option value="09 67 00 Fluid-Applied Flooring">
   <option value="09 68 00 Carpeting">
-  <option value="09 90 00 Paints and Coatings">
+  <option value="09 69 00 Access Flooring">
+  <option value="09 70 00 Wall Finishes">
+  <option value="09 72 00 Wall Coverings">
+  <option value="09 77 00 Special Wall Surfacing">
+  <option value="09 80 00 Acoustic Treatment">
+  <option value="09 81 00 Acoustic Insulation">
+  <option value="09 84 00 Acoustic Room Components">
+  <option value="09 90 00 Painting and Coating">
+  <option value="09 91 00 Painting">
+  <option value="09 93 00 Staining and Transparent Finishing">
+  <option value="09 96 00 High-Performance Coatings">
+  <option value="09 97 00 Special Coatings">
+  <option value="10 10 00 Information Specialties">
+  <option value="10 11 00 Visual Display Units">
+  <option value="10 13 00 Directories">
   <option value="10 14 00 Signage">
-  <option value="10 21 00 Toilet Compartments">
-  <option value="10 28 00 Toilet Accessories">
+  <option value="10 17 00 Telephone Specialties">
+  <option value="10 20 00 Interior Specialties">
+  <option value="10 21 00 Compartments and Cubicles">
+  <option value="10 21 13 Toilet Compartments">
+  <option value="10 22 00 Partitions">
+  <option value="10 22 26 Operable Partitions">
+  <option value="10 26 00 Wall and Door Protection">
+  <option value="10 28 00 Toilet, Bath and Laundry Accessories">
+  <option value="10 30 00 Fireplaces and Stoves">
+  <option value="10 31 00 Manufactured Fireplaces">
+  <option value="10 32 00 Fireplace Specialties">
+  <option value="10 40 00 Safety Specialties">
+  <option value="10 43 00 Emergency Aid Specialties">
+  <option value="10 44 00 Fire Protection Specialties">
+  <option value="10 50 00 Storage Specialties">
+  <option value="10 51 00 Lockers">
+  <option value="10 55 00 Postal Specialties">
+  <option value="10 56 00 Storage Assemblies">
+  <option value="10 57 00 Wardrobe and Closet Specialties">
+  <option value="10 70 00 Exterior Specialties">
+  <option value="10 71 00 Exterior Protection">
+  <option value="10 73 00 Protective Covers">
+  <option value="10 75 00 Flagpoles">
+  <option value="10 80 00 Other Specialties">
+  <option value="10 81 00 Pest Control Devices">
+  <option value="10 82 00 Grilles and Screens">
+  <option value="10 86 00 Security Mirrors and Domes">
   <option value="11 10 00 Vehicle and Pedestrian Equipment">
+  <option value="11 11 00 Vehicle Service Equipment">
+  <option value="11 12 00 Parking Control Equipment">
+  <option value="11 13 00 Loading Dock Equipment">
+  <option value="11 14 00 Pedestrian Control Equipment">
+  <option value="11 20 00 Commercial Equipment">
+  <option value="11 21 00 Retail and Service Equipment">
+  <option value="11 23 00 Commercial Laundry and Dry Cleaning Equipment">
+  <option value="11 24 00 Maintenance Equipment">
+  <option value="11 30 00 Residential Equipment">
+  <option value="11 31 00 Residential Appliances">
+  <option value="11 40 00 Foodservice Equipment">
+  <option value="11 41 00 Foodservice Storage Equipment">
+  <option value="11 42 00 Food Preparation Equipment">
+  <option value="11 44 00 Food Cooking Equipment">
+  <option value="11 46 00 Food Dispensing Equipment">
+  <option value="11 48 00 Foodservice Cleaning and Disposal Equipment">
+  <option value="11 50 00 Educational and Scientific Equipment">
+  <option value="11 52 00 Audio-Visual Equipment">
+  <option value="11 53 00 Laboratory Equipment">
+  <option value="11 57 00 Vocational Shop Equipment">
+  <option value="11 60 00 Entertainment and Recreation Equipment">
+  <option value="11 61 00 Broadcast, Theater and Stage Equipment">
+  <option value="11 66 00 Athletic Equipment">
+  <option value="11 67 00 Recreational Equipment">
+  <option value="11 68 00 Play Field Equipment and Structures">
+  <option value="11 70 00 Healthcare Equipment">
+  <option value="11 71 00 Medical Sterilizing Equipment">
+  <option value="11 72 00 Examination and Treatment Equipment">
+  <option value="11 73 00 Patient Care Equipment">
+  <option value="11 74 00 Dental Equipment">
+  <option value="11 76 00 Operating Room Equipment">
+  <option value="11 78 00 Mortuary Equipment">
+  <option value="11 82 00 Solid Waste Handling Equipment">
   <option value="12 20 00 Window Treatments">
+  <option value="12 21 00 Window Blinds">
+  <option value="12 22 00 Curtains and Drapes">
+  <option value="12 24 00 Window Shades">
+  <option value="12 30 00 Casework">
+  <option value="12 32 00 Manufactured Wood Casework">
+  <option value="12 35 00 Specialty Casework">
+  <option value="12 36 00 Countertops">
+  <option value="12 40 00 Furnishings and Accessories">
+  <option value="12 46 00 Furnishing Accessories">
+  <option value="12 48 00 Rugs and Mats">
+  <option value="12 48 13 Entrance Floor Mats and Frames">
+  <option value="12 50 00 Furniture">
+  <option value="12 51 00 Office Furniture">
+  <option value="12 52 00 Seating">
+  <option value="12 56 00 Institutional Furniture">
+  <option value="12 59 00 Systems Furniture">
+  <option value="12 60 00 Multiple Seating">
+  <option value="12 61 00 Fixed Audience Seating">
+  <option value="12 63 00 Stadium and Arena Seating">
+  <option value="12 66 00 Telescoping Stands">
+  <option value="12 67 00 Pews and Benches">
+  <option value="12 90 00 Other Furnishings">
+  <option value="12 93 00 Site Furnishings">
+  <option value="13 05 00 Common Work Results for Special Construction">
+  <option value="13 10 00 Special Facility Components">
+  <option value="13 11 00 Swimming Pools">
+  <option value="13 12 00 Fountains">
+  <option value="13 17 00 Tubs and Pools">
+  <option value="13 18 00 Ice Rinks">
+  <option value="13 20 00 Special Purpose Rooms">
+  <option value="13 21 00 Controlled Environment Rooms">
+  <option value="13 24 00 Special Activity Rooms">
+  <option value="13 27 00 Vaults">
+  <option value="13 28 00 Athletic Rooms">
+  <option value="13 30 00 Special Structures">
+  <option value="13 31 00 Fabric Structures">
+  <option value="13 33 00 Geodesic Structures">
+  <option value="13 34 00 Fabricated Engineered Structures">
+  <option value="13 36 00 Towers">
+  <option value="13 40 00 Integrated Construction">
+  <option value="13 42 00 Building Modules">
+  <option value="13 44 00 Modular Mezzanines">
+  <option value="13 48 00 Sound, Vibration and Seismic Control">
+  <option value="13 49 00 Radiation Protection">
+  <option value="13 53 00 Meteorological Instrumentation">
+  <option value="14 10 00 Dumbwaiters">
+  <option value="14 11 00 Manual Dumbwaiters">
+  <option value="14 12 00 Electric Dumbwaiters">
   <option value="14 20 00 Elevators">
-  <option value="21 10 00 Water-Based Fire Suppression">
-  <option value="22 10 00 Plumbing Piping">
+  <option value="14 21 00 Electric Traction Elevators">
+  <option value="14 24 00 Hydraulic Elevators">
+  <option value="14 27 00 Custom Elevator Cabs and Doors">
+  <option value="14 28 00 Elevator Equipment and Controls">
+  <option value="14 30 00 Escalators and Moving Walks">
+  <option value="14 31 00 Escalators">
+  <option value="14 32 00 Moving Walks">
+  <option value="14 40 00 Lifts">
+  <option value="14 42 00 Wheelchair Lifts">
+  <option value="14 45 00 Vehicle Lifts">
+  <option value="14 90 00 Other Conveying Equipment">
+  <option value="14 91 00 Facility Chutes">
+  <option value="14 92 00 Pneumatic Tube Systems">
+  <option value="21 05 00 Common Work Results for Fire Suppression">
+  <option value="21 08 00 Commissioning of Fire Suppression">
+  <option value="21 10 00 Water-Based Fire-Suppression Systems">
+  <option value="21 11 00 Facility Fire-Suppression Water-Service Piping">
+  <option value="21 12 00 Fire-Suppression Standpipes">
+  <option value="21 13 00 Fire-Suppression Sprinkler Systems">
+  <option value="21 20 00 Fire-Extinguishing Systems">
+  <option value="21 21 00 Carbon-Dioxide Fire-Extinguishing Systems">
+  <option value="21 22 00 Clean-Agent Fire-Extinguishing Systems">
+  <option value="21 30 00 Fire Pumps">
+  <option value="21 40 00 Fire-Suppression Water Storage">
+  <option value="22 05 00 Common Work Results for Plumbing">
+  <option value="22 05 13 Common Motor Requirements for Plumbing Equipment">
+  <option value="22 05 29 Hangers and Supports for Plumbing Piping and Equipment">
+  <option value="22 05 53 Identification for Plumbing Piping and Equipment">
+  <option value="22 07 00 Plumbing Insulation">
+  <option value="22 08 00 Commissioning of Plumbing">
+  <option value="22 10 00 Plumbing Piping and Pumps">
+  <option value="22 11 00 Facility Water Distribution">
+  <option value="22 13 00 Facility Sanitary Sewerage">
+  <option value="22 14 00 Facility Storm Drainage">
+  <option value="22 15 00 General Service Compressed-Air Systems">
+  <option value="22 30 00 Plumbing Equipment">
+  <option value="22 31 00 Domestic Water Softeners">
+  <option value="22 33 00 Electric Domestic Water Heaters">
+  <option value="22 34 00 Fuel-Fired Domestic Water Heaters">
   <option value="22 40 00 Plumbing Fixtures">
+  <option value="22 41 00 Residential Plumbing Fixtures">
+  <option value="22 42 00 Commercial Plumbing Fixtures">
+  <option value="22 45 00 Emergency Plumbing Fixtures">
+  <option value="22 47 00 Drinking Fountains and Water Coolers">
+  <option value="22 60 00 Gas and Vacuum Systems for Laboratory and Healthcare Facilities">
+  <option value="22 62 00 Vacuum Systems for Laboratory and Healthcare Facilities">
+  <option value="22 63 00 Gas Systems for Laboratory and Healthcare Facilities">
   <option value="23 05 00 Common Work Results for HVAC">
+  <option value="23 05 13 Common Motor Requirements for HVAC Equipment">
+  <option value="23 05 29 Hangers and Supports for HVAC Piping and Equipment">
+  <option value="23 05 48 Vibration and Seismic Controls for HVAC">
+  <option value="23 05 53 Identification for HVAC Piping and Equipment">
+  <option value="23 05 93 Testing, Adjusting and Balancing for HVAC">
   <option value="23 07 00 HVAC Insulation">
+  <option value="23 08 00 Commissioning of HVAC">
+  <option value="23 09 00 Instrumentation and Control for HVAC">
+  <option value="23 09 23 Direct Digital Control System for HVAC">
+  <option value="23 10 00 Facility Fuel Systems">
+  <option value="23 11 00 Facility Fuel Piping">
+  <option value="23 20 00 HVAC Piping and Pumps">
+  <option value="23 21 00 Hydronic Piping and Pumps">
+  <option value="23 22 00 Steam and Condensate Piping and Pumps">
+  <option value="23 23 00 Refrigerant Piping">
+  <option value="23 25 00 HVAC Water Treatment">
+  <option value="23 30 00 HVAC Air Distribution">
   <option value="23 31 00 HVAC Ducts and Casings">
+  <option value="23 33 00 Air Duct Accessories">
+  <option value="23 34 00 HVAC Fans">
+  <option value="23 35 00 Special Exhaust Systems">
+  <option value="23 36 00 Air Terminal Units">
+  <option value="23 37 00 Air Outlets and Inlets">
+  <option value="23 38 00 Ventilation Hoods">
+  <option value="23 40 00 HVAC Air Cleaning Devices">
+  <option value="23 41 00 Particulate Air Filtration">
+  <option value="23 43 00 Electronic Air Cleaners">
+  <option value="23 50 00 Central Heating Equipment">
+  <option value="23 51 00 Breechings, Chimneys and Stacks">
+  <option value="23 52 00 Heating Boilers">
+  <option value="23 54 00 Furnaces">
+  <option value="23 55 00 Fuel-Fired Heaters">
+  <option value="23 56 00 Solar Energy Heating Equipment">
+  <option value="23 57 00 Heat Exchangers for HVAC">
+  <option value="23 60 00 Central Cooling Equipment">
+  <option value="23 61 00 Refrigerant Compressors and Condensing Units">
+  <option value="23 62 00 Packaged Compressor and Condenser Units">
+  <option value="23 64 00 Packaged Water Chillers">
+  <option value="23 65 00 Cooling Towers">
+  <option value="23 70 00 Central HVAC Equipment">
+  <option value="23 72 00 Air-to-Air Energy Recovery Equipment">
+  <option value="23 73 00 Indoor Central-Station Air-Handling Units">
   <option value="23 74 00 Packaged Outdoor HVAC Equipment">
+  <option value="23 75 00 Custom-Packaged Outdoor HVAC Equipment">
+  <option value="23 76 00 Evaporative Air-Cooling Equipment">
+  <option value="23 80 00 Decentralized HVAC Equipment">
+  <option value="23 81 00 Decentralized Unitary HVAC Equipment">
+  <option value="23 82 00 Convection Heating and Cooling Units">
+  <option value="23 83 00 Radiant Heating Units">
+  <option value="23 84 00 Humidity Control Equipment">
+  <option value="25 05 00 Common Work Results for Integrated Automation">
+  <option value="25 10 00 Integrated Automation Network Equipment">
+  <option value="25 30 00 Integrated Automation Instrumentation and Terminal Devices">
+  <option value="25 50 00 Integrated Automation Facility Controls">
+  <option value="25 90 00 Integrated Automation Control Sequences">
   <option value="26 05 00 Common Work Results for Electrical">
-  <option value="26 05 19 Low-Voltage Electrical Power Conductors">
-  <option value="26 20 00 Low-Voltage Electrical Distribution">
+  <option value="26 05 19 Low-Voltage Electrical Power Conductors and Cables">
+  <option value="26 05 26 Grounding and Bonding for Electrical Systems">
+  <option value="26 05 29 Hangers and Supports for Electrical Systems">
+  <option value="26 05 33 Raceways and Boxes for Electrical Systems">
+  <option value="26 05 43 Underground Ducts and Raceways">
+  <option value="26 05 53 Identification for Electrical Systems">
+  <option value="26 05 73 Electrical Power System Studies">
+  <option value="26 08 00 Commissioning of Electrical Systems">
+  <option value="26 09 00 Instrumentation and Control for Electrical Systems">
+  <option value="26 09 23 Lighting Control Devices">
+  <option value="26 10 00 Medium-Voltage Electrical Distribution">
+  <option value="26 12 00 Medium-Voltage Transformers">
+  <option value="26 20 00 Low-Voltage Electrical Transmission">
+  <option value="26 22 00 Low-Voltage Transformers">
+  <option value="26 24 00 Switchboards and Panelboards">
+  <option value="26 27 00 Low-Voltage Distribution Equipment">
+  <option value="26 28 00 Low-Voltage Circuit Protective Devices">
+  <option value="26 29 00 Low-Voltage Controllers">
+  <option value="26 30 00 Facility Electrical Power Generating and Storing Equipment">
+  <option value="26 32 00 Packaged Generator Assemblies">
+  <option value="26 33 00 Battery Equipment">
+  <option value="26 35 00 Power Filters and Conditioners">
+  <option value="26 36 00 Transfer Switches">
+  <option value="26 40 00 Electrical and Cathodic Protection">
+  <option value="26 41 00 Facility Lightning Protection">
+  <option value="26 43 00 Surge Protective Devices">
   <option value="26 50 00 Lighting">
+  <option value="26 51 00 Interior Lighting">
+  <option value="26 52 00 Emergency Lighting">
+  <option value="26 53 00 Exit Signs">
+  <option value="26 55 00 Special Purpose Lighting">
+  <option value="26 56 00 Exterior Lighting">
+  <option value="27 05 00 Common Work Results for Communications">
   <option value="27 10 00 Structured Cabling">
-  <option value="28 10 00 Electronic Access Control">
+  <option value="27 11 00 Communications Equipment Room Fittings">
+  <option value="27 13 00 Communications Backbone Cabling">
+  <option value="27 15 00 Communications Horizontal Cabling">
+  <option value="27 16 00 Communications Connecting Cords, Devices and Adapters">
+  <option value="27 20 00 Data Communications">
+  <option value="27 21 00 Data Communications Network Equipment">
+  <option value="27 30 00 Voice Communications">
+  <option value="27 32 00 Voice Communications Telephone Sets">
+  <option value="27 40 00 Audio-Video Communications">
+  <option value="27 41 00 Audio-Video Systems">
+  <option value="27 51 00 Distributed Audio-Video Communications Systems">
+  <option value="27 52 00 Healthcare Communications and Monitoring Systems">
+  <option value="27 53 00 Distributed Systems">
+  <option value="28 05 00 Common Work Results for Electronic Safety and Security">
+  <option value="28 08 00 Commissioning of Electronic Safety and Security">
+  <option value="28 10 00 Electronic Access Control and Intrusion Detection">
+  <option value="28 13 00 Access Control">
+  <option value="28 16 00 Intrusion Detection">
+  <option value="28 20 00 Electronic Surveillance">
+  <option value="28 23 00 Video Surveillance">
+  <option value="28 26 00 Electronic Personal Protection Systems">
+  <option value="28 30 00 Fire Detection and Alarm">
+  <option value="28 31 00 Fire Detection and Alarm">
+  <option value="28 40 00 Electronic Monitoring and Control">
+  <option value="28 46 00 Fire Detection and Alarm Control Units">
+  <option value="31 05 00 Common Work Results for Earthwork">
   <option value="31 10 00 Site Clearing">
+  <option value="31 11 00 Clearing and Grubbing">
+  <option value="31 13 00 Selective Tree and Shrub Removal and Trimming">
+  <option value="31 14 00 Earth Stripping and Stockpiling">
   <option value="31 20 00 Earth Moving">
-  <option value="32 10 00 Bases Ballasts and Paving">
+  <option value="31 22 00 Grading">
+  <option value="31 23 00 Excavation and Fill">
+  <option value="31 23 19 Dewatering">
+  <option value="31 25 00 Erosion and Sedimentation Controls">
+  <option value="31 30 00 Earthwork Methods">
+  <option value="31 31 00 Soil Treatment">
+  <option value="31 32 00 Soil Stabilization">
+  <option value="31 33 00 Rock Stabilization">
+  <option value="31 37 00 Riprap">
+  <option value="31 40 00 Shoring and Underpinning">
+  <option value="31 41 00 Shoring">
+  <option value="31 43 00 Concrete Raising">
+  <option value="31 45 00 Vibroflotation and Densification">
+  <option value="31 46 00 Needle Beams">
+  <option value="31 48 00 Underpinning">
+  <option value="31 50 00 Excavation Support and Protection">
+  <option value="31 60 00 Special Foundations and Load-Bearing Elements">
+  <option value="31 62 00 Driven Piles">
+  <option value="31 63 00 Bored Piles">
+  <option value="31 66 00 Special Foundations">
+  <option value="31 70 00 Tunneling and Mining">
+  <option value="31 71 00 Tunnel Excavation">
+  <option value="32 01 00 Operation and Maintenance of Exterior Improvements">
+  <option value="32 10 00 Bases, Ballasts and Paving">
+  <option value="32 11 00 Base Courses">
+  <option value="32 12 00 Flexible Paving">
+  <option value="32 13 00 Rigid Paving">
+  <option value="32 14 00 Unit Paving">
+  <option value="32 16 00 Curbs, Gutters, Sidewalks and Driveways">
+  <option value="32 17 00 Paving Specialties">
+  <option value="32 18 00 Athletic and Recreational Surfacing">
+  <option value="32 30 00 Site Improvements">
+  <option value="32 31 00 Fences and Gates">
+  <option value="32 32 00 Retaining Walls">
+  <option value="32 33 00 Site Furnishings">
+  <option value="32 34 00 Fabricated Bridges">
+  <option value="32 70 00 Wetlands">
+  <option value="32 80 00 Irrigation">
+  <option value="32 84 00 Planting Irrigation">
   <option value="32 90 00 Planting">
+  <option value="32 91 00 Planting Preparation">
+  <option value="32 92 00 Turf and Grasses">
+  <option value="32 93 00 Plants">
+  <option value="32 94 00 Planting Accessories">
+  <option value="32 96 00 Transplanting">
+  <option value="33 01 00 Operation and Maintenance of Utilities">
+  <option value="33 05 00 Common Work Results for Utilities">
   <option value="33 10 00 Water Utilities">
+  <option value="33 11 00 Water Utility Distribution Piping">
+  <option value="33 12 00 Water Utility Distribution Equipment">
+  <option value="33 13 00 Disinfecting of Water Utility Distribution">
+  <option value="33 16 00 Water Utility Storage Tanks">
+  <option value="33 20 00 Wells">
+  <option value="33 30 00 Sanitary Sewerage Utilities">
+  <option value="33 31 00 Sanitary Utility Sewerage Piping">
+  <option value="33 34 00 Onsite Wastewater Disposal Systems">
+  <option value="33 40 00 Storm Drainage Utilities">
+  <option value="33 41 00 Storm Utility Drainage Piping">
+  <option value="33 44 00 Storm Utility Water Drains">
+  <option value="33 46 00 Subdrainage">
+  <option value="33 49 00 Storm Drainage Structures">
+  <option value="33 51 00 Natural-Gas Distribution">
+  <option value="33 52 00 Liquid Fuel Distribution">
+  <option value="33 60 00 Hydronic and Steam Energy Utilities">
+  <option value="33 61 00 Hydronic Energy Distribution">
+  <option value="33 63 00 Steam Energy Distribution">
+  <option value="33 70 00 Electrical Utilities">
+  <option value="33 71 00 Electrical Utility Transmission and Distribution">
+  <option value="33 79 00 Site Grounding">
+  <option value="33 81 00 Communications Structures">
+  <option value="34 10 00 Guideways and Railways">
+  <option value="34 11 00 Rail Tracks">
+  <option value="34 21 00 Traction Power">
+  <option value="34 40 00 Transportation Signaling and Control Equipment">
+  <option value="34 41 00 Roadway Signaling and Control Equipment">
+  <option value="34 43 00 Airfield Signaling and Control Equipment">
+  <option value="34 70 00 Transportation Construction and Equipment">
+  <option value="34 71 00 Roadway Construction">
+  <option value="34 72 00 Railway Construction">
+  <option value="34 77 00 Transportation Equipment">
+  <option value="35 11 00 Waterway Construction and Equipment">
+  <option value="35 20 00 Waterway and Marine Construction and Equipment">
+  <option value="35 30 00 Coastal Construction">
+  <option value="35 31 00 Shoreline Protection">
+  <option value="35 40 00 Waterway Construction and Equipment">
+  <option value="35 41 00 Levees">
+  <option value="35 50 00 Marine Construction and Equipment">
+  <option value="35 51 00 Floating Construction">
+  <option value="35 59 00 Marine Specialties">
+  <option value="40 05 00 Common Work Results for Process Interconnections">
+  <option value="40 10 00 Process Piping">
+  <option value="40 20 00 Process Heat Transfer Piping">
+  <option value="40 30 00 Process Gas and Vapor Piping">
+  <option value="40 40 00 Process Liquid Piping">
+  <option value="40 90 00 Instrumentation and Control for Process Systems">
+  <option value="41 10 00 Bulk Material Processing Equipment">
+  <option value="41 20 00 Piece Material Handling Equipment">
+  <option value="41 30 00 Manufacturing Equipment">
+  <option value="41 40 00 Container Processing and Packaging">
+  <option value="41 50 00 Material Storage">
+  <option value="41 60 00 Mobile Plant Equipment">
+  <option value="42 10 00 Process Heating Equipment">
+  <option value="42 20 00 Process Cooling Equipment">
+  <option value="42 30 00 Process Drying Equipment">
+  <option value="43 10 00 Gas Handling Equipment">
+  <option value="43 20 00 Liquid Handling Equipment">
+  <option value="43 30 00 Gas and Liquid Purification Equipment">
+  <option value="43 40 00 Gas and Liquid Storage">
+  <option value="44 10 00 Air Pollution Control Equipment">
+  <option value="44 20 00 Noise Pollution Control Equipment">
+  <option value="44 40 00 Water Treatment Equipment">
+  <option value="44 50 00 Solid Waste Control and Reuse">
+  <option value="45 10 00 Industry-Specific Manufacturing Equipment">
+  <option value="46 05 00 Common Work Results for Water and Wastewater Equipment">
+  <option value="46 20 00 Water and Wastewater Preliminary Treatment Equipment">
+  <option value="46 30 00 Water and Wastewater Chemical Feed Equipment">
+  <option value="46 40 00 Water and Wastewater Clarification Equipment">
+  <option value="46 50 00 Water and Wastewater Biological Treatment Systems">
+  <option value="46 60 00 Water and Wastewater Filtration Equipment">
+  <option value="46 70 00 Water and Wastewater Disinfection Equipment">
+  <option value="46 80 00 Water and Wastewater Residuals Handling">
+  <option value="48 10 00 Electrical Power Generation Equipment">
+  <option value="48 14 00 Solar Energy Electrical Power Generation Equipment">
+  <option value="48 15 00 Wind Energy Electrical Power Generation Equipment">
+  <option value="48 70 00 Electrical Power Generation Testing">
 </datalist>
 </body>
 </html>
