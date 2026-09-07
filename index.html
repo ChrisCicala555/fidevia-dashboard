@@ -4295,8 +4295,8 @@ function renderContacts(){
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
         +editCell(i,'Company',r['Company'],110)+roleCell(r,i)
-        +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+esc(r['Email'])+'</td>'
-        +'<td class="nw">'+esc(fmtPhone(r['Phone']))+flagFor(i,'Phone')+'</td>'
+        +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+mailLink(r['Email'])+'</td>'
+        +'<td class="nw">'+telLink(r['Phone'])+flagFor(i,'Phone')+'</td>'
         +tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')
         +accountCell(r)+accessCell(r)+'<td class="admin-col nw">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
@@ -4381,6 +4381,27 @@ function normPhone(v){ return String(v==null?'':v).replace(/[^0-9]/g,''); }
 // Format US numbers for display without touching what is stored. Anything that
 // is not a recognisable US number — international, an extension, a note — is
 // returned untouched rather than mangled.
+// A directory exists to be acted on. Reading an address off the screen and
+// retyping it into a mail client is the one thing nobody should have to do
+// here, and it is where addresses get mistyped.
+// stopPropagation because some directory rows open a detail panel on click;
+// reaching for the address should not also navigate.
+function mailLink(v, cls){
+  const e=String(v==null?'':v).trim();
+  if(!e) return '<span style="color:var(--muted)">\u2014</span>';
+  return '<a class="'+(cls||'cd-mail')+'" onclick="event.stopPropagation()" href="mailto:'+esc(e)+'">'+esc(e)+'</a>';
+}
+// Worth having on a phone, which is where a superintendent reads this. The
+// label stays formatted; only the href is reduced to digits.
+function telLink(v, cls){
+  const raw=String(v==null?'':v).trim();
+  if(!raw) return '';
+  const shown=fmtPhone(raw);
+  // "ext 204" and the like are not diallable, so they stay as plain text.
+  const d=raw.replace(/[^0-9+]/g,'');
+  if(/[a-zA-Z]/.test(raw) || d.replace(/\D/g,'').length<7) return esc(shown);
+  return '<a class="'+(cls||'cd-mail')+'" onclick="event.stopPropagation()" href="tel:'+esc(d)+'">'+esc(shown)+'</a>';
+}
 function fmtPhone(v){
   const raw=String(v==null?'':v).trim();
   if(!raw) return '';
@@ -6460,7 +6481,7 @@ function renderContactDir(){
       +' oninput="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'this.value':'this.value')+')"'
       +' onchange="cdEdit('+idx+',\''+field+'\','+(field==='phone'?'fmtPhone(this.value)':'this.value')+')">'
     : esc(val||'—');
-  const mailCell=v=>{ const e=String(v||'').trim(); return e ? '<a class="cd-mail" onclick="event.stopPropagation()" href="mailto:'+esc(e)+'">'+esc(e)+'</a>' : '<span style="color:var(--muted)">—</span>'; };
+  const mailCell=v=>mailLink(v);
   const plain=v=>{ const t=String(v||'').trim(); return t?esc(t):'<span style="color:var(--muted)">—</span>'; };
   const rowHtml=c=>{ const idx=CONTACT_DIR.indexOf(c);
     // Email is deliberately never editable: it is the key to the person's
@@ -6477,7 +6498,7 @@ function renderContactDir(){
       +'<td>'+(CD_UNLOCKED?fld(idx,'company',c.company,130):plain(c.company))+'</td>'
       +'<td>'+(CD_UNLOCKED?fld(idx,'role',c.role,130):plain(c.role))+'</td>'
       +'<td class="cd-email" title="'+esc(c.email||'')+'">'+(CD_UNLOCKED?'<span class="cd-locked" title="Set by the person\'s sign-in account and cannot be changed here">'+esc(c.email||'')+'</span>':mailCell(c.email))+'</td>'
-      +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):plain(fmtPhone(c.phone)))+'</td>'
+      +'<td style="white-space:nowrap;">'+(CD_UNLOCKED?fld(idx,'phone',c.phone,120):(telLink(c.phone)||plain('')))+'</td>'
       +(CD_UNLOCKED?'<td style="white-space:nowrap;text-align:right;">'
           +(c.pending?'<button class="btn-secondary" style="padding:5px 11px;font-size:12px;" onclick="event.stopPropagation();cdRemoveContact('+idx+',event)">Remove</button>':'<span style="color:var(--muted)">—</span>')
         +'</td>':'')+'</tr>'; };
@@ -6541,7 +6562,7 @@ async function openPerson(idx){
   document.getElementById('person-head').innerHTML=
     '<span class="ac-avatar" style="width:38px;height:38px;font-size:13px;">'+esc(initialsOf(c.name||c.email))+'</span>'
     +'<div><div style="font-weight:700;color:var(--olive-900);">'+esc(c.name||'—')+'</div>'
-    +'<div style="font-size:13px;color:var(--muted);">'+esc(c.email||'')+(c.company?' · '+esc(c.company):'')+'</div></div>';
+    +'<div style="font-size:13px;color:var(--muted);">'+mailLink(c.email)+(c.company?' · '+esc(c.company):'')+'</div></div>';
   document.getElementById('person-projects').innerHTML='<div style="color:var(--muted);font-size:13px;">Loading…</div>';
   document.getElementById('person-status').textContent='';
   document.getElementById('person-backdrop').classList.add('open');
