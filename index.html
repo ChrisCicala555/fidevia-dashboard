@@ -1091,6 +1091,7 @@
           <div class="panel-header">Contract Milestones</div>
           <table><thead><tr><th>Milestone</th><th>Actual Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
           <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
+          <div id="sched-updated" style="padding:11px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);"></div>
         </div>
       </div>
 
@@ -5149,6 +5150,28 @@ function renderSchedule(){
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
   tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td><td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
+  // Who last touched these dates, and when. A milestone table with no
+  // provenance invites the question at every meeting, and the answer used to
+  // live only in the Box file's revision history.
+  const up=document.getElementById('sched-updated');
+  if(up){
+    const cfg=(currentProject&&currentProject.config)||{};
+    const when=cfg.milestonesUpdatedAt||'';
+    const who=String(cfg.milestonesUpdatedBy||'').trim();
+    if(when){
+      const cm=String(cfg.onsiteCM||'').trim();
+      // The person who saved it is the fact. Their being the project's CM is
+      // worth saying, but not worth asserting when they are somebody else.
+      const role = (cm && who && cm.toLowerCase()===who.toLowerCase()) ? ' \u2014 Onsite CM' : '';
+      up.textContent='Updated as of '+fmtDMY(when)+(who?(' by '+who+role):'')+'.';
+      up.style.display='';
+    } else if(ms.length){
+      up.textContent='No update recorded yet. The next edit will note the date and who made it.';
+      up.style.display='';
+    } else {
+      up.style.display='none';
+    }
+  }
   const s=scheduleStats(); const kp=document.getElementById('sched-kpis');
   if(kp && !document.getElementById('sched-kpi-note')){
     const nt=document.createElement('div'); nt.id='sched-kpi-note';
@@ -5292,7 +5315,14 @@ function addSchRow(){ document.getElementById('sch-rows').insertAdjacentHTML('be
 async function saveSchedule(){
   const rows=[...document.querySelectorAll('#schedule-list .sch-row')].map(r=>({name:(r.querySelector('.sch-name').value||'').trim(),baseline:r.querySelector('.sch-baseline').value,contract:r.querySelector('.sch-contract').value})).filter(m=>m.name);
   const btn=document.getElementById('schedule-save'); btn.disabled=true;
-  try{ currentProject.config=currentProject.config||{}; currentProject.config.milestones=rows; await writeProjectConfig(currentProject.folderId,currentProject.config); showStatus('schedule-status','Saved.','success'); renderSchedule(); renderExec(); setTimeout(closeSchedule,700); }
+  try{
+    currentProject.config=currentProject.config||{};
+    currentProject.config.milestones=rows;
+    try{ await resolveMe(); }catch(e){}
+    currentProject.config.milestonesUpdatedAt=etToday();
+    currentProject.config.milestonesUpdatedBy=(ME_NAME||ME_EMAIL||'').trim();
+    await writeProjectConfig(currentProject.folderId,currentProject.config);
+    showStatus('schedule-status','Saved.','success'); renderSchedule(); renderExec(); setTimeout(closeSchedule,700); }
   catch(e){ showStatus('schedule-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
