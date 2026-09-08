@@ -2218,15 +2218,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Submitted By Email','Archived','Archived By','Archived Date']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -10131,6 +10131,26 @@ function wfApplyDecision(key, row, status, by){
   }
   return '';
 }
+// Who actually approved which step. The tick marks used to be worked out from
+// position alone — every step before the current one was drawn as approved —
+// so when a parallel review group advanced on one person, the whole group
+// showed as signed off. The engineer had approved nothing and the record said
+// they had. This is the record: step index -> who, when, and whether it was
+// Fidevia acting in someone else's place.
+function wfSignedMap(row){
+  try{ const o=JSON.parse((row&&row['Workflow Signed'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
+  catch(e){ return {}; }
+}
+function wfMarkSigned(row, idx, by, override){
+  const m=wfSignedMap(row);
+  m[String(idx)]={by:String(by||''), at:etToday(), override:!!override};
+  row['Workflow Signed']=JSON.stringify(m);
+  return m;
+}
+// Older records predate the signature log. We genuinely do not know who signed
+// those, so they keep the old position-based marks rather than being quietly
+// rewritten — but the panel says so instead of implying attribution.
+function wfHasSignatureRecord(row){ return Object.keys(wfSignedMap(row)).length>0; }
 function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel group containing idx
   let start=idx; while(start>0 && steps[start] && steps[start].parallel) start--;
   let end=start; while(end+1<steps.length && steps[end+1] && steps[end+1].parallel) end++;
@@ -10139,6 +10159,16 @@ function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel gr
 function wfEmailOf(person){
   const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===String(person||'').trim().toLowerCase());
   return c ? String(c['Email']||'').trim().toLowerCase() : '';
+}
+// The steps in this group that belong to the person acting.
+function wfMyStepsIn(steps, gs, ge){
+  const out=[];
+  for(let n=gs;n<=ge;n++){
+    const st=steps[n]||{};
+    const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
+    if(em && em===ME_EMAIL) out.push(n);
+  }
+  return out;
 }
 function wfCanAdvance(steps, gs, ge){
   if(IS_ADMIN) return true;
@@ -10155,25 +10185,49 @@ function wfProgressHTML(key,r,i){
   const done=complete;
   const cur=wfActiveIdx(r);
   const [gs,ge]=wfGroupAt(steps,cur);
+  // Marks come from the signature record, not from position. A step that was
+  // passed without anyone approving it is not an approval, and drawing it as
+  // one put words in a reviewer's mouth.
+  const signed=wfSignedMap(r);
+  const attributed=wfHasSignatureRecord(r);
   const items=steps.map((s,n)=>{
-    const isDone = complete || n<gs;
+    const sig=signed[String(n)];
+    const passed = complete || n<gs;
+    // Older items predate the record; their marks stay as they were rather
+    // than being rewritten to claim nobody signed.
+    const isDone = sig ? true : (!attributed && passed);
+    const isSkipped = !sig && attributed && passed;
     const isCur = !complete && !stopped && n>=gs && n<=ge;
     const isDead = stopped && n>=gs;
     const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
-    const mark = isDone?'\u2713':(isCur?'\u25cf':(isDead?'\u2014':'\u25cb'));
-    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';">'
+    const mark = isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped)?'\u2014':'\u25cb'));
+    const note = sig
+      ? '<span style="font-size:11.5px;color:var(--muted);">approved '+esc(sig.at||'')+(sig.by?(' \u00b7 '+esc(sig.by)):'')+'</span>'
+      : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>' : '');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';flex-wrap:wrap;">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
-      +(s.person?'<span style="color:var(--muted);">— '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
+      +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
-      +'</div>';
-  }).join('');
+      +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;">override</span>':'')
+      +note+'</div>';
+  }).join('')
+  + (!attributed && (complete||gs>0)
+      ? '<div style="font-size:11.5px;color:var(--muted);font-style:italic;padding:3px 0;">Approvals on this item were recorded before each one was attributed.</div>' : '');
   const status = stopped
     ? '<span style="color:var(--muted);font-weight:700;">Closed \u2014 '+esc(String(r['Status']||'decided against'))
       +'. No further signatures are needed.</span>'
     : done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
+  // Fidevia can always act, but not silently: on a step that is not theirs the
+  // button says what it is.
+  const isMine = wfMyStepsIn(steps,gs,ge).length>0;
   const btn = stopped ? ''
-    : (!done && wfCanAdvance(steps,gs,ge)) ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;" onclick="event.stopPropagation();withBusy(event,\'Approving\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">Approve Step &rarr;</button>' : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
+    : (!done && wfCanAdvance(steps,gs,ge))
+      ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;'+(isMine?'':'border-color:#c9a227;color:#8a5a00;')
+        +'" onclick="event.stopPropagation();withBusy(event,\'Recording\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">'
+        +(isMine?'Approve Step &rarr;':'Override \u2014 Record An Approval')+'</button>'
+        +(isMine?'':'<div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-style:italic;">This step is not yours. Recording it stands in for the named reviewer and is logged as an override.</div>')
+      : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
@@ -10214,42 +10268,47 @@ async function wfAdvance(key, i){
   // Fidevia signing on the record still only completes their own step when the
   // group requires everybody.
   const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);
+  await resolveMe();
+  // Whose approval is being recorded. Every group records this now, not just
+  // the ones that require everybody: without it a parallel review group
+  // advanced on one person and the panel drew a tick against all of them.
+  const mine=wfMyStepsIn(steps,gs,ge);
+  let toSign=mine, override=false;
+  if(!toSign.length){
+    if(!IS_ADMIN) return;                        // not theirs to advance
+    // Fidevia is not in this chain. Recording an approval here is standing in
+    // for somebody else, which is a real thing to need — an architect signs on
+    // paper — but it is an override and has to name whose approval it is.
+    let doneNow=[]; try{ doneNow=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+    if(!Array.isArray(doneNow)) doneNow=[];
+    const signed=wfSignedMap(row);
+    const pending=[]; for(let n=gs;n<=ge;n++) if(!doneNow.includes(n) && !signed[String(n)]) pending.push(n);
+    if(!pending.length) return;
+    const nameOf=n=>{ const st=steps[n]||{}; const p=st.person||st.name||('Step '+(n+1));
+      const co=wfCompanyOf(st.person); return co?(p+' ('+co+')'):p; };
+    if(pending.length===1){
+      if(!confirm('Override\n\nYou are not on this step. Record '+nameOf(pending[0])
+        +'\u2019s approval on their behalf?\n\nIt will be logged as an override by you.')) return;
+      toSign=[pending[0]];
+    } else {
+      const pick=prompt('Override — whose approval are you recording?\n\n'
+        +pending.map((n,k)=>(k+1)+'. '+nameOf(n)).join('\n')
+        +'\n\nEnter a number. Each party is recorded separately.');
+      if(pick===null) return;
+      const k=parseInt(pick,10);
+      if(!(k>=1 && k<=pending.length)) return;
+      toSign=[pending[k-1]];
+    }
+    override=true;
+  }
+  let _by=''; try{ const u=await auth0Client.getUser(); _by=u.name||u.email||''; }catch(e){}
+  toSign.forEach(n=>wfMarkSigned(row, n, override?((ME_NAME||ME_EMAIL||'Fidevia')+' (override)'):(_by||ME_NAME||ME_EMAIL||''), override));
+  if(override){ try{ auditLog('Workflow override', key, row,
+    'Recorded '+toSign.map(n=>String((steps[n]&&(steps[n].person||steps[n].name))||('step '+(n+1)))).join(', ')
+    +' on their behalf'); }catch(e){} }
   if(needsAll){
     let doneIdx=[]; try{ doneIdx=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
     if(!Array.isArray(doneIdx)) doneIdx=[];
-    await resolveMe();
-    // One press records one approval. This used to sign every step in the
-    // group for an administrator, so Fidevia approving their own review also
-    // marked the architect's and the engineer's as approved — signatures
-    // nobody gave. The whole point of a requireAll group is that each party
-    // signs for themselves.
-    const mine=[];
-    for(let n=gs;n<=ge;n++){
-      const st=steps[n]||{};
-      const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-      if(em && em===ME_EMAIL) mine.push(n);
-    }
-    let toSign=mine;
-    if(!toSign.length){
-      if(!IS_ADMIN) return;                       // not theirs to sign
-      // Fidevia recording somebody else's approval. Legitimate — an architect
-      // may sign on paper — but it has to be one named person, chosen.
-      const pending=[]; for(let n=gs;n<=ge;n++) if(!doneIdx.includes(n)) pending.push(n);
-      if(!pending.length) return;
-      const nameOf=n=>String((steps[n]&&(steps[n].person||steps[n].name))||('Step '+(n+1)));
-      if(pending.length===1){
-        if(!confirm('Record '+nameOf(pending[0])+'\u2019s approval on their behalf?')) return;
-        toSign=[pending[0]];
-      } else {
-        const pick=prompt('Whose approval are you recording?\n\n'
-          +pending.map((n,k)=>(k+1)+'. '+nameOf(n)).join('\n')
-          +'\n\nEnter a number. Each party signs separately.');
-        if(pick===null) return;
-        const k=parseInt(pick,10);
-        if(!(k>=1 && k<=pending.length)) return;
-        toSign=[pending[k-1]];
-      }
-    }
     toSign.forEach(n=>{ if(!doneIdx.includes(n)) doneIdx.push(n); });
     const outstanding=steps.slice(gs,ge+1).map((st,n)=>doneIdx.includes(gs+n)?null:(st.person||st.name||'')).filter(Boolean);
     row['Workflow Done']=JSON.stringify(doneIdx);

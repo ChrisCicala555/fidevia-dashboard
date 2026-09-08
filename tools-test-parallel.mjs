@@ -50,17 +50,18 @@ ok(span[1] - span[0] > 100, 'the section spans all of its panes rather than endi
   const c = html.split('const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);')[1].split('const next=ge+1;')[0];
   ok(!/\|\| IS_ADMIN\)\{ if\(!doneIdx\.includes\(n\)\) doneIdx\.push\(n\); \}/.test(c),
      'an administrator no longer signs every step in the group at once');
-  ok(/if\(em && em===ME_EMAIL\) mine\.push\(n\);/.test(c),
-     'the caller signs the steps they are actually named on');
+  // Whose approval it is is worked out for every group now, not only the ones
+  // that require everybody — a parallel review group advancing on one person
+  // was the case that still drew a tick against all of them.
+  ok(/const mine=wfMyStepsIn\(steps,gs,ge\);/.test(c), 'the caller signs the steps they are named on');
   ok(/if\(!IS_ADMIN\) return;/.test(c), 'and a non-admin named on none signs nothing');
-  ok(/confirm\('Record '\+nameOf\(pending\[0\]\)/.test(c),
+  ok(/You are not on this step\. Record /.test(c),
      'recording one outstanding approval on someone else’s behalf is confirmed by name');
-  ok(/prompt\('Whose approval are you recording\?/.test(c),
+  ok(/prompt\('Override — whose approval are you recording\?/.test(c),
      'and with several outstanding, whose it is has to be chosen');
   ok(/toSign=\[pending\[k-1\]\]/.test(c), 'one at a time');
-  ok(/Each party signs separately/.test(c), 'which the prompt says out loud');
-  ok(/signatures\s*\n\s*\/\/ nobody gave/.test(c) || /signatures/.test(c),
-     'the reason is recorded next to the code');
+  ok(/Each party is recorded separately/.test(c), 'which the prompt says out loud');
+  ok(/wfMarkSigned\(row, n,/.test(c), 'and the approval is recorded against a name');
 }
 // ── and the same on the server, which is the copy that matters ──
 {

@@ -50,8 +50,13 @@ ok(/reject\|denied\|\\bden\\b\|void\|withdrawn\|cancell\?ed/.test(srv),
 {
   const pg = html.split('function wfProgressHTML')[1].split('async function wfAdvance')[0];
   ok(/const complete=!stopped && wfIsDone\(r\)/.test(pg), 'complete and stopped are told apart');
-  ok(/const isDone = complete \|\| n<gs;/.test(pg),
-     'ticks come from completion, not from the chain merely being closed');
+  // Ticks now come from the signature record rather than from position; a
+  // closed chain still must not draw them. tools-test-wfsign.mjs covers the
+  // attribution itself.
+  ok(/const isDone = sig \? true : \(!attributed && passed\);/.test(pg),
+     'a tick means somebody approved, not that the chain merely moved past');
+  ok(/const passed = complete \|\| n<gs;/.test(pg),
+     'and a closed chain is still not a completed one');
   ok(/isDead/.test(pg), 'steps after the stop are marked as never reached');
   ok(/Closed \\u2014 /.test(pg), 'the panel says closed and why');
   ok(/const btn = stopped \? ''/.test(pg), 'no approve button on a closed chain');

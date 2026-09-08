@@ -1469,6 +1469,16 @@ export default async (req) => {
       if (!headers.includes('Workflow Step')) headers.push('Workflow Step');
       if (!headers.includes('Workflow Status')) headers.push('Workflow Status');
       if (!headers.includes('Workflow Done')) headers.push('Workflow Done');
+      if (!headers.includes('Workflow Signed')) headers.push('Workflow Signed');
+      // Who actually approved which step. Position alone cannot say: a parallel
+      // review group advances on one person, and without this the panel drew a
+      // tick against everyone in it.
+      const markSigned = (idx, byWho, isOverride) => {
+        let m = {};
+        try { const o = JSON.parse(row['Workflow Signed'] || '{}'); if (o && typeof o === 'object' && !Array.isArray(o)) m = o; } catch (e) {}
+        m[String(idx)] = { by: String(byWho || ''), at: new Date().toISOString().slice(0, 10), override: !!isOverride };
+        row['Workflow Signed'] = JSON.stringify(m);
+      };
       const writeRows = async () => {
         const out = headers.join(',') + '\n' + rows.map(r => headers.map(h => csvEsc(r[h])).join(',')).join('\n') + '\n';
         const form = new FormData();
@@ -1485,26 +1495,28 @@ export default async (req) => {
       let doneIdx = []; try { doneIdx = JSON.parse(row['Workflow Done'] || '[]'); } catch (e) {}
       if (!Array.isArray(doneIdx)) doneIdx = [];
 
+      // Whose approval this is. Worked out for every group, not only the ones
+      // that require everybody: a parallel review group advances on one person
+      // and the record has to say which one.
+      const mine = [];
+      for (let n = gs; n <= ge; n++) {
+        const st = steps[n] || {};
+        const direct = String(st.email || '').trim().toLowerCase();
+        const viaName = emailByName[String(st.person || '').trim().toLowerCase()] || '';
+        if ((direct && direct === me) || (viaName && viaName === me)) mine.push(n);
+      }
+      // An administrator used to close the entire group here, which recorded
+      // approvals from parties who had given none. Standing in for someone is
+      // legitimate, but it names whose approval it is and is marked an override.
+      let toSign = mine, isOverride = false;
+      if (!toSign.length) {
+        if (!who.isAdmin) return json({ error: 'This step is not assigned to you.' }, 403);
+        const asked = parseInt(body.stepIndex, 10);
+        if (Number.isInteger(asked) && asked >= gs && asked <= ge) { toSign = [asked]; isOverride = true; }
+        else return json({ error: 'Say whose approval this is: pass stepIndex within the current group.' }, 400);
+      }
+      toSign.forEach(n => markSigned(n, isOverride ? ((who.email || 'Fidevia') + ' (override)') : (who.email || ''), isOverride));
       if (groupNeedsAll) {
-        // Record only the steps this caller is actually named on.
-        const mine = [];
-        for (let n = gs; n <= ge; n++) {
-          const st = steps[n] || {};
-          const direct = String(st.email || '').trim().toLowerCase();
-          const viaName = emailByName[String(st.person || '').trim().toLowerCase()] || '';
-          if ((direct && direct === me) || (viaName && viaName === me)) mine.push(n);
-        }
-        // An administrator used to close the entire group here, which recorded
-        // approvals from parties who had given none: signing Fidevia's own
-        // review also marked the architect's and the engineer's as approved.
-        // Recording somebody else's approval is legitimate, but it has to name
-        // whose, one at a time.
-        let toSign = mine;
-        if (!toSign.length && who.isAdmin) {
-          const asked = parseInt(body.stepIndex, 10);
-          if (Number.isInteger(asked) && asked >= gs && asked <= ge) toSign = [asked];
-          else return json({ error: 'Say whose approval this is: pass stepIndex within the current group.' }, 400);
-        }
         toSign.forEach(n => { if (!doneIdx.includes(n)) doneIdx.push(n); });
       }
       row['Workflow Done'] = JSON.stringify(doneIdx);
