@@ -2502,7 +2502,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER='';
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR='';
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2580,7 +2580,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER='';
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR='';
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -4430,6 +4430,65 @@ function dirMismatches(r){
   });
   return out;
 }
+// Fields the account holder is the authority on. They own their name and their
+// number; Fidevia typing "Dave Chen" for someone who signs up as "David Chen"
+// should not outrank the person themselves.
+//
+// Company is deliberately not here. It is not a fact about the person, it is
+// which contract they sit under on this job, and the two genuinely differ — a
+// consultant may sign up as their own LLC while working under a prime's
+// contract. It also drives how the directory groups people and how the monthly
+// schedule reminder finds who to write to, so a self-reported company adopted
+// silently would produce a reminder that quietly reaches nobody. It is raised
+// for a person to decide instead.
+const DIR_AUTO_ADOPT=[['Name','name'],['Phone','phone']];
+let RECONCILED_FOR='';
+async function reconcileContactsWithAccounts(){
+  if(!IS_ADMIN || viewingAsExternal()) return;        // only Fidevia may write the sheet
+  if(!currentProject || !ACCOUNTS_LOADED) return;
+  // Once per project per load: this writes to Box, and rendering must never
+  // start a write that triggers another render.
+  const key=String(currentProject.folderId||'');
+  if(!key || RECONCILED_FOR===key) return;
+  RECONCILED_FOR=key;
+  const rows=allData.contacts||[]; if(!rows.length) return;
+  const changed=[];
+  rows.forEach(r=>{
+    const em=String(r['Email']||'').trim().toLowerCase();
+    const prof=em?ACCOUNT_PROFILES[em]:null; if(!prof) return;
+    DIR_AUTO_ADOPT.forEach(([field,pk])=>{
+      const theirs=String(prof[pk]||'').trim(); if(!theirs) return;
+      const mine=String(r[field]||'').trim();
+      const same = field==='Phone' ? normPhone(mine)===normPhone(theirs) : normCmp(mine)===normCmp(theirs);
+      if(same) return;
+      // A blank here is not a disagreement, it is a gap — fill it either way.
+      changed.push({name:r['Name']||em, field, from:mine, to:theirs});
+      r[field]=theirs;
+    });
+  });
+  if(!changed.length) return;
+  try{
+    const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
+    const existing=await findFile(fid,mod.log);
+    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    try{ auditLog('Updated contacts from their accounts','contacts',{},
+      changed.map(c=>c.name+': '+c.field+' \u2192 '+c.to).join('; ').slice(0,400)); }catch(e){}
+    renderContacts(); renderAll();
+  }catch(e){
+    // Put the sheet back as it was, so the screen is not showing values that
+    // were never saved.
+    RECONCILED_FOR='';
+    console.warn('Could not adopt account details:', e && e.message);
+  }
+}
+// The company disagreements auto-adoption deliberately left alone.
+function contactCompanyConflicts(){
+  if(!IS_ADMIN || viewingAsExternal()) return [];
+  return (allData.contacts||[]).map((r,i)=>{
+    const m=dirMismatches(r).find(x=>x.field==='Company');
+    return m?{i, name:r['Name']||r['Email']||'A contact', mine:m.mine, theirs:m.theirs}:null;
+  }).filter(Boolean);
+}
 async function adoptDirValue(i, field){
   const r=(allData.contacts||[])[i]; if(!r) return;
   const m=dirMismatches(r).find(x=>x.field===field); if(!m) return;
@@ -4765,6 +4824,9 @@ async function loadAccountEmails(){
     ACCOUNT_PROFILES=d.profiles||{};
     ACCOUNTS_LOADED=true;
     renderContacts();
+    // The sheet and the accounts are both in hand now, which is the only moment
+    // the two can be compared.
+    try{ reconcileContactsWithAccounts(); }catch(e){}
   }catch(e){}
 }
 // The wizard creates contacts before any project is open, so the account list
@@ -5965,6 +6027,17 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   // The monthly schedule is an obligation, not an item, so nothing in the logs
   // would ever surface it. It belongs here rather than in the activity feed:
   // the feed records what happened, this is what is owed.
+  // A signup that disagrees about which company someone works for. Not applied
+  // automatically, because on this job the contract they sit under is Fidevia's
+  // call, not something the person sets by editing their own profile.
+  try{
+    contactCompanyConflicts().forEach(c=>{
+      items.push({
+        label: c.name+' signed up under \u201c'+c.theirs+'\u201d',
+        badge: 'Listed here as '+c.mine,
+        cls:'wf', sec:'contacts'});
+    });
+  }catch(e){}
   if(MY_SCHEDULE && MY_SCHEDULE.state && MY_SCHEDULE.state!=='current'){
     const d=MY_SCHEDULE.due||{};
     const day=parseInt(d.day,10)||25;
