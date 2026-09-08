@@ -8,7 +8,7 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // ── the folders ──
 const FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes','Closeout',
-               'Drawings and Specifications','Schedules','Confidential'];
+               'Drawings and Specifications','Schedules','Fidevia Internal'];
 FOLDERS.forEach(f=>{
   ok(new RegExp("'"+f.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+"'").test(srv.split('const DOCS_FOLDERS')[1].split(']')[0]),
      'the server knows about '+f);
@@ -50,8 +50,10 @@ ok(/if \(op === 'docsEnsureStandard'\)/.test(srv), 'the standard folders can be 
   ok(/if \(party\) \{/.test(c),
      'and anything already in a company folder still counts, so nothing uploaded stops being a schedule');
 }
-ok(/Put the contract name in the file name/.test(html),
-   'the Schedules folder says so, rather than leaving it to be discovered when reminders keep arriving');
+// Naming is no longer the contractor's problem: the Schedule tab files it for
+// them. The folder points there rather than teaching a convention.
+ok(/which files it under the right contract for you/.test(html),
+   'the Schedules folder sends people to where the upload is attributed for them');
 ok(/Fidevia only\. Nobody outside Fidevia can open this folder/.test(html),
    'and Confidential says what it is');
 

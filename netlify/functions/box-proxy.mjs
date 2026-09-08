@@ -444,10 +444,12 @@ async function docsPositionOf(H, folderId){
 // could open. The company-private modules still exist for the material that
 // genuinely is private: pay applications, contractor daily reports, payrolls.
 const DOCS_FOLDERS = ['Testing', 'ASIs', 'Inspections', 'Punch List', 'Meeting Minutes',
-  'Closeout', 'Drawings and Specifications', 'Schedules', 'Confidential'];
+  'Closeout', 'Drawings and Specifications', 'Schedules', 'Fidevia Internal'];
 // The one exception, and the reason the rest can be open: Fidevia keeps a
-// folder nobody outside Fidevia can list, open or write to.
-const DOCS_PRIVATE = 'confidential';
+// folder nobody outside Fidevia can list, open or write to. Named for whose it
+// is rather than for how secret it is — 'Confidential' overstated it, and a
+// contractor who never sees the folder is not reassured by the word anyway.
+const DOCS_PRIVATE = 'fidevia internal';
 function docsIsConfidential(pos){
   return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_PRIVATE;
 }
@@ -1148,7 +1150,7 @@ export default async (req) => {
           count: files.length
         });
       }
-      return json({ companies: out, due, lastScheduleSend });
+      return json({ companies: out, due, lastScheduleSend, schedulesFolderId: shared ? String(shared.id) : '' });
     }
     // Create any of the standard folders a project is missing. Safe to call
     // repeatedly: it adds what is absent and touches nothing that exists.

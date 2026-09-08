@@ -2527,7 +2527,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2605,7 +2605,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -5135,10 +5135,11 @@ function renderDocs(){
       if(/^schedules?$/i.test(String(here).trim())){
         const co=(EXTERNAL?((currentProject&&currentProject.userCompany)||''):'')||'';
         note.style.display='';
-        note.innerHTML='Everyone on the project can see these. Put the contract name in the file name'
-          +(co?(' \u2014 for example <strong>'+esc(co)+' \u2014 September 2026.pdf</strong>'):' \u2014 for example <strong>Summit Builders \u2014 September 2026.pdf</strong>')
-          +'. The monthly reminder reads the name to tell whose schedule is whose.';
-      } else if(/^confidential$/i.test(String(here).trim())){
+        note.innerHTML='Everyone on the project can see these. The easier way to add one is the '
+          +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo(\'schedule\');return false;">Schedule tab</a>, '
+          +'which files it under the right contract for you. A file added here has to carry the contract name itself, '
+          +'because a shared folder cannot say whose it is.';
+      } else if(/^fidevia internal$/i.test(String(here).trim())){
         note.style.display='';
         note.innerHTML='Fidevia only. Nobody outside Fidevia can open this folder, and it is not listed to them.';
       } else { note.style.display='none'; note.innerHTML=''; }
@@ -5326,8 +5327,8 @@ async function docsUpload(input){
 // The folders every project's Documents tab carries. Kept in step with
 // DOCS_FOLDERS in the proxy; the server is what enforces them.
 const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
-  'Closeout','Drawings and Specifications','Schedules','Confidential'];
-const DOCS_CONFIDENTIAL='confidential';
+  'Closeout','Drawings and Specifications','Schedules','Fidevia Internal'];
+const DOCS_CONFIDENTIAL='fidevia internal';
 function renderGenDocs(){}
 function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
@@ -5494,6 +5495,8 @@ let SCHED_UPLOADS=null;
 // When a person last pressed Send, so the panel can say so without reading
 // the whole notification log.
 let SCHED_LAST_SEND=null;
+// The shared Schedules folder, so an upload can be filed without browsing to it.
+let SCHED_FOLDER_ID='';
 // The viewer's own obligation, for the attention panel. Fetched once per
 // project; a contractor may ask about their own company and no other.
 let MY_SCHEDULE=null;
@@ -5522,9 +5525,20 @@ async function renderScheduleUploads(){
   const panel=document.getElementById('sched-uploads-panel');
   const box=document.getElementById('sched-uploads');
   if(!panel||!box) return;
-  if(!IS_ADMIN || viewingAsExternal()){ panel.style.display='none'; return; }
-  const cos=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+  // A contractor sees this too now, showing their own contract only — this is
+  // where they post a schedule. Uploading from here files it under the right
+  // contract, which a shared folder cannot work out for itself.
+  const mineOnly = !IS_ADMIN || viewingAsExternal();
+  const myCo = mineOnly ? String((currentProject&&currentProject.userCompany)||'').trim() : '';
+  if(mineOnly && !myCo){ panel.style.display='none'; return; }
+  let cos=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
     .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
+  if(mineOnly){
+    const norm=x=>String(x||'').trim().toLowerCase();
+    cos=cos.filter(c=>norm(c)===norm(myCo));
+    // Not a prime on this job: nothing is expected of them here.
+    if(!cos.length){ panel.style.display='none'; return; }
+  }
   if(!cos.length){ panel.style.display='none'; return; }
   panel.style.display='';
   if(!SCHED_UPLOADS){
@@ -5534,6 +5548,7 @@ async function renderScheduleUploads(){
         {projectId:currentProject.folderId, companies:cos, since:monthStart()},{quiet:true});
       SCHED_UPLOADS=d.companies||[];
       SCHED_LAST_SEND=d.lastScheduleSend||null;
+      SCHED_FOLDER_ID=d.schedulesFolderId||'';
     }catch(e){
       box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Could not check the schedule folders.</div>';
       return;
@@ -5558,12 +5573,19 @@ async function renderScheduleUploads(){
             +(last.by?(' by '+esc(last.by)):'')+'</div>'):'')+'</span>'
       +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)
         +(r.date?(' \u00b7 '+fmtDMY(r.date)):'')+'</span>'
+      +schedUploadBtn(r.company)
       +(t?schedRowRemind(t):'')+'</div>';
   }).join('')
   +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
-    +'Read from each contract\u2019s Schedules folder under Documents. '
+    +'Read from the shared Schedules folder under Documents. '
     +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
-  +schedChaseFooter();
+  // Chasing is Fidevia's; a contractor sees only their own row, and reminding
+  // themselves would be an odd thing to offer.
+  +(mineOnly
+     ? '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);">'
+       +'Upload the current programme here each month. Everyone on the project can see it.'
+       +' <span class="status-msg" id="sched-chase-status"></span></div>'
+     : schedChaseFooter());
 }
 // Who a chase would go to right now, and why. Kept separate from the render so
 // the button and the confirmation prompt cannot disagree about the list.
@@ -5613,6 +5635,7 @@ function schedNearMiss(company){
 // The control on a single contract's row.
 function schedRowRemind(t){
   if(!t) return '';
+  if(!IS_ADMIN || viewingAsExternal()) return '';   // nobody reminds themselves
   const none=!t.emails.length;
   const label=schedLastFor(t.company)?'Remind again':'Remind';
   let why='Nobody at this company has an email address on the project contact sheet.';
@@ -5630,6 +5653,53 @@ function schedRowRemind(t){
 // Reminding one contract is the ordinary case, and that button lives on its
 // row. This is only for the day several are behind and all of them should be
 // asked at once, so it says exactly who it would write to.
+// Posting a schedule from the row it belongs to. The file is named for the
+// contract and the month before it is sent, so the shared folder can still say
+// whose it is and the monthly check keeps working without anyone thinking
+// about filenames.
+function schedUploadBtn(company){
+  const id='schup-'+String(company||'').replace(/[^A-Za-z0-9]+/g,'-').toLowerCase();
+  return '<label class="btn-secondary sched-remind" style="cursor:pointer;margin:0;" title="Upload the current schedule for '+esc(company)+'">'
+    +'Upload<input type="file" id="'+esc(id)+'" style="display:none" '
+    +'onchange="schedUpload(this,'+esc(JSON.stringify(String(company)))+')"></label>';
+}
+function schedMonthLabel(){
+  const d=new Date();
+  return ['January','February','March','April','May','June','July','August','September',
+          'October','November','December'][d.getMonth()]+' '+d.getFullYear();
+}
+async function schedUpload(input, company){
+  const f=(input.files||[])[0]; if(!f) return;
+  input.value='';
+  if(!SCHED_FOLDER_ID){
+    alert('This project has no Schedules folder yet.\n\nA Fidevia administrator can add one by opening the Documents tab.');
+    return;
+  }
+  const box=document.getElementById('sched-uploads');
+  const say=t=>{ const el=document.getElementById('sched-chase-status'); if(el){ el.textContent=t; el.className='status-msg'; } };
+  const dot=String(f.name).lastIndexOf('.');
+  const ext=dot>0?String(f.name).slice(dot):'';
+  // Named for the contract and the month. The reminder reads the name, and so
+  // does anyone else opening the folder.
+  const name=safeFileName(company+' \u2014 '+schedMonthLabel())+ext;
+  say('Uploading '+name+'\u2026');
+  try{
+    await boxUploadBinary(new File([f], name, {type:f.type}), SCHED_FOLDER_ID, t=>say(t));
+    say('Uploaded. '+company+' is current for '+schedMonthLabel()+'.');
+    try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+name); }catch(e){}
+    SCHED_UPLOADS=null; MY_SCHEDULE=null;
+    await renderScheduleUploads();
+    try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
+  }catch(e){
+    // A same-named file means one has already gone up this month. Replacing it
+    // is the ordinary case, so say that rather than just refusing.
+    if(/already exists/i.test(e.message||'')){
+      say('A schedule for '+schedMonthLabel()+' is already on file. Rename yours, or replace it from the Documents tab.');
+    } else {
+      say('Could not upload: '+(e.message||'unknown error'));
+    }
+  }
+}
 function schedChaseFooter(){
   const sendable=schedChaseSendable();
   const behind=(SCHED_UPLOADS||[]).filter(r=>r.state!=='current').length;
