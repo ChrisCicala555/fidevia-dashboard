@@ -3,7 +3,7 @@ import fs from 'fs';
 const html = fs.readFileSync('index.html','utf8');
 const srv  = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
 const rem  = fs.readFileSync('netlify/functions/reminders.mjs','utf8');
-const log  = fs.readFileSync('netlify/functions/notif-log.mjs','utf8');
+const log  = fs.readFileSync('netlify/functions/lib/notif-log.mjs','utf8');
 const mail = fs.readFileSync('netlify/functions/send-email.js','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
@@ -44,17 +44,17 @@ ok(/classifyKind/.test(log), 'the type is worked out from the subject when nobod
 }
 
 // ── every send path writes to it ──
-ok(/await import\('\.\/notif-log\.mjs'\)/.test(mail),
+ok(/await import\('\.\/lib\/notif-log\.mjs'\)/.test(mail),
    'the browser send path records, despite being CommonJS');
 ok(/await record\(/.test(mail), 'on the way out');
 ok(/ok: false, error: e\.message/.test(mail), 'and when it throws');
 ok(/const ok = res\.status === 202;/.test(mail), 'a SendGrid refusal counts as a failure');
-ok(/import \{ logNotif, readNotifLog \} from '\.\/notif-log\.mjs'/.test(srv),
+ok(/import \{ logNotif, readNotifLog \} from '\.\/lib\/notif-log\.mjs'/.test(srv),
    'the proxy imports it');
 ok(/kind:'access'/.test(srv), 'a grant email is recorded');
 ok(/kind:'access-request'/.test(srv), 'so is a request for access');
 ok(/kind: 'archive'/.test(srv), 'so is the archive warning');
-ok(/import \{ logNotif \} from '\.\/notif-log\.mjs'/.test(rem), 'the nightly job imports it');
+ok(/import \{ logNotif \} from '\.\/lib\/notif-log\.mjs'/.test(rem), 'the nightly job imports it');
 {
   const c = rem.split('async function sendEmail')[1].split('function monthStart')[0];
   ok(/await logNotif\(/.test(c), 'and records every digest and chase it sends');

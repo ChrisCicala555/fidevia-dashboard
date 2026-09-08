@@ -45,5 +45,5 @@ exports.handler = async (event) => {
 
 // This file is CommonJS and the log is an ES module, so the import is dynamic.
 async function record(entry){
-  try { const m = await import('./notif-log.mjs'); await m.logNotif(entry); } catch(e) {}
+  try { const m = await import('./lib/notif-log.mjs'); await m.logNotif(entry); } catch(e) {}
 }

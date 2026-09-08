@@ -1,5 +1,5 @@
 import { getStore } from '@netlify/blobs';
-import { logNotif } from './notif-log.mjs';
+import { logNotif } from './lib/notif-log.mjs';
 
 // Retry Box calls that come back rate-limited. This job runs unattended, so a
 // silent 429 means a reminder is never sent and nobody finds out.

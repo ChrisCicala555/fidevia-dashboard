@@ -1,5 +1,5 @@
 import { getStore } from '@netlify/blobs';
-import { logNotif, readNotifLog } from './notif-log.mjs';
+import { logNotif, readNotifLog } from './lib/notif-log.mjs';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
