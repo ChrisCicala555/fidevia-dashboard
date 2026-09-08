@@ -4782,7 +4782,9 @@ function disciplineOf(personName){
 // The chain says who reviews an RFI, so it says which turnaround applies. The
 // assignee used to decide it, which meant the period was set by whoever it was
 // pointed at rather than by the review the project actually runs.
-function rfiDueDaysFromWorkflow(){
+// Who the RFI chain sends to first, and the contractual period that follows
+// from it. The hint on the form needs the discipline as well as the number.
+function rfiDueFromWorkflow(){
   const d=responseDays();
   const steps=wfStepsFor('rfi','');
   for(const st of (steps||[])){
@@ -4793,12 +4795,13 @@ function rfiDueDaysFromWorkflow(){
     const nm=String((st&&st.name)||'');
     const disc=disciplineOf(st&&st.person)
       || (/architect/i.test(nm) ? 'architect' : /engineer/i.test(nm) ? 'engineer' : '');
-    if(disc) return d[disc];
+    if(disc) return {days:d[disc], disc:disc};
   }
   // Nothing in the chain names a discipline: the architect's period is the
   // default the contract assumes.
-  return d.architect;
+  return {days:d.architect, disc:'architect'};
 }
+function rfiDueDaysFromWorkflow(){ return rfiDueFromWorkflow().days; }
 function rfiDueDays(personName){
   const d=responseDays();
   const disc=disciplineOf(personName);
@@ -6308,13 +6311,16 @@ function openModal(type){
   if(ds){ if(type==='rfi'||type==='co'||type==='submittal'||type==='document'||type==='gendocument'){ ds.value=etToday(); } else if(!ds.value){ ds.value=etToday(); } }
   if(type==='rfi'){
     fillAssignedFirm('rfi','f-assigned');
-    // The contractual turnaround depends on who is answering, so the date is
-    // recalculated whenever the assignee changes rather than typed.
+    // Who answers is set by the workflow, so the turnaround follows from that
+    // rather than from a dropdown. This block still read a select called `sel`
+    // that stopped existing when Goes To became a derived field, and the
+    // ReferenceError killed openModal before it could show anything — the RFI
+    // button did nothing at all, for everybody.
     const due=document.getElementById('f-due'), hint=document.getElementById('f-due-hint');
     const LABEL={gc:'the GC', architect:'an architect', engineer:'an engineer'};
-    // The turnaround is contractual, so the submitter does not get to name it —
-    // the same rule as a submittal's review period. Choosing the assignee is
-    // what moves the date; Fidevia can still override it on a given RFI.
+    // The turnaround is contractual, so the submitter does not name it, the
+    // same rule as a submittal's review period. Fidevia can still override it
+    // on a given RFI.
     const locked = viewingAsExternal();
     if(due){
       due.readOnly = locked;
@@ -6322,22 +6328,13 @@ function openModal(type){
       due.style.background = locked ? '#f0efe9' : '';
       due.style.color      = locked ? '#777' : '';
       due.style.cursor     = locked ? 'not-allowed' : '';
-    }
-    const redue=()=>{
-      if(!due) return;
-      const who=sel?sel.value:'';
-      const days=rfiDueDays(who), disc=disciplineOf(who);
+      const {days, disc} = rfiDueFromWorkflow();
       const d=addDays(etToday(), days);
-      // Locked submitters always get the contractual date, never a stale one.
-      if((locked || !due.dataset.touched) && d) due.value=isoDay(d);
-      if(hint) hint.textContent = who
-        ? days+' calendar days \u2014 the contractual turnaround for '+(LABEL[disc]||'this reviewer')+'.'
-            +(locked ? '' : (due.dataset.touched?' Clear the date to use it.':' You can change it for this RFI.'))
-        : 'Set automatically once the RFI is assigned.';
-    };
-    if(due && !locked) due.onchange=()=>{ due.dataset.touched=due.value?'1':''; redue(); };
-    if(sel){ sel.onchange=redue; sel.oninput=redue; }
-    redue();
+      if(d) due.value=isoDay(d);
+      if(hint) hint.textContent = days+' calendar days \u2014 the contractual turnaround for '
+        +(LABEL[disc]||'this reviewer')+'.'+(locked?'':' You can change it for this RFI.');
+      if(!locked) due.onchange=()=>{ due.dataset.touched=due.value?'1':''; };
+    }
   }
   if(type==='submittal'){
     fillAssignedFirm('sub','f-reviewer');

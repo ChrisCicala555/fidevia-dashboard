@@ -31,9 +31,13 @@ ok(/Set by the workflow, from who reviews first/.test(html), 'it says where the 
 // due date from the workflow
 ok(/function rfiDueDaysFromWorkflow/.test(html), 'the turnaround comes from the chain');
 {
-  const dw = html.split('function rfiDueDaysFromWorkflow')[1].split('function rfiDueDays\\(')[0];
+  // The lookup returns the discipline alongside the days now, so the form can
+  // name who is answering; rfiDueDaysFromWorkflow is the thin wrapper over it.
+  const dw = html.split('function rfiDueFromWorkflow')[1].split('function rfiDueDays(')[0];
   ok(/wfStepsFor\('rfi',''\)/.test(dw), 'it reads the RFI chain');
-  ok(/return d\.architect;/.test(dw), 'and falls back to the architect period');
+  ok(/return \{days:d\.architect, disc:'architect'\};/.test(dw), 'and falls back to the architect period');
+  ok(/function rfiDueDaysFromWorkflow\(\)\{ return rfiDueFromWorkflow\(\)\.days; \}/.test(html),
+     'and the old name still answers, so nothing that used it had to change');
   ok(/engineer/i.test(dw) && /architect/i.test(dw), 'a step named for a discipline counts even with nobody assigned');
 }
 ok(/addDays\(etToday\(\), rfiDueDaysFromWorkflow\(\)\)/.test(html),
