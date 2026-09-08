@@ -1562,6 +1562,68 @@ export default async (req) => {
       if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
       return json({ ok: true, file: await r.json() });
     }
+    // Update one row of a log. External users could add rows through appendRow
+    // but had no way to change one, so replying to an RFI or a submittal went
+    // through uploadText — a whole-file replacement, admin only. The file
+    // uploaded and the row never moved: an architect's review was lost and the
+    // attachment was left orphaned in Box.
+    //
+    // Whole-file replacement stays admin-only. This changes named fields on one
+    // identified row, and only fields a reviewer is entitled to touch.
+    if (op === 'updateRow') {
+      if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
+      const { folderId, filename, idField, idValue } = body;
+      const patch = body.patch;
+      if (!folderId || !filename || !idField || !patch || typeof patch !== 'object') {
+        return json({ error: 'folderId, filename, idField, idValue and patch{} required' }, 400);
+      }
+      const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const items = lr.ok ? ((await lr.json()).entries || []) : [];
+      const existing = items.find(i => i.type === 'file' && i.name === filename);
+      if (!existing) return json({ error: 'log not found' }, 404);
+      const cr = await boxFetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
+      if (!cr.ok) return json({ error: 'Could not read the log' }, 502);
+      const parsed = parseCSVServer(await cr.text());
+      const headers2 = parsed.headers, rows = parsed.rows;
+      const row = rows.find(r => String(r[idField] || '') === String(idValue || ''));
+      if (!row) return json({ error: 'item not found' }, 404);
+
+      if (!who.isAdmin) {
+        const g = await grantFor(t, _grants, 'folder', folderId);
+        const role = normRole(g && g.role);
+        if (!roleMayWrite(role)) return json({ error: 'Access denied' }, 403);
+        // A contractor may only act on their own company's records. The design
+        // team and the owner review the whole job, so the company test does not
+        // apply to them.
+        if (!seesAllCompanies(role)) {
+          const mine = String((g && g.company) || '').trim().toLowerCase();
+          const theirs = String(row['Company'] || row['Contractor'] || '').trim().toLowerCase();
+          if (!mine || !theirs || mine !== theirs) return json({ error: 'Access denied' }, 403);
+        }
+        // Only the fields a review actually writes. Everything else on the row
+        // — the amounts, who submitted it, the dates — is not a reviewer's to
+        // change from here.
+        const ALLOWED = new Set(['Status', 'Version History', 'Attachment File ID', 'Attachment Name',
+          'Workflow Step', 'Workflow Status', 'Workflow Done', 'Workflow Signed',
+          'Response Summary', 'Date Closed', 'Reviewer', 'Assigned To']);
+        for (const k of Object.keys(patch)) if (!ALLOWED.has(k)) return json({ error: 'Field not writable: ' + k }, 403);
+        // The money on a payment application is decided by Fidevia, never by
+        // the party being paid.
+        if (PRIVATE_CSV[filename] && ('Status' in patch)) return json({ error: 'Access denied' }, 403);
+      }
+      for (const k of Object.keys(patch)) {
+        if (!headers2.includes(k)) headers2.push(k);
+        row[k] = String(patch[k] == null ? '' : patch[k]);
+      }
+      const out = headers2.join(',') + '\n' + rows.map(r => headers2.map(h => csvEsc(r[h])).join(',')).join('\n') + '\n';
+      const form = new FormData();
+      form.append('attributes', JSON.stringify({ name: filename }));
+      form.append('file', new Blob([new TextEncoder().encode(out)], { type: 'text/csv' }), filename);
+      const ur = await boxFetch(`https://upload.box.com/api/2.0/files/${existing.id}/content`, { method: 'POST', headers: H, body: form });
+      if (!ur.ok) return json({ error: 'Save failed ' + ur.status }, ur.status);
+      return json({ ok: true });
+    }
     if (op === 'appendRow') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);

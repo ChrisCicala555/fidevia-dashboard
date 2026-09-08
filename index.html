@@ -1649,6 +1649,12 @@
       <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status"></select></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
+      <div class="field" id="reply-next-field" style="display:none;">
+        <label>Send it on to (optional)</label>
+        <select id="reply-next"><option value="">Nobody &mdash; the chain continues as configured</option></select>
+        <p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">
+          Adds one more review step after yours, on this item only. The project's workflow is unchanged.</p>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-primary" id="reply-submit-btn" onclick="submitReply()">Submit</button>
@@ -2009,6 +2015,15 @@ async function boxCreateFolder(name, parentId){
 async function boxUploadText(filename, content, parentId, existingId=null){
   const d=await proxyCall('uploadText',{folderId:parentId, filename, content}); return d.file||{};
 }
+// Replacing the whole log is Fidevia's alone. An external reviewer changes one
+// identified row, and only the fields a review writes — which is what replying
+// to an RFI or a submittal actually is. Before this they went through
+// uploadText and got a 403 after the attachment had already uploaded.
+async function boxUpdateRow(key, row, patch){
+  const mod=MODULES[key], fid=currentProject.folders[key];
+  const idField=REPLY_IDF[key]||({rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]);
+  await proxyCall('updateRow',{ folderId:fid, filename:mod.log, idField, idValue:row[idField], patch });
+}
 
 // ── UPLOADS ──
 // Three paths, chosen by size:
@@ -2218,15 +2233,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Submitted By Email','Archived','Archived By','Archived Date']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -5987,7 +6002,7 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   // Workflow steps sitting with our company
   [['rfi',rfis,'RFI #','rfis'],['co',cos,'CO #','cos'],['sub',subs,'Submittal #','submittals'],['pay_apps',pays,'App #','payapps']].forEach(([key,rows,idf,sec])=>{
     (rows||[]).forEach(r=>{
-      const steps=wfStepsFor(key, rowCompany(r)); if(!steps.length) return;
+      const steps=wfEffectiveSteps(key, r); if(!steps.length) return;
       if(wfIsDone(r)) return;
       if(!String(r['Workflow Status']||'').trim()) return;
       const cur=wfActiveIdx(r); const [gs,ge]=wfGroupAt(steps,cur);
@@ -10085,6 +10100,32 @@ function wfStepsFor(key, company){
   }
   return wfSteps(key);
 }
+// A reviewer can send an item on to somebody the project workflow never named
+// — another engineer, or back to the contractor — as part of finishing their
+// own review. That belongs to the item, not to the project: adding it to the
+// configured chain would change every future RFI on the job. It is recorded on
+// the row and spliced into that row's chain only.
+function wfExtraSteps(row){
+  try{ const a=JSON.parse((row&&row['Workflow Extra'])||'[]'); return Array.isArray(a)?a:[]; }
+  catch(e){ return []; }
+}
+// The chain as it applies to one record: the configured steps, with anything a
+// reviewer added inserted where they added it.
+function wfEffectiveSteps(key, row){
+  const base=wfStepsFor(key, rowCompany(row));
+  const extra=wfExtraSteps(row);
+  if(!extra.length) return base;
+  const out=base.slice();
+  // Later insertions first, so an earlier index still means what it meant when
+  // it was recorded.
+  extra.map((e,idx)=>({e,idx}))
+    .sort((a,b)=> (parseInt(b.e.after,10)||0)-(parseInt(a.e.after,10)||0) || b.idx-a.idx)
+    .forEach(({e})=>{
+      const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
+      out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'', added:true, addedBy:e.addedBy||''});
+    });
+  return out;
+}
 // Company that submitted a row, used to pick its chain.
 function rowCompany(r){
   if(!r) return '';
@@ -10121,7 +10162,7 @@ function wfApplyDecision(key, row, status, by){
   if(!decided && wasStopped){
     // Reopened. Back to the step it was parked on rather than to the start,
     // since the signatures already collected were not undone.
-    const steps=wfStepsFor(key, rowCompany(row));
+    const steps=wfEffectiveSteps(key, row);
     row['Workflow Status']=steps.length?'In Review':'';
     try{ auditLog('Workflow reopened', key, row, String(status||'')+(by?(' by '+by):'')); }catch(e){}
     return 'reopened';
@@ -10173,7 +10214,7 @@ function wfCanAdvance(steps, gs, ge){
   return steps.slice(gs,ge+1).some(s=>{ const e=String(s.email||'').trim().toLowerCase()||wfEmailOf(s.person); return e && e===ME_EMAIL; });
 }
 function wfProgressHTML(key,r,i){
-  const steps=wfStepsFor(key, rowCompany(r)); if(!steps.length) return '';
+  const steps=wfEffectiveSteps(key, r); if(!steps.length) return '';
   // A stopped chain is not a finished one. wfIsDone covers both so archiving
   // and 'is this still open' agree, but the tick marks must not claim every
   // step was signed when the item was killed partway through.
@@ -10218,7 +10259,11 @@ function wfProgressHTML(key,r,i){
   // Fidevia can always act, but not silently: on a step that is not theirs the
   // button says what it is.
   const isMine = wfMyStepsIn(steps,gs,ge).length>0;
+  // The reviewer's own step is handled by Review & Continue above, which
+  // records what they said as well as that they said it. Offering a bare
+  // Approve alongside it invited an approval with no review attached.
   const btn = stopped ? ''
+    : isMine ? ''
     : (!done && wfCanAdvance(steps,gs,ge))
       ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;'+(isMine?'':'border-color:#c9a227;color:#8a5a00;')
         +'" onclick="event.stopPropagation();withBusy(event,\'Recording\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">'
@@ -10231,7 +10276,7 @@ function wfProgressHTML(key,r,i){
 }
 async function wfAdvance(key, i){
   const _r0=(allData[key]||[])[i];
-  const steps=wfStepsFor(key, rowCompany(_r0)); if(!steps.length) return;
+  const steps=wfEffectiveSteps(key, _r0); if(!steps.length) return;
   // The decision went against this item. Signing it now would carry a dead
   // change order through to an owner signature.
   if(wfIsStopped(_r0)){
@@ -10455,7 +10500,17 @@ function verThreadRows(key,r,i,colspan){
         +dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
     +'</div>';
-  const reply = '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
+  // When the chain is sitting on this reader, replying and approving are one
+  // act, not two. Splitting them let somebody write their review and leave the
+  // item parked on themselves — which is what a reviewer saw as two buttons
+  // where they expected one.
+  const _rvSteps=wfEffectiveSteps(key,r);
+  const _rvCur=wfActiveIdx(r), _rvGrp=_rvSteps.length?wfGroupAt(_rvSteps,_rvCur):[0,0];
+  const _rvIsReviewer = _rvSteps.length && !wfIsDone(r) && !wfIsStopped(r)
+    && wfMyStepsIn(_rvSteps,_rvGrp[0],_rvGrp[1]).length>0;
+  const reply = _rvIsReviewer
+    ? '<button class="btn-primary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+',true)">Review &amp; Continue &rarr;</button>'
+    : '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
   // Older records carry a free-text Response Summary. Nothing writes it now —
   // replies are versions — but where one exists it belongs with its item rather
   // than in a separate note under the table.
@@ -10471,10 +10526,31 @@ function verThreadRows(key,r,i,colspan){
     +vs.map(line).join('')+respHTML+reply+wfProgressHTML(key,r,i)+'</td></tr>';
 }
 function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i); if(!el) return; const open=el.style.display!=='none'; el.style.display=open?'none':'table-row'; const arw=document.getElementById('arw-'+key+'-'+i); if(arw) arw.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
-function openReply(key,i){
-  REPLY_CTX={key,i};
+// advance: this is the reviewer completing their step, so the chain moves on
+// when they submit. Two buttons for one decision let a review be written while
+// the item sat waiting on the person who had just answered it.
+function openReply(key,i,advance){
+  REPLY_CTX={key,i,advance:!!advance};
   const r=(allData[key]||[])[i]||{};
-  document.getElementById('reply-title').textContent='Reply — '+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
+  document.getElementById('reply-title').textContent=(advance?'Review — ':'Reply — ')+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
+  // Sending it on is a reviewer's call, so it appears only when reviewing.
+  {
+    const nf=document.getElementById('reply-next-field'), ns=document.getElementById('reply-next');
+    if(nf && ns){
+      nf.style.display = advance ? '' : 'none';
+      if(advance){
+        const seen=new Set(); const opts=[];
+        (allData.contacts||[]).forEach(c=>{
+          const nm=String(c['Name']||'').trim(); const em=String(c['Email']||'').trim();
+          if(!nm || seen.has(nm.toLowerCase())) return; seen.add(nm.toLowerCase());
+          opts.push('<option value="'+esc(nm)+'" data-email="'+esc(em)+'">'+esc(nm)
+            +(c['Company']?(' \u2014 '+esc(c['Company'])):'')+'</option>');
+        });
+        ns.innerHTML='<option value="">Nobody \u2014 the chain continues as configured</option>'+opts.join('');
+        ns.value='';
+      }
+    }
+  }
   const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
   { const sf=document.getElementById('reply-status-field'); if(sf) sf.style.display=EXTERNAL?'none':''; }
   if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
@@ -10509,22 +10585,93 @@ async function submitReply(){
     row['Version History']=JSON.stringify(vs);
     row['Attachment File ID']=newFid; row['Attachment Name']=newName; row['Status']=status;
     const _wfChange=wfApplyDecision(key, row, status, by);
+    // A reviewer completing their step advances the chain in the same action.
+    // Two buttons for one decision meant the review could be written and the
+    // chain left sitting on the person who had just answered.
+    let _advanced=false, _added='';
+    if(REPLY_CTX && REPLY_CTX.advance && _wfChange!=='stopped'){
+      try{ _added=applyReviewAdvance(key,row,by); _advanced=true; }catch(e){ console.warn('advance:',e.message); }
+    }
     prog.textContent='Updating log…';
-    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    if(EXTERNAL){
+      await boxUpdateRow(key, row, {
+        'Status':row['Status'], 'Version History':row['Version History'],
+        'Attachment File ID':row['Attachment File ID'], 'Attachment Name':row['Attachment Name'],
+        'Workflow Step':row['Workflow Step']||'', 'Workflow Status':row['Workflow Status']||'',
+        'Workflow Done':row['Workflow Done']||'', 'Workflow Signed':row['Workflow Signed']||''
+      });
+    } else {
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+    }
     allData[key]=rows;
     let _rEmail=''; try{ const u=await auth0Client.getUser(); _rEmail=u.email||''; }catch(e){}
     const _rOpts={ replyTo:_rEmail||undefined, extraTo:(_rEmail?[_rEmail]:[]) };
+    if(REPLY_CTX && REPLY_CTX._addedEmail) _rOpts.extraTo.push(REPLY_CTX._addedEmail);
     if(fileInput.files&&fileInput.files[0] && fileInput.files[0].size < 9*1024*1024){
       try{ const b64=await fileToB64(fileInput.files[0]); _rOpts.attachments=[{filename:fileInput.files[0].name, content:b64, type:fileInput.files[0].type||'application/octet-stream'}]; }catch(e){}
     }
     try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name), _rOpts); }catch(e){}
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
-    if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
+    else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
+    else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
+    else if(_advanced) alert('Review recorded and the chain has moved on.');
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
 }
 
+// Completing a review: record the signature, honour anyone the reviewer chose
+// to send it on to, and move the chain. Returns the name added, if any.
+//
+// This is deliberately the same rule the Approve button follows — a reviewer
+// signs their own step and nobody else's — so a review written here and an
+// approval pressed there cannot disagree about who said yes.
+function applyReviewAdvance(key, row, by){
+  const steps=wfEffectiveSteps(key,row);
+  if(!steps.length) return '';
+  const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
+  const mine=wfMyStepsIn(steps,gs,ge);
+  const toSign = mine.length ? mine : (IS_ADMIN ? [gs] : []);
+  if(!toSign.length) return '';
+  toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length));
+
+  // Anyone the reviewer is sending it on to goes in directly after this group,
+  // so they are next rather than last.
+  let added='';
+  const ns=document.getElementById('reply-next');
+  const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
+  if(pick){
+    const opt=[...ns.options].find(o=>o.value===pick);
+    const email=(opt&&opt.getAttribute('data-email'))||'';
+    const extra=wfExtraSteps(row);
+    extra.push({after:ge, name:'Further Review', person:pick, email:email,
+                addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday()});
+    row['Workflow Extra']=JSON.stringify(extra);
+    added=pick;
+    // They are next in the chain, so they are told directly rather than
+    // relying on them holding the project's notify flag.
+    if(REPLY_CTX && email) REPLY_CTX._addedEmail=email;
+    try{ auditLog('Review step added', key, row, pick+' added after '+(steps[ge]&&steps[ge].name||'this step')); }catch(e){}
+  }
+
+  // Recomputed: the chain is a step longer if one was just added, and the
+  // group must still be satisfied before anything moves.
+  const after=wfEffectiveSteps(key,row);
+  const needsAll=after.slice(gs,ge+1).some(st=>st&&st.requireAll);
+  if(needsAll){
+    let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+    if(!Array.isArray(done)) done=[];
+    toSign.forEach(n=>{ if(!done.includes(n)) done.push(n); });
+    row['Workflow Done']=JSON.stringify(done);
+    const outstanding=after.slice(gs,ge+1).some((_,n)=>!done.includes(gs+n));
+    if(outstanding){ row['Workflow Status']='In Review'; return added; }
+    row['Workflow Done']=JSON.stringify([]);
+  }
+  const next=ge+1;
+  if(next>=after.length){ row['Workflow Step']=String(after.length-1); row['Workflow Status']='Complete'; }
+  else { row['Workflow Step']=String(next); row['Workflow Status']='In Review'; }
+  return added;
+}
 function notifyContacts(notifyField, subject, bodyHTML, opts){
   opts=opts||{};
   const contacts = allData.contacts||[];
