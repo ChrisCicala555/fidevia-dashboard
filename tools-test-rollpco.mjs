@@ -6,7 +6,7 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // naming
 ok(/>\+ New PCO</.test(html), 'the button says PCO, which is what contractors raise');
-ok(/co:\{title:'Submit New PCO'/.test(html), 'and so does the form');
+ok(/co:\{title:'New PCO'/.test(html), 'and so does the form, matching the button that opens it');
 
 // candidates
 const cc = html.split('function coRollCandidates')[1].split('function coGenRollList')[0];
