@@ -1209,17 +1209,7 @@
 
       <!-- BUDGET -->
       <!-- DOCUMENTS -->
-      <div class="section" id="section-documents">
-        <div class="page-title-row">
-          <h2>Drawings &amp; Specifications</h2>
-          <button class="btn-add" onclick="openModal('document')">+ Upload Document</button>
-        </div>
-        <div class="panel">
-          <div class="panel-header">Drawings, Specs &amp; Contracts</div>
-          <table><thead><tr><th>Document</th><th>Category</th><th>Version</th><th>Date</th><th>Visible To</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-documents"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
-        </div>
-      </div>
+      
 
       <!-- DOCUMENTS (general) -->
       <div class="section" id="section-gendocs">
@@ -1234,11 +1224,15 @@
         </div>
         <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
         <div id="docs-folder-note" style="display:none;background:var(--khaki-100);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
-        <div class="admin-only" style="margin-bottom:14px;font-size:12.5px;color:var(--muted);">
-          Meeting minutes and drawings filed before this tab took them over are still on record:
-          <a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo('meetings');return false;">older meeting minutes</a> &middot;
-          <a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo('documents');return false;">older drawings &amp; specifications</a>.
-          Move anything worth keeping into the folders below; those two lists are no longer in the sidebar.
+        <div class="admin-only" id="docs-catchup" style="margin-bottom:14px;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;font-size:13px;color:var(--olive-900);max-width:760px;display:none;">
+          <strong>Bring this project up to date.</strong>
+          Adds any of the standard folders this project is missing, and moves anything filed under the old
+          Meeting Minutes and Drawings &amp; Specifications tabs into the folders that replaced them.
+          Nothing is deleted, and a file already at the destination is left alone.
+          <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button class="btn-secondary" id="btn-docs-catchup" onclick="docsCatchUp()">Bring It Up To Date</button>
+            <span class="status-msg" id="docs-catchup-status"></span>
+          </div>
         </div>
         <div id="docs-note" style="display:none;background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:11px 15px;margin-bottom:14px;font-size:13px;color:var(--muted);"></div>
         <div class="cd-card">
@@ -1324,17 +1318,7 @@
       </div>
 
       <!-- MEETING MINUTES -->
-      <div class="section hide-contractor" id="section-meetings">
-        <div class="page-title-row">
-          <h2>Meeting Minutes</h2>
-          <button class="btn-add" onclick="openModal('meeting')">+ Add Minutes</button>
-        </div>
-        <div class="panel">
-          <div class="panel-header">Job Conference &amp; OAC Minutes</div>
-          <table><thead><tr><th>Date</th><th>Meeting Type</th><th>Attendees</th><th>Summary</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
-          <tbody id="tbody-meetings"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
-        </div>
-      </div>
+      
 
       <!-- BOARD REPORTS -->
       <div class="section hide-contractor" id="section-board">
@@ -5145,6 +5129,8 @@ function renderDocs(){
       } else { note.style.display='none'; note.innerHTML=''; }
     }
   }
+  { const cu=document.getElementById('docs-catchup');
+    if(cu) cu.style.display=(IS_ADMIN && !viewingAsExternal() && !docsHere()) ? '' : 'none'; }
   const cr=document.getElementById('docs-crumbs');
   if(cr){
     let html='<a href="#" onclick="docsGoTo(0);return false;" style="color:var(--olive-700);font-weight:600;text-decoration:none;">Documents</a>';
@@ -5329,6 +5315,34 @@ async function docsUpload(input){
 const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
   'Closeout','Drawings and Specifications','Schedules','Fidevia Internal'];
 const DOCS_CONFIDENTIAL='fidevia internal';
+// One action for a project built before the Documents tab took this shape:
+// create what is missing, then move what the two retired tabs were holding.
+// Safe to run twice — the folder step skips what exists and the move step
+// skips a name already at the destination.
+async function docsCatchUp(){
+  if(!IS_ADMIN || viewingAsExternal() || !currentProject) return;
+  const btn=document.getElementById('btn-docs-catchup'); if(btn) btn.disabled=true;
+  const say=(t,c)=>showStatus('docs-catchup-status', t, c||'');
+  say('Working\u2026');
+  try{
+    const st=await proxyCall('docsEnsureStandard',{projectId:currentProject.folderId});
+    const mv=await proxyCall('docsMigrateLegacy',{projectId:currentProject.folderId});
+    const made=(st&&st.made)||[], moved=(mv&&mv.moved)||[], skipped=(mv&&mv.skipped)||[];
+    const bits=[];
+    bits.push(made.length ? ('Created '+made.length+' folder'+(made.length===1?'':'s')+': '+made.join(', ')+'.')
+                          : 'All the standard folders were already there.');
+    bits.push(moved.length ? ('Moved '+moved.length+' item'+(moved.length===1?'':'s')+' across.')
+                           : 'Nothing needed moving.');
+    say(bits.join(' '), 'success');
+    try{ auditLog('Brought documents up to date','gendocs',{},
+      (made.join(', ')||'no new folders')+' \u00b7 '+(moved.length+' moved')); }catch(e){}
+    // Anything the move could not do is worth reading, not swallowing.
+    if(skipped.length) console.warn('Left alone:\n - '+skipped.join('\n - '));
+    DOCS_PATH.length=0;
+    await loadDocs();
+  }catch(e){ say('Could not finish: '+(e.message||'unknown error'), 'error'); }
+  if(btn) btn.disabled=false;
+}
 function renderGenDocs(){}
 function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;

@@ -1177,6 +1177,50 @@ export default async (req) => {
       }
       return json({ ok: true, made, folders: DOCS_FOLDERS, docsFolderId: docs.id });
     }
+    // Move what was filed under the old Meeting Minutes and Drawings tabs into
+    // the Documents folders that replaced them. Those tabs are gone, and their
+    // Box folders would otherwise hold records nobody could reach from the
+    // dashboard. Nothing is deleted: files move, the old index CSVs stay where
+    // they are, and a name that already exists at the destination is left
+    // alone rather than overwritten.
+    if (op === 'docsMigrateLegacy') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const projectId = String(body.projectId || '');
+      if (!projectId) return json({ error: 'projectId required' }, 400);
+      const listOf = async id => {
+        const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(id)}/items?limit=1000&fields=id,name,type`, { headers: H });
+        return r.ok ? ((await r.json()).entries || []) : [];
+      };
+      const top = await listOf(projectId);
+      const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX + ' '));
+      if (!docs) return json({ error: 'This project has no Documents folder.' }, 404);
+      const inDocs = await listOf(docs.id);
+      const findDoc = name => inDocs.find(e => e.type === 'folder'
+        && String(e.name || '').trim().toLowerCase() === name.toLowerCase());
+      const PAIRS = [
+        { prefix: '07', into: 'Drawings and Specifications', skip: 'document index.csv' },
+        { prefix: '10', into: 'Meeting Minutes', skip: 'meeting minutes.csv' }
+      ];
+      const moved = [], skipped = [];
+      for (const pair of PAIRS) {
+        const src = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(pair.prefix + ' '));
+        const dest = findDoc(pair.into);
+        if (!src || !dest) { skipped.push(pair.into + ': ' + (!src ? 'nothing filed under it' : 'no destination folder')); continue; }
+        const items = await listOf(src.id);
+        const have = new Set((await listOf(dest.id)).map(e => String(e.name || '').trim().toLowerCase()));
+        for (const it of items) {
+          const nm = String(it.name || '').trim();
+          if (!nm || nm.toLowerCase() === pair.skip) continue;      // the index stays
+          if (have.has(nm.toLowerCase())) { skipped.push(pair.into + ' / ' + nm + ': already there'); continue; }
+          const url = `https://api.box.com/2.0/${it.type === 'folder' ? 'folders' : 'files'}/${it.id}`;
+          const r = await boxFetch(url, { method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent: { id: String(dest.id) } }) });
+          if (r.ok) { moved.push(pair.into + ' / ' + nm); have.add(nm.toLowerCase()); }
+          else skipped.push(pair.into + ' / ' + nm + ': Box ' + r.status);
+        }
+      }
+      return json({ ok: true, moved, skipped });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);

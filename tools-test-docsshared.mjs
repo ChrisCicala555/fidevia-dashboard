@@ -61,8 +61,25 @@ ok(/Fidevia only\. Nobody outside Fidevia can open this folder/.test(html),
 ok(!/data-section="documents">Drawings/.test(html), 'Drawings & Specifications is off the sidebar');
 ok(!/data-section="meetings">Meeting Minutes/.test(html), 'and so is Meeting Minutes');
 ok(/data-section="gendocs">Documents/.test(html), 'Documents remains');
-ok(/older meeting minutes/.test(html) && /older drawings/.test(html),
-   'and what was already filed under them is still reachable, so the move strands nothing');
+// The two tabs are gone entirely now, so what they held is moved rather than
+// merely linked to.
+ok(!/id="section-meetings"/.test(html) && !/id="section-documents"/.test(html),
+   'the two retired tabs are removed, not just hidden');
+ok(/if \(op === 'docsMigrateLegacy'\)/.test(srv),
+   'and there is an action that moves what they were holding');
+{
+  const c = srv.split("if (op === 'docsMigrateLegacy')")[1].split("if (op === 'docsList')")[0];
+  ok(/if \(!who\.isAdmin\)/.test(c), 'run by Fidevia only');
+  ok(/prefix: '07'/.test(c) && /prefix: '10'/.test(c), 'from both old module folders');
+  ok(/if \(have\.has\(nm\.toLowerCase\(\)\)\)/.test(c),
+     'a name already at the destination is left alone rather than overwritten');
+  ok(/nm\.toLowerCase\(\) === pair\.skip/.test(c), 'the old index CSV stays where it is');
+  ok(/skipped\.push/.test(c), 'and anything it could not move is reported rather than swallowed');
+  ok(!/delete/i.test(c), 'nothing is deleted');
+}
+ok(/function docsCatchUp\(\)/.test(html), 'Fidevia can run it from the tab');
+ok(/Nothing is deleted, and a file already at the destination is left alone/.test(html),
+   'and is told what it will and will not do before pressing it');
 
 // ── it still runs ──
 const b = bootPage('index.html'); b.run(SEED);
