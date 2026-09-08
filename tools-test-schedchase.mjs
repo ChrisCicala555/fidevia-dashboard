@@ -15,8 +15,12 @@ ok(/\^schedules\?\$\/i/.test(op), 'in a Schedules folder, singular or plural');
 ok(/created_at/.test(op), 'reading when each file arrived');
 ok(/files\.sort/.test(op) && /localeCompare/.test(op), 'newest first');
 ok(/when >= since/.test(op), 'and comparing against the start of the month');
-ok(/'no-folder'/.test(op) && /'no-schedules-folder'/.test(op) && /'never'/.test(op),
+// 'no-folder' went with the per-company tree: there is one shared Schedules
+// folder now, so either the project has it or it does not.
+ok(/'no-schedules-folder'/.test(op) && /'never'/.test(op) && /'no-documents'/.test(op),
    'the ways of having nothing are told apart');
+ok(/norm\(f\.name\)\.includes\(norm\(co\)\)/.test(op),
+   'and a shared folder is read by filename, since the folder cannot say whose a file is');
 ok(/created_at is the honest/.test(op), 'and why upload date is the measure');
 
 // ── the panel ──

@@ -1008,11 +1008,9 @@
     <!-- Not owner-hidden: an Owner sees Meeting Minutes and Board Reports, and
          without the heading those two sat under no section at all. -->
     <div class="nav-section-label">Recordkeeping</div>
-    <div class="nav-item" data-section="documents">Drawings &amp; Specifications</div>
     <div class="nav-item" data-section="gendocs">Documents</div>
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Reports</div>
     <div class="nav-item" data-section="cdaily">Contractor Daily Reports</div>
-    <div class="nav-item owner-ok hide-contractor" data-section="meetings">Meeting Minutes</div>
     <div class="nav-item owner-ok hide-contractor" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-section-label">Financial Management</div>
     <div class="nav-item owner-ok" data-section="financials">Financial Summary</div>
@@ -1235,6 +1233,13 @@
           </div>
         </div>
         <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
+        <div id="docs-folder-note" style="display:none;background:var(--khaki-100);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
+        <div class="admin-only" style="margin-bottom:14px;font-size:12.5px;color:var(--muted);">
+          Meeting minutes and drawings filed before this tab took them over are still on record:
+          <a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo('meetings');return false;">older meeting minutes</a> &middot;
+          <a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo('documents');return false;">older drawings &amp; specifications</a>.
+          Move anything worth keeping into the folders below; those two lists are no longer in the sidebar.
+        </div>
         <div id="docs-note" style="display:none;background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:11px 15px;margin-bottom:14px;font-size:13px;color:var(--muted);"></div>
         <div class="cd-card">
           <table><thead><tr>
@@ -2522,7 +2527,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR='';
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2600,7 +2605,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR='';
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -4970,6 +4975,7 @@ function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
 // Documents are browsed live from Box rather than indexed. Box already is the
 // filing system; the dashboard navigates it and decides who may see what.
 let DOCS_PATH=[];            // [{id,name}] from the Documents root inward
+let DOCS_STD_DONE=false;
 let DOCS_ENTRIES=[], DOCS_AT_ROOT=true;
 
 function docsRootId(){ return (currentProject&&currentProject.folders&&currentProject.folders.gendocs)||''; }
@@ -5087,6 +5093,15 @@ async function loadDocs(){
     }
   }
   tb.innerHTML='<tr class="loading-row"><td colspan="4">Loading…</td></tr>';
+  // Older projects predate the standard set, and a project created before a
+  // folder was added to it would be missing that one. Filled in on sight,
+  // once, by Fidevia.
+  if(IS_ADMIN && !viewingAsExternal() && !DOCS_STD_DONE && !docsHere()){
+    DOCS_STD_DONE=true;
+    try{ const st=await proxyCall('docsEnsureStandard',{projectId:currentProject.folderId},{quiet:true});
+      if(st && (st.made||[]).length) try{ auditLog('Set up standard document folders','gendocs',{}, st.made.join(', ')); }catch(e){}
+    }catch(e){ console.warn('standard folders:', e.message); }
+  }
   try{
     const d=await proxyCall('docsList',{folderId:docsHere()||root});
     DOCS_ENTRIES=d.entries||[]; DOCS_AT_ROOT=!!d.atRoot;
@@ -5110,6 +5125,25 @@ function fmtBytes(n){
 function renderDocs(){
   const tb=document.getElementById('tbody-docs'); if(!tb) return;
   // breadcrumbs
+  // The Schedules folder is shared, so the folder no longer says whose a file
+  // is — the name has to, and the monthly reminder reads it. Said here rather
+  // than left to be discovered when a reminder keeps arriving.
+  {
+    const here=(DOCS_PATH[DOCS_PATH.length-1]||{}).name||'';
+    const note=document.getElementById('docs-folder-note');
+    if(note){
+      if(/^schedules?$/i.test(String(here).trim())){
+        const co=(EXTERNAL?((currentProject&&currentProject.userCompany)||''):'')||'';
+        note.style.display='';
+        note.innerHTML='Everyone on the project can see these. Put the contract name in the file name'
+          +(co?(' \u2014 for example <strong>'+esc(co)+' \u2014 September 2026.pdf</strong>'):' \u2014 for example <strong>Summit Builders \u2014 September 2026.pdf</strong>')
+          +'. The monthly reminder reads the name to tell whose schedule is whose.';
+      } else if(/^confidential$/i.test(String(here).trim())){
+        note.style.display='';
+        note.innerHTML='Fidevia only. Nobody outside Fidevia can open this folder, and it is not listed to them.';
+      } else { note.style.display='none'; note.innerHTML=''; }
+    }
+  }
   const cr=document.getElementById('docs-crumbs');
   if(cr){
     let html='<a href="#" onclick="docsGoTo(0);return false;" style="color:var(--olive-700);font-weight:600;text-decoration:none;">Documents</a>';
@@ -5289,6 +5323,11 @@ async function docsUpload(input){
 
 // Documents is a live folder browser now; the old index table is gone. Kept as
 // a no-op so renderAll and anything else still calling it does not throw.
+// The folders every project's Documents tab carries. Kept in step with
+// DOCS_FOLDERS in the proxy; the server is what enforces them.
+const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
+  'Closeout','Drawings and Specifications','Schedules','Confidential'];
+const DOCS_CONFIDENTIAL='confidential';
 function renderGenDocs(){}
 function renderContractorDaily(){
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;

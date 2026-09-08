@@ -16,12 +16,12 @@ console.log('Permission');
 const al=grab(proxy,'async function docsAllows');
 ok('admins see everything',            /if \(who\.isAdmin\) return true;/.test(al));
 ok('outside Documents it declines',    /if \(!pos\) return false;/.test(al));
-// The important departure: seesAllCompanies is NOT consulted here.
-ok('an architect is not exempted',     !/seesAllCompanies/.test(al));
-ok('a caller with no company is refused', /if \(!mine\) return false;/.test(al));
-ok('the root is allowed, then filtered',  /if \(pos\.atRoot\) return true;/.test(al));
-ok('below the root the folder must be theirs',
-   /String\(pos\.party\)\.trim\(\)\.toLowerCase\(\) === mine/.test(al));
+// Documents is the shared record of the job now, not a folder per firm, so
+// there is no company test to exempt anyone from. What is left is: you hold a
+// grant on this project, and the folder is not Confidential.
+ok('a caller with no grant is refused', /if \(!g\) return false;/.test(al));
+ok('Confidential is refused',           /if \(docsIsConfidential\(pos\)\) return false;/.test(al));
+ok('and an owner reads it',             /role !== ROLE_OWNER/.test(al));
 
 const pos=grab(proxy,'async function docsPositionOf');
 ok('position is read from the Box path', /path_collection/.test(pos));
@@ -31,8 +31,8 @@ ok('a lookup failure denies',            /catch\(e\)\{ return null; \}/.test(pos
 console.log('Listing');
 const ls=proxy.slice(proxy.indexOf("op === 'docsList'"), proxy.indexOf("op === 'docsRename'"));
 ok('the folder is checked twice over',   /guardFolder/.test(ls) && /docsAllows/.test(ls));
-ok('at the root a party sees only their own folder',
-   /entries\.filter\(e => e\.type === 'folder' && String\(e\.name \|\| ''\)\.trim\(\)\.toLowerCase\(\) === mine\)/.test(ls));
+ok('at the root Confidential is not listed to outsiders',
+   /entries\.filter\(e => String\(e\.name \|\| ''\)\.trim\(\)\.toLowerCase\(\) !== DOCS_PRIVATE\)/.test(ls));
 ok('admins are not filtered',            /if \(!who\.isAdmin && pos && pos\.atRoot\)/.test(ls));
 
 console.log('Renaming');

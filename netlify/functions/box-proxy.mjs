@@ -434,6 +434,23 @@ async function docsPositionOf(H, folderId){
     return { atRoot: below.length === 0, party: below[0] || '' };
   }catch(e){ return null; }
 }
+// The standard folders every project gets. Documents is the shared record of
+// the job: minutes, ASIs, inspections, punch list, closeout, the drawings, and
+// the monthly schedules. Everyone granted the project reads all of it.
+//
+// It used to be a folder per company, each firm seeing only its own. That
+// suited private paperwork and suited nothing else — the minutes and the
+// drawings a whole project works from were split across folders nobody else
+// could open. The company-private modules still exist for the material that
+// genuinely is private: pay applications, contractor daily reports, payrolls.
+const DOCS_FOLDERS = ['Testing', 'ASIs', 'Inspections', 'Punch List', 'Meeting Minutes',
+  'Closeout', 'Drawings and Specifications', 'Schedules', 'Confidential'];
+// The one exception, and the reason the rest can be open: Fidevia keeps a
+// folder nobody outside Fidevia can list, open or write to.
+const DOCS_PRIVATE = 'confidential';
+function docsIsConfidential(pos){
+  return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_PRIVATE;
+}
 // True when this caller may see or write inside the given folder.
 async function docsAllows(H, t, grants, who, folderId){
   if (who.isAdmin) return true;
@@ -441,11 +458,11 @@ async function docsAllows(H, t, grants, who, folderId){
   if (!pos) return false;                       // not in Documents: not our business
   const g = await grantFor(t, grants, 'folder', folderId);
   const role = normRole(g && g.role);
+  // An owner reads the job but does not add to it, here as everywhere else.
   if (!roleMayWrite(role) && role !== ROLE_OWNER) return false;
-  const mine = String((g && g.company) || '').trim().toLowerCase();
-  if (!mine) return false;
-  if (pos.atRoot) return true;                  // the root itself, listed filtered
-  return String(pos.party).trim().toLowerCase() === mine;
+  if (!g) return false;
+  if (docsIsConfidential(pos)) return false;    // Fidevia's alone
+  return true;
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
@@ -1093,16 +1110,29 @@ export default async (req) => {
       const top = await listOf(projectId);
       const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX));
       if (!docs) return json({ companies: companies.map(c => ({ company: c, state: 'no-documents' })), due, lastScheduleSend });
+      // One shared Schedules folder now, not a folder per company. Everyone can
+      // see everyone's programme, which is the point of sharing it — but it
+      // means the folder cannot say whose a file is. The name has to: a
+      // schedule counts for a contract when its filename carries that
+      // contract's name, which is why the uploader is asked to include it.
       const parties = await listOf(docs.id);
+      const shared = parties.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
+      const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      let sharedFiles = [];
+      if (shared) sharedFiles = (await listOf(shared.id)).filter(e => e.type === 'file');
       const out = [];
       for (const co of companies) {
+        // Their own folder still counts if the project has one: nothing already
+        // uploaded stops being a schedule because the filing changed.
         const party = parties.find(e => e.type === 'folder'
           && String(e.name || '').trim().toLowerCase() === co.trim().toLowerCase());
-        if (!party) { out.push({ company: co, state: 'no-folder' }); continue; }
-        const subs = await listOf(party.id);
-        const sched = subs.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
-        if (!sched) { out.push({ company: co, state: 'no-schedules-folder' }); continue; }
-        const files = (await listOf(sched.id)).filter(e => e.type === 'file');
+        let files = sharedFiles.filter(f => norm(f.name).includes(norm(co)));
+        if (party) {
+          const subs = await listOf(party.id);
+          const sched = subs.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
+          if (sched) files = files.concat((await listOf(sched.id)).filter(e => e.type === 'file'));
+        }
+        if (!shared && !party) { out.push({ company: co, state: 'no-schedules-folder' }); continue; }
         if (!files.length) { out.push({ company: co, state: 'never' }); continue; }
         // Newest by upload date. A schedule revised in Box without being
         // re-uploaded is still the same file, so created_at is the honest
@@ -1120,6 +1150,31 @@ export default async (req) => {
       }
       return json({ companies: out, due, lastScheduleSend });
     }
+    // Create any of the standard folders a project is missing. Safe to call
+    // repeatedly: it adds what is absent and touches nothing that exists.
+    if (op === 'docsEnsureStandard') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const projectId = String(body.projectId || '');
+      if (!projectId) return json({ error: 'projectId required' }, 400);
+      const topR = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      if (!topR.ok) return json({ error: 'Box list ' + topR.status }, topR.status);
+      const top = ((await topR.json()).entries || []);
+      const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX + ' '));
+      if (!docs) return json({ error: 'This project has no Documents folder.' }, 404);
+      const haveR = await boxFetch(`https://api.box.com/2.0/folders/${docs.id}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const have = haveR.ok ? ((await haveR.json()).entries || []) : [];
+      const lower = new Set(have.filter(e => e.type === 'folder').map(e => String(e.name || '').trim().toLowerCase()));
+      const made = [];
+      for (const name of DOCS_FOLDERS) {
+        if (lower.has(name.toLowerCase())) continue;
+        const r = await boxFetch('https://api.box.com/2.0/folders', {
+          method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, parent: { id: String(docs.id) } })
+        });
+        if (r.ok) made.push(name);
+      }
+      return json({ ok: true, made, folders: DOCS_FOLDERS, docsFolderId: docs.id });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
@@ -1127,10 +1182,12 @@ export default async (req) => {
       if (!r.ok) return json({ error: 'Box list ' + r.status }, r.status);
       let entries = (await r.json()).entries || [];
       const pos = await docsPositionOf(H, body.folderId);
+      // The root used to be filtered to the caller's own company folder. It is
+      // now the shared record, so everyone sees the same list — except
+      // Confidential, which is not shown to anyone outside Fidevia rather than
+      // being shown and refused on opening.
       if (!who.isAdmin && pos && pos.atRoot) {
-        const g = await grantFor(t, _grants, 'folder', body.folderId);
-        const mine = String((g && g.company) || '').trim().toLowerCase();
-        entries = entries.filter(e => e.type === 'folder' && String(e.name || '').trim().toLowerCase() === mine);
+        entries = entries.filter(e => String(e.name || '').trim().toLowerCase() !== DOCS_PRIVATE);
       }
       return json({ entries, atRoot: !!(pos && pos.atRoot) });
     }

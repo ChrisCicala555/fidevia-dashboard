@@ -26,8 +26,9 @@ ok(fn.indexOf('if (!projectId) return false;') < fn.indexOf('docsAllows'),
 {
   const da = srv.split('async function docsAllows')[1].split('const reqKey')[0];
   ok(/if \(!pos\) return false;/.test(da), 'a folder outside Documents is not its business');
-  ok(/String\(pos\.party\)\.trim\(\)\.toLowerCase\(\) === mine/.test(da),
-     'and a party folder belongs to one company');
+  // Documents is shared now; the only closed folder is Fidevia's own.
+  ok(/if \(docsIsConfidential\(pos\)\) return false;/.test(da),
+     'and Confidential is Fidevia\u2019s alone');
 }
 // both readers are covered
 ok((srv.match(/callerMayReadFile\(H, t, _grants, who, body\.fileId\)/g)||[]).length===2,
