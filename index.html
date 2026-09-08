@@ -248,9 +248,11 @@
   .pill.review{background:var(--khaki-100); color:var(--olive-700);}
   .pill.pending{background:var(--warn-bg); color:#6B5A0E;}
   .pill.rejected{background:var(--danger-bg); color:var(--danger);}
-  h2.page-title{font-size:24px; color:var(--olive-900); margin:0 0 18px; font-weight:600;}
+  h2.page-title{font-size:24px; color:var(--olive-900); margin:0 0 18px; font-weight:600;
+    text-transform:uppercase; letter-spacing:0.6px;}
   .page-title-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
-  .page-title-row h2{font-size:24px; color:var(--olive-900); font-weight:600; margin:0;}
+  .page-title-row h2{font-size:24px; color:var(--olive-900); font-weight:600; margin:0;
+    text-transform:uppercase; letter-spacing:0.6px;}
   .btn-add{background:var(--olive-700); color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; letter-spacing:0.2px;}
   .btn-add:hover{background:var(--olive-900);}
   .daily-log-list{list-style:none; margin:0; padding:0;}
@@ -545,7 +547,11 @@
   .modal-backdrop.open{display:flex;}
   .modal{background:var(--white); border-radius:10px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,0.25);}
   .modal-header{background:var(--olive-900); color:#fff; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; border-radius:10px 10px 0 0; position:sticky; top:0; z-index:1;}
-  .modal-header h3{font-size:16px; font-weight:600;}
+  /* The dialog title was the serif used for brand headings, which read as a
+     document title rather than the name of the thing being filled in. Sans and
+     uppercase matches the field labels directly beneath it. */
+  .modal-header h3{font-size:15px; font-weight:700; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    text-transform:uppercase; letter-spacing:0.8px;}
   .modal-header.slim{padding:5px 14px; justify-content:flex-end;}
   .modal-header.slim .modal-close{font-size:18px;}
   .modal-close{background:none; border:none; color:rgba(255,255,255,0.7); font-size:21px; cursor:pointer; padding:0 4px; line-height:1;}
@@ -1422,7 +1428,6 @@
         </div>
       </div>
 
-        </div>
 
         <div class="set-pane" id="set-pane-notifs" style="display:none;">
         <div id="org-gap-note" class="admin-only" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;color:var(--olive-900);max-width:680px;"></div>
@@ -10213,11 +10218,39 @@ async function wfAdvance(key, i){
     let doneIdx=[]; try{ doneIdx=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
     if(!Array.isArray(doneIdx)) doneIdx=[];
     await resolveMe();
+    // One press records one approval. This used to sign every step in the
+    // group for an administrator, so Fidevia approving their own review also
+    // marked the architect's and the engineer's as approved — signatures
+    // nobody gave. The whole point of a requireAll group is that each party
+    // signs for themselves.
+    const mine=[];
     for(let n=gs;n<=ge;n++){
       const st=steps[n]||{};
       const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-      if((em&&em===ME_EMAIL) || IS_ADMIN){ if(!doneIdx.includes(n)) doneIdx.push(n); }
+      if(em && em===ME_EMAIL) mine.push(n);
     }
+    let toSign=mine;
+    if(!toSign.length){
+      if(!IS_ADMIN) return;                       // not theirs to sign
+      // Fidevia recording somebody else's approval. Legitimate — an architect
+      // may sign on paper — but it has to be one named person, chosen.
+      const pending=[]; for(let n=gs;n<=ge;n++) if(!doneIdx.includes(n)) pending.push(n);
+      if(!pending.length) return;
+      const nameOf=n=>String((steps[n]&&(steps[n].person||steps[n].name))||('Step '+(n+1)));
+      if(pending.length===1){
+        if(!confirm('Record '+nameOf(pending[0])+'\u2019s approval on their behalf?')) return;
+        toSign=[pending[0]];
+      } else {
+        const pick=prompt('Whose approval are you recording?\n\n'
+          +pending.map((n,k)=>(k+1)+'. '+nameOf(n)).join('\n')
+          +'\n\nEnter a number. Each party signs separately.');
+        if(pick===null) return;
+        const k=parseInt(pick,10);
+        if(!(k>=1 && k<=pending.length)) return;
+        toSign=[pending[k-1]];
+      }
+    }
+    toSign.forEach(n=>{ if(!doneIdx.includes(n)) doneIdx.push(n); });
     const outstanding=steps.slice(gs,ge+1).map((st,n)=>doneIdx.includes(gs+n)?null:(st.person||st.name||'')).filter(Boolean);
     row['Workflow Done']=JSON.stringify(doneIdx);
     if(outstanding.length){

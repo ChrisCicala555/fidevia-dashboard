@@ -13,16 +13,25 @@ const ok=(n,c)=>{ c?pass++:(fail++,console.log('  FAIL: '+n)); };
 // behaviour rather than only the wiring.
 const groupAt=(steps,idx)=>{ let gs=idx; while(gs>0&&steps[gs]&&steps[gs].parallel) gs--;
   let ge=gs; while(ge+1<steps.length&&steps[ge+1]&&steps[ge+1].parallel) ge++; return [gs,ge]; };
-function advance(steps, row, email, isAdmin){
+// Mirrors the real rule: a caller signs the steps they are named on. An
+// administrator recording somebody else's approval has to name whose --
+// signing on behalf of everyone at once was the bug, not the feature.
+function advance(steps, row, email, isAdmin, stepIndex){
   const cur=parseInt(row['Workflow Step'])||0;
   const [gs,ge]=groupAt(steps,cur);
   const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);
   let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
   if(needsAll){
+    const mine=[];
     for(let n=gs;n<=ge;n++){
-      const st=steps[n]||{};
-      if(isAdmin || String(st.email||'').toLowerCase()===email){ if(!done.includes(n)) done.push(n); }
+      if(String((steps[n]||{}).email||'').toLowerCase()===email) mine.push(n);
     }
+    let toSign=mine;
+    if(!toSign.length && isAdmin){
+      if(Number.isInteger(stepIndex) && stepIndex>=gs && stepIndex<=ge) toSign=[stepIndex];
+      else return {refused:true};
+    }
+    toSign.forEach(n=>{ if(!done.includes(n)) done.push(n); });
     row['Workflow Done']=JSON.stringify(done);
     const satisfied=steps.slice(gs,ge+1).every((_,n)=>done.includes(gs+n));
     if(!satisfied) return {partial:true, outstanding:steps.slice(gs,ge+1).map((st,n)=>done.includes(gs+n)?null:st.name).filter(Boolean)};
@@ -77,17 +86,37 @@ row={'Workflow Step':'3'};
 r=advance(CO,row,'stranger@x.test',false);
 ok('an unrelated signature records nothing', r.partial===true && JSON.parse(row['Workflow Done']).length===0);
 
-console.log('An administrator can close a group on their behalf');
+console.log('An administrator records one approval, not everyone\u2019s');
+// This is the bug the parallel-approval report was about: approving one step
+// in a change order marked the engineer's and the architect's approved too.
 row={'Workflow Step':'3'};
 r=advance(CO,row,'cc@fidevia.com',true);
-ok('admin completes the whole group', !r.partial && row['Workflow Step']==='5');
+ok('an admin named on no step must say whose approval it is', r.refused===true);
+ok('and nothing is recorded until they do',   (row['Workflow Done']||'[]')==='[]');
+row={'Workflow Step':'3'};
+r=advance(CO,row,'cc@fidevia.com',true,4);      // recording the architect's
+ok('naming the step records that one',        JSON.parse(row['Workflow Done']).join()==='4');
+ok('and only that one',                       !JSON.parse(row['Workflow Done']).includes(3));
+ok('the group still waits for the other',     r.partial===true);
+ok('naming who is outstanding',               r.outstanding.join()==='Fidevia Signature');
+r=advance(CO,row,'cm@fidevia.com',false);       // Fidevia signs for itself
+ok('the second signature closes it',          !r.partial && row['Workflow Step']==='5');
+// An admin who IS named on a step signs that step and no other.
+row={'Workflow Step':'3'};
+r=advance(CO,row,'cm@fidevia.com',true);
+ok('an admin on the group signs only their own step', JSON.parse(row['Workflow Done']).join()==='3');
+ok('and the architect is still outstanding',  r.partial===true && r.outstanding.join()==='Architect Signature');
 
 console.log('Server wiring');
 const adv=proxy.slice(proxy.indexOf("op === 'advanceWorkflow'"), proxy.indexOf("op === 'uploadText'"));
 ok('the server reads requireAll',            /st\.requireAll/.test(adv));
 ok('it records progress in the log',         /row\['Workflow Done'\] = JSON\.stringify\(doneIdx\)/.test(adv));
 ok('it returns who is still outstanding',    /partial: true, outstanding/.test(adv));
-ok('a non-admin only signs their own steps', /direct === me\) \|\| \(viaName && viaName === me\)\) && !doneIdx\.includes\(n\)/.test(adv));
+ok('a caller only signs the steps they are named on',
+   /if \(\(direct && direct === me\) \|\| \(viaName && viaName === me\)\) mine\.push\(n\);/.test(adv));
+ok('an admin acting for someone must name the step', /parseInt\(body\.stepIndex, 10\)/.test(adv));
+ok('bounded to the current group',                   /asked >= gs && asked <= ge/.test(adv));
+ok('and is refused otherwise',                       /Say whose approval this is/.test(adv));
 ok('the group record resets on advance',     /row\['Workflow Done'\] = JSON\.stringify\(\[\]\)/.test(adv));
 ok('both paths share one writer',            (adv.match(/await writeRows\(\)/g)||[]).length===2);
 

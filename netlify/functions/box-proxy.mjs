@@ -1485,17 +1485,27 @@ export default async (req) => {
       let doneIdx = []; try { doneIdx = JSON.parse(row['Workflow Done'] || '[]'); } catch (e) {}
       if (!Array.isArray(doneIdx)) doneIdx = [];
 
-      if (groupNeedsAll && !who.isAdmin) {
+      if (groupNeedsAll) {
         // Record only the steps this caller is actually named on.
+        const mine = [];
         for (let n = gs; n <= ge; n++) {
           const st = steps[n] || {};
           const direct = String(st.email || '').trim().toLowerCase();
           const viaName = emailByName[String(st.person || '').trim().toLowerCase()] || '';
-          if (((direct && direct === me) || (viaName && viaName === me)) && !doneIdx.includes(n)) doneIdx.push(n);
+          if ((direct && direct === me) || (viaName && viaName === me)) mine.push(n);
         }
-      } else if (groupNeedsAll) {
-        // An administrator completing on someone's behalf closes the group.
-        for (let n = gs; n <= ge; n++) if (!doneIdx.includes(n)) doneIdx.push(n);
+        // An administrator used to close the entire group here, which recorded
+        // approvals from parties who had given none: signing Fidevia's own
+        // review also marked the architect's and the engineer's as approved.
+        // Recording somebody else's approval is legitimate, but it has to name
+        // whose, one at a time.
+        let toSign = mine;
+        if (!toSign.length && who.isAdmin) {
+          const asked = parseInt(body.stepIndex, 10);
+          if (Number.isInteger(asked) && asked >= gs && asked <= ge) toSign = [asked];
+          else return json({ error: 'Say whose approval this is: pass stepIndex within the current group.' }, 400);
+        }
+        toSign.forEach(n => { if (!doneIdx.includes(n)) doneIdx.push(n); });
       }
       row['Workflow Done'] = JSON.stringify(doneIdx);
 
