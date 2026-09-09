@@ -4524,7 +4524,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 22:35';
+const BUILD_STAMP='2026-09-08 22:55';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11073,7 +11073,12 @@ async function submitReply(){
         'Status':row['Status'], 'Version History':row['Version History'],
         'Attachment File ID':row['Attachment File ID'], 'Attachment Name':row['Attachment Name'],
         'Workflow Step':row['Workflow Step']||'', 'Workflow Status':row['Workflow Status']||'',
-        'Workflow Done':row['Workflow Done']||'', 'Workflow Signed':row['Workflow Signed']||''
+        'Workflow Done':row['Workflow Done']||'', 'Workflow Signed':row['Workflow Signed']||'',
+        // Added and handed-over steps live in these two. Leaving them out meant
+        // a review that sent something back computed the step, moved the item
+        // onto it, and then saved everything except the step itself — so the
+        // chain pointed at a row that did not exist.
+        'Workflow Extra':row['Workflow Extra']||'', 'Workflow Reassigned':row['Workflow Reassigned']||''
       });
     } else {
       await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
@@ -11086,12 +11091,16 @@ async function submitReply(){
       try{ const b64=await fileToB64(fileInput.files[0]); _rOpts.attachments=[{filename:fileInput.files[0].name, content:b64, type:fileInput.files[0].type||'application/octet-stream'}]; }catch(e){}
     }
     try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name), _rOpts); }catch(e){}
+    // What happened, captured before the dialog is closed: closeReply clears
+    // REPLY_CTX, and the messages below were reading it afterwards.
+    const _returnedTo=(REPLY_CTX&&REPLY_CTX._returnedTo)||'';
+    const _handedTo=(REPLY_CTX&&REPLY_CTX._reassignedTo)||'';
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
     else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
-    else if(REPLY_CTX && REPLY_CTX._returnedTo) alert('Sent back to '+REPLY_CTX._returnedTo
+    else if(_returnedTo) alert('Sent back to '+_returnedTo
       +' to revise and resubmit. They are next in the chain.');
-    else if(REPLY_CTX && REPLY_CTX._reassignedTo) alert('Handed to '+REPLY_CTX._reassignedTo
+    else if(_handedTo) alert('Handed to '+_handedTo
       +'. Your approval was not recorded \u2014 the item is waiting on them now.');
     else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
     else if(_advanced) alert('Review recorded and the chain has moved on.');

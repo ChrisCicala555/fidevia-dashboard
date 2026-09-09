@@ -1921,6 +1921,10 @@ export default async (req) => {
         // change from here.
         const ALLOWED = new Set(['Status', 'Version History', 'Attachment File ID', 'Attachment Name',
           'Workflow Step', 'Workflow Status', 'Workflow Done', 'Workflow Signed',
+          // A reviewer adding a step, sending something back, or handing their
+          // step to somebody else writes these. Without them the server refused
+          // exactly the part of a review that changes who acts next.
+          'Workflow Extra', 'Workflow Reassigned',
           'Response Summary', 'Date Closed', 'Reviewer', 'Assigned To']);
         for (const k of Object.keys(patch)) if (!ALLOWED.has(k)) return json({ error: 'Field not writable: ' + k }, 403);
         // The money on a payment application is decided by Fidevia, never by
