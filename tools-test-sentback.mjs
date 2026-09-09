@@ -141,5 +141,12 @@ stale(); b.run("renderAll()");
      'and so does the email that goes out');
 }
 
+// Whose line it is gets decided by the address, not by the display name, which
+// is not always loaded when the panel is drawn.
+b.run("ME_NAME=''");
+stale(); b.run("renderAll()");
+ok(/Revise and resubmit/.test(lines().join(' ')),
+   'the line still reads as mine when only my address is known');
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-sentback.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

@@ -4520,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 01:20';
+const BUILD_STAMP='2026-09-09 01:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6381,15 +6381,20 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
       if(wfIsDone(r)) return;
       if(!String(r['Workflow Status']||'').trim()) return;
       const cur=wfActiveIdx(r); const [gs,ge]=wfGroupAt(steps,cur);
-      let who='', sentBack=false;
+      let who='', sentBack=false, personally=false;
       const ours=steps.slice(gs,ge+1).some(st=>{
         const e=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-        const hit = (e&&e===me) || personIsOurs(st.person) || coMatches(st.company);
-        if(hit){ who=st.person||''; sentBack=!!st.returned; }
+        const isMe = !!(e && e===me);
+        const hit = isMe || personIsOurs(st.person) || coMatches(st.company);
+        if(hit){ who=st.person||''; sentBack=!!st.returned; personally=isMe; }
         return hit;
       });
       if(ours){
-        const mineOwn=(who&&nameMatches(who));
+        // Whether this is mine or my colleague's is decided by the address, the
+        // same way every other check on this page decides it. Matching on the
+        // display name meant the line read "Sent back to Test Contractor" to
+        // Test Contractor whenever their name had not been loaded yet.
+        const mineOwn=personally||(who&&nameMatches(who));
         // A step that came back is not a review. Asking the contractor for
         // "your review" of their own drawing is asking the wrong thing.
         items.push({label:(r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
