@@ -918,11 +918,16 @@
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
         <label class="cd-addl">First name<input id="cdn-first" class="cd-inp" oninput="cdNameWarned=''" placeholder="Jane"></label>
         <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" oninput="cdNameWarned=''" placeholder="Okafor"></label>
-        <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com"></label>
+        <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com" oninput="cdInviteCheck()"></label>
         <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Summit Builders"></label>
         <label class="cd-addl">Role<input id="cdn-role" class="cd-inp" placeholder="Project Engineer"></label>
         <label class="cd-addl">Phone<input id="cdn-phone" class="cd-inp" onblur="this.value=fmtPhone(this.value)" placeholder="(717) 555-0100"></label>
       </div>
+      <label class="cd-addl" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-weight:400;">
+        <input type="checkbox" id="cdn-invite" checked style="margin-top:3px;">
+        <span>Email them an invitation to create an account
+          <span id="cdn-invite-hint" style="display:block;font-size:12.5px;color:var(--muted);font-weight:400;">
+            They can sign in and be added to projects afterwards.</span></span></label>
       <div id="cdn-error" style="display:none;color:var(--danger);font-size:13px;margin-top:12px;"></div>
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button class="btn-add" id="cdn-save" onclick="cdAddContact(event)">Add to directory</button>
@@ -4555,7 +4560,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 09:25';
+const BUILD_STAMP='2026-09-09 10:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5080,9 +5085,15 @@ function inviteEmailHTML(name, projectName){
    +'<tr><td style="padding:24px 24px 8px">'
    +'<div style="font-family:'+serif+';font-size:20px;color:#515520;font-weight:700;margin:0 0 12px">You\u2019re invited to the Fidevia Dashboard!</div>'
    +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">Hi'+(name?' '+esc(name):'')+',</p>'
-   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">You\u2019ve been invited to collaborate on the <strong>'+esc(projectName)+'</strong>. Create an account on the Fidevia Dashboard to view and take action on project documents and more \u2014 all in one place.</p>'
+   +'<p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">'
+   +(projectName
+      ? 'You\u2019ve been invited to collaborate on the <strong>'+esc(projectName)+'</strong>. '
+      : 'Fidevia has set you up on the Fidevia Construction Dashboard. ')
+   +'Create an account on the Fidevia Dashboard to view and take action on project documents and more \u2014 all in one place.</p>'
    +'<div style="text-align:center;margin:22px 0 8px"><a href="'+origin+'" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Create Your Account</a></div>'
-   +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">After you create an account, request access to this project from your project list \u2014 a Fidevia administrator will approve it. Already have an account? Just sign in.</p>'
+   +'<p style="font-size:12px;color:#9a988c;line-height:1.6;margin:14px 0 0">After you create an account, request access to '
+   +(projectName?'this project':'a project')
+   +' from your project list \u2014 a Fidevia administrator will approve it. Already have an account? Just sign in.</p>'
    +'</td></tr>'
    +'<tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>'
    +'</table></div>';
@@ -7079,6 +7090,29 @@ function lockContactDir(){ CD_UNLOCKED=false; CD_PW=''; document.body.classList.
 // Set to the name that has already been warned about, so a second press goes
 // through rather than looping on the same warning.
 let cdNameWarned='';
+// An invitation is an invitation to create an account, so it is only offered
+// to somebody who has not. Fidevia addresses already have one, and an address
+// that is taken cannot follow the link anyway — offering it would be telling
+// them to do something they have done.
+async function cdInviteCheck(){
+  const cb=document.getElementById('cdn-invite'), hint=document.getElementById('cdn-invite-hint');
+  if(!cb||!hint) return;
+  const em=String((document.getElementById('cdn-email')||{}).value||'').trim().toLowerCase();
+  if(!em || em.indexOf('@')<1){
+    cb.disabled=false; hint.textContent='They can sign in and be added to projects afterwards.'; return;
+  }
+  await ensureAccounts();
+  const row={Email:em};
+  if(contactIsFidevia(row)){
+    cb.checked=false; cb.disabled=true;
+    hint.textContent='Fidevia addresses already have an account and every project.'; return;
+  }
+  if(contactHasAccount(row)){
+    cb.checked=false; cb.disabled=true;
+    hint.textContent='This address already has an account, so there is nothing to invite them to create.'; return;
+  }
+  cb.disabled=false; hint.textContent='They can sign in and be added to projects afterwards.';
+}
 function cdToggleAdd(show){
   const box=document.getElementById('cd-addform'); if(!box) return;
   box.style.display = show ? 'block' : 'none';
@@ -7086,6 +7120,10 @@ function cdToggleAdd(show){
   if(show){
     cdNameWarned='';
     ['first','last','email','company','role','phone'].forEach(f=>{ const el=document.getElementById('cdn-'+f); if(el) el.value=''; });
+    const cb=document.getElementById('cdn-invite'); if(cb){ cb.checked=true; cb.disabled=false; }
+    // Fetched now rather than when the address is typed, so the answer is
+    // already there by the time anyone finishes typing one.
+    ensureAccounts().then(()=>{ try{ cdInviteCheck(); }catch(e){} });
     const n=document.getElementById('cdn-first'); if(n) n.focus();
     box.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
@@ -7133,6 +7171,20 @@ async function cdAddContact(ev){
       fail('The contact was saved but is not showing in the directory. Reload the page; if it is still missing, tell Chris.');
       return;
     }
+    // Best-effort, and after the save: a contact that saved but whose email
+    // bounced is recoverable, a contact lost because the email failed is not.
+    let invited=false;
+    const wantInvite=!!(document.getElementById('cdn-invite')||{}).checked;
+    if(wantInvite){
+      await ensureAccounts();
+      if(contactNeedsInvite({Email:email})){
+        try{
+          await sendEmail([email], 'You\u2019re invited to the Fidevia Dashboard',
+            inviteEmailHTML(((first+' '+last).trim())||'', ''));
+          invited=true;
+        }catch(e){ console.warn('invite:', e.message); }
+      }
+    }
     cdToggleAdd(false);
     const row=document.querySelector('.cd-row[data-em="'+String(email).replace(/"/g,'')+'"]');
     if(row){
@@ -7145,7 +7197,9 @@ async function cdAddContact(ev){
       let n=document.getElementById('cd-added-note');
       if(!n){ n=document.createElement('span'); n.id='cd-added-note';
         n.style.cssText='margin-left:12px;font-size:13px;color:#3b6d11;font-weight:600;'; bar.appendChild(n); }
-      n.textContent=(added.name||email)+' added.';
+      n.textContent=(added.name||email)+' added.'
+        +(invited?' Invitation sent to '+email+'.'
+          :(wantInvite?' No invitation sent \u2014 that address already has an account.':''));
       setTimeout(()=>{ try{ n.remove(); }catch(e){} }, 5000);
     }
   }).catch(()=>{});
@@ -7399,14 +7453,29 @@ function renderPersonProjects(){
   // Only offer projects they are not already on.
   const have=new Set(g.map(p=>String(p.id)));
   const sel=document.getElementById('person-add-proj');
-  const avail=GRANT_PROJECTS.filter(p=>!have.has(String(p.id)));
+  const avail=projectsLiveFirst(GRANT_PROJECTS.filter(p=>!have.has(String(p.id))));
   sel.innerHTML = avail.length
-    ? avail.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')
+    ? avail.map(p=>'<option value="'+esc(p.id)+'"'+(p.archived?' data-archived="1"':'')+'>'
+        +esc(projectOptionLabel(p))+'</option>').join('')
     : '<option value="">Already on every project</option>';
   const btn=document.getElementById('person-add-btn');
   if(btn) btn.disabled = !avail.length || isFidevia;
   sel.onchange=personCheckCompanyFit;
   personCheckCompanyFit();
+}
+// Live projects first, then archived, each alphabetical. An archived job is
+// still a legitimate thing to add somebody to — closing one out often needs a
+// last set of eyes — but it is almost never what is meant, and it was sitting
+// in the middle of the list wherever its name fell.
+function projectsLiveFirst(list){
+  const norm=p=>String((p&&p.name)||'').toLowerCase();
+  return (list||[]).slice().sort((a,b)=>{
+    const aa=a&&a.archived?1:0, bb=b&&b.archived?1:0;
+    return aa-bb || norm(a).localeCompare(norm(b));
+  });
+}
+function projectOptionLabel(p){
+  return String((p&&p.name)||'')+((p&&p.archived)?' \u2014 archived':'');
 }
 function roleLabelOf(r){ return esc((ROLE_LABELS&&ROLE_LABELS[String(r||'contractor').toLowerCase()])||'Contractor'); }
 
@@ -9099,10 +9168,12 @@ async function loadAdmin(){
 function renderGrantProjectList(){
   const box=document.getElementById('grant-project-list'); if(!box) return;
   if(!GRANT_PROJECTS.length){ box.innerHTML='<span style="color:var(--muted)">No projects found.</span>'; return; }
-  box.innerHTML=GRANT_PROJECTS.map(p=>
+  box.innerHTML=projectsLiveFirst(GRANT_PROJECTS).map(p=>
     '<label class="proj-row grant-proj-row" title="'+esc(p.name)+'" data-name="'+esc((p.name||'').toLowerCase())+'">'
     +'<input type="checkbox" class="grant-proj-cb" value="'+esc(p.id)+'" data-name="'+esc(p.name)+'" onchange="grantProjectsChanged()">'
-    +'<span class="pr-name">'+esc(p.name)+'</span></label>').join('');
+    +'<span class="pr-name">'+esc(p.name)+'</span>'
+    +(p.archived?'<span style="margin-left:7px;font-size:11px;color:var(--muted);">archived</span>':'')
+    +'</label>').join('');
   grantProjectsChanged();
 }
 function filterGrantProjects(){

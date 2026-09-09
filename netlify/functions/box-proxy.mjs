@@ -955,7 +955,13 @@ export default async (req) => {
         // created_at comes free with the listing and is the only record of when
         // a project began for anything set up before the dashboard started
         // stamping its own edits.
-        const projs = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name, createdAt: e.created_at || '' }));
+        // Whether a project is archived travels with the listing. Every caller
+        // that offers "which project?" wants to know, and the alternative was
+        // each of them fetching the set separately and one of them forgetting.
+        let _arch = [];
+        try { _arch = await getArchivedIds(); } catch (e) {}
+        const _archSet = new Set((_arch || []).map(String));
+        const projs = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name, createdAt: e.created_at || '', archived: _archSet.has(String(e.id)) }));
         await Promise.all(projs.map(async pr => { pr.logoFileId = await logoIdFor(H, pr.id); }));
         return json({ rootId: String(process.env.BOX_PROJECTS_ROOT_ID || ''), projects: projs });
       }
