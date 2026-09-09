@@ -148,5 +148,32 @@ stale(); b.run("renderAll()");
 ok(/Revise and resubmit/.test(lines().join(' ')),
    'the line still reads as mine when only my address is known');
 
+console.log('A returned step belongs to the firm, not to one address');
+// The live row's returned step carries no address at all, and the person who
+// uploads the revision is often not the person who uploaded the first version.
+b.run(`allData.contacts=[{'Name':'Test Contractor','Company':'Summit Builders','Email':'gc@summit.test'},
+  {'Name':'Site Super','Company':'Summit Builders','Email':'super@summit.test'},
+  {'Name':'Test Architect','Company':'Architect 2','Email':'a@x.test'}];
+allData.sub=[Object.assign({}, allData.sub[0], {'Submittal #':'SUB-GC-001','Status':'Resubmitted',
+  'Company':'Summit Builders','Reviewer':'Architect 2','Workflow Step':'2','Workflow Status':'In Review',
+  'Workflow Extra':JSON.stringify([{after:1,name:'Revise and Resubmit',person:'Test Contractor',
+    company:'Summit Builders',email:'',returned:true}])})];`);
+const seenBy = (email,co,role) => { b.run(`EXTERNAL=true;IS_ADMIN=false;ME_EMAIL='${email}';ME_NAME='';
+  currentProject.userCompany='${co}';currentProject.userRole='${role}';DATA_READY=true;renderAll();`);
+  return {panel:b.run("wfProgressHTML('sub',allData.sub[0],0)"),
+          row:b.run("verThreadRows('sub',allData.sub[0],0,10)")}; };
+{
+  const colleague = seenBy('super@summit.test','Summit Builders','contractor');
+  ok(/Awaiting you/.test(colleague.panel),
+     'anyone at the firm it went back to sees it as theirs, address or no address');
+  ok(/Submit Revision/.test(colleague.row), 'and is offered the revision, not a reply');
+  const architect = seenBy('a@x.test','Architect 2','architect');
+  ok(!/Awaiting you/.test(architect.panel), 'the reviewer who sent it back does not own it');
+  ok(/Submit Review Step/.test(architect.row),
+     'and their button is unchanged — a reviewer still submits a review step');
+  const other = seenBy('someone@gorilla.test','Gorilla Construction','contractor');
+  ok(!/Awaiting you/.test(other.panel), 'and another contractor on the job does not own it either');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-sentback.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

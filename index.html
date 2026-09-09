@@ -4520,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 01:45';
+const BUILD_STAMP='2026-09-09 02:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10744,10 +10744,25 @@ function wfEmailOf(person){
 // The steps in this group that belong to the person acting.
 // Whether a given step belongs to the person reading it. Matched on the email
 // on the step, falling back to the one on the contact sheet for that name.
+// The company the reader is on this project. Written out longhand in a dozen
+// places already; a returned step needs it too.
+function myCompany(){
+  return String(EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia')).trim();
+}
 function wfStepIsMine(st){
-  if(!st || !ME_EMAIL) return false;
+  if(!st) return false;
   const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-  return !!em && em===ME_EMAIL;
+  if(ME_EMAIL && em && em===ME_EMAIL) return true;
+  // A step that came back belongs to the firm that filed the thing, not to the
+  // one address on the original row. The person who uploads the revision is
+  // often not the person who uploaded the first version, and holding the step
+  // to that address left the contractor looking at their own item with no way
+  // to move it — "Awaiting: Test Contractor" rather than "Awaiting you".
+  if(st.returned && st.company){
+    const mine=myCompany().toLowerCase();
+    return !!mine && String(st.company).trim().toLowerCase()===mine;
+  }
+  return false;
 }
 function wfMyStepsIn(steps, gs, ge){
   const out=[];
