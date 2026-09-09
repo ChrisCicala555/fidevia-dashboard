@@ -4520,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 02:10';
+const BUILD_STAMP='2026-09-09 02:55';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10570,6 +10570,24 @@ function wfReassigned(row){
   try{ const o=JSON.parse((row&&row['Workflow Reassigned'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
   catch(e){ return {}; }
 }
+// The step that sent this one back. The signature is the record — a reviewer
+// whose outcome was "revise and resubmit" — falling back to whoever the return
+// names as its author, and then to the step it was inserted after.
+function wfReturnSource(row, steps, retIdx){
+  const signed=wfSignedMap(row);
+  for(let i=retIdx-1;i>=0;i--){
+    const sg=signed[String(i)];
+    if(sg && sg.outcome && WF_RETURNED.test(sg.outcome)) return i;
+  }
+  const st=steps[retIdx]||{};
+  const by=String(st.addedBy||'').trim().toLowerCase();
+  if(by) for(let i=retIdx-1;i>=0;i--){
+    if(String((steps[i]||{}).person||'').trim().toLowerCase()===by) return i;
+  }
+  const after=parseInt(st.after,10);
+  if(!isNaN(after) && steps[after]) return after;
+  return retIdx>0 ? retIdx-1 : -1;
+}
 function wfEffectiveSteps(key, row){
   const base=wfStepsFor(key, rowCompany(row));
   const moved=wfReassigned(row);
@@ -10587,7 +10605,8 @@ function wfEffectiveSteps(key, row){
     .forEach(({e})=>{
       const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
       out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'',
-        company:e.company||'', added:true, returned:!!e.returned, addedBy:e.addedBy||''});
+        company:e.company||'', added:true, returned:!!e.returned, rereview:!!e.rereview,
+        addedBy:e.addedBy||'', after:e.after});
     });
   return out;
 }
@@ -10618,7 +10637,11 @@ function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0
 // common answer a reviewer gives, and it had nowhere to go: the chain either
 // moved on as though the thing were fine, or closed as though it were dead.
 const WF_RETURNED=/revise|resubmit|returned/i;
-const WF_UNDECIDED=/^(|open|pending review|under review|in review|submitted|pending)$/i;
+// "Resubmitted" is the contractor saying they have answered the comments, not
+// anybody saying whether they have. It belongs with the other statuses that
+// mean nobody has decided yet — left out, an approved revision finished its
+// chain still reading "Resubmitted".
+const WF_UNDECIDED=/^(|open|pending review|under review|in review|submitted|pending|resubmitted)$/i;
 const WF_APPROVED={rfi:'Closed', co:'Approved', sub:'Approved', pay_apps:'Approved'};
 function wfStatusOnComplete(key, row){
   const now=String((row&&row['Status'])||'').trim();
@@ -10820,7 +10843,7 @@ function wfProgressHTML(key,r,i){
           +(s.returned?'YOUR TURN':'YOUR REVIEW')+'</span>':'')
       +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
-      +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':'added')+'</span>':'')
+      +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':(s.rereview?'revision':'added'))+'</span>':'')
       +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
       +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;">override</span>':'')
       +note+'</div>';
@@ -11253,9 +11276,12 @@ async function submitReply(){
     // REPLY_CTX, and the messages below were reading it afterwards.
     const _returnedTo=(REPLY_CTX&&REPLY_CTX._returnedTo)||'';
     const _handedTo=(REPLY_CTX&&REPLY_CTX._reassignedTo)||'';
+    const _backToReviewer=(REPLY_CTX&&REPLY_CTX._backToReviewer)||'';
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
     else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
+    else if(_backToReviewer) alert('Revision submitted. It has gone back to '+_backToReviewer
+      +' to review, and they have been emailed.');
     else if(_returnedTo) alert('Sent back to '+_returnedTo
       +' to revise and resubmit. They are next in the chain.');
     else if(_handedTo) alert('Handed to '+_handedTo
@@ -11301,6 +11327,34 @@ function applyReviewAdvance(key, row, by){
   if(!toSign.length) return '';
   const outcome=String((document.getElementById('reply-status')||{}).value||'');
   toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length, outcome));
+
+  // The revision is in. It goes back to the reviewer who sent it back: they
+  // raised the objection and they are the one who can say it is answered.
+  // There was nothing after the returned step, so completing it closed the
+  // chain — the submittal read "Workflow complete" with nobody having looked
+  // at the new drawing, and the architect's overview said nothing needed them.
+  const curSt=steps[cur];
+  if(curSt && curSt.returned){
+    const srcIdx=wfReturnSource(row, steps, cur);
+    const src=srcIdx>=0 ? steps[srcIdx] : null;
+    if(src){
+      const em=String(src.email||'').trim()||wfEmailOf(src.person);
+      const extra=wfExtraSteps(row);
+      // Beside the return rather than at the end of the chain, and as its own
+      // step rather than by rewinding: rewinding into a parallel group would
+      // re-ask an engineer who never objected to anything.
+      extra.push({after:(curSt.after!=null?curSt.after:srcIdx), name:src.name||'Review',
+                  person:src.person||'', email:em, company:src.company||'',
+                  addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), rereview:true});
+      row['Workflow Extra']=JSON.stringify(extra);
+      row['Workflow Step']=String(cur+1);
+      row['Workflow Status']='In Review';
+      if(REPLY_CTX){ REPLY_CTX._backToReviewer=src.person||src.name||'the reviewer';
+        if(em) REPLY_CTX._addedEmail=em; }
+      try{ auditLog('Revision returned to reviewer', key, row, src.person||src.name||''); }catch(e){}
+      return '';
+    }
+  }
 
   // Revise and resubmit: the item goes back to whoever filed it, as a step
   // anybody can see, rather than the chain quietly carrying on to the next
