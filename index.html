@@ -4524,7 +4524,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 23:10';
+const BUILD_STAMP='2026-09-08 23:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6446,7 +6446,22 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   // Pay applications awaiting Fidevia's review
   if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), badge:'Awaiting review', cls:'wf', sec:'payapps'}));
 
-  const seen=new Set(); const list=items.filter(i=>{ const k=i.label+i.badge; if(seen.has(k)) return false; seen.add(k); return true; });
+  // One item, one line. The key used to include the badge, so a submittal that
+  // qualified twice — the workflow step is with our firm, and the item is
+  // assigned to our firm — appeared twice with two different labels for the
+  // same fact, which reads as two things to do.
+  //
+  // First wins, because the earlier rules say something more specific about who
+  // is holding it. An overdue warning is the exception: it is the more urgent
+  // thing to know, so it takes over the badge of the line already there.
+  const byItem=new Map();
+  items.forEach(i=>{
+    const k=String(i.label||i.badge||'');
+    const prev=byItem.get(k);
+    if(!prev){ byItem.set(k, i); return; }
+    if(i.cls==='' && prev.cls!==''){ prev.badge=i.badge; prev.cls=''; }
+  });
+  const list=[...byItem.values()];
   el.style.display='';
   const coLabel=attentionCompany();
   if(!list.length){
