@@ -1840,12 +1840,15 @@ export default async (req) => {
       };
       // --- contacts: name -> email ---
       const emailByName = {};
+      // A step names one person and belongs to their firm. Anyone at that firm
+      // may act on it; the signature records who actually did.
+      const companyByName = {};
       try {
         const contF = pitems.find(e => e.type === 'folder' && e.name.startsWith('05'));
         if (contF) {
           const cit = (await (await boxFetch(`https://api.box.com/2.0/folders/${contF.id}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
           const ccsv = cit.find(e => e.type === 'file' && e.name.toLowerCase().endsWith('.csv'));
-          if (ccsv) { const cp = parseCSVServer(await (await boxFetch(`https://api.box.com/2.0/files/${ccsv.id}/content`, { headers: H })).text()); cp.rows.forEach(r => { if (r['Name']) emailByName[String(r['Name']).trim().toLowerCase()] = String(r['Email'] || '').trim().toLowerCase(); }); }
+          if (ccsv) { const cp = parseCSVServer(await (await boxFetch(`https://api.box.com/2.0/files/${ccsv.id}/content`, { headers: H })).text()); cp.rows.forEach(r => { if (r['Name']) { emailByName[String(r['Name']).trim().toLowerCase()] = String(r['Email'] || '').trim().toLowerCase(); companyByName[String(r['Name']).trim().toLowerCase()] = String(r['Company'] || '').trim().toLowerCase(); } }); }
         }
       } catch (e) {}
       // --- load the log CSV ---
@@ -1871,12 +1874,24 @@ export default async (req) => {
       let ge = gs; while (ge + 1 < steps.length && steps[ge + 1] && steps[ge + 1].parallel) ge++;
       // --- authorize: caller must be an assignee of the current group (admins always allowed) ---
       const me = String(who.email || '').toLowerCase();
+      // The caller's firm on this project comes from the grant, never from the
+      // request — the same rule every other company check here follows.
+      let myCo = '';
+      try { const _g = await grantFor(t, _grants, 'folder', projectId); myCo = String((_g && _g.company) || '').trim().toLowerCase(); }
+      catch (e) {}
       const allowed = steps.slice(gs, ge + 1).some(s => {
         const direct = String(s.email || '').trim().toLowerCase();
         const viaName = emailByName[String(s.person || '').trim().toLowerCase()] || '';
-        return (direct && direct === me) || (viaName && viaName === me);
+        if ((direct && direct === me) || (viaName && viaName === me)) return true;
+        // Named for who owes it, matched on the firm for who may act. One
+        // person being away used to stop the job: nobody else at their firm
+        // could move the item, and the only way through was Fidevia pressing
+        // Override, which is recorded as an override and means something else.
+        const stepCo = String(s.company || '').trim().toLowerCase()
+          || companyByName[String(s.person || '').trim().toLowerCase()] || '';
+        return !!myCo && !!stepCo && myCo === stepCo;
       });
-      if (!who.isAdmin && !allowed) return json({ error: 'This step is not assigned to you.' }, 403);
+      if (!who.isAdmin && !allowed) return json({ error: 'This step is not assigned to you or your company.' }, 403);
       // --- advance ---
       if (!headers.includes('Workflow Step')) headers.push('Workflow Step');
       if (!headers.includes('Workflow Status')) headers.push('Workflow Status');
@@ -1889,6 +1904,11 @@ export default async (req) => {
         let m = {};
         try { const o = JSON.parse(row['Workflow Signed'] || '{}'); if (o && typeof o === 'object' && !Array.isArray(o)) m = o; } catch (e) {}
         m[String(idx)] = { by: String(byWho || ''), at: new Date().toISOString().slice(0, 10), override: !!isOverride };
+        // Standing in for the named reviewer. Not an override — they were
+        // entitled — but the log must not read as though the person the step
+        // names was the one who answered it.
+        const forName = String((steps[idx] && steps[idx].person) || '').trim();
+        if (forName && forName.toLowerCase() !== String(byWho || '').trim().toLowerCase()) m[String(idx)].forName = forName;
         row['Workflow Signed'] = JSON.stringify(m);
       };
       const writeRows = async () => {

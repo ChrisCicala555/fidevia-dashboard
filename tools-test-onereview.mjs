@@ -68,9 +68,15 @@ console.log('Knowing who the reader is, before anything is drawn');
   // Every "is this mine" on the page runs off ME_EMAIL. A first paint before
   // it arrives answers all of them with no, then corrects itself — which reads
   // as the dashboard changing its mind about whose review it is.
-  const blank=look('','Architect 2','architect',true,false);
+  // A step is matched on its firm too now, which cushions this: an architect
+  // whose company is known is still recognised with no address loaded. Not
+  // everything is — a step naming somebody at a firm the reader is not at, and
+  // any check that runs off ME_EMAIL alone, still answers no.
+  const firmOnly=look('','Architect 2','architect',true,false);
+  ok(firmOnly.advances, 'the firm match survives an address that has not arrived');
+  const blank=look('','','architect',true,false);
   ok(!blank.advances,
-     'with no identity loaded the architect is not recognised — which is why it must be loaded first');
+     'but with neither address nor company the architect is not recognised — which is why identity is loaded first');
   const c = html.split('async function openProject')[1].split('\nasync function ')[0];
   ok(/try\{ await resolveMe\(\); \}catch\(e\)\{\}\s*\n\s*\/\/ loadDashboard lifts the gate/.test(c),
      'so the project waits for it before the first render');

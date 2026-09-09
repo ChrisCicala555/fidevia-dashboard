@@ -17,6 +17,11 @@ function wfIsDone(r){ return String(r['Workflow Status']||'')==='Complete'; }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
 function wfCompanyOf(p){ return ({'Test Architect':'Architect 2','Penelope Odiem':'Next Level Engineers'})[p]||''; }
 function wfEmailOf(p){ return ({'Test Architect':'arch@a2.test','Penelope Odiem':'pen@nle.test'})[p]||''; }
+// A step is matched on its firm as well as the address on it. These tests are
+// about attribution, so the reader is nobody's colleague: firm matching is
+// switched off by giving them no company.
+let ME_COMPANY='';
+function myCompany(){ return ME_COMPANY; }
 function wfCanAdvance(){ return true; }
 function withBusy(){}
 // The panel reads the chain as it applies to one row, and marks the reader's
@@ -28,7 +33,8 @@ function wfIsReturnOutcome(x){ const t=String(x||'').trim();
   return WF_RETURNED.test(t) && !/^re-?submitted$/i.test(t); }
 `;
 const sig  = html.slice(html.indexOf('// Who actually approved which step.'), html.indexOf('function wfEmailOf(person)'));
-const mine = html.slice(html.indexOf('function wfStepIsMine(st)'), html.indexOf('function wfProgressHTML'));
+// From wfStepCompany, which wfStepIsMine leans on to resolve a step's firm.
+const mine = html.slice(html.indexOf('function wfStepCompany(st)'), html.indexOf('function wfProgressHTML'));
 const progStart = html.indexOf('function wfProgressHTML');
 const prog = html.slice(progStart, html.indexOf('\n}\n', html.indexOf("+items+'<div style=\"margin-top:6px;font-size:13px;\">'"))+3);
 const H = new Function(pre + sig + mine + prog +

@@ -4580,7 +4580,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 15:20';
+const BUILD_STAMP='2026-09-09 16:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11197,9 +11197,14 @@ function wfSignedMap(row){
   try{ const o=JSON.parse((row&&row['Workflow Signed'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
   catch(e){ return {}; }
 }
-function wfMarkSigned(row, idx, by, override, outcome){
+function wfMarkSigned(row, idx, by, override, outcome, forName){
   const m=wfSignedMap(row);
   m[String(idx)]={by:String(by||''), at:etToday(), override:!!override};
+  // A colleague standing in for the named reviewer. Not an override — they are
+  // entitled to act — but the record should not read as though the person the
+  // step names was the one who answered it.
+  { const nm=String(forName||'').trim();
+    if(nm && nm.toLowerCase()!==String(by||'').trim().toLowerCase()) m[String(idx)].forName=nm; }
   // What they decided, where they said something other than plain approval.
   if(outcome && !/^approved?$/i.test(String(outcome))) m[String(idx)].outcome=String(outcome);
   row['Workflow Signed']=JSON.stringify(m);
@@ -11231,20 +11236,31 @@ function wfEmailOf(person){
 function myCompany(){
   return String(EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia')).trim();
 }
+// The firm a step belongs to. Stored on steps that carry one — a returned step
+// records it — and otherwise read off the named person's contact record, which
+// is the same lookup Workflow Settings uses to fill its Company column.
+function wfStepCompany(st){
+  if(!st) return '';
+  return String(st.company||'').trim() || String(wfCompanyOf(st.person)||'').trim();
+}
+// Whether a step belongs to the person reading it.
+//
+// A step names an individual, because somebody has to be chased and a log that
+// says "Architect 2 approved this" names nobody. But holding the action to that
+// one address meant one person's absence stopped the job: nobody else at
+// Architect 2 could move a submittal sitting on Test Architect, and the only
+// way through was Fidevia pressing Override — which is recorded as an override,
+// and is a misuse of a control meant for standing in on somebody else's behalf.
+//
+// So: named for who owes it, matched on the firm for who may act. The signature
+// records whoever actually pressed it, which is the part that has to be exact.
 function wfStepIsMine(st){
   if(!st) return false;
   const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
   if(ME_EMAIL && em && em===ME_EMAIL) return true;
-  // A step that came back belongs to the firm that filed the thing, not to the
-  // one address on the original row. The person who uploads the revision is
-  // often not the person who uploaded the first version, and holding the step
-  // to that address left the contractor looking at their own item with no way
-  // to move it — "Awaiting: Test Contractor" rather than "Awaiting you".
-  if(st.returned && st.company){
-    const mine=myCompany().toLowerCase();
-    return !!mine && String(st.company).trim().toLowerCase()===mine;
-  }
-  return false;
+  const mine=String(myCompany()||'').trim().toLowerCase();
+  const theirs=wfStepCompany(st).toLowerCase();
+  return !!mine && !!theirs && mine===theirs;
 }
 function wfMyStepsIn(steps, gs, ge){
   const out=[];
@@ -11253,8 +11269,9 @@ function wfMyStepsIn(steps, gs, ge){
 }
 function wfCanAdvance(steps, gs, ge){
   if(IS_ADMIN) return true;
-  if(!ME_EMAIL) return false;
-  return steps.slice(gs,ge+1).some(s=>{ const e=String(s.email||'').trim().toLowerCase()||wfEmailOf(s.person); return e && e===ME_EMAIL; });
+  // The same rule as wfStepIsMine, so the button offered and the action taken
+  // cannot disagree about who is entitled to act.
+  return steps.slice(gs,ge+1).some(wfStepIsMine);
 }
 function wfProgressHTML(key,r,i){
   const steps=wfEffectiveSteps(key, r); if(!steps.length) return '';
@@ -11286,7 +11303,9 @@ function wfProgressHTML(key,r,i){
     const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
     const mark = returned?'\u21a9':(isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped)?'\u2014':'\u25cb')));
     const note = sig
-      ? '<span style="font-size:11.5px;color:var(--muted);">'+esc(sig.outcome||'approved')+' '+esc(sig.at||'')+(sig.by?(' \u00b7 '+esc(sig.by)):'')+'</span>'
+      ? '<span style="font-size:11.5px;color:var(--muted);">'+esc(sig.outcome||'approved')+' '+esc(sig.at||'')
+        +(sig.by?(' \u00b7 '+esc(sig.by)):'')
+        +(sig.forName?(' <span style="font-style:italic;">for '+esc(sig.forName)+'</span>'):'')+'</span>'
       : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>' : '');
     // The reader's own step, said plainly. A chain of names means nothing until
     // you have found yourself in it, and everyone was reading every row to work
@@ -11808,7 +11827,8 @@ function applyReviewAdvance(key, row, by){
   const toSign = mine.length ? mine : (IS_ADMIN ? [gs] : []);
   if(!toSign.length) return '';
   const outcome=String((document.getElementById('reply-status')||{}).value||'');
-  toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length, outcome));
+  toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length, outcome,
+    (steps[n]&&steps[n].person)||''));
 
   // The revision is in. It goes back to the reviewer who sent it back: they
   // raised the objection and they are the one who can say it is answered.
