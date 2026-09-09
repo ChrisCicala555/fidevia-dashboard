@@ -24,8 +24,42 @@ ok(formIn('Meeting Minutes')==='docmeeting', 'Upload in Meeting Minutes opens th
 ok(formIn('meeting minutes')==='docmeeting', 'whatever case the folder is in');
 ok(formIn('Testing')==='', 'anywhere else uploads a file as before');
 ok(formIn('')==='', 'and so does the root');
-ok(/onclick="event\.preventDefault\(\);docsUploadClick\(\);"/.test(html),
-   'the Upload control routes through that check rather than always opening a picker');
+
+// Filing in a subfolder is still filing minutes. Keyed off the standard folder
+// you are under, not the one you are standing in.
+const deep = (...names) => { b.run(`DOCS_PATH.length=0; ${names.map(x=>`DOCS_PATH.push({id:'x',name:${JSON.stringify(x)}});`).join('')}`);
+                             return b.run('docsFolderForm()'); };
+ok(deep('Meeting Minutes','JC Meetings')==='docmeeting', 'and in a subfolder of it');
+ok(deep('Meeting Minutes','JC Meetings','2026')==='docmeeting', 'however deep');
+ok(deep('Testing','Concrete')==='', 'while a subfolder elsewhere still just uploads');
+
+// The control was a <label> wrapping the file input. Cancelling the label's
+// default and then calling input.click() re-entered the label, and the picker
+// never opened — Upload did nothing at all outside the folders with a form.
+ok(/<button class="btn-add" type="button" onclick="docsUploadClick\(\)">/.test(html),
+   'Upload is a button, not a label wrapped around the input it triggers');
+// Scoped to this control: the site photos uploader is a plain label with no
+// preventDefault, which works, and is not what this is about.
+ok(!/<label[^>]*>\s*\+ Upload\s*\n\s*<input[^>]*id="docs-upload"/.test(html),
+   'so nothing re-enters itself');
+ok(/id="docs-upload"[^>]*>\s*<\/div>|<input type="file" multiple id="docs-upload"[^>]*>\s*\n\s*<\/div>/.test(html)
+   || html.indexOf('<button class="btn-add" type="button" onclick="docsUploadClick()">')
+      < html.indexOf('id="docs-upload"'),
+   'the input sits beside the button rather than inside it');
+{
+  // And it really does reach one or the other.
+  const clicks = (...names) => {
+    b.run(`DOCS_PATH.length=0; ${names.map(x=>`DOCS_PATH.push({id:'x',name:${JSON.stringify(x)}});`).join('')}
+           globalThis.__c=0; globalThis.__o=''; document.getElementById('docs-upload').click=()=>{__c++;};
+           openModal=(t)=>{__o=t;};`);
+    b.ctx.docsUploadClick();
+    return { picker: b.run('__c'), form: b.run('__o') };
+  };
+  const plain = clicks('Testing','Concrete');
+  ok(plain.picker===1 && plain.form==='', 'a plain folder opens the file picker');
+  const mins = clicks('Meeting Minutes','JC Meetings');
+  ok(mins.picker===0 && mins.form==='docmeeting', 'a minutes subfolder opens the form instead');
+}
 
 // ── what it does with the answers ──
 {

@@ -1217,9 +1217,8 @@
           <h2>Documents</h2>
           <div style="display:flex;gap:8px;">
             <button class="btn-secondary" onclick="docsNewFolder()" style="padding:9px 14px;">+ New Folder</button>
-            <label class="btn-add" style="cursor:pointer;" onclick="event.preventDefault();docsUploadClick();">+ Upload
-              <input type="file" multiple id="docs-upload" style="display:none" onchange="docsUpload(this)">
-            </label>
+            <button class="btn-add" type="button" onclick="docsUploadClick()">+ Upload</button>
+            <input type="file" multiple id="docs-upload" style="display:none" onchange="docsUpload(this)">
           </div>
         </div>
         <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
@@ -5327,9 +5326,12 @@ async function docsDismissRequest(id){
 // meeting, the description carries who was there and what was decided. No
 // second index to fall out of step with the folder.
 const DOCS_FORM_FOLDERS={'meeting minutes':'docmeeting'};
+// Keyed off the standard folder you are under, not the one you are standing
+// in. Minutes filed in Meeting Minutes / JC Meetings are still minutes, and
+// asking the questions at the top but not one level down would be arbitrary.
 function docsFolderForm(){
-  const here=(DOCS_PATH[DOCS_PATH.length-1]||{}).name||'';
-  return DOCS_FORM_FOLDERS[String(here).trim().toLowerCase()]||'';
+  const top=(DOCS_PATH[0]||{}).name||'';
+  return DOCS_FORM_FOLDERS[String(top).trim().toLowerCase()]||'';
 }
 function docsUploadClick(){
   const form=docsFolderForm();
