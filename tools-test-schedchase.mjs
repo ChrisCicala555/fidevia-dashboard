@@ -85,19 +85,30 @@ ok(/let MY_SCHEDULE=null/.test(html), "the viewer's own obligation is held");
 {
   const ms = html.split('async function loadMySchedule')[1].split('async function renderScheduleUploads')[0];
   ok(/if\(!currentProject \|\| IS_ADMIN\) return;/.test(ms), 'Fidevia gets the panel instead');
-  ok(/if\(!\(d\.due&&d\.due\.enabled\)\) return;/.test(ms),
-     'and nobody is chased on a project where it was not asked for');
+  // The toggle used to decide whether the dashboard mentioned this at all,
+  // which left a contract that had never posted a programme reading "nothing
+  // needs you right now". Owing one is a term of the contract; the toggle
+  // decides what gets emailed. What gates the dashboard line now is whether
+  // the job has been authorised to start.
+  ok(!/if\(!\(d\.due&&d\.due\.enabled\)\) return;/.test(ms),
+     'the email toggle no longer decides whether the dashboard says anything');
+  ok(/scheduleObligationStarted\(\)===true/.test(html),
+     'the job having started does');
   ok(/companies/.test(ms) && !/companies:\[/.test(ms),
      'the contractor does not name a company — the server takes it from the grant');
 }
 {
   const at = html.split('if(MY_SCHEDULE && MY_SCHEDULE.state')[1].split('// Pay applications awaiting')[0];
   ok(/state!=='current'/.test(html), 'nothing is shown once this month is posted');
-  ok(/none uploaded yet/.test(at) && /nothing this month/.test(at), 'the two cases read differently');
-  ok(/last was '\+fmtDMY\(MY_SCHEDULE\.date\)/.test(at), 'and it says when the last one was');
+  ok(/none submitted yet/.test(at) && /no '\+wantLabel\+' programme/.test(at),
+     'the two cases read differently');
+  ok(/last covers '\+MY_SCHEDULE\.periodLabel/.test(at),
+     'and it says which month the one on file covers');
+  ok(/last submitted '\+fmtDMY\(MY_SCHEDULE\.date\)/.test(at),
+     'falling back to when it arrived, for a file that never recorded a period');
   ok(/today>day \? 'Overdue'/.test(at), 'past the due day it reads as overdue');
   ok(/'Due by the '\+day\+ordinalSuffix\(day\)/.test(at), 'before it, as due');
-  ok(/sec:'gendocs'/.test(at), 'and clicking goes to Documents');
+  ok(/sec:'schedule'/.test(at), 'and clicking goes to the Schedule tab, where schedules now live');
 }
 ok(/the feed records what happened, this is what is owed/.test(html),
    'why it is in the attention panel rather than the activity feed');

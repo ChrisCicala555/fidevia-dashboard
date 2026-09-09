@@ -4560,7 +4560,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 10:40';
+const BUILD_STAMP='2026-09-09 11:35';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5837,9 +5837,13 @@ async function loadMySchedule(){
        period:String(monthStart()).slice(0,7)},{quiet:true});
     const row=(d.companies||[])[0];
     if(!row) return;
-    // Only chased where Fidevia has asked for it on this project.
-    if(!(d.due&&d.due.enabled)) return;
-    MY_SCHEDULE=Object.assign({}, row, {due:d.due});
+    // The chase toggle governs whether Fidevia emails about this. It used to
+    // govern whether the dashboard mentioned it at all, which meant a contract
+    // that had never posted a programme read "nothing needs you right now".
+    // Owing a monthly schedule is a term of the contract, not a notification
+    // preference — so the line appears once the job has started, and the toggle
+    // goes on deciding only what gets sent.
+    MY_SCHEDULE=Object.assign({}, row, {due:d.due||{}});
   }catch(e){}
   try{ renderAll(); }catch(e){}
 }
@@ -6265,6 +6269,24 @@ async function sendScheduleChaseNow(company){
     +' \u2014 '+sent+' '+(sent===1?'person':'people')+'.','success');
   try{ renderScheduleUploads(); }catch(e){}
 }
+// The date a monthly programme starts being owed: the earlier of Notice to
+// Proceed and Mobilize. Before it there is nothing to submit, and a dashboard
+// that says otherwise is asking a contractor for a schedule of work that has
+// not been authorised to begin.
+function scheduleObligationStart(){
+  const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
+  const d=s=>{ const x=new Date(s); return isNaN(x)?null:x; };
+  const pick=n=>{ const m=ms.find(x=>String(x.name||'').toLowerCase().includes(n)); return m?d(m.contract):null; };
+  const cands=[pick('notice'), pick('mobilize')].filter(Boolean);
+  if(!cands.length) return null;
+  return new Date(Math.min.apply(null, cands.map(x=>x.getTime())));
+}
+function scheduleObligationStarted(){
+  const st=scheduleObligationStart();
+  if(!st) return null;                       // no milestone recorded: cannot say
+  const t=new Date(); t.setHours(0,0,0,0);
+  return t>=new Date(st.getFullYear(), st.getMonth(), st.getDate());
+}
 function scheduleStats(){
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const find=n=>ms.find(m=>(m.name||'').toLowerCase().includes(n));
@@ -6675,18 +6697,27 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
         cls:'wf', sec:'contacts'});
     });
   }catch(e){}
-  if(MY_SCHEDULE && MY_SCHEDULE.state && MY_SCHEDULE.state!=='current'){
+  // Nothing is owed before the job is authorised to start, and a job with no
+  // milestones recorded cannot say either way — so neither is chased.
+  if(MY_SCHEDULE && MY_SCHEDULE.state && MY_SCHEDULE.state!=='current'
+     && scheduleObligationStarted()===true){
     const d=MY_SCHEDULE.due||{};
     const day=parseInt(d.day,10)||25;
     const today=new Date().getDate();
+    const wantLabel=schedPeriodLabel(String(monthStart()).slice(0,7))||'this month';
     items.push({
+      // Named for the month being asked for, which is the thing to act on.
       label: MY_SCHEDULE.state==='never'
-        ? 'Monthly schedule — none uploaded yet'
-        : 'Monthly schedule — nothing this month'
-          +(MY_SCHEDULE.date?(', last was '+fmtDMY(MY_SCHEDULE.date)):''),
+        ? 'Monthly schedule — none submitted yet'
+        : 'Monthly schedule — no '+wantLabel+' programme'
+          +(MY_SCHEDULE.periodLabel
+              ? (', last covers '+MY_SCHEDULE.periodLabel)
+              : (MY_SCHEDULE.date?(', last submitted '+fmtDMY(MY_SCHEDULE.date)):'')),
       badge: today>day ? 'Overdue' : ('Due by the '+day+ordinalSuffix(day)),
       cls: today>day ? '' : 'wf',
-      sec:'gendocs'});
+      // Schedules left Documents, so this pointed at a tab that no longer holds
+      // them — and 'gendocs' is Documents, not Schedule.
+      sec:'schedule'});
   }
 
   // Pay applications awaiting Fidevia's review
