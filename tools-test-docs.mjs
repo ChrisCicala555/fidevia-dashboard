@@ -65,20 +65,25 @@ ok('the path resets between projects', /DOCS_PATH=\[\]; DOCS_ENTRIES=\[\];/.test
 ok('it loads when the tab opens',   /if\(sec==='gendocs'\)\{ try\{ loadDocs\(\)/.test(src));
 
 console.log('Setting a project up');
-ok('party folders are offered',     /async function docsSetupParties/.test(src));
-ok('parties come from contractors, contacts and the owner',
-   /\(cfg\.contractors\|\|\[\]\)[\s\S]{0,300}allData\.contacts[\s\S]{0,120}cfg\.owner/.test(grab(src,'function docsPartyNames')));
-ok('Fidevia always has one',        /new Set\(\['Fidevia'\]\)/.test(src));
-ok('only missing ones are created', /const missing=names\.filter\(n=>!have\.has/.test(src));
-ok('the precon structure matches Box',
-   ['Budget','RFPs_Proposals','Bidding','Meetings','Misc','Schedule','Drawings','Reports','Phasing','Constructability','Agreements','Design','Photos']
-     .every(n=>src.includes("'"+n+"'")));
-ok('precon is offered inside Fidevia’s folder only',
-   /DOCS_PATH\[0\]\.name\)\.trim\(\)\.toLowerCase\(\)==='fidevia'/.test(src));
+// Documents is one shared tree now, so there are no party folders to build.
+// What a project needs instead is the standard set, created on sight.
+ok('the standard folders are created',  /docsEnsureStandard/.test(src));
+ok('and only by Fidevia',               /IS_ADMIN && !viewingAsExternal\(\) && !DOCS_STD_DONE/.test(src));
+ok('a failure is shown, not just logged', /DOCS_STD_ERR/.test(src));
+ok('the per-party helpers are gone',    !/docsSetupParties|docsPartyNames|PARTY_FOLDERS/.test(src));
+ok('and the root no longer claims each party sees only their own',
+   !/Each party has their own folder/.test(src));
+ok('only missing ones are created', /if \(lower\.has\(name\.toLowerCase\(\)\)\) continue;/.test(proxy));
+ok('the nine standard folders are named', ['Testing','ASIs','Inspections','Punch List',
+  'Meeting Minutes','Closeout','Drawings and Specifications','Schedules','Fidevia Internal']
+  .every(nme=>proxy.includes("'"+nme+"'")));
+ok('precon is offered inside the Fidevia-only folder',
+   /inFidevia && !hasAll\(PRECON_FOLDERS\)/.test(src));
 
 console.log('What each party is told');
-ok('Fidevia is told they see all',  /You see all of them/.test(src));
-ok('a party is told theirs is private', /Only your company and Fidevia can see what is here/.test(src));
+ok('everyone is told it is shared',   /Everyone on the project reads everything here/.test(src));
+ok('and that one folder is not',      /Fidevia Internal is the exception/.test(src));
+ok('an outside reader is told the same', /The shared record of this project/.test(src));
 
 
 console.log('A project that predates the module');

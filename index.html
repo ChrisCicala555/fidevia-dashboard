@@ -2511,7 +2511,7 @@ function resetProjectPhotos(){
 
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false; DOCS_STD_ERR='';
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -2589,7 +2589,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // while the wizard was open saw the last project's contacts. The wizard builds
 // a different project and should start from nothing.
 function wizClearProjectContext(){
-  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false;
+  SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false; DOCS_STD_ERR='';
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -4960,6 +4960,7 @@ function renderDocuments(){ renderDocsTable('docs','tbody-documents'); }
 // filing system; the dashboard navigates it and decides who may see what.
 let DOCS_PATH=[];            // [{id,name}] from the Documents root inward
 let DOCS_STD_DONE=false;
+let DOCS_STD_ERR='';
 let DOCS_ENTRIES=[], DOCS_AT_ROOT=true;
 
 function docsRootId(){ return (currentProject&&currentProject.folders&&currentProject.folders.gendocs)||''; }
@@ -5084,7 +5085,12 @@ async function loadDocs(){
     DOCS_STD_DONE=true;
     try{ const st=await proxyCall('docsEnsureStandard',{projectId:currentProject.folderId},{quiet:true});
       if(st && (st.made||[]).length) try{ auditLog('Set up standard document folders','gendocs',{}, st.made.join(', ')); }catch(e){}
-    }catch(e){ console.warn('standard folders:', e.message); }
+    }catch(e){
+      // Silently warning to the console meant a project could sit without its
+      // folders and nobody would know why. Say it where it is being looked at.
+      DOCS_STD_ERR=e.message||'unknown error';
+      console.warn('standard folders:', DOCS_STD_ERR);
+    }
   }
   try{
     const d=await proxyCall('docsList',{folderId:docsHere()||root});
@@ -5130,7 +5136,15 @@ function renderDocs(){
     }
   }
   { const cu=document.getElementById('docs-catchup');
-    if(cu) cu.style.display=(IS_ADMIN && !viewingAsExternal() && !docsHere()) ? '' : 'none'; }
+    if(cu){
+      const show = IS_ADMIN && !viewingAsExternal() && !docsHere();
+      cu.style.display = show ? '' : 'none';
+      const st=document.getElementById('docs-catchup-status');
+      if(show && st && DOCS_STD_ERR && !st.textContent){
+        st.textContent='The standard folders could not be created automatically: '+DOCS_STD_ERR;
+        st.className='status-msg error';
+      }
+    } }
   const cr=document.getElementById('docs-crumbs');
   if(cr){
     let html='<a href="#" onclick="docsGoTo(0);return false;" style="color:var(--olive-700);font-weight:600;text-decoration:none;">Documents</a>';
@@ -5140,33 +5154,30 @@ function renderDocs(){
         : '<a href="#" onclick="docsGoTo('+(i+1)+');return false;" style="color:var(--olive-700);text-decoration:none;">'+esc(p.name)+'</a>'; });
     cr.innerHTML=html;
   }
-  // A word about what this view is, where it is not obvious.
+  // A word about what this view is, where it is not obvious. This used to say
+  // each party had their own folder and saw only their own, which stopped being
+  // true when Documents became the shared record — the note outlived the model
+  // it described, and was the first thing anyone read.
   const note=document.getElementById('docs-note');
   if(note){
     if(DOCS_AT_ROOT && IS_ADMIN && !viewingAsExternal()){
       note.style.display='block';
-      note.textContent='Each party has their own folder here and can see only their own. You see all of them.';
-      const missing=docsPartyNames().filter(n=>!DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()));
-      if(missing.length) note.innerHTML+=' <a href="#" onclick="docsSetupParties();return false;">Create the '+missing.length+' missing party folder'+(missing.length===1?'':'s')+'</a>.';
+      note.textContent='Everyone on the project reads everything here, owners included, and anyone can add to it. '
+        +'Fidevia Internal is the exception: it is not listed to them and they cannot open it.';
     } else if(DOCS_AT_ROOT){
       note.style.display='block';
-      note.textContent='This is your company\u2019s document area on this project. Only your company and Fidevia can see what is here.';
+      note.textContent='The shared record of this project. Everyone on the job can see what is filed here, '
+        +'and you can add to it.';
     } else {
       note.style.display='none';
-      const inFidevia = DOCS_PATH.length===1 && String(DOCS_PATH[0].name).trim().toLowerCase()==='fidevia';
+      const inFidevia = DOCS_PATH.length===1
+        && String(DOCS_PATH[0].name).trim().toLowerCase()===DOCS_CONFIDENTIAL;
       const hasAll = list=>list.every(n=>DOCS_ENTRIES.some(e=>e.type==='folder'&&String(e.name).trim().toLowerCase()===n.toLowerCase()));
-      // Offer the precon structure inside Fidevia's own folder, where it belongs.
+      // Precon still has a shape worth offering, and Fidevia Internal is where
+      // it belongs now that it is the only folder that is Fidevia's alone.
       if(IS_ADMIN && !viewingAsExternal() && inFidevia && !hasAll(PRECON_FOLDERS)){
         note.style.display='block';
-        note.innerHTML='Setting up precon? <a href="#" onclick="docsCreatePrecon();return false;">Create the standard precon folders</a> \u2014 the same structure already in Box, so existing files move across unchanged.';
-      }
-      // And the standard set inside any other party's folder, offered to
-      // whoever is standing in it — the contractor filing their own work as
-      // readily as Fidevia setting it up for them.
-      else if(DOCS_PATH.length===1 && !inFidevia && !hasAll(PARTY_FOLDERS)){
-        note.style.display='block';
-        note.innerHTML='<a href="#" onclick="docsCreatePartyFolders();return false;">Add the standard folders</a> \u2014 '
-          +esc(PARTY_FOLDERS.join(', '))+'. You can add your own alongside them.';
+        note.innerHTML='Setting up precon? <a href="#" style="color:var(--olive-700);font-weight:600;" onclick="docsCreatePrecon();return false;">Create the standard precon folders</a> \u2014 the same structure already in Box, so existing files move across unchanged.';
       }
     }
   }
@@ -5205,54 +5216,9 @@ function renderDocs(){
 
 // Every party on the project gets a folder named for their company; that name
 // is how the server decides who may see it.
-function docsPartyNames(){
-  const out=new Set(['Fidevia']);
-  const cfg=(currentProject&&currentProject.config)||{};
-  (cfg.contractors||[]).filter(c=>c.active!==false).forEach(c=>{ if(c.name) out.add(String(c.name).trim()); });
-  (allData.contacts||[]).forEach(c=>{ if(c['Company']) out.add(String(c['Company']).trim()); });
-  if(cfg.owner) out.add(String(cfg.owner).trim());
-  return [...out].filter(Boolean);
-}
-async function docsSetupParties(){
-  const names=docsPartyNames();
-  const have=new Set(DOCS_ENTRIES.filter(e=>e.type==='folder').map(e=>String(e.name).trim().toLowerCase()));
-  const missing=names.filter(n=>!have.has(n.toLowerCase()));
-  if(!missing.length){ alert('Every party on this project already has a folder.'); return; }
-  if(!confirm('Create a folder for:\n\n  \u2022 '+missing.join('\n  \u2022 ')
-    +'\n\nEach party sees only their own. Fidevia sees all of them.')) return;
-  const prog=document.getElementById('docs-progress'); prog.style.display='block';
-  for(const n of missing){
-    prog.textContent='Creating '+n+'\u2026';
-    try{
-      const d=await proxyCall('ensureFolder',{parentId:docsHere(), name:n});
-      // Seed the standard set as the folder is made, so a contractor arriving
-      // for the first time finds a structure rather than an empty room.
-      if(d && d.id) for(const sub of PARTY_FOLDERS){
-        try{ await proxyCall('ensureFolder',{parentId:d.id, name:sub}); }catch(e){}
-      }
-    }catch(e){}
-  }
-  prog.style.display='none';
-  await loadDocs();
-}
 // What every party's folder starts with. Deliberately short: an empty folder
 // invites a filing system per company, and a single agreed name is worth more
 // than a structure nobody follows. Add to this list as real use asks for it.
-const PARTY_FOLDERS=['Schedules'];
-async function docsCreatePartyFolders(){
-  const have=new Set(DOCS_ENTRIES.filter(e=>e.type==='folder').map(e=>String(e.name).trim().toLowerCase()));
-  const missing=PARTY_FOLDERS.filter(n=>!have.has(n.toLowerCase()));
-  if(!missing.length){ alert('Those folders are already here.'); return; }
-  if(!confirm('Create '+(missing.length===1?'this folder':'these folders')+' here?\n\n  \u2022 '
-    +missing.join('\n  \u2022 '))) return;
-  const prog=document.getElementById('docs-progress'); prog.style.display='block';
-  for(const n of missing){
-    prog.textContent='Creating '+n+'\u2026';
-    try{ await proxyCall('ensureFolder',{parentId:docsHere(), name:n}); }catch(e){}
-  }
-  prog.style.display='none';
-  await loadDocs();
-}
 // The precon structure Fidevia already keeps in Box, so existing folders can be
 // moved across without rearranging them first.
 const PRECON_FOLDERS=['Agreements','Bidding','Budget','Constructability','Design','Drawings',
