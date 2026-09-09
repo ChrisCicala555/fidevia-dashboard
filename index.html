@@ -5081,7 +5081,7 @@ async function loadDocs(){
   // Older projects predate the standard set, and a project created before a
   // folder was added to it would be missing that one. Filled in on sight,
   // once, by Fidevia.
-  if(IS_ADMIN && !viewingAsExternal() && !DOCS_STD_DONE && !docsHere()){
+  if(IS_ADMIN && !viewingAsExternal() && !DOCS_STD_DONE && !DOCS_PATH.length){
     DOCS_STD_DONE=true;
     try{ const st=await proxyCall('docsEnsureStandard',{projectId:currentProject.folderId},{quiet:true});
       if(st && (st.made||[]).length) try{ auditLog('Set up standard document folders','gendocs',{}, st.made.join(', ')); }catch(e){}
@@ -5137,8 +5137,8 @@ function renderDocs(){
   }
   { const cu=document.getElementById('docs-catchup');
     if(cu){
-      const show = IS_ADMIN && !viewingAsExternal() && !docsHere();
-      cu.style.display = show ? '' : 'none';
+      const show = IS_ADMIN && !viewingAsExternal() && !DOCS_PATH.length;
+      cu.style.display = show ? 'block' : 'none';
       const st=document.getElementById('docs-catchup-status');
       if(show && st && DOCS_STD_ERR && !st.textContent){
         st.textContent='The standard folders could not be created automatically: '+DOCS_STD_ERR;
