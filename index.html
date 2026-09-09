@@ -4520,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 00:40';
+const BUILD_STAMP='2026-09-09 01:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6381,18 +6381,21 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
       if(wfIsDone(r)) return;
       if(!String(r['Workflow Status']||'').trim()) return;
       const cur=wfActiveIdx(r); const [gs,ge]=wfGroupAt(steps,cur);
-      let who='';
+      let who='', sentBack=false;
       const ours=steps.slice(gs,ge+1).some(st=>{
         const e=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-        if(e&&e===me){ who=st.person||''; return true; }
-        if(personIsOurs(st.person)){ who=st.person||''; return true; }
-        if(coMatches(st.company)){ who=st.person||''; return true; }
-        return false;
+        const hit = (e&&e===me) || personIsOurs(st.person) || coMatches(st.company);
+        if(hit){ who=st.person||''; sentBack=!!st.returned; }
+        return hit;
       });
       if(ours){
         const mineOwn=(who&&nameMatches(who));
+        // A step that came back is not a review. Asking the contractor for
+        // "your review" of their own drawing is asking the wrong thing.
         items.push({label:(r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
-                    badge: mineOwn?'Your review':'With '+(who||'your team'), cls:'wf', sec});
+                    badge: sentBack ? (mineOwn?'Revise and resubmit':'Sent back to '+(who||'your team'))
+                                    : (mineOwn?'Your review':'With '+(who||'your team')),
+                    cls:'wf', sec});
       }
     });
   });
@@ -10538,6 +10541,16 @@ function rowSubmitterName(r){
   }
   return who;
 }
+// The address the row itself recorded, before anyone's name is looked up. Two
+// people can share a name; the row knows which one filed this.
+function rowSubmitterEmail(r){
+  const direct=String((r&&r['Submitted By Email'])||'').trim();
+  if(direct) return direct.toLowerCase();
+  const raw=String((r&&(r['Submitted By (Sub)']||r['Submitted By']))||'')
+    .replace(/\s*\([^)]*\)\s*$/,'').trim();
+  if(raw.includes('@')) return raw.toLowerCase();
+  return wfEmailOf(raw);
+}
 function wfExtraSteps(row){
   try{ const a=JSON.parse((row&&row['Workflow Extra'])||'[]'); return Array.isArray(a)?a:[]; }
   catch(e){ return []; }
@@ -10630,7 +10643,7 @@ function wfHealReturn(key,row){
   const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
   const extra=wfExtraSteps(row);
   extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
-              email:String(row['Submitted By Email']||'').trim(),
+              email:rowSubmitterEmail(row),
               addedBy:'', at:'', returned:true, inferred:true});
   row['Workflow Extra']=JSON.stringify(extra);
   row['Workflow Step']=String(ge+1);
@@ -10783,7 +10796,8 @@ function wfProgressHTML(key,r,i){
       : 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';flex-wrap:wrap;';
     return '<div style="'+rowStyle+'">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
-      +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">YOUR REVIEW</span>':'')
+      +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">'
+          +(s.returned?'YOUR TURN':'YOUR REVIEW')+'</span>':'')
       +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':'added')+'</span>':'')
@@ -11061,8 +11075,12 @@ function verThreadRows(key,r,i,colspan){
   // where they expected one.
   const _rvSteps=wfEffectiveSteps(key,r);
   const _rvCur=wfActiveIdx(r), _rvGrp=_rvSteps.length?wfGroupAt(_rvSteps,_rvCur):[0,0];
-  const _rvIsReviewer = _rvSteps.length && !wfIsDone(r) && !wfIsStopped(r)
-    && wfMyStepsIn(_rvSteps,_rvGrp[0],_rvGrp[1]).length>0;
+  const _rvMine = _rvSteps.length ? wfMyStepsIn(_rvSteps,_rvGrp[0],_rvGrp[1]) : [];
+  const _rvIsReviewer = _rvSteps.length && !wfIsDone(r) && !wfIsStopped(r) && _rvMine.length>0;
+  // What is being asked differs: a reviewer decides, the contractor whose
+  // drawing came back redraws it. One button called "Review & Continue" told
+  // the contractor to review their own submittal.
+  const _rvSentBack = _rvIsReviewer && _rvMine.some(n=>_rvSteps[n]&&_rvSteps[n].returned);
   // What the button is called depends on who is reading it, because the same
   // action means different things to them. The contractor who filed the item is
   // sending a new version of their own document; the design team is recording a
@@ -11070,7 +11088,8 @@ function verThreadRows(key,r,i,colspan){
   const _rvLabel = DESIGN_ROLES.includes(viewingAsRole()) ? 'Submit Review Step'
     : (EXTERNAL ? 'Submit Updated Version' : 'Reply / New Version');
   const reply = _rvIsReviewer
-    ? '<button class="btn-primary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+',true)">Review &amp; Continue &rarr;</button>'
+    ? '<button class="btn-primary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+',true)">'
+      +(_rvSentBack?'Submit Revision &rarr;':'Review &amp; Continue &rarr;')+'</button>'
     : '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+_rvLabel+'</button>';
   // Older records carry a free-text Response Summary. Nothing writes it now —
   // replies are versions — but where one exists it belongs with its item rather
@@ -11270,13 +11289,13 @@ function applyReviewAdvance(key, row, by){
     const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
     const extra=wfExtraSteps(row);
     extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
-                email:wfEmailOf(who)||String(row['Submitted By Email']||'').trim(),
+                email:rowSubmitterEmail(row),
                 addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), returned:true});
     row['Workflow Extra']=JSON.stringify(extra);
     row['Workflow Step']=String(ge+1);
     row['Workflow Status']='In Review';
     if(REPLY_CTX){ REPLY_CTX._returnedTo=who;
-      const em=wfEmailOf(who)||String(row['Submitted By Email']||'').trim();
+      const em=rowSubmitterEmail(row);
       if(em) REPLY_CTX._addedEmail=em; }
     try{ auditLog('Returned for revision', key, row, who); }catch(e){}
     return '';

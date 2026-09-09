@@ -109,5 +109,37 @@ console.log('The email says whose move it is');
 ok(/'Workflow Extra':row\['Workflow Extra'\]\|\|'', 'Workflow Reassigned'/.test(html),
    'the added step is saved with the rest of the review');
 
+console.log('What the contractor is actually shown');
+// Two Dave Chens in the directory: the step has to name the one who filed it,
+// which the row knows and a name lookup does not.
+b.run(`allData.contacts=[{'Name':'Dave Chen','Company':'Summit Builders','Email':'d@s.test'},
+  {'Name':'Dave Chen','Company':'Summit Builders','Email':'theintergalacticinvestments@gmail.com'},
+  {'Name':'Test Architect','Company':'Architect 2','Email':'a@x.test'}];
+  EXTERNAL=true; IS_ADMIN=false; ME_EMAIL='theintergalacticinvestments@gmail.com'; ME_NAME='Dave Chen';
+  currentProject.userCompany='Summit Builders'; currentProject.userRole='contractor';
+  allData.rfi=[]; allData.co=[]; allData.pay_apps=[];`);
+stale(); b.run("renderAll()");
+{
+  const panel = b.run("wfProgressHTML('sub', allData.sub[0], 0)");
+  ok(/Awaiting you/.test(panel),
+     'the person the item went back to is told it is on them, by name off the row');
+  ok(/YOUR TURN/.test(panel) && !/YOUR REVIEW/.test(panel),
+     'and it is called their turn, not their review — they are redrawing, not reviewing');
+  ok(/Submit Revision/.test(b.run("verThreadRows('sub', allData.sub[0], 0, 10)")),
+     'the button asks for a revision rather than a review');
+  const att = lines().join(' ');
+  ok(/Revise and resubmit/.test(att) && !/Your review/.test(att),
+     'Needs Your Attention says the same thing ('+att+')');
+}
+// The email carries it too.
+{
+  const body = b.run(`emailTemplate('Submittal Updated: Revise and Resubmit',
+    [['Submittal #','SUB-GC-001'],['Now With',(function(){const nw=wfNowWith('sub',allData.sub[0]);
+      return nw.label+' ('+nw.firmLabel+')'+(nw.returned?' \u2014 to revise and resubmit':'');})()]],
+    'Ithaca')`).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+  ok(/Now With/.test(body) && /Summit Builders/.test(body) && /to revise and resubmit/.test(body),
+     'and so does the email that goes out');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-sentback.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
