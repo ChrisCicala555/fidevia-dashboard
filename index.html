@@ -2655,6 +2655,12 @@ async function openProject(folderId, name){
     if(EXTERNAL) loadMySchedule();
     if(!EXTERNAL) loadProjectOrgs();
     projectLoadingStep('Loading project records…');
+    // Who the reader is, before anything is drawn. Every "is this mine" on the
+    // page — the YOUR REVIEW mark, Needs Your Attention, which button a
+    // reviewer is offered — runs off ME_EMAIL, and a first paint that happens
+    // before it arrives answers all of them with no. It corrected itself on
+    // the next render, which is why it read as the dashboard changing its mind.
+    try{ await resolveMe(); }catch(e){}
     // loadDashboard lifts the gate itself once records are in and rendered.
     await loadDashboard();
   }catch(e){
@@ -4574,7 +4580,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 13:55';
+const BUILD_STAMP='2026-09-09 15:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11583,10 +11589,33 @@ function verThreadRows(key,r,i,colspan){
   // review, whether or not the chain happens to name them; Fidevia is replying.
   const _rvLabel = DESIGN_ROLES.includes(viewingAsRole()) ? 'Submit Review Step'
     : (EXTERNAL ? 'Submit Updated Version' : 'Reply / New Version');
-  const reply = _rvIsReviewer
-    ? '<button class="btn-primary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+',true)">'
-      +(_rvSentBack?'Submit Revision &rarr;':'Review &amp; Continue &rarr;')+'</button>'
-    : '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+_rvLabel+'</button>';
+  // One action, not two that look alike and behave differently.
+  //
+  // There used to be a advancing button and a non-advancing one, chosen by
+  // whether the chain was sitting on the reader at the moment the row was
+  // drawn. A reviewer who got the second one wrote their review, watched
+  // nothing move, and then found the first one waiting for them — so they
+  // reviewed the same submittal twice, and the record carries two entries for
+  // one decision.
+  //
+  // Whether the chain moves is a question about the item, and it is answered
+  // when the review is submitted, by applyReviewAdvance — which signs the
+  // reader's own steps and no others, and does nothing at all if none of the
+  // current group is theirs. So anyone entitled to record a review gets the
+  // full dialog every time, and the chain follows if it was in fact their step.
+  // Named in the chain, whether or not it is their turn yet. Not simply "is
+  // an administrator": applyReviewAdvance lets Fidevia sign a step that is not
+  // theirs as an override, so handing Fidevia the advancing dialog by default
+  // would turn an ordinary reply into a recorded approval nobody gave. Fidevia
+  // still has the explicit Override button for that.
+  const _rvOnChain = _rvSteps.length>0 && _rvSteps.some(wfStepIsMine);
+  const _rvAdvance = _rvIsReviewer || _rvOnChain;
+  const _rvText = _rvSentBack ? 'Submit Revision &rarr;'
+    : _rvIsReviewer ? 'Review &amp; Continue &rarr;'
+    : _rvLabel;
+  const reply = '<button class="'+(_rvIsReviewer?'btn-primary':'btn-secondary')
+    +'" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''
+    +key+'\','+i+','+(_rvAdvance?'true':'false')+')">'+_rvText+'</button>';
   // Older records carry a free-text Response Summary. Nothing writes it now —
   // replies are versions — but where one exists it belongs with its item rather
   // than in a separate note under the table.
