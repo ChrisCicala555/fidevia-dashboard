@@ -68,7 +68,9 @@ ok(!/id="section-meetings"/.test(html) && !/id="section-documents"/.test(html),
 ok(/if \(op === 'docsMigrateLegacy'\)/.test(srv),
    'and there is an action that moves what they were holding');
 {
-  const c = srv.split("if (op === 'docsMigrateLegacy')")[1].split("if (op === 'docsList')")[0];
+  // Bounded to this op alone: docsRemoveLegacy now sits between it and
+  // docsList, and that one does delete — deliberately, and only empty folders.
+  const c = srv.split("if (op === 'docsMigrateLegacy')")[1].split("if (op === 'docsRemoveLegacy')")[0];
   ok(/if \(!who\.isAdmin\)/.test(c), 'run by Fidevia only');
   ok(/prefix: '07'/.test(c) && /prefix: '10'/.test(c), 'from both old module folders');
   ok(/if \(have\.has\(nm\.toLowerCase\(\)\)\)/.test(c),
