@@ -13,15 +13,21 @@ ok(/who\.isAdmin/.test(op), 'admin only');
 ok(/startsWith\(DOCS_PREFIX\)/.test(op), 'it looks under Documents');
 ok(/\^schedules\?\$\/i/.test(op), 'in a Schedules folder, singular or plural');
 ok(/created_at/.test(op), 'reading when each file arrived');
-ok(/files\.sort/.test(op) && /localeCompare/.test(op), 'newest first');
-ok(/when >= since/.test(op), 'and comparing against the start of the month');
+// The judging moved into lib/sched.mjs so the panel and the nightly chase
+// cannot drift apart again — they had, and the chase was the one that was wrong.
+const lib = fs.readFileSync('netlify/functions/lib/sched.mjs','utf8');
+ok(/scheduleState\(files, want, since\)/.test(op), 'and handing the files to one shared rule');
+ok(/sort\(\(a, b\) =>/.test(lib) && /localeCompare/.test(lib), 'newest first');
+ok(/when >= since/.test(lib), 'comparing against the start of the month where no period was named');
+ok(/periodFromName\(f\.name\) === wantPeriod/.test(lib),
+   'but preferring the month the uploader said it covers');
 // 'no-folder' went with the per-company tree: there is one shared Schedules
 // folder now, so either the project has it or it does not.
-ok(/'no-schedules-folder'/.test(op) && /'never'/.test(op) && /'no-documents'/.test(op),
+ok(/'no-schedules-folder'/.test(op) && /'never'/.test(lib) && /'no-documents'/.test(op),
    'the ways of having nothing are told apart');
 ok(/norm\(f\.name\)\.includes\(norm\(co\)\)/.test(op),
    'and a shared folder is read by filename, since the folder cannot say whose a file is');
-ok(/created_at is the honest/.test(op), 'and why upload date is the measure');
+ok(/created_at is the honest/.test(lib), 'and why upload date is the measure of when it arrived');
 
 // ── the panel ──
 ok(/id="sched-uploads-panel"/.test(html), 'the Schedule tab shows it');

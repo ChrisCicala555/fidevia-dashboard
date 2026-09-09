@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs';
 import { logNotif } from './lib/notif-log.mjs';
+import { scheduleState, periodOfDate, periodLabel, norm as schedNorm } from './lib/sched.mjs';
 
 // Retry Box calls that come back rate-limited. This job runs unattended, so a
 // silent 429 means a reminder is never sent and nobody finds out.
@@ -87,7 +88,7 @@ function monthStart(now) {
   const d = new Date(now);
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-01';
 }
-function scheduleChaseHTML(project, company, lastDate) {
+function scheduleChaseHTML(project, company, lastDate, lastPeriod, wantPeriod) {
   const origin = (process.env.SITE_URL || 'https://dashboard.fidevia.com').replace(/\/$/, '');
   const sans = "'Helvetica Neue',Helvetica,Arial,sans-serif";
   const esc = v => String(v == null ? '' : v).replace(/</g, '&lt;');
@@ -95,10 +96,18 @@ function scheduleChaseHTML(project, company, lastDate) {
   // contractor actually reads would be the only place it appears.
   const fmt = v => { const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[2] + '/' + m[3] + '/' + m[1]) : String(v || ''); };
   const row = (i, label, value) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:11px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:180px;border-bottom:1px solid #ece8df">${label}</td><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${esc(value)}</td></tr>`;
+  // Which month is wanted, what is on file for which month, and when that one
+  // came in. The old version showed one date and called it "last schedule on
+  // file", which answered none of those questions on its own.
   const rows = row(0, 'Project', project)
     + row(1, 'Contract', company)
-    + row(2, 'Last schedule on file', lastDate ? fmt(lastDate) : 'None yet')
-    + row(3, 'Where it goes', 'Documents \u2192 ' + company + ' \u2192 Schedules');
+    + row(2, 'Schedule wanted for', wantPeriod || 'this month')
+    + row(3, 'Last one on file', lastPeriod
+        ? (lastPeriod + (lastDate ? ' \u00b7 submitted ' + fmt(lastDate) : ''))
+        : (lastDate ? ('Submitted ' + fmt(lastDate) + ' \u2014 no period recorded') : 'None yet'))
+    // The per-company folders were cleared out, so this was directing people
+    // to somewhere that no longer exists.
+    + row(4, 'Where it goes', 'Schedule tab \u2192 Monthly Schedules \u2192 Upload');
   return `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
     <tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-family:${sans};font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr>
@@ -106,7 +115,7 @@ function scheduleChaseHTML(project, company, lastDate) {
     <tr><td style="padding:22px 24px 6px">
       <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:20px;font-weight:700;margin:0 0 4px"><span style="color:#515520">Monthly schedule due:</span> <span style="color:#2f2f2f">${esc(company)}</span></div>
       <div style="font-family:${sans};font-size:12px;color:#9a988c;text-transform:uppercase;letter-spacing:.6px;margin:0 0 16px">Project: ${esc(project)}</div>
-      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 16px;font-family:${sans}">No updated schedule has been posted for this month. ${lastDate ? 'The most recent one on file is dated ' + esc(fmt(lastDate)) + '.' : 'There is no schedule on file yet.'} Please upload the current one.</p>
+      <p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 16px;font-family:${sans}">No schedule has been posted for ${esc(wantPeriod || 'this month')}. ${lastPeriod ? 'The most recent one on file covers ' + esc(lastPeriod) + '.' : (lastDate ? 'The most recent one on file was submitted ' + esc(fmt(lastDate)) + '.' : 'There is no schedule on file yet.')} Please upload it from the Schedule tab, saying which month it covers.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #ece8df;border-radius:8px;overflow:hidden">${rows}</table>
       <div style="text-align:center;margin:22px 0 4px"><a href="${origin}/" style="display:inline-block;background:#515520;color:#ffffff;text-decoration:none;font-family:${sans};font-size:13px;font-weight:600;padding:11px 26px;border-radius:6px">Upload in Dashboard</a></div>
     </td></tr>
@@ -197,17 +206,29 @@ export default async () => {
         const contacts = conF ? await readCSV(t, conF, 'Job Contacts.csv') : [];
         for (const c of cos) {
           let lastDate = '';
+          let lastPeriod = '';
           let current = false;
           if (docsF) {
-            const party = (await listFolder(t, docsF.id)).find(f => f.type === 'folder'
+            // The shared Schedules folder, which is where they go now. This
+            // still only looked inside Documents/<company>/Schedules — folders
+            // that were cleared out — so it found nothing for anybody and
+            // chased every contractor every month regardless of what they had
+            // posted. A per-company folder left on an older project still
+            // counts: nothing already filed stops being a schedule because the
+            // filing changed.
+            const parties = await listFolder(t, docsF.id);
+            const shared = parties.find(f => f.type === 'folder' && /^schedules?$/i.test(String(f.name || '').trim()));
+            let files = shared
+              ? (await listFolder(t, shared.id)).filter(f => f.type === 'file' && schedNorm(f.name).includes(schedNorm(c.name)))
+              : [];
+            const party = parties.find(f => f.type === 'folder'
               && String(f.name || '').trim().toLowerCase() === String(c.name).trim().toLowerCase());
             const sched = party ? (await listFolder(t, party.id)).find(f => f.type === 'folder' && /^schedules?$/i.test(f.name || '')) : null;
-            const files = sched ? (await listFolder(t, sched.id)).filter(f => f.type === 'file') : [];
-            if (files.length) {
-              files.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-              lastDate = String(files[0].created_at || '').slice(0, 10);
-              current = !!lastDate && lastDate >= since;
-            }
+            if (sched) files = files.concat((await listFolder(t, sched.id)).filter(f => f.type === 'file'));
+            const st = scheduleState(files, periodOfDate(now), since);
+            lastDate = st.date || '';
+            lastPeriod = st.periodLabel || '';
+            current = st.state === 'current';
           }
           if (current) continue;
           const to = [...new Set(contacts
@@ -215,7 +236,7 @@ export default async () => {
             .map(r => String(r['Email'] || '').trim().toLowerCase()).filter(Boolean))];
           if (!to.length) continue;
           await sendEmail(to, '[Fidevia] Monthly schedule due — ' + p.name,
-            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : ''),
+            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : '', lastPeriod, periodLabel(periodOfDate(now))),
             { kind: 'schedule', projectId: String(p.id || ''), project: p.name });
           sent++;
         }

@@ -39,8 +39,8 @@ ok(/function boxUploadOnce/.test(html),
   ok(/renamed\.length\?7000:2500/.test(c), 'leaving the message up longer when there is something to read');
 }
 {
-  const c = html.split('async function schedUpload(input, company)')[1].split('function schedChaseFooter')[0];
-  ok(/One was already on file this month, so this went up as /.test(c),
+  const c = html.split('async function schedUpload(f, company, periodLabel, say)')[1].split('function schedChaseFooter')[0];
+  ok(/One was already on file for that month, so this went up as /.test(c),
      'a second schedule in a month lands and says where, instead of being refused');
   ok(!/Rename yours, or replace it from the Documents tab/.test(c),
      'the old refusal is gone, since nothing refuses now');

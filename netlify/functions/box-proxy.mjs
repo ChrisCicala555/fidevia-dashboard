@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs';
 import { logNotif, readNotifLog } from './lib/notif-log.mjs';
+import { scheduleState, periodOfDate, norm as schedNorm } from './lib/sched.mjs';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
@@ -1126,7 +1127,7 @@ export default async (req) => {
       // contract's name, which is why the uploader is asked to include it.
       const parties = await listOf(docs.id);
       const shared = parties.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
-      const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const norm = schedNorm;
       let sharedFiles = [];
       if (shared) sharedFiles = (await listOf(shared.id)).filter(e => e.type === 'file');
       const out = [];
@@ -1142,20 +1143,11 @@ export default async (req) => {
           if (sched) files = files.concat((await listOf(sched.id)).filter(e => e.type === 'file'));
         }
         if (!shared && !party) { out.push({ company: co, state: 'no-schedules-folder' }); continue; }
-        if (!files.length) { out.push({ company: co, state: 'never' }); continue; }
-        // Newest by upload date. A schedule revised in Box without being
-        // re-uploaded is still the same file, so created_at is the honest
-        // measure of when it was handed over.
-        files.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-        const newest = files[0];
-        const when = String(newest.created_at || '').slice(0, 10);
-        out.push({
-          company: co,
-          state: (since && when >= since) ? 'current' : 'stale',
-          fileName: newest.name || '',
-          date: when,
-          count: files.length
-        });
+        // Which month it is for is what the uploader said, read back off the
+        // name; when it arrived is created_at. They are different questions and
+        // the panel shows both.
+        const want = String(body.period || '') || periodOfDate(since ? (since + 'T00:00:00Z') : new Date());
+        out.push(Object.assign({ company: co }, scheduleState(files, want, since)));
       }
       return json({ companies: out, due, lastScheduleSend, schedulesFolderId: shared ? String(shared.id) : '' });
     }

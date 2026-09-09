@@ -1645,6 +1645,30 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="sched-backdrop" onclick="if(event.target===this)closeSchedUpload()">
+  <div class="modal">
+    <div class="modal-header"><h3 id="sched-up-title">Upload Schedule</h3><button class="modal-close" onclick="closeSchedUpload()">&#10005;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Period covered *</label>
+        <div style="display:flex;gap:8px;">
+          <select id="sched-up-month" style="flex:2;"></select>
+          <select id="sched-up-year" style="flex:1;"></select>
+        </div>
+        <p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">
+          Which month this programme is for. The file is filed under that month, so posting
+          next month&rsquo;s early counts for next month rather than this one.</p>
+      </div>
+      <div class="field"><label>Schedule file *</label><input type="file" id="sched-up-file"></div>
+      <div class="field"><label>Filed as</label>
+        <div id="sched-up-name" style="font-size:13px;color:var(--muted);font-style:italic;padding:2px 0;"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="sched-up-btn" onclick="submitSchedUpload()">Upload</button>
+      <button class="btn-secondary" onclick="closeSchedUpload()">Cancel</button>
+      <span class="status-msg" id="sched-up-status"></span>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
@@ -4526,7 +4550,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 04:20';
+const BUILD_STAMP='2026-09-09 05:55';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5788,7 +5812,8 @@ async function loadMySchedule(){
   if(!co) return;
   try{
     const d=await proxyCall('scheduleUploads',
-      {projectId:currentProject.folderId, since:monthStart()},{quiet:true});
+      {projectId:currentProject.folderId, since:monthStart(),
+       period:String(monthStart()).slice(0,7)},{quiet:true});
     const row=(d.companies||[])[0];
     if(!row) return;
     // Only chased where Fidevia has asked for it on this project.
@@ -5821,7 +5846,8 @@ async function renderScheduleUploads(){
     box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Checking\u2026</div>';
     try{
       const d=await proxyCall('scheduleUploads',
-        {projectId:currentProject.folderId, companies:cos, since:monthStart()},{quiet:true});
+        {projectId:currentProject.folderId, companies:cos, since:monthStart(),
+         period:String(monthStart()).slice(0,7)},{quiet:true});
       SCHED_UPLOADS=d.companies||[];
       SCHED_LAST_SEND=d.lastScheduleSend||null;
       SCHED_FOLDER_ID=d.schedulesFolderId||'';
@@ -5830,8 +5856,12 @@ async function renderScheduleUploads(){
       return;
     }
   }
+  // Said in terms of the month being asked for. "Nothing this month" was about
+  // when a file arrived; now that a schedule says which month it is for, the
+  // question is whether that month's has been handed over.
+  const wantLabel=schedPeriodLabel(String(monthStart()).slice(0,7))||'this month';
   const label={
-    current:'Uploaded this month', stale:'Nothing this month', never:'Never uploaded',
+    current:'On file', stale:'No '+wantLabel+' schedule', never:'Never uploaded',
     'no-schedules-folder':'No Schedules folder', 'no-folder':'No document folder',
     'no-documents':'Documents not set up on this project'
   };
@@ -5852,10 +5882,17 @@ async function renderScheduleUploads(){
     return '<div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
       +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
       +'<span style="flex:1;min-width:0;"><span style="font-weight:600;">'+esc(r.company)+'</span>'
+        // What is on file and when it came in: two different questions, and the
+        // row used to answer neither clearly. A file with no period on its name
+        // predates the question, so it is not claimed to cover anything.
+        +(r.date||r.periodLabel
+           ? '<div style="font-size:12px;color:var(--muted);">'
+             +(r.periodLabel?('Covers '+esc(r.periodLabel)):'Period not recorded')
+             +(r.date?(' \u00b7 submitted '+esc(fmtDMY(r.date))):'')+'</div>'
+           : '')
         +(last?('<div style="font-size:12px;color:var(--muted);">Reminded '+esc(fmtDMY(String(last.at).slice(0,10)))
             +(last.by?(' by '+esc(last.by)):'')+'</div>'):'')+'</span>'
-      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)
-        +(r.date?(' \u00b7 '+fmtDMY(r.date)):'')+'</span>'
+      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)+'</span>'
       +schedUploadBtn(r.company)
       +(t?schedRowRemind(t):'')+'</div>';
   }).join('')
@@ -5940,43 +5977,100 @@ function schedRowRemind(t){
 // contract and the month before it is sent, so the shared folder can still say
 // whose it is and the monthly check keeps working without anyone thinking
 // about filenames.
+// Was a label wrapping its own file input, which uploaded the moment a file
+// was chosen and named it for whatever month it happened to be. Nobody was
+// ever asked what the programme was actually for, so a schedule posted on the
+// 30th for the month ahead was filed as this month's.
 function schedUploadBtn(company){
-  const id='schup-'+String(company||'').replace(/[^A-Za-z0-9]+/g,'-').toLowerCase();
-  return '<label class="btn-secondary sched-remind" style="cursor:pointer;margin:0;" title="Upload the current schedule for '+esc(company)+'">'
-    +'Upload<input type="file" id="'+esc(id)+'" style="display:none" '
-    +'onchange="schedUpload(this,'+esc(JSON.stringify(String(company)))+')"></label>';
+  return '<button class="btn-secondary sched-remind" onclick="event.stopPropagation();openSchedUpload('
+    +esc(JSON.stringify(String(company)))+')" title="Upload a schedule for '+esc(company)+'">Upload</button>';
 }
-function schedMonthLabel(){
-  const d=new Date();
-  return ['January','February','March','April','May','June','July','August','September',
-          'October','November','December'][d.getMonth()]+' '+d.getFullYear();
+let SCHED_UP_CO='';
+function schedPeriodOptions(){
+  const now=new Date(), m=document.getElementById('sched-up-month'), y=document.getElementById('sched-up-year');
+  if(!m||!y) return;
+  m.innerHTML=SCHED_MONTHS.map((nm,i)=>'<option value="'+String(i+1).padStart(2,'0')+'">'+nm+'</option>').join('');
+  const yr=now.getFullYear();
+  // Last year through next: a programme is occasionally posted for the month
+  // ahead, and occasionally filed late for one gone by.
+  y.innerHTML=[yr-1,yr,yr+1].map(v=>'<option value="'+v+'">'+v+'</option>').join('');
+  m.value=String(now.getMonth()+1).padStart(2,'0'); y.value=String(yr);
 }
-async function schedUpload(input, company){
-  const f=(input.files||[])[0]; if(!f) return;
-  input.value='';
+function schedUpPeriod(){
+  const m=(document.getElementById('sched-up-month')||{}).value||'';
+  const y=(document.getElementById('sched-up-year')||{}).value||'';
+  return (y&&m)?(y+'-'+m):'';
+}
+function schedUpLabel(){ return schedPeriodLabel(schedUpPeriod()); }
+function schedUpPreview(){
+  const el=document.getElementById('sched-up-name'); if(!el) return;
+  const f=((document.getElementById('sched-up-file')||{}).files||[])[0];
+  const dot=f?String(f.name).lastIndexOf('.'):-1;
+  const ext=(f&&dot>0)?String(f.name).slice(dot):'';
+  el.textContent=safeFileName(SCHED_UP_CO+' \u2014 '+schedUpLabel())+(ext||'.\u2026');
+}
+function openSchedUpload(company){
+  SCHED_UP_CO=String(company||'');
+  const t=document.getElementById('sched-up-title'); if(t) t.textContent='Upload Schedule \u2014 '+SCHED_UP_CO;
+  schedPeriodOptions();
+  const f=document.getElementById('sched-up-file'); if(f){ f.value=''; f.onchange=schedUpPreview; }
+  ['sched-up-month','sched-up-year'].forEach(id=>{ const el=document.getElementById(id); if(el) el.onchange=schedUpPreview; });
+  const st=document.getElementById('sched-up-status'); if(st) st.textContent='';
+  const btn=document.getElementById('sched-up-btn'); if(btn) btn.disabled=false;
+  schedUpPreview();
+  const bd=document.getElementById('sched-backdrop'); if(bd) bd.classList.add('open');
+}
+function closeSchedUpload(){
+  const bd=document.getElementById('sched-backdrop'); if(bd) bd.classList.remove('open');
+  SCHED_UP_CO='';
+}
+async function submitSchedUpload(){
+  const f=((document.getElementById('sched-up-file')||{}).files||[])[0];
+  const say=t=>{ const el=document.getElementById('sched-up-status'); if(el) el.textContent=t; };
+  if(!f){ say('Choose the schedule file first.'); return; }
+  if(!schedUpPeriod()){ say('Say which month it covers.'); return; }
+  const btn=document.getElementById('sched-up-btn'); if(btn) btn.disabled=true;
+  const co=SCHED_UP_CO;
+  const done=await schedUpload(f, co, schedUpLabel(), say);
+  if(btn) btn.disabled=false;
+  if(done) closeSchedUpload();
+}
+const SCHED_MONTHS=['January','February','March','April','May','June','July','August',
+  'September','October','November','December'];
+function schedMonthLabel(){ const d=new Date(); return SCHED_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
+// Same reading of a period as netlify/functions/lib/sched.mjs, which is what
+// writes the answers this panel displays.
+function schedPeriodLabel(ym){
+  const m=String(ym||'').match(/^(\d{4})-(\d{2})$/);
+  return m ? ((SCHED_MONTHS[parseInt(m[2],10)-1]||'')+' '+m[1]) : '';
+}
+async function schedUpload(f, company, periodLabel, say){
+  if(!f) return false;
+  say=say||function(){};
   if(!SCHED_FOLDER_ID){
-    alert('This project has no Schedules folder yet.\n\nA Fidevia administrator can add one by opening the Documents tab.');
-    return;
+    say('This project has no Schedules folder yet \u2014 a Fidevia administrator can add one from the Documents tab.');
+    return false;
   }
-  const box=document.getElementById('sched-uploads');
-  const say=t=>{ const el=document.getElementById('sched-chase-status'); if(el){ el.textContent=t; el.className='status-msg'; } };
   const dot=String(f.name).lastIndexOf('.');
   const ext=dot>0?String(f.name).slice(dot):'';
-  // Named for the contract and the month. The reminder reads the name, and so
-  // does anyone else opening the folder.
-  const name=safeFileName(company+' \u2014 '+schedMonthLabel())+ext;
+  // Named for the contract and the month it covers. That name is the record:
+  // the folder is shared, so it cannot say whose a file is or what it is for.
+  // Both the panel and the nightly chase read it back.
+  const name=safeFileName(company+' \u2014 '+periodLabel)+ext;
   say('Uploading '+name+'\u2026');
   try{
     const up=await boxUploadBinary(new File([f], name, {type:f.type}), SCHED_FOLDER_ID, t=>say(t));
     const landed=(up&&up._renamedTo)||name;
-    say('Uploaded. '+company+' is current for '+schedMonthLabel()+'.'
-      +(up&&up._renamedTo?(' One was already on file this month, so this went up as '+landed+'.'):''));
+    say('Uploaded. '+company+' is current for '+periodLabel+'.'
+      +(up&&up._renamedTo?(' One was already on file for that month, so this went up as '+landed+'.'):''));
     try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+landed); }catch(e){}
     SCHED_UPLOADS=null; MY_SCHEDULE=null;
     await renderScheduleUploads();
     try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
+    return true;
   }catch(e){
     say('Could not upload: '+(e.message||'unknown error'));
+    return false;
   }
 }
 function schedChaseFooter(){

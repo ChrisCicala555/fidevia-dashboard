@@ -40,7 +40,7 @@ console.log('Who the bubble is for');
   const gc = await view('gc@s.test','Summit Builders','contractor',true,false);
   ok(gc.shown, 'a prime contractor sees the panel');
   ok(/Summit Builders/.test(gc.body), 'with their own contract on it');
-  ok(/Upload<input type="file"/.test(gc.body), 'and something to upload with');
+  ok(/openSchedUpload\(/.test(gc.body), 'and something to upload with');
   ok(/Upload the current programme here each month/.test(gc.body),
      'and it says what is being asked of them');
   ok(!/Remind/.test(gc.body), 'chasing stays with Fidevia — reminding yourself is an odd offer');
@@ -69,9 +69,8 @@ ok(/const shown=\(SCHED_UPLOADS\|\|\[\]\)\.filter\(r=>cos\.some/.test(html),
    'and the render draws the filtered list rather than trusting the cache');
 
 console.log('Uploading');
-ok(/const name=safeFileName\(company \+ ' \\u2014 ' \+ schedMonthLabel\(\)\)\+ext;/.test(html)
-   || /safeFileName\(company\+' \\u2014 '\+schedMonthLabel\(\)\)\+ext/.test(html),
-   'the file is named for the contract and the month, which is what the chase reads');
+ok(/safeFileName\(company\+' \\u2014 '\+periodLabel\)\+ext/.test(html),
+   'the file is named for the contract and the month it covers, which is what the chase reads');
 ok(/if\(!SCHED_FOLDER_ID\)\{/.test(html), 'a project with no Schedules folder says so rather than failing');
 ok(/SCHED_UPLOADS=null; MY_SCHEDULE=null;/.test(html), 'and the row refreshes after an upload');
 

@@ -21,15 +21,15 @@ ok(/overstated it/.test(srv), 'with the reason for the change recorded');
 // ── the upload ──
 ok(/function schedUploadBtn\(company\)/.test(html), 'each contract row carries an upload');
 {
-  const c = html.split('async function schedUpload(input, company)')[1].split('function schedChaseFooter')[0];
-  ok(/safeFileName\(company \+ ' \\u2014 ' \+ schedMonthLabel\(\)\)/.test(c)
-     || /safeFileName\(company\+' \\u2014 '\+schedMonthLabel\(\)\)/.test(c),
+  const c = html.split('async function schedUpload(f, company, periodLabel, say)')[1].split('function schedChaseFooter')[0];
+  // The month is the one the uploader named, not the one it happens to be.
+  ok(/safeFileName\(company\+' \\u2014 '\+periodLabel\)/.test(c),
      'the file is named for the contract and the month, so the shared folder can still say whose it is');
   ok(/SCHED_FOLDER_ID/.test(c), 'it goes to the shared Schedules folder');
   ok(/has no Schedules folder yet/.test(c), 'and says so plainly when the project has none');
   // Nothing refuses a duplicate now: it lands under a Dup_ name and the panel
   // says which. tools-test-dupname.mjs covers the naming itself.
-  ok(/One was already on file this month, so this went up as /.test(c),
+  ok(/One was already on file for that month, so this went up as /.test(c),
      'a second upload in the same month lands and says where, rather than being refused');
   ok(/SCHED_UPLOADS=null/.test(c), 'the panel rechecks itself afterwards');
   ok(/auditLog\('Schedule uploaded'/.test(c), 'and the upload is on the record');
