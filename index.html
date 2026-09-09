@@ -5096,6 +5096,16 @@ async function loadDocs(){
   try{
     const d=await proxyCall('docsList',{folderId:docsHere()||root});
     DOCS_ENTRIES=d.entries||[]; DOCS_AT_ROOT=!!d.atRoot;
+    // The server already withholds these from anyone outside Fidevia. It
+    // cannot do so in the External Viewer preview, where the request is still
+    // Fidevia's — so the preview would show a contractor a folder and a file
+    // they will never see, which is the one thing a preview must not do.
+    if(DOCS_AT_ROOT && viewingAsExternal()){
+      DOCS_ENTRIES=DOCS_ENTRIES.filter(e=>{
+        const nm=String(e.name||'').trim().toLowerCase();
+        return nm!==DOCS_CONFIDENTIAL && !DOCS_HIDDEN_FILES.has(nm);
+      });
+    }
   }catch(e){
     DOCS_ENTRIES=[];
     tb.innerHTML='<tr class="empty-row"><td colspan="4">'+esc(e.message||'Could not open this folder.')+'</td></tr>';
@@ -5282,6 +5292,8 @@ async function docsUpload(input){
 const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
   'Closeout','Drawings and Specifications','Schedules','Fidevia Internal'];
 const DOCS_CONFIDENTIAL='fidevia internal';
+// Kept in step with DOCS_HIDDEN_FILES in the proxy, which is what enforces it.
+const DOCS_HIDDEN_FILES=new Set(['documents.csv','document index.csv']);
 // One action for a project built before the Documents tab took this shape:
 // create what is missing, then move what the two retired tabs were holding.
 // Safe to run twice — the folder step skips what exists and the move step

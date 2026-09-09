@@ -450,6 +450,9 @@ const DOCS_FOLDERS = ['Testing', 'ASIs', 'Inspections', 'Punch List', 'Meeting M
 // is rather than for how secret it is — 'Confidential' overstated it, and a
 // contractor who never sees the folder is not reassured by the word anyway.
 const DOCS_PRIVATE = 'fidevia internal';
+// Files the dashboard keeps in Documents for its own bookkeeping. Fidevia sees
+// them because Fidevia maintains them; nobody else has a use for them.
+const DOCS_HIDDEN_FILES = new Set(['documents.csv', 'document index.csv']);
 function docsIsConfidential(pos){
   return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_PRIVATE;
 }
@@ -1315,6 +1318,10 @@ export default async (req) => {
       // being shown and refused on opening.
       if (!who.isAdmin && pos && pos.atRoot) {
         entries = entries.filter(e => String(e.name || '').trim().toLowerCase() !== DOCS_PRIVATE);
+        // The index CSVs are the dashboard's own plumbing, not documents. They
+        // sat at the top of the list looking like something to open, and a
+        // contractor downloading one gets the raw log rather than a record.
+        entries = entries.filter(e => !(e.type === 'file' && DOCS_HIDDEN_FILES.has(String(e.name || '').trim().toLowerCase())));
       }
       return json({ entries, atRoot: !!(pos && pos.atRoot) });
     }

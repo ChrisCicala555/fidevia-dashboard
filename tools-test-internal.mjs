@@ -2,6 +2,7 @@
 // the whole project. Worth proving rather than asserting.
 import fs from 'fs';
 const srv = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
+const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
@@ -85,6 +86,23 @@ ok(!(await F.docsAllows(H,t,[],{isAdmin:false},'fi')), 'and a stranger to the pr
   const c = srv.split("if (op === 'docsList')")[1].split("if (op === 'docsRename')")[0];
   ok(/!== DOCS_PRIVATE/.test(c), 'and it is not listed to anyone outside Fidevia');
 }
+// ── the index CSVs are plumbing, not documents ──
+{
+  const c = srv.split("if (op === 'docsList')")[1].split("if (op === 'docsRename')")[0];
+  ok(/DOCS_HIDDEN_FILES\.has/.test(c), 'the dashboard\u2019s own index files are withheld too');
+}
+ok(/const DOCS_HIDDEN_FILES = new Set\(\['documents\.csv', 'document index\.csv'\]\)/.test(srv),
+   'named explicitly, so a CSV somebody uploads is still theirs to open');
+
+// ── and the preview does not misrepresent either of them ──
+// The server cannot withhold anything in External Viewer, because the request
+// is still Fidevia's. The browser has to, or the preview shows a contractor a
+// folder and a file they will never see.
+ok(/DOCS_AT_ROOT && viewingAsExternal\(\)/.test(html),
+   'the preview filters the root as the server would for a real outsider');
+ok(/nm!==DOCS_CONFIDENTIAL && !DOCS_HIDDEN_FILES\.has\(nm\)/.test(html),
+   'hiding both the folder and the plumbing');
+
 // Who counts as Fidevia.
 ok(/const ADMIN_DOMAIN = 'fidevia\.com'/.test(srv), 'Fidevia means an @fidevia.com address');
 ok(/admins\.includes\(email\) \|\| blobAdmins\.includes\(email\)/.test(srv),
