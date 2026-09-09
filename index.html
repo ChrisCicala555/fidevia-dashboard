@@ -1224,6 +1224,7 @@
         </div>
         <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
         <div id="docs-folder-note" style="display:none;background:var(--khaki-100);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
+        <div id="docs-requests" style="display:none;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
         <div class="admin-only" id="docs-catchup" style="margin-bottom:14px;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;font-size:13px;color:var(--olive-900);max-width:760px;display:none;">
           <strong>Bring this project up to date.</strong>
           Adds any of the standard folders this project is missing, and moves anything filed under the old
@@ -5220,9 +5221,16 @@ function renderDocs(){
       +'<td class="nw">'+(e.modified_at?esc(fmtDMY(String(e.modified_at).slice(0,10))):'—')+'</td>'
       +'<td class="nw" style="text-align:right;">'
         +'<button class="row-act" onclick="docsRename('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.type))+','+esc(JSON.stringify(e.name))+')">Rename</button>'
+        // Taking a file down is Fidevia's; anyone else asks. Documents is a
+        // shared record, and one party removing another's file is not a thing
+        // to allow.
+        +(isF ? '' : (IS_ADMIN && !viewingAsExternal()
+            ? '<button class="row-act" onclick="docsRemove('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Remove</button>'
+            : '<button class="row-act" onclick="docsAskRemoval('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Request removal</button>'))
       +'</td></tr>';
   };
   tb.innerHTML=folders.map(row).join('')+files.map(row).join('');
+  try{ docsLoadRequests(); }catch(e){}
 }
 
 // Every party on the project gets a folder named for their company; that name
@@ -5257,6 +5265,58 @@ async function docsNewFolder(){
     await proxyCall('ensureFolder',{parentId:docsHere(), name:nm});
     await loadDocs();
   }catch(e){ alert(e.message||'Could not create that folder.'); }
+}
+// Removing a file from the dashboard. It is not deleted: it moves to a Removed
+// folder that nobody sees in the tab, and stays in Box.
+async function docsRemove(id, name){
+  if(!IS_ADMIN || viewingAsExternal()) return;
+  if(!confirm('Take \u201c'+name+'\u201d off the dashboard?\n\n'
+    +'It moves to a Removed folder in Box, stamped with where it came from. '
+    +'Nobody sees it here afterwards, and it is not deleted.')) return;
+  try{
+    await proxyCall('docsRemove',{projectId:currentProject.folderId, fileId:id});
+    try{ auditLog('Removed a document','gendocs',{}, name); }catch(e){}
+    // If it was removed because somebody asked, the request is answered.
+    try{ await proxyCall('docsRemovalRequests',{projectId:currentProject.folderId, close:id},{quiet:true}); }catch(e){}
+    await loadDocs();
+  }catch(e){ alert(e.message||'Could not remove that file.'); }
+}
+// Asking Fidevia to take something down.
+async function docsAskRemoval(id, name){
+  const why=prompt('Ask Fidevia to take \u201c'+name+'\u201d off the dashboard.\n\n'
+    +'Why should it come down? (optional)');
+  if(why===null) return;
+  try{
+    const d=await proxyCall('docsRequestRemoval',{projectId:currentProject.folderId, fileId:id, name, reason:why||''});
+    alert(d && d.duplicate
+      ? 'That file is already waiting on Fidevia.'
+      : 'Asked. Fidevia will see it on the Documents tab.');
+  }catch(e){ alert(e.message||'Could not send that request.'); }
+}
+// What people have asked Fidevia to take down, shown where the taking down
+// happens rather than in a queue somewhere else.
+async function docsLoadRequests(){
+  const box=document.getElementById('docs-requests');
+  if(!box) return;
+  if(!IS_ADMIN || viewingAsExternal() || DOCS_PATH.length){ box.style.display='none'; return; }
+  let reqs=[];
+  try{ reqs=(await proxyCall('docsRemovalRequests',{projectId:currentProject.folderId},{quiet:true})).requests||[]; }
+  catch(e){ box.style.display='none'; return; }
+  if(!reqs.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML='<strong>Asked to be taken down</strong>'
+    +reqs.map(r=>'<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      +'<span style="flex:1;min-width:220px;">'+esc(r.name||r.fileId)
+      +'<div style="font-size:12px;color:var(--muted);">asked by '+esc(r.by||'someone')
+      +(r.at?(' on '+esc(fmtDMY(String(r.at).slice(0,10)))):'')
+      +(r.reason?(' \u2014 \u201c'+esc(r.reason)+'\u201d'):'')+'</div></span>'
+      +'<button class="row-act" onclick="docsRemove('+esc(JSON.stringify(r.fileId))+','+esc(JSON.stringify(r.name||''))+')">Take it down</button>'
+      +'<button class="row-act" onclick="docsDismissRequest('+esc(JSON.stringify(r.fileId))+')">Leave it up</button>'
+      +'</div>').join('');
+}
+async function docsDismissRequest(id){
+  try{ await proxyCall('docsRemovalRequests',{projectId:currentProject.folderId, close:id},{quiet:true}); }catch(e){}
+  await docsLoadRequests();
 }
 async function docsRename(id, kind, current){
   const name=prompt('Rename to:', current); if(name===null) return;

@@ -453,6 +453,10 @@ const DOCS_PRIVATE = 'fidevia internal';
 // Files the dashboard keeps in Documents for its own bookkeeping. Fidevia sees
 // them because Fidevia maintains them; nobody else has a use for them.
 const DOCS_HIDDEN_FILES = new Set(['documents.csv', 'document index.csv']);
+// Where removed files go. Taking something off the dashboard is not the same
+// as destroying it: a file lands here, out of the tab for everybody, and is
+// still sitting in Box if it turns out to have been wanted.
+const DOCS_REMOVED = 'removed';
 function docsIsConfidential(pos){
   return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_PRIVATE;
 }
@@ -1305,6 +1309,97 @@ export default async (req) => {
       return json({ ok: true, dryRun, movedSchedules, removed, kept,
         standard: DOCS_FOLDERS, sharedSchedules: !!shared });
     }
+    // Take a file off the dashboard without destroying it. It moves into the
+    // Removed folder, stamped with where it came from and who took it down, and
+    // stays there until somebody in Box decides otherwise.
+    if (op === 'docsRemove') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const fileId = String(body.fileId || ''), projectId = String(body.projectId || '');
+      if (!fileId || !projectId) return json({ error: 'fileId and projectId required' }, 400);
+      if (!await guardFile(fileId)) return json({ error: 'Access denied' }, 403);
+      // Only files inside this project's Documents. Nothing else is removable
+      // from here, whatever id is passed.
+      let parentId = '', origName = '';
+      try {
+        const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=name,parent`, { headers: H })).json();
+        origName = String(fi.name || ''); parentId = String((fi.parent && fi.parent.id) || '');
+      } catch (e) {}
+      if (!parentId) return json({ error: 'Could not read that file.' }, 502);
+      const pos = await docsPositionOf(H, parentId);
+      if (!pos) return json({ error: 'That file is not in Documents.' }, 400);
+
+      const topR = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(projectId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+      const top = topR.ok ? ((await topR.json()).entries || []) : [];
+      const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX + ' '));
+      if (!docs) return json({ error: 'This project has no Documents folder.' }, 404);
+      const inDocs = (await (await boxFetch(`https://api.box.com/2.0/folders/${docs.id}/items?limit=1000&fields=id,name,type`, { headers: H })).json()).entries || [];
+      let bin = inDocs.find(e => e.type === 'folder' && String(e.name || '').trim().toLowerCase() === DOCS_REMOVED);
+      if (!bin) {
+        const r = await boxFetch('https://api.box.com/2.0/folders', {
+          method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Removed', parent: { id: String(docs.id) } }) });
+        if (!r.ok) return json({ error: 'Could not create the Removed folder.' }, 502);
+        bin = await r.json();
+      }
+      // The name carries the story, because a flat holding folder cannot.
+      const stamp = new Date().toISOString().slice(0, 10);
+      const from = String(pos.party || 'Documents').replace(/[\/\\]/g, '-');
+      const want = (stamp + ' - ' + from + ' - ' + origName).slice(0, 240);
+      const mv = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}`, {
+        method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: { id: String(bin.id) }, name: want }) });
+      if (!mv.ok) {
+        // A name clash means one was removed from the same place today.
+        if (mv.status === 409) {
+          const alt = (stamp + ' - ' + from + ' - ' + Date.now() + ' - ' + origName).slice(0, 240);
+          const again = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}`, {
+            method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent: { id: String(bin.id) }, name: alt }) });
+          if (!again.ok) return json({ error: 'Box refused the move (' + again.status + ')' }, 502);
+          return json({ ok: true, name: alt, by: who.email || '' });
+        }
+        return json({ error: 'Box refused the move (' + mv.status + ')' }, 502);
+      }
+      return json({ ok: true, name: want, by: who.email || '' });
+    }
+    // Anyone on the project can ask for a file to come down. They cannot take
+    // it down themselves: Documents is a shared record, and one party removing
+    // another's file is not a thing to allow.
+    if (op === 'docsRequestRemoval') {
+      const projectId = String(body.projectId || ''), fileId = String(body.fileId || '');
+      if (!projectId || !fileId) return json({ error: 'projectId and fileId required' }, 400);
+      if (!await guardFile(fileId)) return json({ error: 'Access denied' }, 403);
+      if (!who.isAdmin && !(await callerMayReadFile(H, t, _grants, who, fileId))) {
+        return json({ error: 'Access denied' }, 403);
+      }
+      const store = getStore('doc-removal-requests');
+      let list = [];
+      try { list = (await store.get(projectId, { type: 'json' })) || []; } catch (e) {}
+      if (!Array.isArray(list)) list = [];
+      const already = list.find(r => String(r.fileId) === fileId && r.state !== 'done');
+      if (already) return json({ ok: true, duplicate: true });
+      list.unshift({
+        fileId, name: String(body.name || '').slice(0, 240),
+        reason: String(body.reason || '').slice(0, 400),
+        by: who.email || '', at: new Date().toISOString(), state: 'open'
+      });
+      await store.setJSON(projectId, list.slice(0, 200));
+      return json({ ok: true, pending: list.length });
+    }
+    if (op === 'docsRemovalRequests') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const projectId = String(body.projectId || '');
+      const store = getStore('doc-removal-requests');
+      let list = [];
+      try { list = (await store.get(projectId, { type: 'json' })) || []; } catch (e) {}
+      if (!Array.isArray(list)) list = [];
+      if (body.close) {
+        const fid = String(body.close);
+        list = list.filter(r => String(r.fileId) !== fid);
+        await store.setJSON(projectId, list);
+      }
+      return json({ requests: list.filter(r => r.state !== 'done') });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
@@ -1322,6 +1417,12 @@ export default async (req) => {
         // sat at the top of the list looking like something to open, and a
         // contractor downloading one gets the raw log rather than a record.
         entries = entries.filter(e => !(e.type === 'file' && DOCS_HIDDEN_FILES.has(String(e.name || '').trim().toLowerCase())));
+      }
+      // The removed pile is not part of the filing system, for anyone. Fidevia
+      // retrieves from it in Box, where it is plainly a holding area rather
+      // than somewhere to browse.
+      if (pos && pos.atRoot) {
+        entries = entries.filter(e => !(e.type === 'folder' && String(e.name || '').trim().toLowerCase() === DOCS_REMOVED));
       }
       return json({ entries, atRoot: !!(pos && pos.atRoot) });
     }
