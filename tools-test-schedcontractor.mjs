@@ -52,9 +52,13 @@ console.log('Who the bubble is for');
      'Fidevia still sees every contract');
   ok(/Remind/.test(fid.body), 'and can still chase');
 }
+// These three hold no contract, so nothing is asked of them — but they review
+// programmes, and when schedules left Documents they were given access to read
+// them. Being shown nothing at all was the bug, not the rule.
 for(const [co,role] of [['Architect 2','architect'],['Ithaca','owner'],['Next Level Engineers','engineer']]){
   const v = await view('x@y.test',co,role,true,false);
-  ok(!v.shown, co+' has no contract on the job, so nothing is asked of them');
+  ok(v.shown, co+' can read the programmes on the job');
+  ok(!/openSchedUpload\(/.test(v.body), 'but is not asked to post one, holding no contract');
 }
 {
   const stranger = await view('x@y.test','Some Other Firm','contractor',true,false);

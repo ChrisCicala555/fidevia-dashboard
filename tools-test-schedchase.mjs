@@ -33,8 +33,13 @@ ok(/created_at is the honest/.test(lib), 'and why upload date is the measure of 
 ok(/id="sched-uploads-panel"/.test(html), 'the Schedule tab shows it');
 ok(!/admin-only/.test(html.split('id="sched-uploads-panel"')[0].slice(-60)),
    'and not only to Fidevia — this is where a contractor posts their programme');
-ok(/const mineOnly = !IS_ADMIN \|\| viewingAsExternal\(\);/.test(html),
+// Three readings, not two: Fidevia chases, the owner and design team read,
+// a contract posts its own. The panel used to split on "is this Fidevia",
+// which left the reviewers with no panel at all.
+ok(/const readsAll = isFidevia \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\) \|\| isOwnerView\(\)/.test(html),
    'who sees which rows is decided in the render, where it can be reasoned about');
+ok(/const mayPost = !readsAll \|\| isFidevia;/.test(html),
+   'and reading a programme is kept separate from owing one');
 {
   const r = html.split('async function renderScheduleUploads')[1].split('function scheduleStats')[0];
   ok(/c\.active!==false/.test(r), 'inactive contractors are not chased');

@@ -4574,7 +4574,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 13:05';
+const BUILD_STAMP='2026-09-09 13:55';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5865,15 +5865,22 @@ async function renderScheduleUploads(){
   const panel=document.getElementById('sched-uploads-panel');
   const box=document.getElementById('sched-uploads');
   if(!panel||!box) return;
-  // A contractor sees this too now, showing their own contract only — this is
-  // where they post a schedule. Uploading from here files it under the right
-  // contract, which a shared folder cannot work out for itself.
-  const mineOnly = !IS_ADMIN || viewingAsExternal();
-  const myCo = mineOnly ? String((currentProject&&currentProject.userCompany)||'').trim() : '';
-  if(mineOnly && !myCo){ panel.style.display='none'; return; }
+  // Three readings of this panel:
+  //   Fidevia    — every contract, and the chasing.
+  //   Owner, A/E — every contract, read-only. They review programmes; they do
+  //                not hold one, and they do not chase for Fidevia.
+  //   Contractor — their own contract, which is where they post it.
+  // The server already answers each of them that way. This did not: it showed
+  // the panel only to Fidevia and to a company holding a contract, so the
+  // architect and the engineer — who were given access to read schedules when
+  // these left Documents — could not see that the panel existed.
+  const isFidevia = IS_ADMIN && !viewingAsExternal();
+  const readsAll = isFidevia || DESIGN_ROLES.includes(viewingAsRole()) || isOwnerView();
+  const myCo = readsAll ? '' : String((currentProject&&currentProject.userCompany)||'').trim();
+  if(!readsAll && !myCo){ panel.style.display='none'; return; }
   let cos=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
     .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
-  if(mineOnly){
+  if(!readsAll){
     const norm=x=>String(x||'').trim().toLowerCase();
     cos=cos.filter(c=>norm(c)===norm(myCo));
     // Not a prime on this job: nothing is expected of them here.
@@ -5914,6 +5921,9 @@ async function renderScheduleUploads(){
   // again, so the preview showed a contractor rows they would never get.
   const norm=x=>String(x||'').trim().toLowerCase();
   const shown=(SCHED_UPLOADS||[]).filter(r=>cos.some(c=>norm(c)===norm(r.company)));
+  // Reading is not the same as being asked. A reviewer with no contract is
+  // shown what is on file and offered nothing to press.
+  const mayPost = !readsAll || isFidevia;
   // One card per contract, collapsed, the way Payment Applications reads. The
   // flat list ran a contract's files straight into the next contract's row with
   // nothing between them, so on a job with three primes it was not obvious
@@ -5946,8 +5956,10 @@ async function renderScheduleUploads(){
       +'<span class="sched-state" style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'
         +esc(label[r.state]||r.state)+'</span>'
       +'<span class="sched-group-meta">'+esc(meta)+'</span>'
-      +'<span class="sched-group-acts" onclick="event.stopPropagation()">'
-        +schedUploadBtn(r.company)+(t?schedRowRemind(t):'')+'</span>'
+      +(mayPost
+         ? '<span class="sched-group-acts" onclick="event.stopPropagation()">'
+           +schedUploadBtn(r.company)+(t?schedRowRemind(t):'')+'</span>'
+         : '')
       +'</div>';
     const note=last
       ? '<div style="padding:0 16px 10px 46px;font-size:12px;color:var(--muted);">Reminded '
@@ -5963,12 +5975,16 @@ async function renderScheduleUploads(){
     +'Schedules live here rather than in Documents. '
     +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
   // Chasing is Fidevia's; a contractor sees only their own row, and reminding
-  // themselves would be an odd thing to offer.
-  +(mineOnly
-     ? '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);">'
-       +'Upload the current programme here each month. Fidevia, the owner and the design team can open it.'
-       +' <span class="status-msg" id="sched-chase-status"></span></div>'
-     : schedChaseFooter());
+  // themselves would be an odd thing to offer. A reviewer is told what they
+  // are looking at rather than asked for something they do not owe.
+  +(isFidevia ? schedChaseFooter()
+    : readsAll
+      ? '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);">'
+        +'Every prime contractor&rsquo;s current programme. Fidevia chases the ones that are late.'
+        +' <span class="status-msg" id="sched-chase-status"></span></div>'
+      : '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);">'
+        +'Upload the current programme here each month. Fidevia, the owner and the design team can open it.'
+        +' <span class="status-msg" id="sched-chase-status"></span></div>');
 }
 // Who a chase would go to right now, and why. Kept separate from the render so
 // the button and the confirmation prompt cannot disagree about the list.
