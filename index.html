@@ -741,7 +741,11 @@
 
   <footer class="site-footer">
     <div class="sf-inner">
-      <span class="sf-copy">Copyright &copy; <span id="sf-year">2026</span> Fidevia. All rights reserved.</span>
+      <span class="sf-copy">Copyright &copy; <span id="sf-year">2026</span> Fidevia. All rights reserved.
+        <!-- Which build you are looking at. Half a dozen rounds of "it still
+             looks the same" have been a cached page rather than a fault, and
+             there was no way to tell the two apart without reading the code. -->
+        <span id="sf-build" style="opacity:.55;margin-left:8px;" title="The build this page is running. If it is older than a change you are expecting, reload with Cmd+Shift+R."></span></span>
       <nav class="sf-links">
         <a href="https://www.fidevia.com" target="_blank" rel="noopener">Fidevia.com</a>
         <span class="sf-sep">|</span>
@@ -2316,6 +2320,7 @@ async function loadPickerLogo(projectId, fileId){
 function setFooterYear(){
   const el=document.getElementById('sf-year');
   if(el) el.textContent=String(new Date().getFullYear());
+  try{ showBuildStamp(); }catch(e){}
 }
 
 function renderPickerGrid(){
@@ -4413,6 +4418,14 @@ function telLink(v, cls){
   const d=raw.replace(/[^0-9+]/g,'');
   if(/[a-zA-Z]/.test(raw) || d.replace(/\D/g,'').length<7) return esc(shown);
   return '<a class="'+(cls||'cd-mail')+'" onclick="event.stopPropagation()" href="tel:'+esc(d)+'">'+esc(shown)+'</a>';
+}
+// Bumped with every push. If the footer shows an older stamp than the change
+// you are looking for, the page is cached rather than the change being absent.
+const BUILD_STAMP='2026-09-08 20:40';
+function showBuildStamp(){
+  const el=document.getElementById('sf-build');
+  if(el) el.textContent='build '+BUILD_STAMP;
+  try{ console.log('%cFidevia dashboard build '+BUILD_STAMP,'color:#515520;font-weight:700'); }catch(e){}
 }
 function fmtPhone(v){
   const raw=String(v==null?'':v).trim();
