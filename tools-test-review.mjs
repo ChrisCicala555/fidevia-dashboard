@@ -63,15 +63,20 @@ ok(/Override/.test(t), 'and the override, which is what acting for someone else 
 b.run(SEED); as('a@x.test','Test Architect',true,false);
 b.run("openReply('sub',0,true)");
 ok(b.run("document.getElementById('reply-next-field').style.display")!=='none',
-   'reviewing offers somewhere to send it on');
+   'reviewing asks what you are doing');
 ok(b.run("(document.getElementById('reply-next').innerHTML.match(/<option/g)||[]).length")>=3,
    'listing the people on the project');
 b.run("openReply('sub',0,false)");
 ok(b.run("document.getElementById('reply-next-field').style.display")==='none',
    'a plain reply does not, since only a reviewer can extend the chain');
 
+// Picking a name no longer implies what to do with it: the dialog asks whether
+// you are recording a review, sending it on as well, or handing the step over.
+// tools-test-reassign.mjs covers all three; this one is the send-it-on case.
 b.run("openReply('sub',0,true)");
-b.run("(()=>{const ns=document.getElementById('reply-next'); ns.value='Dave Chen'; ns.options=[{value:'Dave Chen',getAttribute:()=>'d@s.test'}];})()");
+b.run("(()=>{document.getElementById('reply-action').value='also';"
+    + "const ns=document.getElementById('reply-next'); ns.value='Dave Chen';"
+    + "ns.options=[{value:'Dave Chen',getAttribute:()=>'d@s.test'}];})()");
 const added = b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')");
 ok(added==='Dave Chen', 'the chosen person is added');
 ok(/Further Review\/Dave Chen/.test(b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(s.person||'')).join(' -> ')")),

@@ -1647,10 +1647,17 @@
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
       <div class="field" id="reply-next-field" style="display:none;">
-        <label>Send it on to (optional)</label>
-        <select id="reply-next"><option value="">Nobody &mdash; the chain continues as configured</option></select>
-        <p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">
-          Adds one more review step after yours, on this item only. The project's workflow is unchanged.</p>
+        <label>What are you doing?</label>
+        <select id="reply-action" onchange="replyActionChanged()">
+          <option value="continue">Recording my review &mdash; the chain moves on as configured</option>
+          <option value="also">Recording my review, and sending it to somebody else as well</option>
+          <option value="reassign">Handing this step to somebody else instead of me</option>
+        </select>
+        <div id="reply-next-who" style="display:none;margin-top:10px;">
+          <label>Who</label>
+          <select id="reply-next"><option value="">Choose somebody on the project&hellip;</option></select>
+          <p class="file-hint" id="reply-next-hint" style="font-size:13px;color:var(--muted);margin-top:4px;"></p>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -2273,15 +2280,15 @@ function toCSV(headers, rows){
 
 // ── MODULE DEFS ──
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -4517,7 +4524,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 22:00';
+const BUILD_STAMP='2026-09-08 22:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10479,11 +10486,24 @@ function wfExtraSteps(row){
 }
 // The chain as it applies to one record: the configured steps, with anything a
 // reviewer added inserted where they added it.
+// A step handed to somebody else on this item. Like the added steps, it lives
+// on the row: the project's workflow is how the job runs, and one submittal
+// going to a different engineer is not a reason to change that for every
+// submittal after it.
+function wfReassigned(row){
+  try{ const o=JSON.parse((row&&row['Workflow Reassigned'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
+  catch(e){ return {}; }
+}
 function wfEffectiveSteps(key, row){
   const base=wfStepsFor(key, rowCompany(row));
+  const moved=wfReassigned(row);
   const extra=wfExtraSteps(row);
-  if(!extra.length) return base;
-  const out=base.slice();
+  const withMoves=base.map((st,i)=>{
+    const m=moved[String(i)];
+    return m ? Object.assign({}, st, {person:m.person||st.person, email:m.email||'', reassigned:true, reassignedBy:m.by||''}) : st;
+  });
+  if(!extra.length) return withMoves;
+  const out=withMoves.slice();
   // Later insertions first, so an earlier index still means what it meant when
   // it was recorded.
   extra.map((e,idx)=>({e,idx}))
@@ -10916,9 +10936,15 @@ function verThreadRows(key,r,i,colspan){
   const _rvCur=wfActiveIdx(r), _rvGrp=_rvSteps.length?wfGroupAt(_rvSteps,_rvCur):[0,0];
   const _rvIsReviewer = _rvSteps.length && !wfIsDone(r) && !wfIsStopped(r)
     && wfMyStepsIn(_rvSteps,_rvGrp[0],_rvGrp[1]).length>0;
+  // What the button is called depends on who is reading it, because the same
+  // action means different things to them. The contractor who filed the item is
+  // sending a new version of their own document; the design team is recording a
+  // review, whether or not the chain happens to name them; Fidevia is replying.
+  const _rvLabel = DESIGN_ROLES.includes(viewingAsRole()) ? 'Submit Review Step'
+    : (EXTERNAL ? 'Submit Updated Version' : 'Reply / New Version');
   const reply = _rvIsReviewer
     ? '<button class="btn-primary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+',true)">Review &amp; Continue &rarr;</button>'
-    : '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+(EXTERNAL?'Submit Updated Version':'Reply / New Version')+'</button>';
+    : '<button class="btn-secondary" style="margin-top:10px;padding:6px 12px;" onclick="event.stopPropagation();openReply(\''+key+'\','+i+')">'+_rvLabel+'</button>';
   // Older records carry a free-text Response Summary. Nothing writes it now —
   // replies are versions — but where one exists it belongs with its item rather
   // than in a separate note under the table.
@@ -10934,6 +10960,18 @@ function verThreadRows(key,r,i,colspan){
     +vs.map(line).join('')+respHTML+reply+wfProgressHTML(key,r,i)+'</td></tr>';
 }
 function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i); if(!el) return; const open=el.style.display!=='none'; el.style.display=open?'none':'table-row'; const arw=document.getElementById('arw-'+key+'-'+i); if(arw) arw.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
+// The person picker only matters for two of the three answers, and what it
+// means differs between them, so the hint changes with the choice rather than
+// trying to describe both at once.
+function replyActionChanged(){
+  const act=(document.getElementById('reply-action')||{}).value||'continue';
+  const who=document.getElementById('reply-next-who');
+  const hint=document.getElementById('reply-next-hint');
+  if(who) who.style.display = act==='continue' ? 'none' : '';
+  if(hint) hint.textContent = act==='reassign'
+    ? 'They take over this step. Your approval is not recorded, because you are not giving one \u2014 the item waits for them instead. This item only; the project\u2019s workflow is unchanged.'
+    : 'Your review is recorded, and they are added after you as one more step. This item only; the project\u2019s workflow is unchanged.';
+}
 // advance: this is the reviewer completing their step, so the chain moves on
 // when they submit. Two buttons for one decision let a review be written while
 // the item sat waiting on the person who had just answered it.
@@ -10954,8 +10992,10 @@ function openReply(key,i,advance){
           opts.push('<option value="'+esc(nm)+'" data-email="'+esc(em)+'">'+esc(nm)
             +(c['Company']?(' \u2014 '+esc(c['Company'])):'')+'</option>');
         });
-        ns.innerHTML='<option value="">Nobody \u2014 the chain continues as configured</option>'+opts.join('');
+        ns.innerHTML='<option value="">Choose somebody on the project\u2026</option>'+opts.join('');
         ns.value='';
+        const act=document.getElementById('reply-action'); if(act) act.value='continue';
+        try{ replyActionChanged(); }catch(e){}
       }
     }
   }
@@ -11022,6 +11062,8 @@ async function submitReply(){
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
     else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
+    else if(REPLY_CTX && REPLY_CTX._reassignedTo) alert('Handed to '+REPLY_CTX._reassignedTo
+      +'. Your approval was not recorded \u2014 the item is waiting on them now.');
     else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
     else if(_advanced) alert('Review recorded and the chain has moved on.');
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
@@ -11039,6 +11081,26 @@ function applyReviewAdvance(key, row, by){
   if(!steps.length) return '';
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
   const mine=wfMyStepsIn(steps,gs,ge);
+  const act=((document.getElementById('reply-action')||{}).value)||'continue';
+  const ns=document.getElementById('reply-next');
+  const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
+  const emailOf=nm=>{ const o=ns&&[...ns.options].find(x=>x.value===nm); return (o&&o.getAttribute('data-email'))||''; };
+
+  // Handing the step over is not an approval, so nothing is signed and the
+  // chain does not move: the item simply waits for somebody else now. Signing
+  // on the way out would put an approval on the record that nobody gave.
+  if(act==='reassign' && pick){
+    const target = mine.length ? mine[0] : gs;
+    const moved=wfReassigned(row);
+    moved[String(target)]={person:pick, email:emailOf(pick), by:(by||ME_NAME||ME_EMAIL||''), at:etToday()};
+    row['Workflow Reassigned']=JSON.stringify(moved);
+    row['Workflow Status']='In Review';
+    try{ auditLog('Review step reassigned', key, row,
+      (steps[target]&&(steps[target].person||steps[target].name)||('step '+(target+1)))+' \u2192 '+pick); }catch(e){}
+    if(REPLY_CTX){ REPLY_CTX._reassignedTo=pick; REPLY_CTX._addedEmail=emailOf(pick)||''; }
+    return '';
+  }
+
   const toSign = mine.length ? mine : (IS_ADMIN ? [gs] : []);
   if(!toSign.length) return '';
   toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length));
@@ -11046,11 +11108,8 @@ function applyReviewAdvance(key, row, by){
   // Anyone the reviewer is sending it on to goes in directly after this group,
   // so they are next rather than last.
   let added='';
-  const ns=document.getElementById('reply-next');
-  const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
-  if(pick){
-    const opt=[...ns.options].find(o=>o.value===pick);
-    const email=(opt&&opt.getAttribute('data-email'))||'';
+  if(act==='also' && pick){
+    const email=emailOf(pick);
     const extra=wfExtraSteps(row);
     extra.push({after:ge, name:'Further Review', person:pick, email:email,
                 addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday()});
