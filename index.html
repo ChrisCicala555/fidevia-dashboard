@@ -1698,6 +1698,7 @@
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
     <div class="modal-body">
       <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status"></select></div>
+      <p id="reply-status-note" style="display:none;margin:-4px 0 12px;font-size:13px;color:var(--muted);"></p>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
       <div class="field" id="reply-next-field" style="display:none;">
@@ -4580,7 +4581,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 17:45';
+const BUILD_STAMP='2026-09-09 18:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11693,13 +11694,68 @@ function openReply(key,i,advance){
   // The status was hidden from everyone outside Fidevia, which made sense when
   // the only external reply was a contractor resubmitting. A reviewer has a
   // decision to record — approve, send back, refuse — and no way to say it.
+  // A decision belongs to whoever the chain is on. This asked only whether the
+  // reader was a design role, so an architect could keep recording outcomes on
+  // an item that had already left them: send it back, and send it back again,
+  // each one overwriting the status and adding a version, while the chain sat
+  // with the contractor and did not move. Two returns of the same submittal,
+  // from somebody it was no longer with.
+  //
+  // Fidevia keeps it, because Fidevia acting on somebody else's step is the
+  // documented override and is recorded as one.
   { const sf=document.getElementById('reply-status-field');
-    const decides = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
-    if(sf) sf.style.display = decides ? '' : 'none'; }
+    const hint=document.getElementById('reply-status-note');
+    // Two conditions, and both are needed. Whose step it is, and whether the
+    // reader is somebody who decides at all: a contractor answering a return is
+    // on their own step and is still resubmitting, not ruling on their own
+    // submittal. Dropping the second half would have handed them Approve.
+    const mineNow=replyStepIsMine(key, r);
+    const rules = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+    const decides = (mineNow && rules) || (IS_ADMIN && !viewingAsExternal());
+    if(sf) sf.style.display = decides ? '' : 'none';
+    if(hint){
+      hint.style.display = (decides || !rules) ? 'none' : '';
+      const who=(decides || !rules) ? '' : replyWaitingOn(key, r);
+      hint.textContent = (decides || !rules) ? ''
+        : (who ? 'This is with '+who+'. You can add a version or a note here; the decision is theirs to record.'
+               : 'You can add a version or a note here. Recording a decision is for whoever the chain is on.');
+    }
+  }
   if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
   document.getElementById('reply-note').value=''; document.getElementById('reply-file').value='';
   document.getElementById('reply-progress').style.display='none'; document.getElementById('reply-submit-btn').disabled=false;
   document.getElementById('reply-backdrop').classList.add('open');
+}
+// Is the chain sitting on the reader right now? Not "are they on it somewhere"
+// — that is a different question, and the one that let a reviewer act twice.
+function replyStepIsMine(key, row){
+  try{
+    const steps=wfEffectiveSteps(key,row);
+    if(!steps.length) return true;              // no chain: nothing to be off
+    if(wfIsDone(row)||wfIsStopped(row)) return false;
+    const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
+    return wfMyStepsIn(steps,gs,ge).length>0;
+  }catch(e){ return false; }
+}
+// The reader is the side that files the thing, so a version from them is a
+// resubmission rather than a comment.
+function replyIsSubmitterSide(key, row){
+  const mine=String(myCompany()||'').trim().toLowerCase();
+  if(!mine) return false;
+  return mine===String(rowCompany(row)||'').trim().toLowerCase();
+}
+function replyWaitingOn(key, row){
+  try{
+    const steps=wfEffectiveSteps(key,row);
+    if(!steps.length || wfIsDone(row) || wfIsStopped(row)) return '';
+    const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
+    const names=steps.slice(gs,ge+1).map(st=>{
+      const p=String((st&&st.person)||'').trim();
+      const co=wfStepCompany(st);
+      return p ? (co && co.toLowerCase()!==p.toLowerCase() ? p+' ('+co+')' : p) : (st&&st.name)||'';
+    }).filter(Boolean);
+    return names.join(' and ');
+  }catch(e){ return ''; }
 }
 function closeReply(){ document.getElementById('reply-backdrop').classList.remove('open'); REPLY_CTX=null; }
 async function submitReply(){
@@ -11707,7 +11763,13 @@ async function submitReply(){
   // Whoever was shown the field chose; whoever was not is resubmitting.
   const _sf=document.getElementById('reply-status-field');
   const _canDecide=_sf && _sf.style.display!=='none';
-  const status=_canDecide ? document.getElementById('reply-status').value : 'Resubmitted';
+  // Whoever cannot decide is not deciding. A contractor answering a return is
+  // resubmitting; anybody else adding a version or a note leaves the status
+  // exactly where the last person with the authority to set it left it —
+  // rather than silently stamping 'Resubmitted' over their decision.
+  const _row0=(allData[key]||[])[i]||{};
+  const status=_canDecide ? document.getElementById('reply-status').value
+    : (replyIsSubmitterSide(key,_row0) ? 'Resubmitted' : String(_row0['Status']||''));
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;
