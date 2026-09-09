@@ -1400,10 +1400,33 @@ export default async (req) => {
       }
       return json({ requests: list.filter(r => r.state !== 'done') });
     }
+    // Notes that belong to a file rather than to a row: who was at the meeting,
+    // what was decided. Box keeps a description per file, which means the note
+    // travels with the document instead of living in an index that can fall out
+    // of step with the folder.
+    if (op === 'docsDescribe') {
+      const fileId = String(body.fileId || '');
+      if (!fileId) return json({ error: 'fileId required' }, 400);
+      if (!await guardFile(fileId)) return json({ error: 'Access denied' }, 403);
+      let parentId = '';
+      try {
+        const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=parent`, { headers: H })).json();
+        parentId = String((fi.parent && fi.parent.id) || '');
+      } catch (e) {}
+      if (!parentId) return json({ error: 'Could not read that file.' }, 502);
+      // The same rule as writing into the folder: if you may file here, you may
+      // describe what you filed.
+      if (!await docsAllows(H, t, _grants, who, parentId)) return json({ error: 'Access denied' }, 403);
+      const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}`, {
+        method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: String(body.description || '').slice(0, 4000) }) });
+      if (!r.ok) return json({ error: 'Box refused (' + r.status + ')' }, r.status);
+      return json({ ok: true });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
-      const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type,size,modified_at`, { headers: H });
+      const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type,size,modified_at,description`, { headers: H });
       if (!r.ok) return json({ error: 'Box list ' + r.status }, r.status);
       let entries = (await r.json()).entries || [];
       const pos = await docsPositionOf(H, body.folderId);

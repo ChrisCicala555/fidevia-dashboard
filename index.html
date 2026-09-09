@@ -1217,7 +1217,7 @@
           <h2>Documents</h2>
           <div style="display:flex;gap:8px;">
             <button class="btn-secondary" onclick="docsNewFolder()" style="padding:9px 14px;">+ New Folder</button>
-            <label class="btn-add" style="cursor:pointer;">+ Upload
+            <label class="btn-add" style="cursor:pointer;" onclick="event.preventDefault();docsUploadClick();">+ Upload
               <input type="file" multiple id="docs-upload" style="display:none" onchange="docsUpload(this)">
             </label>
           </div>
@@ -5214,7 +5214,11 @@ function renderDocs(){
       : '<a class="attach-link" href="#" onclick="openBoxFile('+esc(JSON.stringify(e.id))+',event);return false;">'+fileIcon(e.name)+'<span class="attach-name">'+esc(e.name)+'</span></a>'
         // Filed documents already carry the name they were filed under, so
         // nothing is prefixed here.
-        +dlBtn(e.id, e.name, '');
+        +dlBtn(e.id, e.name, '')
+        // What was written about the file when it was filed. Minutes carry who
+        // attended and what was decided, which is the difference between a
+        // folder of PDFs and a log.
+        +(e.description?('<div class="cell-sub" style="white-space:normal;max-width:520px;">'+esc(String(e.description).split('\n')[0])+'</div>'):'');
     return '<tr>'
       +'<td>'+nm+'</td>'
       +'<td class="nw">'+(isF?'—':fmtBytes(e.size))+'</td>'
@@ -5317,6 +5321,52 @@ async function docsLoadRequests(){
 async function docsDismissRequest(id){
   try{ await proxyCall('docsRemovalRequests',{projectId:currentProject.folderId, close:id},{quiet:true}); }catch(e){}
   await docsLoadRequests();
+}
+// Uploading into Meeting Minutes asks the questions the old tab asked. The
+// answers travel with the file: the name carries the date and the kind of
+// meeting, the description carries who was there and what was decided. No
+// second index to fall out of step with the folder.
+const DOCS_FORM_FOLDERS={'meeting minutes':'docmeeting'};
+function docsFolderForm(){
+  const here=(DOCS_PATH[DOCS_PATH.length-1]||{}).name||'';
+  return DOCS_FORM_FOLDERS[String(here).trim().toLowerCase()]||'';
+}
+function docsUploadClick(){
+  const form=docsFolderForm();
+  if(form){ openModal(form); return; }
+  const inp=document.getElementById('docs-upload'); if(inp) inp.click();
+}
+async function submitDocMeeting(){
+  const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
+  const v=id=>{ const el=document.getElementById(id); return el?String(el.value||'').trim():''; };
+  btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box\u2026';
+  try{
+    const date=v('f-date-sub'); if(!date) throw new Error('Date is required.');
+    const f=(document.getElementById('f-file')||{}).files;
+    const file=f&&f[0]; if(!file) throw new Error('Attach the minutes file.');
+    const type=v('f-mtype')||'Meeting';
+    const dot=String(file.name).lastIndexOf('.');
+    const ext=dot>0?String(file.name).slice(dot):'';
+    const name=safeFileName(date+' \u2014 '+type)+ext;
+    prog.textContent='Uploading\u2026';
+    const up=await boxUploadBinary(new File([file], name, {type:file.type}), docsHere(), t=>{ prog.textContent=t; });
+    const ent=up&&up.entries?up.entries[0]:up;
+    // Attendees and the summary go on the file itself, so the folder reads as
+    // a log rather than a pile of PDFs.
+    const bits=[];
+    if(v('f-attendees')) bits.push('Attendees: '+v('f-attendees'));
+    if(v('f-subject')) bits.push(v('f-subject'));
+    if(ent&&ent.id&&bits.length){
+      try{ await proxyCall('docsDescribe',{fileId:ent.id, description:bits.join('\n\n')}); }catch(e){}
+    }
+    try{ auditLog('Filed meeting minutes','gendocs',{}, name); }catch(e){}
+    closeModal();
+    await loadDocs();
+  }catch(e){
+    prog.textContent='Error: '+(e.message||'Could not save that.');
+    btn.disabled=false; return;
+  }
+  btn.disabled=false;
 }
 async function docsRename(id, kind, current){
   const name=prompt('Rename to:', current); if(name===null) return;
@@ -6511,6 +6561,9 @@ function contactOptions(){
   const cts=(allData.contacts||[]).filter(c=>(c['Name']||'').trim());
   return '<option value="">— Select contact —</option>'+cts.map(c=>{ const co=(c['Company']||'').trim(), nm=(c['Name']||'').trim(); return '<option>'+esc(co?co+' - '+nm:nm)+'</option>'; }).join('');
 }
+// The Meeting Minutes tab is gone; its form is not. Documents borrows it whole
+// so filing minutes asks the same questions it always did.
+FORMS.docmeeting={title:'Add Meeting Minutes', html:FORMS.meeting.html};
 function openModal(type){
   // Contractors upload the document only; Fidevia records the details.
   // Applies in the preview too, so the toggle shows what a contractor sees.
@@ -7164,6 +7217,10 @@ async function sendFeedback(){
 
 async function submitForm(){
   if(!currentModal) return;
+  // Minutes filed from the Documents tab use the form the Meeting Minutes tab
+  // had, but the folder is the record now, so they do not go near the retired
+  // log. Handled first because everything below it is about CSV rows.
+  if(currentModal==='docmeeting') return submitDocMeeting();
   const btn=document.getElementById('modal-submit-btn'), prog=document.getElementById('upload-progress');
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Saving to Box…';
   try{
