@@ -1231,6 +1231,7 @@
           Nothing is deleted, and a file already at the destination is left alone.
           <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <button class="btn-secondary" id="btn-docs-catchup" onclick="docsCatchUp()">Bring It Up To Date</button>
+            <button class="btn-secondary" id="btn-docs-clear" onclick="docsRemoveLegacy()">Clear Out The Old Company Folders</button>
             <span class="status-msg" id="docs-catchup-status"></span>
           </div>
         </div>
@@ -5285,6 +5286,44 @@ const DOCS_CONFIDENTIAL='fidevia internal';
 // create what is missing, then move what the two retired tabs were holding.
 // Safe to run twice — the folder step skips what exists and the move step
 // skips a name already at the destination.
+// Removing the folder-per-company tree the shared tab replaced. It looks first
+// and tells you what it found, because deleting a folder that still holds work
+// is not something to do on the strength of one press.
+async function docsRemoveLegacy(){
+  if(!IS_ADMIN || viewingAsExternal() || !currentProject) return;
+  const btn=document.getElementById('btn-docs-clear');
+  const say=(t,c)=>showStatus('docs-catchup-status', t, c||'');
+  if(btn) btn.disabled=true;
+  say('Looking\u2026');
+  try{
+    const plan=await proxyCall('docsRemoveLegacy',{projectId:currentProject.folderId});
+    const moved=plan.movedSchedules||[], removed=plan.removed||[], kept=plan.kept||[];
+    if(!removed.length && !moved.length){
+      say(kept.length
+        ? 'Nothing can be removed yet. Still holding files: '+kept.join(', ')+'. Move what matters into the folders above, then run this again.'
+        : 'There are no old company folders left.', kept.length?'':'success');
+      if(btn) btn.disabled=false; return;
+    }
+    const lines=[];
+    if(moved.length) lines.push('Move '+moved.length+' schedule'+(moved.length===1?'':'s')+' into the shared Schedules folder.');
+    if(removed.length) lines.push('Delete '+removed.length+' empty folder'+(removed.length===1?'':'s')+': '+removed.join(', ')+'.');
+    if(kept.length) lines.push('Leave alone (still holding files): '+kept.join(', ')+'.');
+    if(!confirm(lines.join('\n\n')+'\n\nDeleted folders go to your Box trash, not straight out.\n\nGo ahead?')){
+      say('Left as it was.'); if(btn) btn.disabled=false; return;
+    }
+    say('Working\u2026');
+    const done=await proxyCall('docsRemoveLegacy',{projectId:currentProject.folderId, apply:true});
+    const dm=(done.movedSchedules||[]).length, dr=(done.removed||[]).length, dk=done.kept||[];
+    say('Done. '+(dm?dm+' schedule'+(dm===1?'':'s')+' moved. ':'')
+      +(dr?dr+' folder'+(dr===1?'':'s')+' removed. ':'')
+      +(dk.length?('Still holding files, left alone: '+dk.join(', ')+'.'):''), 'success');
+    try{ auditLog('Removed old company document folders','gendocs',{},
+      (done.removed||[]).join(', ')+(dm?(' \u00b7 '+dm+' schedules moved'):'')); }catch(e){}
+    DOCS_PATH.length=0;
+    await loadDocs();
+  }catch(e){ say('Could not finish: '+(e.message||'unknown error'), 'error'); }
+  if(btn) btn.disabled=false;
+}
 async function docsCatchUp(){
   if(!IS_ADMIN || viewingAsExternal() || !currentProject) return;
   const btn=document.getElementById('btn-docs-catchup'); if(btn) btn.disabled=true;

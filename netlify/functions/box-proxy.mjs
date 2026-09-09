@@ -1221,6 +1221,87 @@ export default async (req) => {
       }
       return json({ ok: true, moved, skipped });
     }
+    // Clear out the folder-per-company tree the shared Documents tab replaced.
+    //
+    // Deleting a folder that still holds work is not something to do on the
+    // strength of a button press, so this does it in two halves: anything in a
+    // company's Schedules subfolder is moved to the shared Schedules folder
+    // first, where it keeps counting for the monthly check, and only folders
+    // that are then genuinely empty are removed. Anything still holding a file
+    // is left alone and named in the reply, for a person to deal with.
+    //
+    // Box removals go to the trash rather than being erased, so a mistake here
+    // is recoverable for as long as your Box retention allows.
+    if (op === 'docsRemoveLegacy') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const projectId = String(body.projectId || '');
+      if (!projectId) return json({ error: 'projectId required' }, 400);
+      const dryRun = body.apply !== true;
+      const listOf = async id => {
+        const r = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(id)}/items?limit=1000&fields=id,name,type`, { headers: H });
+        return r.ok ? ((await r.json()).entries || []) : [];
+      };
+      const top = await listOf(projectId);
+      const docs = top.find(e => e.type === 'folder' && String(e.name || '').startsWith(DOCS_PREFIX + ' '));
+      if (!docs) return json({ error: 'This project has no Documents folder.' }, 404);
+      const atRoot = await listOf(docs.id);
+      const standard = new Set(DOCS_FOLDERS.map(f => f.toLowerCase()));
+      const legacy = atRoot.filter(e => e.type === 'folder' && !standard.has(String(e.name || '').trim().toLowerCase()));
+      const shared = atRoot.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
+      const safeName = v => String(v || '').replace(/[\/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+
+      const movedSchedules = [], removed = [], kept = [];
+      for (const f of legacy) {
+        const company = String(f.name || '').trim();
+        let inside = await listOf(f.id);
+        // Schedules first: they belong in the shared folder now, named so the
+        // monthly check can still tell whose they are.
+        const sched = inside.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
+        if (sched && shared) {
+          for (const file of (await listOf(sched.id)).filter(e => e.type === 'file')) {
+            const nm = String(file.name || '');
+            const want = nm.toLowerCase().includes(company.toLowerCase()) ? nm : safeName(company + ' - ' + nm);
+            if (!dryRun) {
+              const r = await boxFetch(`https://api.box.com/2.0/files/${file.id}`, {
+                method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parent: { id: String(shared.id) }, name: want })
+              });
+              if (!r.ok) continue;
+            }
+            movedSchedules.push(company + ' / ' + nm + ' -> Schedules / ' + want);
+          }
+          if (!dryRun) inside = await listOf(f.id);
+        }
+        // Empty means empty all the way down: a folder of empty folders holds
+        // nothing and can go; one holding a single file cannot.
+        const holdsAFile = async (id, depth) => {
+          if (depth > 4) return true;                       // too deep to vouch for
+          for (const e of await listOf(id)) {
+            if (e.type === 'file') return true;
+            if (await holdsAFile(e.id, depth + 1)) return true;
+          }
+          return false;
+        };
+        const stillHasWork = dryRun && sched && shared
+          ? await (async () => {                            // ignore schedules we would have moved
+              for (const e of inside) {
+                if (e.type === 'file') return true;
+                if (/^schedules?$/i.test(String(e.name || '').trim())) continue;
+                if (await holdsAFile(e.id, 1)) return true;
+              }
+              return false;
+            })()
+          : await holdsAFile(f.id, 0);
+        if (stillHasWork) { kept.push(company); continue; }
+        if (!dryRun) {
+          const r = await boxFetch(`https://api.box.com/2.0/folders/${f.id}?recursive=true`, { method: 'DELETE', headers: H });
+          if (!r.ok && r.status !== 404) { kept.push(company + ' (Box ' + r.status + ')'); continue; }
+        }
+        removed.push(company);
+      }
+      return json({ ok: true, dryRun, movedSchedules, removed, kept,
+        standard: DOCS_FOLDERS, sharedSchedules: !!shared });
+    }
     if (op === 'docsList') {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
