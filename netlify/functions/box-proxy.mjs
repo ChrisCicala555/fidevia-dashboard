@@ -473,6 +473,24 @@ const DOCS_REMOVED = 'removed';
 function docsIsConfidential(pos){
   return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_PRIVATE;
 }
+// Uploading a programme. docsAllows now refuses the Schedules folder outright,
+// which is right for browsing and wrong for this: the Schedule tab writes into
+// that folder, and without this every external upload would 403 the moment the
+// folder left Documents. A contract may put up its own — the filename has to
+// carry their name, which is the same thing the reading side matches on — and
+// Fidevia may put up anybody's. The design team and the owner read schedules;
+// they do not hold a contract, so they do not file one.
+async function schedMayUpload(H, t, grants, who, folderId, filename){
+  if (who.isAdmin) return true;
+  const pos = await docsPositionOf(H, folderId);
+  if (!pos || !docsIsSchedules(pos)) return false;
+  const g = await grantFor(t, grants, 'folder', folderId);
+  if (!g) return false;
+  const role = normRole(g.role);
+  if (!roleMayWrite(role) || seesAllCompanies(role)) return false;
+  const mine = String(g.company || '').trim();
+  return !!mine && schedNorm(String(filename || '')).includes(schedNorm(mine));
+}
 // True when this caller may see or write inside the given folder.
 async function docsAllows(H, t, grants, who, folderId){
   if (who.isAdmin) return true;
@@ -1636,7 +1654,9 @@ export default async (req) => {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       { const pos = await docsPositionOf(H, body.folderId);
-        if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
+        if (pos && docsIsSchedules(pos)) {
+          if (!await schedMayUpload(H, t, _grants, who, body.folderId, body.filename)) return json({ error: 'Access denied' }, 403);
+        } else if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
       try {
         const r = await boxFetch('https://api.box.com/oauth2/token', {
           method: 'POST',
@@ -1659,7 +1679,9 @@ export default async (req) => {
       if (!await guardFolder(body.folderId)) return json({ error: 'Access denied' }, 403);
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       { const pos = await docsPositionOf(H, body.folderId);
-        if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
+        if (pos && docsIsSchedules(pos)) {
+          if (!await schedMayUpload(H, t, _grants, who, body.folderId, body.filename)) return json({ error: 'Access denied' }, 403);
+        } else if (pos && !await docsAllows(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403); }
       const chk = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(body.folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       if (chk.ok) { const items = (await chk.json()).entries || []; if (items.some(i => i.type === 'file' && i.name === body.filename)) return json({ error: 'A file with that name already exists.' }, 409); }
       const bytes = Uint8Array.from(atob(body.contentBase64), c => c.charCodeAt(0));
@@ -1669,6 +1691,34 @@ export default async (req) => {
       const r = await boxFetch('https://upload.box.com/api/2.0/files/content', { method: 'POST', headers: H, body: form });
       if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
       return json({ ok: true, file: await r.json() });
+    }
+
+    // A schedule revised mid-month is the same document, not a second one.
+    // Without this the only way to correct one was to upload again and take a
+    // Dup_ suffix, which leaves two files claiming the same month and a chase
+    // that has to guess between them.
+    if (op === 'uploadVersion') {
+      const fileId = String(body.fileId || '');
+      if (!fileId) return json({ error: 'fileId required' }, 400);
+      const fr = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=name,parent`, { headers: H });
+      if (!fr.ok) return json({ error: 'Box file ' + fr.status }, fr.status);
+      const meta = await fr.json();
+      const parentId = String((meta.parent && meta.parent.id) || '');
+      if (!parentId) return json({ error: 'Access denied' }, 403);
+      if (!await guardFolder(parentId)) return json({ error: 'Access denied' }, 403);
+      if (!await folderWritableBy(H, t, _grants, who, parentId)) return json({ error: 'Access denied' }, 403);
+      // Only schedules go through here so far, and the name that decides who
+      // may write is the one already on the file — not one the caller sends.
+      const pos = await docsPositionOf(H, parentId);
+      if (!pos || !docsIsSchedules(pos)) return json({ error: 'Access denied' }, 403);
+      if (!await schedMayUpload(H, t, _grants, who, parentId, meta.name)) return json({ error: 'Access denied' }, 403);
+      const bytes = Uint8Array.from(atob(body.contentBase64 || ''), c => c.charCodeAt(0));
+      const form = new FormData();
+      form.append('attributes', JSON.stringify({ name: meta.name }));
+      form.append('file', new Blob([bytes], { type: body.mime || 'application/octet-stream' }), meta.name);
+      const r = await boxFetch(`https://upload.box.com/api/2.0/files/${encodeURIComponent(fileId)}/content`, { method: 'POST', headers: H, body: form });
+      if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
+      return json({ ok: true, file: await r.json(), name: meta.name });
     }
 
     if (op === 'ensureFolder') {

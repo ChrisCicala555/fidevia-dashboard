@@ -47,7 +47,14 @@ ok('a duplicate name is explained',      /Something here already has that name/.
 console.log('Writing obeys the same rule');
 for(const op of ['upload','uploadToken','ensureFolder']){
   const b=proxy.slice(proxy.indexOf("op === '"+op+"'"), proxy.indexOf("op === '"+op+"'")+900);
-  ok(op+' checks the Documents rule', /docsPositionOf\(H, body\.(folderId|parentId)\)[\s\S]{0,160}docsAllows/.test(b));
+  // Schedules is the one folder inside Documents that docsAllows refuses
+  // outright, because it is reached from the Schedule tab instead. The two
+  // upload ops branch on it and answer to schedMayUpload there; everything
+  // else in the tab still answers to docsAllows.
+  ok(op+' checks the Documents rule',
+     /docsPositionOf\(H, body\.(folderId|parentId)\)[\s\S]{0,420}docsAllows/.test(b));
+  if(op!=='ensureFolder')
+    ok(op+' sends a schedule to its own rule instead', /docsIsSchedules\(pos\)[\s\S]{0,200}schedMayUpload/.test(b));
 }
 
 console.log('The browser');
