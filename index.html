@@ -4520,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 02:55';
+const BUILD_STAMP='2026-09-09 03:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10577,15 +10577,34 @@ function wfReturnSource(row, steps, retIdx){
   const signed=wfSignedMap(row);
   for(let i=retIdx-1;i>=0;i--){
     const sg=signed[String(i)];
-    if(sg && sg.outcome && WF_RETURNED.test(sg.outcome)) return i;
+    if(sg && wfIsReturnOutcome(sg.outcome)) return i;
   }
+  const match=(nm,co)=>{
+    const n=String(nm||'').trim().toLowerCase(), c=String(co||'').trim().toLowerCase();
+    for(let i=retIdx-1;i>=0;i--){
+      const p=String((steps[i]||{}).person||'').trim().toLowerCase();
+      if(n && p===n) return i;
+      if(c && String(wfCompanyOf((steps[i]||{}).person)||'').trim().toLowerCase()===c) return i;
+    }
+    return -1;
+  };
   const st=steps[retIdx]||{};
-  const by=String(st.addedBy||'').trim().toLowerCase();
-  if(by) for(let i=retIdx-1;i>=0;i--){
-    if(String((steps[i]||{}).person||'').trim().toLowerCase()===by) return i;
+  let i=match(st.addedBy,'');
+  if(i>=0) return i;
+  // Rows returned before any of this was recorded still say who did it, in the
+  // version they wrote. The entry naming the instruction names its author.
+  const vs=_versions(row);
+  for(let k=vs.length-1;k>=0;k--){
+    if(!wfIsReturnOutcome(vs[k].status)) continue;
+    i=match(vs[k].by, vs[k].co);
+    if(i>=0) return i;
+    break;
   }
+  // Last resort: the head of the group it was sent back from, not the tail —
+  // the tail of a parallel group is whoever happened to be listed last, which
+  // on this project is an engineer who objected to nothing.
   const after=parseInt(st.after,10);
-  if(!isNaN(after) && steps[after]) return after;
+  if(!isNaN(after) && steps[after]){ const [gs]=wfGroupAt(steps, after); return gs; }
   return retIdx>0 ? retIdx-1 : -1;
 }
 function wfEffectiveSteps(key, row){
@@ -10637,6 +10656,15 @@ function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0
 // common answer a reviewer gives, and it had nowhere to go: the chain either
 // moved on as though the thing were fine, or closed as though it were dead.
 const WF_RETURNED=/revise|resubmit|returned/i;
+// "Revise and Resubmit" is the reviewer's instruction. "Resubmitted" is the
+// contractor's answer to it. WF_RETURNED matches both — it is looking for the
+// word — so anywhere the difference matters, ask this instead. Reading the
+// answer as another instruction made the chain believe it had just been sent
+// back by the person who had in fact just complied.
+function wfIsReturnOutcome(x){
+  const t=String(x||'').trim();
+  return WF_RETURNED.test(t) && !/^re-?submitted$/i.test(t);
+}
 // "Resubmitted" is the contractor saying they have answered the comments, not
 // anybody saying whether they have. It belongs with the other statuses that
 // mean nobody has decided yet — left out, an approved revision finished its
@@ -10678,10 +10706,73 @@ function wfHealReturn(key,row){
   row['Workflow Status']='In Review';
   return true;
 }
+// The revision is already filed and the chain never noticed. Before there was a
+// Submit Revision button, a contractor's only way to answer a return was the
+// ordinary new-version reply, which files the document and moves nothing — so
+// these rows sit on the returned step with the redraw sitting right above it in
+// the version history. Read the history: if a version has come in from the
+// submitting company since the return, the revision has been delivered.
+function wfHealResubmit(key,row){
+  if(!row || !wfHasWorkflow(key)) return false;
+  if(wfIsDone(row) || wfIsStopped(row)) return false;
+  const steps=wfEffectiveSteps(key,row); if(!steps.length) return false;
+  const cur=wfActiveIdx(row); const st=steps[cur];
+  if(!st || !st.returned) return false;
+  const vs=_versions(row);
+  let sentBackAt=-1;
+  vs.forEach((v,i)=>{ if(wfIsReturnOutcome(v.status)) sentBackAt=i; });
+  if(sentBackAt<0) return false;
+  const co=String(rowCompany(row)||'').trim().toLowerCase();
+  const mine=String(rowSubmitterName(row)||'').trim().toLowerCase();
+  const after=vs.slice(sentBackAt+1).find(v=>{
+    if(/resubmit/i.test(String(v.status||''))) return true;
+    const vco=String(v.co||'').trim().toLowerCase(), vby=String(v.by||'').trim().toLowerCase();
+    return (!!co && vco===co) || (!!mine && vby===mine);
+  });
+  if(!after) return false;
+  const srcIdx=wfReturnSource(row, steps, cur);
+  const src=srcIdx>=0 ? steps[srcIdx] : null;
+  if(!src) return false;
+  wfMarkSigned(row, cur, after.by||rowSubmitterName(row)||'', false, after.status||'Resubmitted');
+  const extra=wfExtraSteps(row);
+  extra.push({after:(st.after!=null?st.after:srcIdx), name:src.name||'Review',
+              person:src.person||'', email:String(src.email||'').trim()||wfEmailOf(src.person),
+              company:src.company||'', addedBy:'', at:String(after.date||''),
+              rereview:true, inferred:true});
+  row['Workflow Extra']=JSON.stringify(extra);
+  row['Workflow Step']=String(cur+1);
+  row['Workflow Status']='In Review';
+  return true;
+}
+// A row returned before approvals were attributed says who did it anyway — in
+// the version they wrote. Without that, the step that made the decision renders
+// as "not required — the group moved on", which is the opposite of what
+// happened. Only ever fills an empty record; never overwrites a real one.
+function wfHealReturnSignature(key,row){
+  if(!row || !wfHasWorkflow(key)) return false;
+  if(Object.keys(wfSignedMap(row)).length) return false;
+  const vs=_versions(row);
+  let ret=null;
+  for(let k=vs.length-1;k>=0;k--){ if(wfIsReturnOutcome(vs[k].status)){ ret=vs[k]; break; } }
+  if(!ret) return false;
+  const steps=wfEffectiveSteps(key,row); if(!steps.length) return false;
+  const n=String(ret.by||'').trim().toLowerCase(), c=String(ret.co||'').trim().toLowerCase();
+  for(let i=0;i<steps.length;i++){
+    if(steps[i].returned) break;
+    const p=String(steps[i].person||'').trim().toLowerCase();
+    const pc=String(wfCompanyOf(steps[i].person)||'').trim().toLowerCase();
+    if((n&&p===n)||(c&&pc===c)){ wfMarkSigned(row,i,ret.by||'',false,ret.status||''); return true; }
+  }
+  return false;
+}
 function wfHealReturns(){
   ['rfi','co','sub','pay_apps'].forEach(key=>{
     if(!wfHasWorkflow(key)) return;
-    (allData[key]||[]).forEach(row=>{ try{ wfHealReturn(key,row); }catch(e){} });
+    (allData[key]||[]).forEach(row=>{
+      try{ wfHealReturnSignature(key,row); }catch(e){}
+      try{ wfHealReturn(key,row); }catch(e){}
+      try{ wfHealResubmit(key,row); }catch(e){}
+    });
   });
 }
 // Who the item is with right now, read off the live chain rather than off the
@@ -10819,7 +10910,7 @@ function wfProgressHTML(key,r,i){
     // than being rewritten to claim nobody signed.
     // A step whose outcome was "send it back" is not an approval, and a tick
     // beside it would say it was.
-    const returned = !!(sig && sig.outcome && WF_RETURNED.test(sig.outcome));
+    const returned = !!(sig && wfIsReturnOutcome(sig.outcome));
     const isDone = sig ? !returned : (!attributed && passed);
     const isSkipped = !sig && attributed && passed;
     const isCur = !complete && !stopped && n>=gs && n<=ge;
@@ -11359,7 +11450,7 @@ function applyReviewAdvance(key, row, by){
   // Revise and resubmit: the item goes back to whoever filed it, as a step
   // anybody can see, rather than the chain quietly carrying on to the next
   // reviewer as though the drawing had been accepted.
-  if(WF_RETURNED.test(outcome)){
+  if(wfIsReturnOutcome(outcome)){
     const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
     const extra=wfExtraSteps(row);
     extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),

@@ -57,8 +57,12 @@ ok(/reject\|denied\|\\bden\\b\|void\|withdrawn\|cancell\?ed/.test(srv),
   // an approval either, so it does not draw a tick.
   ok(/const isDone = sig \? !returned : \(!attributed && passed\);/.test(pg),
      'a tick means somebody approved, not that the chain moved past or that they sent it back');
-  ok(/const returned = !!\(sig && sig\.outcome && WF_RETURNED\.test\(sig\.outcome\)\)/.test(pg),
+  ok(/const returned = !!\(sig && wfIsReturnOutcome\(sig\.outcome\)\)/.test(pg),
      'and a returned step is recognised as its own outcome');
+  // Not by the looser word match: "Resubmitted" contains "resubmit", so a
+  // contractor's answer was being read as another instruction to revise.
+  ok(/!\/\^re-\?submitted\$\/i\.test\(t\)/.test(html),
+     'which is not the same test as "does this contain the word"');
   ok(/const passed = complete \|\| n<gs;/.test(pg),
      'and a closed chain is still not a completed one');
   ok(/isDead/.test(pg), 'steps after the stop are marked as never reached');

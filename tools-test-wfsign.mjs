@@ -24,6 +24,8 @@ function withBusy(){}
 // explicitly here, so the effective chain is the set chain.
 function wfEffectiveSteps(){ return STEPS; }
 const WF_RETURNED=/revise|resubmit|returned/i;
+function wfIsReturnOutcome(x){ const t=String(x||'').trim();
+  return WF_RETURNED.test(t) && !/^re-?submitted$/i.test(t); }
 `;
 const sig  = html.slice(html.indexOf('// Who actually approved which step.'), html.indexOf('function wfEmailOf(person)'));
 const mine = html.slice(html.indexOf('function wfStepIsMine(st)'), html.indexOf('function wfProgressHTML'));
