@@ -65,6 +65,9 @@ export function makeWin(doc){
     fetch:()=>new Promise(()=>{}),                    // never settles: no network in here
     setTimeout:()=>0, setInterval:()=>0, clearTimeout(){}, clearInterval(){},
     requestAnimationFrame:()=>0, cancelAnimationFrame(){},
+    // Without this, anything that times itself throws inside its own try and
+    // the failure looks like the work simply not happening.
+    performance:{ now:()=>0 },
     alert(){}, confirm:()=>false, prompt:()=>null, open:()=>null, print(){}, scrollTo(){},
     btoa:(s)=>Buffer.from(String(s),'binary').toString('base64'),
     atob:(s)=>Buffer.from(String(s),'base64').toString('binary'),

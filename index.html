@@ -168,6 +168,8 @@
   .sidebar-footer{margin-top:auto; padding:16px 20px 0;}
   .btn-switch-project{display:block; width:100%; text-align:center; background:rgba(255,255,255,0.08); color:var(--khaki-200); border:1px solid rgba(255,255,255,0.2); border-radius:5px; padding:8px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
   .btn-switch-project:hover{background:rgba(255,255,255,0.15);}
+  .btn-switch-project + .btn-switch-project{margin-top:8px;}
+  .btn-switch-project:disabled{opacity:.55; cursor:default;}
   .main{flex:1; display:flex; flex-direction:column;}
   .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:14px 20px; display:flex; align-items:center; gap:16px; min-height:64px; position:relative; z-index:400;}
   .tb-titlegroup{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:12px;}
@@ -1024,6 +1026,7 @@
     <div class="nav-section-label admin-only ae-admin-label">Admin</div>
     <div class="nav-item admin-only ae-readonly" data-section="settings">Settings</div>
     <div class="sidebar-footer">
+      <button class="btn-switch-project" id="btn-refresh" onclick="refreshProject()" title="Re-read this project from Box. Anything somebody else has filed since you opened it appears.">&#8635; Refresh</button>
       <button class="btn-switch-project" onclick="showScreen('screen-picker')">← Switch Project</button>
     </div>
   </div>
@@ -3544,6 +3547,50 @@ async function createProject(){
 }
 
 // ── DASHBOARD ──
+// Re-read the open project. The dashboard loads once when a project is opened
+// and then shows what it read, so a change somebody else filed five minutes ago
+// is not there until the page is reloaded — and reloading the page means
+// signing back through Auth0 for some people. This re-reads the records
+// instead, keeping you where you are.
+let REFRESHING=false;
+// Whether the last read of the project's records actually got anything back.
+let LAST_LOAD_OK=true;
+async function refreshProject(){
+  if(REFRESHING) return;
+  if(!currentProject){ showScreen('screen-picker'); return; }
+  const btn=document.getElementById('btn-refresh');
+  const was=btn?btn.innerHTML:'';
+  REFRESHING=true;
+  if(btn){ btn.disabled=true; btn.innerHTML='Refreshing\u2026'; }
+  try{
+    // The project's own configuration can have changed too — a contractor
+    // added, a workflow edited — so it is re-read rather than assumed.
+    try{
+      const cfg=await readProjectConfig(currentProject.folderId);
+      if(cfg && Object.keys(cfg).length) currentProject.config=cfg;
+    }catch(e){}
+    await loadDashboard();
+    // openProject deliberately survives a failed read so the screen is still
+    // usable. A refresh has no such excuse: reporting 'Up to date' when nothing
+    // came back is worse than saying it failed.
+    if(!LAST_LOAD_OK) throw new Error('the records could not be read');
+    // Panels that hold their own answers have to be told to ask again.
+    SCHED_UPLOADS=null; SCHED_LAST_SEND=null; MY_SCHEDULE=null; NOTIF_LOG=null;
+    try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
+    try{ if(!EXTERNAL) await loadAccountEmails(); }catch(e){}
+    // Documents is a live folder browser; refresh what is on screen without
+    // throwing away where the reader had navigated to.
+    try{ if(document.getElementById('section-gendocs') && !viewingAsExternal()) await loadDocs(); }catch(e){}
+    try{ renderAll(); }catch(e){}
+    if(btn){ btn.innerHTML='Up to date'; setTimeout(()=>{ if(btn) btn.innerHTML=was; }, 1800); }
+  }catch(e){
+    if(btn) btn.innerHTML='Could not refresh';
+    console.warn('refresh:', e && e.message);
+    setTimeout(()=>{ if(btn) btn.innerHTML=was; }, 2500);
+  }
+  REFRESHING=false;
+  if(btn) btn.disabled=false;
+}
 async function loadDashboard(){
   const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board','gendocs','contractor_daily','payrolls'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
@@ -3554,14 +3601,20 @@ async function loadDashboard(){
   if(['architect-engineer','owner'].includes(viewingAsRole())) extKeys.push('meetings');
   const keys = EXTERNAL ? extKeys : allKeys;
   const mods = keys.filter(k=>currentProject.folders[k]).map(k=>({key:k, folderId:currentProject.folders[k], filename:MODULES[k].log}));
+  LAST_LOAD_OK=true;
   try{
     const _t0=performance.now();
     const d = await proxyCall('readModules',{modules:mods});
     try{ console.log('[dashboard] modules loaded in', Math.round(performance.now()-_t0)+'ms', d._diag||{}); }catch(e){}
     keys.forEach(k=>{ const txt=(d.data||{})[k]; allData[k] = txt ? parseCSV(txt).rows : []; });
   }catch(e){
-    // Fall back to per-module loads if the batch call fails
-    await Promise.allSettled(keys.map(k=>loadModule(k)));
+    // Fall back to per-module loads if the batch call fails.
+    const settled = await Promise.allSettled(keys.map(k=>loadModule(k)));
+    // On the first load a total failure still has to leave the screen usable,
+    // so this does not throw. But a refresh that quietly reported success when
+    // nothing came back was worse than one that said it failed, so the outcome
+    // is recorded for a caller that wants to know.
+    LAST_LOAD_OK = settled.some(r=>r.status==='fulfilled');
   }
   DATA_READY=true;
   renderAll();
@@ -4464,7 +4517,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 21:05';
+const BUILD_STAMP='2026-09-08 21:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
