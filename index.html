@@ -4517,7 +4517,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 21:40';
+const BUILD_STAMP='2026-09-08 22:00';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10582,13 +10582,16 @@ function wfEmailOf(person){
   return c ? String(c['Email']||'').trim().toLowerCase() : '';
 }
 // The steps in this group that belong to the person acting.
+// Whether a given step belongs to the person reading it. Matched on the email
+// on the step, falling back to the one on the contact sheet for that name.
+function wfStepIsMine(st){
+  if(!st || !ME_EMAIL) return false;
+  const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
+  return !!em && em===ME_EMAIL;
+}
 function wfMyStepsIn(steps, gs, ge){
   const out=[];
-  for(let n=gs;n<=ge;n++){
-    const st=steps[n]||{};
-    const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
-    if(em && em===ME_EMAIL) out.push(n);
-  }
+  for(let n=gs;n<=ge;n++){ if(wfStepIsMine(steps[n])) out.push(n); }
   return out;
 }
 function wfCanAdvance(steps, gs, ge){
@@ -10625,8 +10628,17 @@ function wfProgressHTML(key,r,i){
     const note = sig
       ? '<span style="font-size:11.5px;color:var(--muted);">approved '+esc(sig.at||'')+(sig.by?(' \u00b7 '+esc(sig.by)):'')+'</span>'
       : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>' : '');
-    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';flex-wrap:wrap;">'
+    // The reader's own step, said plainly. A chain of names means nothing until
+    // you have found yourself in it, and everyone was reading every row to work
+    // out whether the thing was theirs.
+    const mineNow = isCur && wfStepIsMine(s);
+    const rowStyle = mineNow
+      ? 'display:flex;align-items:center;gap:8px;padding:5px 9px;margin:2px -9px;font-size:13px;flex-wrap:wrap;'
+        +'background:var(--khaki-100);border-left:3px solid var(--olive-700);border-radius:4px;color:'+color+';'
+      : 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';flex-wrap:wrap;';
+    return '<div style="'+rowStyle+'">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
+      +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">YOUR REVIEW</span>':'')
       +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;">override</span>':'')
@@ -10638,7 +10650,17 @@ function wfProgressHTML(key,r,i){
     ? '<span style="color:var(--muted);font-weight:700;">Closed \u2014 '+esc(String(r['Status']||'decided against'))
       +'. No further signatures are needed.</span>'
     : done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
-    : '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(steps.slice(gs,ge+1).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; }).join(', '))+'</span>';
+    : (function(){
+        const grp=steps.slice(gs,ge+1);
+        const names=grp.map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; });
+        // Leading with "you" rather than burying the reader in the list.
+        if(grp.some(wfStepIsMine)){
+          const others=grp.filter(s=>!wfStepIsMine(s)).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; });
+          return '<span style="color:var(--danger);font-weight:700;">Awaiting you'
+            +(others.length?(' and '+esc(others.join(', '))):'')+'</span>';
+        }
+        return '<span style="color:var(--danger);font-weight:700;">Awaiting: '+esc(names.join(', '))+'</span>';
+      })();
   // Fidevia can always act, but not silently: on a step that is not theirs the
   // button says what it is.
   const isMine = wfMyStepsIn(steps,gs,ge).length>0;
