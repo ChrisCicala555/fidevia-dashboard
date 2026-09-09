@@ -1702,7 +1702,7 @@
       <div id="reply-closed-note" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:6px;
         background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
-      <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
+      <div class="field"><label id="reply-file-label">Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
       <div class="field" id="reply-next-field" style="display:none;">
         <label>What are you doing?</label>
         <select id="reply-action" onchange="replyActionChanged()">
@@ -4583,7 +4583,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 20:25';
+const BUILD_STAMP='2026-09-09 21:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11706,13 +11706,26 @@ function openReply(key,i,advance){
   // list that has been re-rendered underneath the open dialog cannot change
   // which item the reply was written about.
   REPLY_CTX={key,i,advance:!!advance,id:String(r[REPLY_IDF[key]]||'')};
-  document.getElementById('reply-title').textContent=(advance?'Review — ':'Reply — ')+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
+  // Every one of the three answers under "What are you doing?" is a reviewer's
+  // answer — record my review, add somebody to the review, hand my review to
+  // somebody else. A contractor answering a return is not reviewing anything;
+  // they are sending the revision back. So the question is asked of reviewers,
+  // and the title says which of the two things is happening rather than calling
+  // a resubmission a review.
+  const _reviews = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+  const _sendingBack = advance && !_reviews;
+  document.getElementById('reply-title').textContent=
+    (_sendingBack ? 'Submit Revision — ' : (advance ? 'Review — ' : 'Reply — '))
+    +(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
   // Sending it on is a reviewer's call, so it appears only when reviewing.
   {
     const nf=document.getElementById('reply-next-field'), ns=document.getElementById('reply-next');
     if(nf && ns){
-      nf.style.display = advance ? '' : 'none';
-      if(advance){
+      nf.style.display = (advance && _reviews) ? '' : 'none';
+      // Left on 'continue' when it is hidden, so the answer the submitter never
+      // gave is the one that simply moves the chain along.
+      { const act=document.getElementById('reply-action'); if(act && !_reviews) act.value='continue'; }
+      if(advance && _reviews){
         const seen=new Set(); const opts=[];
         (allData.contacts||[]).forEach(c=>{
           const nm=String(c['Name']||'').trim(); const em=String(c['Email']||'').trim();
@@ -11731,6 +11744,10 @@ function openReply(key,i,advance){
   // version went on anyway, flipping an approved submittal to Resubmitted while
   // the workflow still read complete — the two halves of the record disagreeing
   // in public, again.
+  // A revision is the point of the exercise, so it is asked for rather than
+  // offered in passing.
+  { const fl=document.getElementById('reply-file-label');
+    if(fl) fl.textContent = _sendingBack ? 'Revised document' : 'Upload new version (optional)'; }
   { const cn=document.getElementById('reply-closed-note');
     if(cn){
       const why=replyClosedReason(key, r);

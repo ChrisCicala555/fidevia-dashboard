@@ -9,7 +9,13 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 const b = bootPage('index.html'); b.run(SEED);
-const as = (who,name,ext,admin) => b.run(`EXTERNAL=${ext}; IS_ADMIN=${admin}; ME_EMAIL='${who}'; ME_NAME='${name}';`);
+// An external grant always carries a role — the dashboard reads it off the
+// grant, and a blank one is treated as a contractor. This left it unset, so
+// every external in here was silently a contractor whatever their address, and
+// anything that turns on the role was being tested against the wrong person.
+const as = (who,name,ext,admin,role) => b.run(`EXTERNAL=${ext}; IS_ADMIN=${admin};
+  ME_EMAIL='${who}'; ME_NAME='${name}';
+  currentProject.userRole='${role||(ext?'contractor':'')}';`);
 const btns = h => (String(h).match(/<button[^>]*>([\s\S]*?)<\/button>/g)||[])
   .map(x=>x.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&rarr;/g,'->').trim());
 
@@ -44,7 +50,7 @@ ok(/async function boxUpdateRow/.test(html), 'the browser has a matching call');
 }
 
 // ── one button, not two ──
-as('a@x.test','Test Architect',true,false);
+as('a@x.test','Test Architect',true,false,'architect');
 let t = btns(b.run("verThreadRows('sub', allData.sub[0], 0, 10)"));
 ok(t.length===1, 'the reviewer being waited on sees exactly one button');
 ok(/Review & Continue/.test(t[0]), 'and it is the review');
@@ -60,7 +66,7 @@ ok(/Reply \/ New Version/.test(t), 'Fidevia off the chain keeps the plain reply'
 ok(/Override/.test(t), 'and the override, which is what acting for someone else is');
 
 // ── sending it on ──
-b.run(SEED); as('a@x.test','Test Architect',true,false);
+b.run(SEED); as('a@x.test','Test Architect',true,false,'architect');
 b.run("openReply('sub',0,true)");
 ok(b.run("document.getElementById('reply-next-field').style.display")!=='none',
    'reviewing asks what you are doing');
