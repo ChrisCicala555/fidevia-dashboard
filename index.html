@@ -4583,7 +4583,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 19:30';
+const BUILD_STAMP='2026-09-09 20:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10752,7 +10752,35 @@ function sendItemNotif(notifyField, type, def, vars, rows, opts){ const c=notifC
 // VERSION THREAD (RFI / CO / Submittal)
 // ══════════════════════════════════════════════
 const REPLY_STATUS={rfi:['Open','Answered','Closed'],co:['Open','Approved','Rejected','Revise & Resubmit'],sub:['Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejected']};
-const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #'};
+const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'};
+// Find a row again in a log that has been re-read, by what it is rather than
+// by where it was.
+//
+// A page open for a while is looking at a list that may have moved: rows are
+// deleted, and the CSV is rewritten without them. Everything here located the
+// row it was about to write with rows[i] — the index the page was rendered
+// with — so acting on a stale page did not fail, it wrote to whatever row had
+// slid into that position. A reply meant for a deleted submittal landed on a
+// different submittal, and the notification went out naming the wrong one.
+//
+// The server already does this properly for external callers: updateRow finds
+// by the identifier and 404s when it is gone. This is the same rule for the
+// path that rewrites the whole file.
+function rowIndexById(key, rows, id){
+  const f=REPLY_IDF[key]; if(!f || !id) return -1;
+  const want=String(id).trim().toLowerCase();
+  for(let n=0;n<rows.length;n++){
+    if(String(rows[n][f]||'').trim().toLowerCase()===want) return n;
+  }
+  return -1;
+}
+// What to say when it has gone. Naming the item matters: "reload and try again"
+// on its own reads as a glitch rather than as somebody having deleted it.
+function rowGoneError(key, id){
+  return new Error((String(id||'').trim()||'That item')
+    +' is no longer in the log — it was deleted or renumbered since this page was loaded. '
+    +'Nothing has been saved. Reload to see the current list.');
+}
 const REPLY_NOTIFY={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal'};
 const REPLY_LABEL={rfi:'RFI',co:'Change Order',sub:'Submittal'};
 let REPLY_CTX=null;
@@ -11395,7 +11423,11 @@ async function wfAdvance(key, i){
   }
   const existing=await findFile(fid,mod.log);
   let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
-  const row=rows[i]; if(!row) return;
+  // Same rule as the reply path: what it is, not where it was.
+  const _wantId=String((_r0||{})[REPLY_IDF[key]]||'');
+  const _n=rowIndexById(key, rows, _wantId);
+  if(_n<0){ alert(rowGoneError(key,_wantId).message); try{ await loadDashboard(); }catch(e){} return; }
+  const row=rows[_n];
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
   // Fidevia signing on the record still only completes their own step when the
   // group requires everybody.
@@ -11669,8 +11701,11 @@ function replyActionChanged(){
 // when they submit. Two buttons for one decision let a review be written while
 // the item sat waiting on the person who had just answered it.
 function openReply(key,i,advance){
-  REPLY_CTX={key,i,advance:!!advance};
   const r=(allData[key]||[])[i]||{};
+  // The identifier is captured here rather than looked up at save time, so a
+  // list that has been re-rendered underneath the open dialog cannot change
+  // which item the reply was written about.
+  REPLY_CTX={key,i,advance:!!advance,id:String(r[REPLY_IDF[key]]||'')};
   document.getElementById('reply-title').textContent=(advance?'Review — ':'Reply — ')+(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
   // Sending it on is a reviewer's call, so it appears only when reviewing.
   {
@@ -11819,7 +11854,12 @@ async function submitReply(){
     const mod=MODULES[key], fid=currentProject.folders[key];
     const existing=await findFile(fid,mod.log);
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
-    const row=rows[i]; if(!row) throw new Error('Item not found — reload and try again.');
+    // By identifier, against the log as it is now — not by the position this
+    // page was drawn with.
+    const _wantId=(REPLY_CTX&&REPLY_CTX.id)||String(((allData[key]||[])[i]||{})[REPLY_IDF[key]]||'');
+    const _n=rowIndexById(key, rows, _wantId);
+    if(_n<0) throw rowGoneError(key, _wantId);
+    const row=rows[_n];
     // Who said it, and on whose behalf. Entries used to carry one string that
     // was sometimes a person and sometimes a firm, so a reader could not tell
     // which they were looking at.
