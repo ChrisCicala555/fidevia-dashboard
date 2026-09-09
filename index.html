@@ -3860,7 +3860,7 @@ function splitByArchived(all, df){
   return { live: paired.filter(p=>!isArchived(p.r)).sort(bydate),
            past: paired.filter(p=>isArchived(p.r)).sort(bydate) };
 }
-function renderAll(){ renderResponseBar(); try{ renderOrgGaps(); }catch(e){} renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+function renderAll(){ try{ wfHealReturns(); }catch(e){} renderResponseBar(); try{ renderOrgGaps(); }catch(e){} renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // Owner is read-only, and A/E may read Workflow Settings but not change them.
 // The server enforces both; these banners explain rather than protect.
@@ -4240,10 +4240,7 @@ function renderRFIs(){
       +'<td>'+esc(r['Subject'])+'</td>'
       +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
-      +'<td>'+(function(){ const f=assignedFirm(r['Assigned To']), raw=String(r['Assigned To']||'').trim();
-          // Where a person was recorded, keep their name under the firm rather
-          // than discarding what someone wrote.
-          return (raw && raw.toLowerCase()!==f.toLowerCase()) ? twoLine(f, raw) : esc(f); })()+'</td>'
+      +'<td>'+assignedCell('rfi', r, 'Assigned To')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
@@ -4351,8 +4348,7 @@ function renderSubmittals(){
       +'<td>'+esc(r['Description'])+'</td>'
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
-      +'<td>'+(function(){ const f=assignedFirm(r['Reviewer']), raw=String(r['Reviewer']||'').trim();
-          return (raw && raw.toLowerCase()!==f.toLowerCase()) ? twoLine(f, raw) : esc(f); })()+'</td>'
+      +'<td>'+assignedCell('sub', r, 'Reviewer')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
@@ -4524,7 +4520,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 23:25';
+const BUILD_STAMP='2026-09-09 00:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -4879,6 +4875,17 @@ function itemAssignedFirms(key, submittingCompany){
   return out;
 }
 // The firm an item sits with, whichever way it was recorded.
+// The Assigned To / Reviewer column as it stands today. The stored field says
+// who the item was handed to when it was filed; the moment a reviewer sends it
+// back, that is a fact about the past, and the log went on pointing everyone at
+// the architect while the drawing sat with the contractor who has to redraw it.
+function assignedCell(key, r, field){
+  const raw=String((r&&r[field])||'').trim();
+  const f=assignedFirm(raw);
+  let nw=null; try{ nw=wfNowWith(key,r); }catch(e){}
+  if(nw && nw.returned) return twoLine(nw.firmLabel, 'sent back to revise');
+  return (raw && raw.toLowerCase()!==f.toLowerCase()) ? twoLine(f, raw) : esc(f);
+}
 function assignedFirm(v){
   const t=String(v||'').trim(); if(!t) return '';
   if(projectFirms().some(co=>co.toLowerCase()===t.toLowerCase())) return t;
@@ -6393,15 +6400,24 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   // Assigned to anyone at our company
   // Assignment is to a firm now. An older row naming a person resolves through
   // their company, so both read the same way here.
+  // A running chain knows where the item is; the assignment column only knows
+  // where it started. A submittal the architect sent back kept appearing on the
+  // architect's list, because this rule was still reading the column.
+  const chainElsewhere=(key,r)=>{
+    let nw=null; try{ nw=wfNowWith(key,r); }catch(e){ return false; }
+    return !!(nw && nw.returned && !nw.firms.some(f=>coMatches(f)));
+  };
   (rfis||[]).forEach(r=>{
     const firm=assignedFirm(r['Assigned To']);
     if(!notDoneStatus(r['Status'])) return;
+    if(chainElsewhere('rfi',r)) return;
     if(!firm || firm.trim().toLowerCase()!==myCo) return;
     items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''),
       badge:'Assigned to '+firm, cls:'wf', sec:'rfis'}); });
   (subs||[]).forEach(r=>{
     const firm=assignedFirm(r['Reviewer']);
     if(!notDoneStatus(r['Status'])) return;
+    if(chainElsewhere('sub',r)) return;
     if(!firm || firm.trim().toLowerCase()!==myCo) return;
     items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''),
       badge:'Assigned to '+firm, cls:'wf', sec:'submittals'}); });
@@ -10511,7 +10527,16 @@ function wfStepsFor(key, company){
 function rowSubmitterName(r){
   const raw=String((r&&(r['Submitted By (Sub)']||r['Submitted By']))||'').trim();
   if(!raw) return '';
-  return raw.replace(/\s*\([^)]*\)\s*$/,'').trim();   // drop the "(Company)" tail
+  const who=raw.replace(/\s*\([^)]*\)\s*$/,'').trim();   // drop the "(Company)" tail
+  // Half the log records a person and half records the address they signed up
+  // with. A step that reads "theintergalacticinvestments@gmail.com" tells the
+  // rest of the project nothing, so where the directory knows that address by
+  // name, use the name.
+  if(who.includes('@')){
+    const c=(allData.contacts||[]).find(x=>String(x['Email']||'').trim().toLowerCase()===who.toLowerCase());
+    if(c && String(c['Name']||'').trim()) return String(c['Name']).trim();
+  }
+  return who;
 }
 function wfExtraSteps(row){
   try{ const a=JSON.parse((row&&row['Workflow Extra'])||'[]'); return Array.isArray(a)?a:[]; }
@@ -10544,7 +10569,7 @@ function wfEffectiveSteps(key, row){
     .forEach(({e})=>{
       const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
       out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'',
-        added:true, returned:!!e.returned, addedBy:e.addedBy||''});
+        company:e.company||'', added:true, returned:!!e.returned, addedBy:e.addedBy||''});
     });
   return out;
 }
@@ -10581,6 +10606,58 @@ function wfStatusOnComplete(key, row){
   const now=String((row&&row['Status'])||'').trim();
   if(!WF_UNDECIDED.test(now)) return '';           // somebody said something more exact
   return WF_APPROVED[key]||'';
+}
+// "Revise and Resubmit" is a reviewer saying the item is no longer theirs. The
+// status recorded that and the chain did not, so the log went on naming the
+// architect as the person to chase while the drawing sat with the contractor.
+// The two halves of the record have to agree, and where they do not, the
+// decision wins: a status nobody can act on is worse than a chain one step out.
+//
+// This also repairs rows returned before the step was recorded, and rows whose
+// write of the step did not land. It is idempotent — a chain that already shows
+// the return is left alone — and it only touches what is in memory, so nothing
+// is written back to Box on the strength of an inference.
+function wfHasWorkflow(key){
+  return !!(MODULES[key] && MODULES[key].headers && MODULES[key].headers.includes('Workflow Step'));
+}
+function wfHealReturn(key,row){
+  if(!row || !wfHasWorkflow(key)) return false;
+  if(!WF_RETURNED.test(String(row['Status']||''))) return false;
+  if(wfIsDone(row) || wfIsStopped(row)) return false;
+  const steps=wfEffectiveSteps(key,row); if(!steps.length) return false;
+  if(steps.some(st=>st&&st.returned)) return false;      // already says so
+  const [,ge]=wfGroupAt(steps,wfActiveIdx(row));
+  const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
+  const extra=wfExtraSteps(row);
+  extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
+              email:String(row['Submitted By Email']||'').trim(),
+              addedBy:'', at:'', returned:true, inferred:true});
+  row['Workflow Extra']=JSON.stringify(extra);
+  row['Workflow Step']=String(ge+1);
+  row['Workflow Status']='In Review';
+  return true;
+}
+function wfHealReturns(){
+  ['rfi','co','sub','pay_apps'].forEach(key=>{
+    if(!wfHasWorkflow(key)) return;
+    (allData[key]||[]).forEach(row=>{ try{ wfHealReturn(key,row); }catch(e){} });
+  });
+}
+// Who the item is with right now, read off the live chain rather than off the
+// column that recorded who it was handed to on day one.
+function wfNowWith(key,row){
+  if(!row || !wfHasWorkflow(key)) return null;
+  if(wfIsDone(row) || wfIsStopped(row)) return null;
+  const steps=wfEffectiveSteps(key,row); if(!steps.length) return null;
+  const [gs,ge]=wfGroupAt(steps,wfActiveIdx(row));
+  const grp=steps.slice(gs,ge+1);
+  const people=grp.map(st=>String((st&&st.person)||'').trim()).filter(Boolean);
+  if(!people.length) return null;
+  const firms=[]; grp.forEach(st=>{ const pn=String((st&&st.person)||'').trim(); if(!pn) return;
+    const f=String((st&&st.company)||'').trim()||wfCompanyOf(pn)||pn;
+    if(!firms.includes(f)) firms.push(f); });
+  return {people:people, firms:firms, returned:grp.some(st=>st&&st.returned),
+          label:people.join(', '), firmLabel:firms.join(', ')};
 }
 const DECIDED_AGAINST=/reject|denied|\bden\b|void|withdrawn|cancell?ed|rolled/i;
 function wfIsStopped(r){ return DECIDED_AGAINST.test(String((r&&r['Workflow Status'])||'')); }
@@ -10638,7 +10715,12 @@ function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel gr
   return [start,end];
 }
 function wfEmailOf(person){
-  const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===String(person||'').trim().toLowerCase());
+  const t=String(person||'').trim().toLowerCase(); if(!t) return '';
+  // Rows often record whoever filed them as an email address rather than a
+  // name, so a step built from one matched nobody on the contact sheet and
+  // read as belonging to nobody. The address is the address.
+  if(t.includes('@')) return t;
+  const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim().toLowerCase()===t);
   return c ? String(c['Email']||'').trim().toLowerCase() : '';
 }
 // The steps in this group that belong to the person acting.
@@ -11116,7 +11198,18 @@ async function submitReply(){
     if(fileInput.files&&fileInput.files[0] && fileInput.files[0].size < 9*1024*1024){
       try{ const b64=await fileToB64(fileInput.files[0]); _rOpts.attachments=[{filename:fileInput.files[0].name, content:b64, type:fileInput.files[0].type||'application/octet-stream'}]; }catch(e){}
     }
-    try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']], currentProject.name), _rOpts); }catch(e){}
+    // The message said what changed and never said what happens next, so a
+    // contractor read "Revise and Resubmit" with no indication the ball was
+    // now in their court.
+    let _nowWith='';
+    try{
+      if(wfIsStopped(row)) _nowWith='Nobody — the review chain is closed';
+      else if(wfIsDone(row)) _nowWith='Nobody — the review chain is complete';
+      else { const nw=wfNowWith(key,row);
+        if(nw) _nowWith=nw.label+(nw.firmLabel && nw.firmLabel.toLowerCase()!==nw.label.toLowerCase() ? ' ('+nw.firmLabel+')' : '')
+          +(nw.returned?' — to revise and resubmit':''); }
+    }catch(e){}
+    try{ notifyContacts(REPLY_NOTIFY[key], '[Fidevia] '+REPLY_LABEL[key]+' '+(row[REPLY_IDF[key]]||'')+' — '+status, emailTemplate(REPLY_LABEL[key]+' Updated: '+status, [[REPLY_LABEL[key]+' #',row[REPLY_IDF[key]]||''],['New Status',status],['Updated By',by||'—'],['Note',note||'—']].concat(_nowWith?[['Now With',_nowWith]]:[]), currentProject.name), _rOpts); }catch(e){}
     // What happened, captured before the dialog is closed: closeReply clears
     // REPLY_CTX, and the messages below were reading it afterwards.
     const _returnedTo=(REPLY_CTX&&REPLY_CTX._returnedTo)||'';
@@ -11176,7 +11269,7 @@ function applyReviewAdvance(key, row, by){
   if(WF_RETURNED.test(outcome)){
     const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
     const extra=wfExtraSteps(row);
-    extra.push({after:ge, name:'Revise and Resubmit', person:who,
+    extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
                 email:wfEmailOf(who)||String(row['Submitted By Email']||'').trim(),
                 addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), returned:true});
     row['Workflow Extra']=JSON.stringify(extra);

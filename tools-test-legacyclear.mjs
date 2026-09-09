@@ -5,7 +5,18 @@
 // was asked to do. What matters is not that it deletes, but what it refuses to.
 import fs from 'fs';
 const src = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
-const body = src.slice(src.indexOf("if (op === 'docsRemoveLegacy')"), src.indexOf("if (op === 'docsList')"));
+// End at the op that actually follows this one. Anchoring on docsList meant
+// that every op added in between was swept into the slice, and the test died
+// on a syntax error instead of running.
+// End at the op that actually follows this one. Anchoring on docsList meant
+// every op added in between was swept into the slice, and the test died on a
+// syntax error instead of running. Trailing comment lines belong to the next
+// op, not to this one.
+const trimTail = t => { const L=t.split('\n');
+  while(L.length && /^\s*(\/\/.*)?$/.test(L[L.length-1])) L.pop();
+  return L.join('\n'); };
+const body = trimTail(src.slice(src.indexOf("if (op === 'docsRemoveLegacy')"),
+                                src.indexOf("if (op === 'docsRemove')")));
 
 // A tiny Box: folders, files, and the two verbs the op uses.
 const mk = () => ({

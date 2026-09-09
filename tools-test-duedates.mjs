@@ -18,6 +18,7 @@ fs.writeFileSync('.dd.tmp.mjs', [
   // tests are about the periods, not about resolving a project's steps.
   "export let WF_CHAIN=[]; export function setChain(c){ WF_CHAIN=c||[]; }",
   "function wfStepsFor(){ return WF_CHAIN; }",
+  grab('function rfiDueFromWorkflow'),
   grab('function rfiDueDaysFromWorkflow'), grab('function rfiDueDays(personName)'),
   grab('function parseLocalDate'), grab('function addDays'), grab('function isoDay'),
   "const OPEN_STATES=/open|pending|under review|revise/i;",
@@ -115,7 +116,10 @@ ok('change orders still have no due date', !/co:\{title[\s\S]{0,1400}id="f-due"/
 ok('the submittal log carries a due date', /'Reviewer','Date Submitted','Due Date','Contract Due','Status'/.test(src));
 ok('the submittal form offers one',        html.includes('id="f-sub-due"'));
 ok('the RFI due date is no longer required', !/Due Date is required/.test(src));
-ok('the RFI form recalculates on assignee change', /if\(sel\)\{ sel\.onchange=redue/.test(src));
+// Who answers an RFI is not a dropdown any more — it comes off the workflow
+// chain — so the date follows the chain rather than a change event that no
+// longer fires. These assertions described the version with the select in it.
+ok('the RFI turnaround comes from the workflow', /const \{days, disc\} = rfiDueFromWorkflow\(\);/.test(src));
 ok('a typed date is respected',            /due\.dataset\.touched/.test(src));
 ok('the wizard collects all four periods',
    ['np-rsp-gc','np-rsp-arch','np-rsp-eng','np-rsp-sub'].every(id=>html.includes('id="'+id+'"')));
@@ -134,7 +138,7 @@ ok('it sits in Notification Settings',
 ok('it is no longer on the Schedule page',
    !(html.indexOf('id="response-bar"') > html.indexOf('id="section-schedule"') &&
      html.indexOf('id="response-bar"') < html.indexOf('Contract milestones')));
-ok('it is drawn with everything else', /function renderAll\(\)\{ renderResponseBar\(\);/.test(src));
+ok('it is drawn with everything else', /function renderAll\(\)\{[^\n]{0,80}renderResponseBar\(\);/.test(src));
 ok('it refreshes when the periods are saved',
    /renderBillingBar\(\);\s*\n\s*try\{ renderResponseBar\(\); \}/.test(src));
 ok('it hides when no project is open', /if\(!currentProject\)\{ bar\.style\.display='none'; return; \}/.test(src));
@@ -160,11 +164,10 @@ const rfiForm = src.slice(src.indexOf("if(type==='rfi')"), src.indexOf("if(type=
 ok('locked for external submitters too', /const locked = viewingAsExternal\(\);/.test(rfiForm));
 ok('the field is made read-only',        /due\.readOnly = locked;/.test(rfiForm));
 ok('it says why',                        /Set by the contractual response period/.test(rfiForm));
-ok('a locked submitter always gets the contractual date',
-   /if\(\(locked \|\| !due\.dataset\.touched\) && d\)/.test(rfiForm));
-ok('the override handler is not attached when locked', /if\(due && !locked\) due\.onchange/.test(rfiForm));
+ok('a locked submitter always gets the contractual date', /const d=addDays\(etToday\(\), days\);\s*\n\s*if\(d\) due\.value=isoDay\(d\);/.test(rfiForm));
+ok('the override handler is not attached when locked', /if\(!locked\) due\.onchange/.test(rfiForm));
 ok('Fidevia is told it can override',    /You can change it for this RFI/.test(rfiForm));
-ok('changing the assignee still moves the date', /if\(sel\)\{ sel\.onchange=redue/.test(rfiForm));
+ok('the hint names the discipline the period belongs to', /LABEL\[disc\]\|\|'this reviewer'/.test(rfiForm));
 
 
 console.log('Off-contract dates are visible, not silent');

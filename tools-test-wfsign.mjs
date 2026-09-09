@@ -19,9 +19,14 @@ function wfCompanyOf(p){ return ({'Test Architect':'Architect 2','Penelope Odiem
 function wfEmailOf(p){ return ({'Test Architect':'arch@a2.test','Penelope Odiem':'pen@nle.test'})[p]||''; }
 function wfCanAdvance(){ return true; }
 function withBusy(){}
+// The panel reads the chain as it applies to one row, and marks the reader's
+// own step. Neither existed when this test was written; the steps are set
+// explicitly here, so the effective chain is the set chain.
+function wfEffectiveSteps(){ return STEPS; }
+const WF_RETURNED=/revise|resubmit|returned/i;
 `;
 const sig  = html.slice(html.indexOf('// Who actually approved which step.'), html.indexOf('function wfEmailOf(person)'));
-const mine = html.slice(html.indexOf('function wfMyStepsIn(steps, gs, ge)'), html.indexOf('function wfProgressHTML'));
+const mine = html.slice(html.indexOf('function wfStepIsMine(st)'), html.indexOf('function wfProgressHTML'));
 const progStart = html.indexOf('function wfProgressHTML');
 const prog = html.slice(progStart, html.indexOf('\n}\n', html.indexOf("+items+'<div style=\"margin-top:6px;font-size:13px;\">'"))+3);
 const H = new Function(pre + sig + mine + prog +
@@ -70,8 +75,12 @@ ok(/Override — Record An Approval/.test(out),
 ok(/This step is not yours/.test(out), 'and told why');
 H.setMe('arch@a2.test', false);
 out=strip(H.wfProgressHTML('sub',{'Workflow Step':'0','Workflow Status':'In Review'},0));
-ok(/Approve Step/.test(out) && !/Override/.test(out),
-   'the assigned reviewer just approves');
+// The reviewer's own step is Review & Continue, above this panel: one action
+// that records what they decided as well as that they acted. A bare Approve
+// beside it invited an approval with no review attached, so it is not offered.
+ok(!/Override/.test(out) && !/Approve Step/.test(out),
+   'the assigned reviewer is not offered a second, wordless approval');
+ok(/YOUR REVIEW/.test(out), 'their own step is called out instead');
 ok(H.wfMyStepsIn([{email:'arch@a2.test'},{email:'pen@nle.test',parallel:true}],0,1).join()==='0',
    'and the step matched is their own');
 H.setMe('cc@fidevia.com', true);
