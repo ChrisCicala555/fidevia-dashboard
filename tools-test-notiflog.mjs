@@ -4,7 +4,7 @@ const html = fs.readFileSync('index.html','utf8');
 const srv  = fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
 const rem  = fs.readFileSync('netlify/functions/reminders.mjs','utf8');
 const log  = fs.readFileSync('netlify/functions/lib/notif-log.mjs','utf8');
-const mail = fs.readFileSync('netlify/functions/send-email.js','utf8');
+const mail = fs.readFileSync('netlify/functions/send-email.mjs','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
@@ -44,8 +44,16 @@ ok(/classifyKind/.test(log), 'the type is worked out from the subject when nobod
 }
 
 // ── every send path writes to it ──
-ok(/await import\('\.\/lib\/notif-log\.mjs'\)/.test(mail),
-   'the browser send path records, despite being CommonJS');
+// This asserted the dynamic import — the very thing that stopped the browser
+// send path from recording. It required the bug rather than catching it. The
+// two functions that always logged are ES modules with a static import; this
+// one now is too.
+ok(/^import \{ logNotif \} from '\.\/lib\/notif-log\.mjs';$/m.test(mail),
+   'the browser send path records, the same way the others do');
+ok(!/await import\('\.\/lib\/notif-log\.mjs'\)/.test(mail),
+   'and not through a dynamic import out of CommonJS');
+ok(/console\.error\('\[send-email\] notification log write failed:'/.test(mail),
+   'and a failure to record is not swallowed');
 ok(/await record\(/.test(mail), 'on the way out');
 ok(/ok: false, error: e\.message/.test(mail), 'and when it throws');
 ok(/const ok = res\.status === 202;/.test(mail), 'a SendGrid refusal counts as a failure');

@@ -23,7 +23,7 @@ ok(fs.existsSync(path.join(dir,'lib','notif-log.mjs')),
    'the notification log helper lives in lib/, out of the functions Netlify builds');
 ok(!fs.existsSync(path.join(dir,'notif-log.mjs')),
    'and not beside them');
-['box-proxy.mjs','reminders.mjs','send-email.js'].forEach(f=>{
+['box-proxy.mjs','reminders.mjs','send-email.mjs'].forEach(f=>{
   const src=fs.readFileSync(path.join(dir,f),'utf8');
   if(/notif-log/.test(src)) ok(/\.\/lib\/notif-log\.mjs/.test(src), f+' imports it from lib/');
 });
