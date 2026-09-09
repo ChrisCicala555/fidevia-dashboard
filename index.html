@@ -4524,7 +4524,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 22:15';
+const BUILD_STAMP='2026-09-08 22:35';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10480,6 +10480,13 @@ function wfStepsFor(key, company){
 // own review. That belongs to the item, not to the project: adding it to the
 // configured chain would change every future RFI on the job. It is recorded on
 // the row and spliced into that row's chain only.
+// The person a returned item goes back to: whoever filed it, by name, falling
+// back to their firm when the row only records the company.
+function rowSubmitterName(r){
+  const raw=String((r&&(r['Submitted By (Sub)']||r['Submitted By']))||'').trim();
+  if(!raw) return '';
+  return raw.replace(/\s*\([^)]*\)\s*$/,'').trim();   // drop the "(Company)" tail
+}
 function wfExtraSteps(row){
   try{ const a=JSON.parse((row&&row['Workflow Extra'])||'[]'); return Array.isArray(a)?a:[]; }
   catch(e){ return []; }
@@ -10510,7 +10517,8 @@ function wfEffectiveSteps(key, row){
     .sort((a,b)=> (parseInt(b.e.after,10)||0)-(parseInt(a.e.after,10)||0) || b.idx-a.idx)
     .forEach(({e})=>{
       const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
-      out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'', added:true, addedBy:e.addedBy||''});
+      out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'',
+        added:true, returned:!!e.returned, addedBy:e.addedBy||''});
     });
   return out;
 }
@@ -10537,6 +10545,10 @@ function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0
 // Only a status that still means "nobody has decided" is promoted. A reviewer
 // who chose Approved as Noted, or Revise and Resubmit, said something more
 // specific than the chain can infer, and that is left alone.
+// Sending something back is neither an approval nor a refusal. It is the most
+// common answer a reviewer gives, and it had nowhere to go: the chain either
+// moved on as though the thing were fine, or closed as though it were dead.
+const WF_RETURNED=/revise|resubmit|returned/i;
 const WF_UNDECIDED=/^(|open|pending review|under review|in review|submitted|pending)$/i;
 const WF_APPROVED={rfi:'Closed', co:'Approved', sub:'Approved', pay_apps:'Approved'};
 function wfStatusOnComplete(key, row){
@@ -10582,9 +10594,11 @@ function wfSignedMap(row){
   try{ const o=JSON.parse((row&&row['Workflow Signed'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
   catch(e){ return {}; }
 }
-function wfMarkSigned(row, idx, by, override){
+function wfMarkSigned(row, idx, by, override, outcome){
   const m=wfSignedMap(row);
   m[String(idx)]={by:String(by||''), at:etToday(), override:!!override};
+  // What they decided, where they said something other than plain approval.
+  if(outcome && !/^approved?$/i.test(String(outcome))) m[String(idx)].outcome=String(outcome);
   row['Workflow Signed']=JSON.stringify(m);
   return m;
 }
@@ -10639,14 +10653,17 @@ function wfProgressHTML(key,r,i){
     const passed = complete || n<gs;
     // Older items predate the record; their marks stay as they were rather
     // than being rewritten to claim nobody signed.
-    const isDone = sig ? true : (!attributed && passed);
+    // A step whose outcome was "send it back" is not an approval, and a tick
+    // beside it would say it was.
+    const returned = !!(sig && sig.outcome && WF_RETURNED.test(sig.outcome));
+    const isDone = sig ? !returned : (!attributed && passed);
     const isSkipped = !sig && attributed && passed;
     const isCur = !complete && !stopped && n>=gs && n<=ge;
     const isDead = stopped && n>=gs;
     const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
-    const mark = isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped)?'\u2014':'\u25cb'));
+    const mark = returned?'\u21a9':(isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped)?'\u2014':'\u25cb')));
     const note = sig
-      ? '<span style="font-size:11.5px;color:var(--muted);">approved '+esc(sig.at||'')+(sig.by?(' \u00b7 '+esc(sig.by)):'')+'</span>'
+      ? '<span style="font-size:11.5px;color:var(--muted);">'+esc(sig.outcome||'approved')+' '+esc(sig.at||'')+(sig.by?(' \u00b7 '+esc(sig.by)):'')+'</span>'
       : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>' : '');
     // The reader's own step, said plainly. A chain of names means nothing until
     // you have found yourself in it, and everyone was reading every row to work
@@ -10661,6 +10678,8 @@ function wfProgressHTML(key,r,i){
       +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">YOUR REVIEW</span>':'')
       +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
+      +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':'added')+'</span>':'')
+      +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
       +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;">override</span>':'')
       +note+'</div>';
   }).join('')
@@ -11000,7 +11019,12 @@ function openReply(key,i,advance){
     }
   }
   const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
-  { const sf=document.getElementById('reply-status-field'); if(sf) sf.style.display=EXTERNAL?'none':''; }
+  // The status was hidden from everyone outside Fidevia, which made sense when
+  // the only external reply was a contractor resubmitting. A reviewer has a
+  // decision to record — approve, send back, refuse — and no way to say it.
+  { const sf=document.getElementById('reply-status-field');
+    const decides = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+    if(sf) sf.style.display = decides ? '' : 'none'; }
   if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
   document.getElementById('reply-note').value=''; document.getElementById('reply-file').value='';
   document.getElementById('reply-progress').style.display='none'; document.getElementById('reply-submit-btn').disabled=false;
@@ -11009,7 +11033,10 @@ function openReply(key,i,advance){
 function closeReply(){ document.getElementById('reply-backdrop').classList.remove('open'); REPLY_CTX=null; }
 async function submitReply(){
   if(!REPLY_CTX) return; const {key,i}=REPLY_CTX;
-  const status=EXTERNAL?'Resubmitted':document.getElementById('reply-status').value;
+  // Whoever was shown the field chose; whoever was not is resubmitting.
+  const _sf=document.getElementById('reply-status-field');
+  const _canDecide=_sf && _sf.style.display!=='none';
+  const status=_canDecide ? document.getElementById('reply-status').value : 'Resubmitted';
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;
@@ -11062,6 +11089,8 @@ async function submitReply(){
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
     else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
+    else if(REPLY_CTX && REPLY_CTX._returnedTo) alert('Sent back to '+REPLY_CTX._returnedTo
+      +' to revise and resubmit. They are next in the chain.');
     else if(REPLY_CTX && REPLY_CTX._reassignedTo) alert('Handed to '+REPLY_CTX._reassignedTo
       +'. Your approval was not recorded \u2014 the item is waiting on them now.');
     else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
@@ -11103,7 +11132,27 @@ function applyReviewAdvance(key, row, by){
 
   const toSign = mine.length ? mine : (IS_ADMIN ? [gs] : []);
   if(!toSign.length) return '';
-  toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length));
+  const outcome=String((document.getElementById('reply-status')||{}).value||'');
+  toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length, outcome));
+
+  // Revise and resubmit: the item goes back to whoever filed it, as a step
+  // anybody can see, rather than the chain quietly carrying on to the next
+  // reviewer as though the drawing had been accepted.
+  if(WF_RETURNED.test(outcome)){
+    const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
+    const extra=wfExtraSteps(row);
+    extra.push({after:ge, name:'Revise and Resubmit', person:who,
+                email:wfEmailOf(who)||String(row['Submitted By Email']||'').trim(),
+                addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), returned:true});
+    row['Workflow Extra']=JSON.stringify(extra);
+    row['Workflow Step']=String(ge+1);
+    row['Workflow Status']='In Review';
+    if(REPLY_CTX){ REPLY_CTX._returnedTo=who;
+      const em=wfEmailOf(who)||String(row['Submitted By Email']||'').trim();
+      if(em) REPLY_CTX._addedEmail=em; }
+    try{ auditLog('Returned for revision', key, row, who); }catch(e){}
+    return '';
+  }
 
   // Anyone the reviewer is sending it on to goes in directly after this group,
   // so they are next rather than last.

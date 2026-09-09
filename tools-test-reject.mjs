@@ -53,8 +53,12 @@ ok(/reject\|denied\|\\bden\\b\|void\|withdrawn\|cancell\?ed/.test(srv),
   // Ticks now come from the signature record rather than from position; a
   // closed chain still must not draw them. tools-test-wfsign.mjs covers the
   // attribution itself.
-  ok(/const isDone = sig \? true : \(!attributed && passed\);/.test(pg),
-     'a tick means somebody approved, not that the chain merely moved past');
+  // Tighter than it was: a signature whose outcome was "send it back" is not
+  // an approval either, so it does not draw a tick.
+  ok(/const isDone = sig \? !returned : \(!attributed && passed\);/.test(pg),
+     'a tick means somebody approved, not that the chain moved past or that they sent it back');
+  ok(/const returned = !!\(sig && sig\.outcome && WF_RETURNED\.test\(sig\.outcome\)\)/.test(pg),
+     'and a returned step is recognised as its own outcome');
   ok(/const passed = complete \|\| n<gs;/.test(pg),
      'and a closed chain is still not a completed one');
   ok(/isDead/.test(pg), 'steps after the stop are marked as never reached');
