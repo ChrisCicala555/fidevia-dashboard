@@ -27,7 +27,10 @@ ok(/function schedUploadBtn\(company\)/.test(html), 'each contract row carries a
      'the file is named for the contract and the month, so the shared folder can still say whose it is');
   ok(/SCHED_FOLDER_ID/.test(c), 'it goes to the shared Schedules folder');
   ok(/has no Schedules folder yet/.test(c), 'and says so plainly when the project has none');
-  ok(/already exists/.test(c), 'a second upload in the same month is explained rather than just refused');
+  // Nothing refuses a duplicate now: it lands under a Dup_ name and the panel
+  // says which. tools-test-dupname.mjs covers the naming itself.
+  ok(/One was already on file this month, so this went up as /.test(c),
+     'a second upload in the same month lands and says where, rather than being refused');
   ok(/SCHED_UPLOADS=null/.test(c), 'the panel rechecks itself afterwards');
   ok(/auditLog\('Schedule uploaded'/.test(c), 'and the upload is on the record');
 }

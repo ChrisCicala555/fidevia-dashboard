@@ -2157,7 +2157,30 @@ function uploadProgressTo(el, label){
   };
 }
 
-async function boxUploadBinary(file, parentId, onProgress){
+// A name already in the folder used to stop the upload dead, after the person
+// had chosen the file and waited. Two people filing "Site plan.pdf" into a
+// shared folder is not a mistake to refuse — it is Tuesday. The second one is
+// taken under a name that says what it is.
+//
+// Deliberately a rename and not a new version of the first file: in a folder
+// everyone can write to, the same name rarely means the same document, and
+// quietly stacking a subcontractor's drawing on top of the architect's as
+// "version 2" would hide one behind the other.
+function dupSuffix(d){
+  const x=d||new Date();
+  return 'Dup_'+(x.getMonth()+1)+'.'+x.getDate();
+}
+function dupName(name, attempt){
+  const raw=String(name||'file');
+  const dot=raw.lastIndexOf('.');
+  const base=dot>0?raw.slice(0,dot):raw;
+  const ext=dot>0?raw.slice(dot):'';
+  // A second collision on the same day gets a count rather than the same name
+  // again, which would collide forever.
+  const tail=dupSuffix()+(attempt>1?(' ('+attempt+')'):'');
+  return base+' '+tail+ext;
+}
+async function boxUploadOnce(file, parentId, onProgress){
   try{
     if(file.size >= CHUNKED_THRESHOLD) return await boxUploadChunked(file, parentId, onProgress);
     return await boxUploadDirect(file, parentId);
@@ -2168,6 +2191,26 @@ async function boxUploadBinary(file, parentId, onProgress){
     console.warn('Direct Box upload unavailable, using proxy:', e.message);
     return await boxUploadViaProxy(file, parentId);
   }
+}
+async function boxUploadBinary(file, parentId, onProgress){
+  try{
+    return await boxUploadOnce(file, parentId, onProgress);
+  }catch(e){
+    if(!/already exists/i.test(e.message||'')) throw e;
+  }
+  // Bounded: a folder that somehow rejects nine names in a row is a problem to
+  // report, not to keep hammering.
+  for(let attempt=1; attempt<=8; attempt++){
+    const renamed=new File([file], dupName(file.name, attempt), {type:file.type});
+    try{
+      const up=await boxUploadOnce(renamed, parentId, onProgress);
+      if(up && typeof up==='object') up._renamedTo=renamed.name;
+      return up;
+    }catch(e){
+      if(!/already exists/i.test(e.message||'')) throw e;
+    }
+  }
+  throw new Error('That name is already taken, and so are the alternatives tried.');
 }
 
 const ITEM_FOLDER_LABEL={rfi:'RFI',co:'CO',sub:'Submittal',pay_apps:'Pay App'};
@@ -4421,7 +4464,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 20:40';
+const BUILD_STAMP='2026-09-08 21:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5396,17 +5439,21 @@ async function docsUpload(input){
   if(!docsRootId()){ await loadDocs(); if(!docsRootId()){ input.value=''; return; } }
   const prog=document.getElementById('docs-progress');
   prog.style.display='block';
-  let done=0;
+  let done=0; const renamed=[];
   for(const f of files){
     try{
       prog.textContent='Uploading '+f.name+(files.length>1?' ('+(done+1)+' of '+files.length+')':'')+'\u2026';
-      await boxUploadBinary(f, docsHere(), t=>{ prog.textContent=t; });
+      const up=await boxUploadBinary(f, docsHere(), t=>{ prog.textContent=t; });
+      // Renaming somebody's file without telling them is how two documents end
+      // up mistaken for one.
+      if(up && up._renamedTo) renamed.push(up._renamedTo);
       done++;
     }catch(e){ prog.textContent='Could not upload '+f.name+': '+(e.message||''); await new Promise(r=>setTimeout(r,2500)); }
   }
   input.value='';
-  prog.textContent=done+' file'+(done===1?'':'s')+' uploaded.';
-  setTimeout(()=>{ prog.style.display='none'; }, 2500);
+  prog.textContent=done+' file'+(done===1?'':'s')+' uploaded.'
+    +(renamed.length?(' That name was taken, so '+(renamed.length===1?'it went up as ':'they went up as ')+renamed.join(', ')+'.'):'');
+  setTimeout(()=>{ prog.style.display='none'; }, renamed.length?7000:2500);
   await loadDocs();
 }
 
@@ -5840,20 +5887,16 @@ async function schedUpload(input, company){
   const name=safeFileName(company+' \u2014 '+schedMonthLabel())+ext;
   say('Uploading '+name+'\u2026');
   try{
-    await boxUploadBinary(new File([f], name, {type:f.type}), SCHED_FOLDER_ID, t=>say(t));
-    say('Uploaded. '+company+' is current for '+schedMonthLabel()+'.');
-    try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+name); }catch(e){}
+    const up=await boxUploadBinary(new File([f], name, {type:f.type}), SCHED_FOLDER_ID, t=>say(t));
+    const landed=(up&&up._renamedTo)||name;
+    say('Uploaded. '+company+' is current for '+schedMonthLabel()+'.'
+      +(up&&up._renamedTo?(' One was already on file this month, so this went up as '+landed+'.'):''));
+    try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+landed); }catch(e){}
     SCHED_UPLOADS=null; MY_SCHEDULE=null;
     await renderScheduleUploads();
     try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
   }catch(e){
-    // A same-named file means one has already gone up this month. Replacing it
-    // is the ordinary case, so say that rather than just refusing.
-    if(/already exists/i.test(e.message||'')){
-      say('A schedule for '+schedMonthLabel()+' is already on file. Rename yours, or replace it from the Documents tab.');
-    } else {
-      say('Could not upload: '+(e.message||'unknown error'));
-    }
+    say('Could not upload: '+(e.message||'unknown error'));
   }
 }
 function schedChaseFooter(){
