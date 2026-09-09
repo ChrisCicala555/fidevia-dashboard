@@ -102,14 +102,19 @@ b.run(`IS_ADMIN=true; EXTERNAL=false; ME_COMPANY='Fidevia';
 await b.run("renderScheduleUploads()");
 {
   const out=b.run("document.getElementById('sched-uploads').innerHTML").replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-  ok(/Covers July 2026/.test(out), 'which month the file on record is for');
+  ok(/covers July 2026/i.test(out), 'which month the file on record is for');
   ok(/submitted 07\/19\/2026/.test(out), 'and the day it was submitted');
   ok(/No September 2026 schedule/.test(out), 'and what is missing, by name rather than "nothing this month"');
 }
 b.run("SCHED_UPLOADS=[{company:'Summit Builders',state:'current',date:'2026-09-02'}];");
 await b.run("renderScheduleUploads()");
-ok(/Period not recorded/.test(b.run("document.getElementById('sched-uploads').innerHTML")),
-   'an older file says its period is unknown rather than inventing one');
+// With no period on the name there is no month to claim, so the summary says
+// only when it arrived rather than inventing one.
+{
+  const out=b.run("document.getElementById('sched-uploads').innerHTML").replace(/<[^>]+>/g,' ');
+  ok(/submitted 09\/02\/2026/.test(out) && !/covers /i.test(out),
+     'an older file says when it came in and claims no month');
+}
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-schedperiod.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

@@ -628,6 +628,20 @@
   .contract-bar{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px 20px 16px;margin-bottom:16px;}
   .contract-bar .cb-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--olive-900);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);}
   .cb-items{display:flex;gap:32px;flex-wrap:wrap;}
+  /* Schedules read as one card per contract, the same shape as a pay app
+     group: a summary you can scan and a body you open. */
+  .sched-group{border:1px solid var(--border);border-radius:8px;margin:0 14px 10px;overflow:hidden;background:var(--white);}
+  .sched-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13.5px;}
+  .sched-group-head:hover{background:var(--khaki-50,#f7f5ef);}
+  .sched-state{font-size:13px;}
+  .sched-group-meta{margin-left:auto;color:var(--muted);font-size:12.5px;white-space:nowrap;}
+  .sched-group-acts{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .sched-files{padding:0 16px 12px 46px;}
+  .sched-file-row{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;border-top:1px solid #F1F0E8;}
+  @media(max-width:720px){
+    .sched-group-meta{display:none;}
+    .sched-files{padding-left:16px;}
+  }
   .pay-group{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;background:var(--white);}
   .pay-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;}
   .pay-group-head:hover{background:var(--khaki-50,#f7f5ef);}
@@ -1131,7 +1145,7 @@
      from anyone with no contract on the job. -->
         <div class="panel" id="sched-uploads-panel" style="display:none;">
           <div class="panel-header">Monthly Schedules</div>
-          <div id="sched-uploads" style="padding:4px 0;"></div>
+          <div id="sched-uploads" style="padding:12px 0 4px;"></div>
         </div>
       </div>
 
@@ -4560,7 +4574,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 11:35';
+const BUILD_STAMP='2026-09-09 13:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5900,27 +5914,50 @@ async function renderScheduleUploads(){
   // again, so the preview showed a contractor rows they would never get.
   const norm=x=>String(x||'').trim().toLowerCase();
   const shown=(SCHED_UPLOADS||[]).filter(r=>cos.some(c=>norm(c)===norm(r.company)));
-  box.innerHTML=shown.map(r=>{
+  // One card per contract, collapsed, the way Payment Applications reads. The
+  // flat list ran a contract's files straight into the next contract's row with
+  // nothing between them, so on a job with three primes it was not obvious
+  // whose a file was.
+  box.innerHTML=shown.map((r,gi)=>{
     const ok=good(r);
     const t=ok?null:targetFor(r.company);
     const last=schedLastFor(r.company);
-    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #F1F0E8;font-size:13.5px;">'
+    const files=(r.files||[]);
+    const open=SCHED_OPEN_CO===String(r.company||'');
+    // The state chip already says a contract has nothing, so the summary does
+    // not repeat it as "0 schedules · none on file". And the month named is the
+    // one that answers the question — the file covering the month being asked
+    // for, which is not always the newest one on file.
+    // Built from the row rather than from the file list, so a contract still
+    // says what is on record even where the server answered without one. The
+    // month named is the one that answers the question — the file covering the
+    // month being asked for, which is not always the newest upload.
+    const bits=[];
+    if(files.length) bits.push(files.length+' schedule'+(files.length===1?'':'s'));
+    if(r.periodLabel) bits.push('covers '+r.periodLabel);
+    if(r.date) bits.push('submitted '+fmtDMY(r.date));
+    const meta=bits.join(' \u00b7 ');
+    // The head is the summary and the control; the actions sit in it rather
+    // than below, so a collapsed card still offers the one thing to do.
+    const head='<div class="sched-group-head" onclick="schedToggleFiles('+esc(JSON.stringify(String(r.company||'')))+')">'
+      +'<span class="thread-arrow" style="'+(open?'transform:rotate(90deg);':'')+'">&#9656;</span>'
       +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
-      +'<span style="flex:1;min-width:0;"><span style="font-weight:600;">'+esc(r.company)+'</span>'
-        // What is on file and when it came in: two different questions, and the
-        // row used to answer neither clearly. A file with no period on its name
-        // predates the question, so it is not claimed to cover anything.
-        +(r.date||r.periodLabel
-           ? '<div style="font-size:12px;color:var(--muted);">'
-             +(r.periodLabel?('Covers '+esc(r.periodLabel)):'Period not recorded')
-             +(r.date?(' \u00b7 submitted '+esc(fmtDMY(r.date))):'')+'</div>'
-           : '')
-        +(last?('<div style="font-size:12px;color:var(--muted);">Reminded '+esc(fmtDMY(String(last.at).slice(0,10)))
-            +(last.by?(' by '+esc(last.by)):'')+'</div>'):'')+'</span>'
-      +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)+'</span>'
-      +schedUploadBtn(r.company)
-      +(t?schedRowRemind(t):'')+'</div>'
-      +schedFilesHTML(r);
+      +'<strong>'+esc(r.company)+'</strong>'
+      +'<span class="sched-state" style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'
+        +esc(label[r.state]||r.state)+'</span>'
+      +'<span class="sched-group-meta">'+esc(meta)+'</span>'
+      +'<span class="sched-group-acts" onclick="event.stopPropagation()">'
+        +schedUploadBtn(r.company)+(t?schedRowRemind(t):'')+'</span>'
+      +'</div>';
+    const note=last
+      ? '<div style="padding:0 16px 10px 46px;font-size:12px;color:var(--muted);">Reminded '
+        +esc(fmtDMY(String(last.at).slice(0,10)))+(last.by?(' by '+esc(last.by)):'')+'</div>'
+      : '';
+    const body='<div id="sg-body-'+gi+'" style="display:'+(open?'block':'none')+';">'
+      +(files.length ? schedFilesHTML(r)
+        : '<div style="padding:12px 16px 14px 46px;color:var(--muted);font-size:13.5px;">'
+          +'No schedule submitted yet.</div>')+'</div>';
+    return '<div class="sched-group">'+head+note+body+'</div>';
   }).join('')
   +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
     +'Schedules live here rather than in Documents. '
@@ -6112,18 +6149,14 @@ function schedToggleFiles(co){
   SCHED_OPEN_CO = (SCHED_OPEN_CO===co) ? '' : co;
   renderScheduleUploads();
 }
+// What one contract has handed over. The head above owns the open/closed
+// state, so this only draws the rows.
 function schedFilesHTML(r){
   const files=(r&&r.files)||[];
   const co=String((r&&r.company)||'');
   if(!files.length) return '';
-  const open=SCHED_OPEN_CO===co;
-  const head='<div style="padding:0 18px 10px;margin-top:-4px;">'
-    +'<a href="#" style="font-size:12.5px;color:var(--olive-700);font-weight:600;" '
-    +'onclick="event.stopPropagation();schedToggleFiles('+esc(JSON.stringify(co))+');return false;">'
-    +(open?'Hide':'Show')+' '+files.length+' schedule'+(files.length===1?'':'s')+' on file</a></div>';
-  if(!open) return head;
-  return head+'<div style="padding:0 18px 12px;">'+files.map(f=>
-    '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid #F1F0E8;">'
+  return '<div class="sched-files">'+files.map(f=>
+    '<div class="sched-file-row">'
     +'<span style="flex:1;min-width:0;">'
       +'<a href="#" class="file-line" onclick="openBoxFile(\''+esc(f.id)+'\',event);return false;">'+esc(f.name)+'</a>'
       +'<div style="font-size:12px;color:var(--muted);">'

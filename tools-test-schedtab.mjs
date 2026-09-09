@@ -63,8 +63,9 @@ b.run(setup + "EXTERNAL=false;IS_ADMIN=true;ME_COMPANY='Fidevia';SCHED_OPEN_CO='
 await b.run("renderScheduleUploads()");
 {
   const out=b.run("document.getElementById('sched-uploads').innerHTML");
-  ok(/Show 2 schedules on file/.test(out), 'the row says how many are on file');
-  ok(!/f9/.test(out), 'without listing them until asked');
+  ok(/2 schedules/.test(out), 'the card head says how many are on file');
+  ok(/id="sg-body-0" style="display:none/.test(out),
+     'with the files rendered but folded away, so opening is instant');
   ok(!/Documents/.test(out) || /rather than in Documents/.test(out),
      'and no longer sends the reader to Documents to find them');
 }
@@ -79,7 +80,7 @@ await b.run("renderScheduleUploads()");
 }
 b.run("schedToggleFiles('Summit Builders')");
 await b.run("renderScheduleUploads()");
-ok(!/openBoxFile\('f9'/.test(b.run("document.getElementById('sched-uploads').innerHTML")),
+ok(/id="sg-body-0" style="display:none/.test(b.run("document.getElementById('sched-uploads').innerHTML")),
    'and it closes again');
 // A contract with nothing on file has nothing to expand.
 b.run(setup.replace(/files:\[[\s\S]*?\]\}\]/,'files:[]}]') + "SCHED_OPEN_CO='';");
