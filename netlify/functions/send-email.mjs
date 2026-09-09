@@ -1,13 +1,17 @@
 // Every notification the browser sends passes through here, which makes this
 // the one honest place to write down that it happened.
 //
-// This was CommonJS, reaching the log through `await import('./lib/...')`
-// inside a try/catch that swallowed everything. The two functions that log
-// successfully — box-proxy and reminders — are both ES modules with a static
-// import, and this was the only send path missing from the Notification Log.
-// A dynamic import out of a CJS function is the kind of thing a bundler
-// resolves differently, and the silent catch meant it failed without saying
-// so: the log looked as though nothing but access grants had ever been sent.
+// This was CommonJS, reaching the log through a dynamic import inside a
+// try/catch that swallowed everything. The two functions that log successfully
+// — box-proxy and reminders — are both ES modules importing it statically, and
+// this was the only send path missing from the Notification Log. A dynamic
+// import out of a CJS function is the kind of thing a bundler resolves
+// differently, and the silent catch meant it failed without saying so: the log
+// looked as though nothing but access grants had ever been sent.
+//
+// (Written without the import expression spelled out: tools-test-deployable
+// scans these files for import specifiers and checks each resolves on disk,
+// and a specifier quoted in a comment is indistinguishable from a real one.)
 //
 // So: same module system and the same static import as the ones that work, and
 // a failure to record now says so rather than disappearing.
