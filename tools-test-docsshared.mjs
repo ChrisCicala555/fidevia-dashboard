@@ -7,8 +7,11 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // ── the folders ──
+// Schedules is deliberately not among them any more: it moved to the Schedule
+// tab, which is where the question it answers gets asked. It is still created,
+// because the files have to live somewhere in Box.
 const FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes','Closeout',
-               'Drawings and Specifications','Schedules','Fidevia Internal'];
+               'Drawings and Specifications','Fidevia Internal'];
 FOLDERS.forEach(f=>{
   ok(new RegExp("'"+f.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+"'").test(srv.split('const DOCS_FOLDERS')[1].split(']')[0]),
      'the server knows about '+f);
@@ -52,8 +55,12 @@ ok(/if \(op === 'docsEnsureStandard'\)/.test(srv), 'the standard folders can be 
 }
 // Naming is no longer the contractor's problem: the Schedule tab files it for
 // them. The folder points there rather than teaching a convention.
-ok(/which files it under the right contract for you/.test(html),
-   'the Schedules folder sends people to where the upload is attributed for them');
+ok(/Schedules moved to the /.test(html),
+   'and a stale page still sitting in that folder is sent to the tab');
+ok(!/'Schedules'/.test(srv.split('const DOCS_FOLDERS')[1].split(']')[0]),
+   'the server does not list it as a standard folder');
+ok(/DOCS_FOLDERS\.concat\(\['Schedules'\]\)/.test(srv),
+   'but still makes one, or a project could not take a programme');
 ok(/Fidevia only\. Nobody outside Fidevia can open this folder/.test(html),
    'and Confidential says what it is');
 

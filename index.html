@@ -4550,7 +4550,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 05:55';
+const BUILD_STAMP='2026-09-09 07:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5286,13 +5286,14 @@ function renderDocs(){
     const here=(DOCS_PATH[DOCS_PATH.length-1]||{}).name||'';
     const note=document.getElementById('docs-folder-note');
     if(note){
+      // Schedules is not reachable from here any more, so the note that
+      // explained how to file into it by hand has gone with it. Anyone who
+      // still has the folder open from a stale page is sent to the tab.
       if(/^schedules?$/i.test(String(here).trim())){
-        const co=(EXTERNAL?((currentProject&&currentProject.userCompany)||''):'')||'';
         note.style.display='';
-        note.innerHTML='Everyone on the project can see these. The easier way to add one is the '
-          +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo(\'schedule\');return false;">Schedule tab</a>, '
-          +'which files it under the right contract for you. A file added here has to carry the contract name itself, '
-          +'because a shared folder cannot say whose it is.';
+        note.innerHTML='Schedules moved to the '
+          +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="navTo(\'schedule\');return false;">Schedule tab</a>. '
+          +'They are uploaded and read there, filed under the contract and the month they cover.';
       } else if(/^fidevia internal$/i.test(String(here).trim())){
         note.style.display='';
         note.innerHTML='Fidevia only. Nobody outside Fidevia can open this folder, and it is not listed to them.';
@@ -5558,8 +5559,12 @@ async function docsUpload(input){
 // a no-op so renderAll and anything else still calling it does not throw.
 // The folders every project's Documents tab carries. Kept in step with
 // DOCS_FOLDERS in the proxy; the server is what enforces them.
+// Schedules is deliberately absent. The files stay where they are in Box, but
+// the folder is not part of Documents any more — it is not listed, it cannot be
+// filed into by hand, and the Schedule tab is the way in. The server hides it
+// as well; this list only decides what gets created.
 const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
-  'Closeout','Drawings and Specifications','Schedules','Fidevia Internal'];
+  'Closeout','Drawings and Specifications','Fidevia Internal'];
 const DOCS_CONFIDENTIAL='fidevia internal';
 // Kept in step with DOCS_HIDDEN_FILES in the proxy, which is what enforces it.
 const DOCS_HIDDEN_FILES=new Set(['documents.csv','document index.csv']);
@@ -5894,16 +5899,17 @@ async function renderScheduleUploads(){
             +(last.by?(' by '+esc(last.by)):'')+'</div>'):'')+'</span>'
       +'<span style="color:'+(ok?'var(--muted)':'var(--danger)')+';text-align:right;">'+esc(label[r.state]||r.state)+'</span>'
       +schedUploadBtn(r.company)
-      +(t?schedRowRemind(t):'')+'</div>';
+      +(t?schedRowRemind(t):'')+'</div>'
+      +schedFilesHTML(r);
   }).join('')
   +'<div style="padding:10px 18px;font-size:12.5px;color:var(--muted);">'
-    +'Read from the shared Schedules folder under Documents. '
+    +'Schedules live here rather than in Documents. '
     +'<a href="#" style="color:var(--olive-700);font-weight:600;" onclick="SCHED_UPLOADS=null;renderScheduleUploads();return false;">Check again</a>.</div>'
   // Chasing is Fidevia's; a contractor sees only their own row, and reminding
   // themselves would be an odd thing to offer.
   +(mineOnly
      ? '<div style="padding:12px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);">'
-       +'Upload the current programme here each month. Everyone on the project can see it.'
+       +'Upload the current programme here each month. Fidevia, the owner and the design team can open it.'
        +' <span class="status-msg" id="sched-chase-status"></span></div>'
      : schedChaseFooter());
 }
@@ -6038,6 +6044,33 @@ async function submitSchedUpload(){
 const SCHED_MONTHS=['January','February','March','April','May','June','July','August',
   'September','October','November','December'];
 function schedMonthLabel(){ const d=new Date(); return SCHED_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
+// Everything this contract has handed over. Documents used to be where you
+// went to open one; it is not any more, so if this does not list them there is
+// nowhere to read a programme from at all.
+let SCHED_OPEN_CO='';
+function schedToggleFiles(co){
+  SCHED_OPEN_CO = (SCHED_OPEN_CO===co) ? '' : co;
+  renderScheduleUploads();
+}
+function schedFilesHTML(r){
+  const files=(r&&r.files)||[];
+  const co=String((r&&r.company)||'');
+  if(!files.length) return '';
+  const open=SCHED_OPEN_CO===co;
+  const head='<div style="padding:0 18px 10px;margin-top:-4px;">'
+    +'<a href="#" style="font-size:12.5px;color:var(--olive-700);font-weight:600;" '
+    +'onclick="event.stopPropagation();schedToggleFiles('+esc(JSON.stringify(co))+');return false;">'
+    +(open?'Hide':'Show')+' '+files.length+' schedule'+(files.length===1?'':'s')+' on file</a></div>';
+  if(!open) return head;
+  return head+'<div style="padding:0 18px 12px;">'+files.map(f=>
+    '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid #F1F0E8;">'
+    +'<span style="flex:1;min-width:0;">'
+      +'<a href="#" class="attach-link" onclick="openBoxFile(\''+esc(f.id)+'\',event);return false;">'+esc(f.name)+'</a>'
+      +'<div style="font-size:12px;color:var(--muted);">'
+        +(f.periodLabel?('Covers '+esc(f.periodLabel)):'Period not recorded')
+        +(f.date?(' \u00b7 submitted '+esc(fmtDMY(f.date))):'')+'</div></span>'
+    +dlBtn(f.id, f.name, co)+'</div>').join('')+'</div>';
+}
 // Same reading of a period as netlify/functions/lib/sched.mjs, which is what
 // writes the answers this panel displays.
 function schedPeriodLabel(ym){
@@ -6048,7 +6081,7 @@ async function schedUpload(f, company, periodLabel, say){
   if(!f) return false;
   say=say||function(){};
   if(!SCHED_FOLDER_ID){
-    say('This project has no Schedules folder yet \u2014 a Fidevia administrator can add one from the Documents tab.');
+    say('This project has no Schedules folder yet \u2014 a Fidevia administrator can add one with Bring It Up To Date on the Documents tab.');
     return false;
   }
   const dot=String(f.name).lastIndexOf('.');

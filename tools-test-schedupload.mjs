@@ -60,17 +60,19 @@ ok(!/AH Plumbing/.test(out), 'and nobody else’s');
 ok(/Upload/.test(out), 'with somewhere to put it');
 ok(!/Remind/.test(out), 'and no way to remind themselves');
 ok(!/Remind All/.test(out), 'nor to chase the job');
-ok(/Everyone on the project can see it/.test(out),
-   'told plainly that a schedule posted here is shared');
+ok(/Fidevia, the owner and the design team can open it/.test(out),
+   'told plainly who will be able to read what they post');
 
 b.run("currentProject.userCompany='Architect 2';");
 b.run("renderScheduleUploads()");
 ok(b.run("document.getElementById('sched-uploads-panel').style.display")==='none',
    'somebody who holds no contract is not asked for a programme');
 
-// ── the Documents tab points at the easier route ──
-ok(/which files it under the right contract for you/.test(html),
-   'the Schedules folder sends people to the Schedule tab rather than to a naming convention');
+// ── Documents no longer offers a second route in ──
+ok(/Schedules moved to the /.test(html),
+   'a stale page still in the old folder is sent to the Schedule tab');
+ok(!/which files it under the right contract for you/.test(html),
+   'and is not taught a naming convention for a folder it cannot reach');
 ok(/Fidevia only\. Nobody outside Fidevia can open this folder/.test(html),
    'and the internal folder still says what it is');
 

@@ -1,6 +1,7 @@
 import { getStore } from '@netlify/blobs';
 import { logNotif, readNotifLog } from './lib/notif-log.mjs';
-import { scheduleState, periodOfDate, norm as schedNorm } from './lib/sched.mjs';
+import { scheduleState, periodOfDate, periodFromName, periodLabel, newestFirst,
+         norm as schedNorm } from './lib/sched.mjs';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
@@ -445,7 +446,18 @@ async function docsPositionOf(H, folderId){
 // could open. The company-private modules still exist for the material that
 // genuinely is private: pay applications, contractor daily reports, payrolls.
 const DOCS_FOLDERS = ['Testing', 'ASIs', 'Inspections', 'Punch List', 'Meeting Minutes',
-  'Closeout', 'Drawings and Specifications', 'Schedules', 'Fidevia Internal'];
+  'Closeout', 'Drawings and Specifications', 'Fidevia Internal'];
+// Schedules is no longer one of them. The files still live there — a programme
+// has to be somewhere in Box, and moving them would strand every link already
+// issued — but the folder is not part of the filing system any more. It does
+// not appear in the browser for anybody, and nothing can be filed into it by
+// hand. The Schedule tab is the way in, because that is where the question
+// "who owes us this month's programme" is actually asked, and a bare folder
+// answers it for nobody.
+const DOCS_SCHEDULES = 'schedules';
+function docsIsSchedules(pos){
+  return String((pos && pos.party) || '').trim().toLowerCase() === DOCS_SCHEDULES;
+}
 // The one exception, and the reason the rest can be open: Fidevia keeps a
 // folder nobody outside Fidevia can list, open or write to. Named for whose it
 // is rather than for how secret it is — 'Confidential' overstated it, and a
@@ -472,6 +484,7 @@ async function docsAllows(H, t, grants, who, folderId){
   if (!roleMayWrite(role) && role !== ROLE_OWNER) return false;
   if (!g) return false;
   if (docsIsConfidential(pos)) return false;    // Fidevia's alone
+  if (docsIsSchedules(pos)) return false;       // reached through the Schedule tab, not here
   return true;
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
@@ -717,7 +730,7 @@ async function callerMayReadFile(H, t, grants, who, fileId) {
   // Locate the granted project this file sits under.
   const gidset = new Set(grants.map(g => String(g.id)));
   let projectId = null;
-  const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=path_collection`, { headers: H });
+  const r = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=name,path_collection`, { headers: H });
   if (!r.ok) return false;
   const d = await r.json();
   const path = (d.path_collection && d.path_collection.entries) || [];
@@ -736,6 +749,17 @@ async function callerMayReadFile(H, t, grants, who, fileId) {
   try {
     const parentId = ids.length ? ids[ids.length - 1] : '';
     if (parentId && await docsAllows(H, t, grants, who, parentId)) return true;
+    // A programme is still a record people need, and the rule above now
+    // refuses the whole folder. A contract may open its own; Fidevia, the
+    // owner and the design team may open any of them. Matched on the filename,
+    // because a shared folder cannot say whose a file is.
+    if (parentId && docsIsSchedules(await docsPositionOf(H, parentId))) {
+      const g = await grantFor(t, grants, 'folder', projectId);
+      if (!g) return false;
+      if (seesAllCompanies(normRole(g.role))) return true;
+      const mine = String(g.company || '').trim();
+      return !!mine && schedNorm(String(d.name || '')).includes(schedNorm(mine));
+    }
   } catch (e) {}
   const allowed = await allowedFileIds(H, t, grants, who, projectId);
   return allowed.has(String(fileId));
@@ -1092,10 +1116,15 @@ export default async (req) => {
       if (!who.isAdmin) {
         // A contractor may ask about their own obligation and nobody else's.
         // Their company comes from the grant, not from what they asked for.
+        // The owner and the design team read the whole job, schedules included,
+        // so they keep the access they had while these sat in Documents.
         const g = await grantFor(t, _grants, 'folder', projectId);
-        const mine = String((g && g.company) || '').trim();
-        if (!mine) return json({ error: 'Access denied' }, 403);
-        companies = [mine];
+        if (!g) return json({ error: 'Access denied' }, 403);
+        if (!seesAllCompanies(normRole(g.role))) {
+          const mine = String(g.company || '').trim();
+          if (!mine) return json({ error: 'Access denied' }, 403);
+          companies = [mine];
+        }
       }
       if (!projectId || !companies.length) return json({ companies: [] });
       // The chase settings travel with the answer, so the dashboard can say
@@ -1147,7 +1176,15 @@ export default async (req) => {
         // name; when it arrived is created_at. They are different questions and
         // the panel shows both.
         const want = String(body.period || '') || periodOfDate(since ? (since + 'T00:00:00Z') : new Date());
-        out.push(Object.assign({ company: co }, scheduleState(files, want, since)));
+        // The files themselves, so the Schedule tab can offer them. They are
+        // not in the Documents browser any more, so this is the only listing
+        // of them there is.
+        const listed = newestFirst(files).slice(0, 24).map(f => ({
+          id: String(f.id), name: f.name || '',
+          period: periodFromName(f.name), periodLabel: periodLabel(periodFromName(f.name)),
+          date: String(f.created_at || '').slice(0, 10)
+        }));
+        out.push(Object.assign({ company: co, files: listed }, scheduleState(files, want, since)));
       }
       return json({ companies: out, due, lastScheduleSend, schedulesFolderId: shared ? String(shared.id) : '' });
     }
@@ -1166,7 +1203,10 @@ export default async (req) => {
       const have = haveR.ok ? ((await haveR.json()).entries || []) : [];
       const lower = new Set(have.filter(e => e.type === 'folder').map(e => String(e.name || '').trim().toLowerCase()));
       const made = [];
-      for (const name of DOCS_FOLDERS) {
+      // Schedules is created but not listed. It left the browser, not Box —
+      // the Schedule tab uploads into it, so a project without one cannot take
+      // a programme at all.
+      for (const name of DOCS_FOLDERS.concat(['Schedules'])) {
         if (lower.has(name.toLowerCase())) continue;
         const r = await boxFetch('https://api.box.com/2.0/folders', {
           method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
@@ -1438,6 +1478,10 @@ export default async (req) => {
       // than somewhere to browse.
       if (pos && pos.atRoot) {
         entries = entries.filter(e => !(e.type === 'folder' && String(e.name || '').trim().toLowerCase() === DOCS_REMOVED));
+        // Schedules moved to the Schedule tab. Hidden from Fidevia too: two
+        // ways in is how the two of them drift, and the tab is the one that
+        // knows which month a file is for and who still owes one.
+        entries = entries.filter(e => !(e.type === 'folder' && String(e.name || '').trim().toLowerCase() === DOCS_SCHEDULES));
       }
       return json({ entries, atRoot: !!(pos && pos.atRoot) });
     }
