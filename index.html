@@ -4517,7 +4517,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-08 21:20';
+const BUILD_STAMP='2026-09-08 21:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -10509,6 +10509,21 @@ function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0
 // sign a change that had been killed.
 // 'rolled' belongs here too: a proposal covered by a change order is settled,
 // and its own chain must not keep asking for signatures on it.
+// When every reviewer has signed, the item is not still pending. Status and
+// Workflow Status are separate fields and only the second one was being set,
+// so a fully reviewed submittal sat there reading "Pending Review" next to
+// "Workflow complete" — two halves of the same record disagreeing in public.
+//
+// Only a status that still means "nobody has decided" is promoted. A reviewer
+// who chose Approved as Noted, or Revise and Resubmit, said something more
+// specific than the chain can infer, and that is left alone.
+const WF_UNDECIDED=/^(|open|pending review|under review|in review|submitted|pending)$/i;
+const WF_APPROVED={rfi:'Closed', co:'Approved', sub:'Approved', pay_apps:'Approved'};
+function wfStatusOnComplete(key, row){
+  const now=String((row&&row['Status'])||'').trim();
+  if(!WF_UNDECIDED.test(now)) return '';           // somebody said something more exact
+  return WF_APPROVED[key]||'';
+}
 const DECIDED_AGAINST=/reject|denied|\bden\b|void|withdrawn|cancell?ed|rolled/i;
 function wfIsStopped(r){ return DECIDED_AGAINST.test(String((r&&r['Workflow Status'])||'')); }
 function wfIsDone(r){
@@ -10734,7 +10749,10 @@ async function wfAdvance(key, i){
   }
   const next=ge+1;
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
-  if(next>=steps.length){ row['Workflow Step']=String(steps.length-1); row['Workflow Status']='Complete'; }
+  if(next>=steps.length){
+    row['Workflow Step']=String(steps.length-1); row['Workflow Status']='Complete';
+    const _st=wfStatusOnComplete(key,row); if(_st) row['Status']=_st;
+  }
   else { row['Workflow Step']=String(next); row['Workflow Status']='In Review'; }
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
   allData[key]=rows;
@@ -11036,7 +11054,10 @@ function applyReviewAdvance(key, row, by){
     row['Workflow Done']=JSON.stringify([]);
   }
   const next=ge+1;
-  if(next>=after.length){ row['Workflow Step']=String(after.length-1); row['Workflow Status']='Complete'; }
+  if(next>=after.length){
+    row['Workflow Step']=String(after.length-1); row['Workflow Status']='Complete';
+    const st=wfStatusOnComplete(key,row); if(st) row['Status']=st;
+  }
   else { row['Workflow Step']=String(next); row['Workflow Status']='In Review'; }
   return added;
 }
