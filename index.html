@@ -1113,7 +1113,13 @@
           <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
           <div id="sched-updated" style="padding:11px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);"></div>
         </div>
-        <div class="panel admin-only" id="sched-uploads-panel" style="display:none;">
+        <!-- Not admin-only: this is where a contractor posts their programme. The
+     class carries "body.external-mode .admin-only{display:none !important}",
+     which beat the inline style the render sets, so the panel this whole
+     module exists for was invisible to the only people who upload to it.
+     Who sees it is decided in renderScheduleUploads, which already hides it
+     from anyone with no contract on the job. -->
+        <div class="panel" id="sched-uploads-panel" style="display:none;">
           <div class="panel-header">Monthly Schedules</div>
           <div id="sched-uploads" style="padding:4px 0;"></div>
         </div>
@@ -4520,7 +4526,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 03:40';
+const BUILD_STAMP='2026-09-09 04:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5832,7 +5838,14 @@ async function renderScheduleUploads(){
   const good=r=>r.state==='current';
   const targets=schedChaseTargets();
   const targetFor=c=>targets.find(t=>String(t.company).trim().toLowerCase()===String(c).trim().toLowerCase());
-  box.innerHTML=SCHED_UPLOADS.map(r=>{
+  // Draw from the filtered list, not from whatever the cache happens to hold.
+  // The server only ever answers a contractor about their own contract, so a
+  // real one could not see a rival's row — but Fidevia's External Viewer
+  // fetched the lot as an administrator and then re-rendered without asking
+  // again, so the preview showed a contractor rows they would never get.
+  const norm=x=>String(x||'').trim().toLowerCase();
+  const shown=(SCHED_UPLOADS||[]).filter(r=>cos.some(c=>norm(c)===norm(r.company)));
+  box.innerHTML=shown.map(r=>{
     const ok=good(r);
     const t=ok?null:targetFor(r.company);
     const last=schedLastFor(r.company);

@@ -39,7 +39,10 @@ ok(/schedulesFolderId: shared \? String\(shared\.id\) : ''/.test(srv),
 
 // ── who sees what ──
 const b = bootPage('index.html'); b.run(SEED);
-b.run("SCHED_FOLDER_ID='555'; SCHED_UPLOADS=[{company:'Summit Builders',state:'stale',date:'2026-08-12'},{company:'AH Plumbing',state:'never'}];");
+b.run(`SCHED_FOLDER_ID='555';
+  currentProject.config.contractors=[{name:'Summit Builders',role:'GC',contract:'2000000',active:true},
+                                     {name:'AH Plumbing',role:'Sub',contract:'250000',active:true}];
+  SCHED_UPLOADS=[{company:'Summit Builders',state:'stale',date:'2026-08-12'},{company:'AH Plumbing',state:'never'}];`);
 b.run("renderScheduleUploads()");
 let out = strip(b.run("document.getElementById('sched-uploads').innerHTML"));
 ok(/Summit Builders/.test(out) && /AH Plumbing/.test(out), 'Fidevia sees every contract');

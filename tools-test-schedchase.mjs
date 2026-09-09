@@ -25,8 +25,10 @@ ok(/created_at is the honest/.test(op), 'and why upload date is the measure');
 
 // ── the panel ──
 ok(/id="sched-uploads-panel"/.test(html), 'the Schedule tab shows it');
-ok(/class="panel admin-only"/.test(html.split('id="sched-uploads-panel"')[0].slice(-60)),
-   'to Fidevia only');
+ok(!/admin-only/.test(html.split('id="sched-uploads-panel"')[0].slice(-60)),
+   'and not only to Fidevia — this is where a contractor posts their programme');
+ok(/const mineOnly = !IS_ADMIN \|\| viewingAsExternal\(\);/.test(html),
+   'who sees which rows is decided in the render, where it can be reasoned about');
 {
   const r = html.split('async function renderScheduleUploads')[1].split('function scheduleStats')[0];
   ok(/c\.active!==false/.test(r), 'inactive contractors are not chased');
