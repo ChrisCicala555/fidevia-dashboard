@@ -1699,6 +1699,8 @@
     <div class="modal-body">
       <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status"></select></div>
       <p id="reply-status-note" style="display:none;margin:-4px 0 12px;font-size:13px;color:var(--muted);"></p>
+      <div id="reply-closed-note" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:6px;
+        background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label>Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
       <div class="field" id="reply-next-field" style="display:none;">
@@ -4581,7 +4583,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 18:40';
+const BUILD_STAMP='2026-09-09 19:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11690,6 +11692,17 @@ function openReply(key,i,advance){
       }
     }
   }
+  // Adding to something already settled. The chain was complete and a new
+  // version went on anyway, flipping an approved submittal to Resubmitted while
+  // the workflow still read complete — the two halves of the record disagreeing
+  // in public, again.
+  { const cn=document.getElementById('reply-closed-note');
+    if(cn){
+      const why=replyClosedReason(key, r);
+      cn.style.display = why ? '' : 'none';
+      cn.innerHTML = why ? ('<strong>This '+esc(REPLY_LABEL[key]||'item').toLowerCase()+' is closed.</strong> '+esc(why)
+        +' Anything added here is filed against the closed record and does not reopen the review.') : '';
+    } }
   const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
   // The status was hidden from everyone outside Fidevia, which made sense when
   // the only external reply was a contractor resubmitting. A reviewer has a
@@ -11757,9 +11770,33 @@ function replyWaitingOn(key, row){
     return names.join(' and ');
   }catch(e){ return ''; }
 }
+// Why this item is settled, in words, or '' when it is still live.
+function replyClosedReason(key, row){
+  try{
+    if(wfIsStopped(row)) return 'It was marked '+String(row['Status']||'decided against')+', so the review chain is closed.';
+    if(wfIsDone(row)){
+      const st=String(row['Status']||'').trim();
+      const steps=wfEffectiveSteps(key,row);
+      const sig=wfSignedMap(row);
+      let last='';
+      for(let i=steps.length-1;i>=0;i--){ const g=sig[String(i)]; if(g&&g.at){ last=g.at; break; } }
+      return 'The workflow finished'+(last?(' on '+fmtDMY(last)):'')+(st?(' and it stands as '+st):'')+'.';
+    }
+  }catch(e){}
+  return '';
+}
 function closeReply(){ document.getElementById('reply-backdrop').classList.remove('open'); REPLY_CTX=null; }
 async function submitReply(){
   if(!REPLY_CTX) return; const {key,i}=REPLY_CTX;
+  // Settled items take a deliberate second press. Not a block: a closing
+  // document or a corrected drawing genuinely does get filed after approval.
+  {
+    const _r=(allData[key]||[])[i]||{};
+    const why=replyClosedReason(key,_r);
+    if(why && !confirm('This '+String(REPLY_LABEL[key]||'item').toLowerCase()+' is already closed.\n\n'
+      +why+'\n\nAdding a version files it against the closed record. It does not reopen the review, '
+      +'and the decision on file stays as it is.\n\nAdd it anyway?')) return;
+  }
   // Whoever was shown the field chose; whoever was not is resubmitting.
   const _sf=document.getElementById('reply-status-field');
   const _canDecide=_sf && _sf.style.display!=='none';
@@ -11768,8 +11805,12 @@ async function submitReply(){
   // exactly where the last person with the authority to set it left it —
   // rather than silently stamping 'Resubmitted' over their decision.
   const _row0=(allData[key]||[])[i]||{};
+  // A version added to a settled item does not restate the outcome. Forcing
+  // 'Resubmitted' here is what turned an approved submittal into a resubmitted
+  // one while its workflow still said complete.
+  const _closed=!!replyClosedReason(key,_row0);
   const status=_canDecide ? document.getElementById('reply-status').value
-    : (replyIsSubmitterSide(key,_row0) ? 'Resubmitted' : String(_row0['Status']||''));
+    : ((replyIsSubmitterSide(key,_row0) && !_closed) ? 'Resubmitted' : String(_row0['Status']||''));
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;
