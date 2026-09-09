@@ -2094,7 +2094,7 @@ async function boxFetchRetry(url, opts, tries=4){
   }
 }
 async function boxUploadDirect(file, parentId){
-  const tk = await proxyCall('uploadToken',{folderId:parentId});
+  const tk = await proxyCall('uploadToken',{folderId:parentId, filename:file.name});
   if(!tk || !tk.token) throw new Error('no-scoped-token');
   const form=new FormData();
   form.append('attributes', JSON.stringify({name:file.name, parent:{id:String(parentId)}}));
@@ -2111,9 +2111,9 @@ async function boxUploadDirect(file, parentId){
 // transfers by re-minting the scoped token.
 async function boxUploadChunked(file, parentId, onProgress){
   await ensureSha1();
-  let token=(await proxyCall('uploadToken',{folderId:parentId})).token;
+  let token=(await proxyCall('uploadToken',{folderId:parentId, filename:file.name})).token;
   if(!token) throw new Error('no-scoped-token');
-  const reToken=async()=>{ token=(await proxyCall('uploadToken',{folderId:parentId})).token; };
+  const reToken=async()=>{ token=(await proxyCall('uploadToken',{folderId:parentId, filename:file.name})).token; };
 
   const sr=await boxFetchRetry('https://upload.box.com/api/2.0/files/upload_sessions',{
     method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
@@ -4555,7 +4555,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 08:40';
+const BUILD_STAMP='2026-09-09 09:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6138,14 +6138,13 @@ async function schedReplace(f, company, target, say){
     await proxyCall('uploadVersion',{fileId:target.id, contentBase64:b64, mime:f.type});
     say('Replaced. '+target.name+' is now the copy on file; the previous one is kept in Box.');
     try{ auditLog('Schedule replaced','gendocs',{}, company+' \u2014 '+target.name); }catch(e){}
-    SCHED_UPLOADS=null; MY_SCHEDULE=null;
-    await renderScheduleUploads();
-    try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
-    return true;
   }catch(e){
     say('Could not replace: '+(e.message||'unknown error'));
     return false;
   }
+  try{ SCHED_UPLOADS=null; MY_SCHEDULE=null; await renderScheduleUploads();
+       if(EXTERNAL) await loadMySchedule(); }catch(e){ console.warn('schedule refresh:', e.message); }
+  return true;
 }
 async function schedUpload(f, company, periodLabel, say){
   if(!f) return false;
@@ -6167,14 +6166,16 @@ async function schedUpload(f, company, periodLabel, say){
     say('Uploaded. '+company+' is current for '+periodLabel+'.'
       +(up&&up._renamedTo?(' One was already on file for that month, so this went up as '+landed+'.'):''));
     try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+landed); }catch(e){}
-    SCHED_UPLOADS=null; MY_SCHEDULE=null;
-    await renderScheduleUploads();
-    try{ if(EXTERNAL) await loadMySchedule(); }catch(e){}
-    return true;
   }catch(e){
     say('Could not upload: '+(e.message||'unknown error'));
     return false;
   }
+  // Past this point the file is in Box. Reading the folder back is housekeeping,
+  // and a failure here is not a failed upload — reporting it as one left the
+  // dialog sitting open over a schedule that had already landed.
+  try{ SCHED_UPLOADS=null; MY_SCHEDULE=null; await renderScheduleUploads();
+       if(EXTERNAL) await loadMySchedule(); }catch(e){ console.warn('schedule refresh:', e.message); }
+  return true;
 }
 function schedChaseFooter(){
   const sendable=schedChaseSendable();

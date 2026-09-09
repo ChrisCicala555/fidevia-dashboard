@@ -482,6 +482,11 @@ function docsIsConfidential(pos){
 // they do not hold a contract, so they do not file one.
 async function schedMayUpload(H, t, grants, who, folderId, filename){
   if (who.isAdmin) return true;
+  // Decided on the name, so there has to be one. uploadToken mints a token for
+  // a folder and had never needed to say what was going into it, which meant
+  // this refused every schedule an external user tried to upload directly —
+  // rescued only by the fallback path, and only for files under 4 MB.
+  if (!String(filename || '').trim()) return false;
   const pos = await docsPositionOf(H, folderId);
   if (!pos || !docsIsSchedules(pos)) return false;
   const g = await grantFor(t, grants, 'folder', folderId);

@@ -103,5 +103,26 @@ for (const op of ['uploadToken', 'upload']) {
      'while everything else in Documents still answers to docsAllows in '+op);
 }
 
+console.log('The upload that got stuck');
+// The scoped token is minted for a folder, so uploadToken had never needed to
+// say what was going into it. The moment the Schedules rule started deciding on
+// the filename, that meant every external upload was refused a token — rescued
+// only by the proxy fallback, and only for files under 4 MB.
+ok((html.match(/proxyCall\('uploadToken',\{folderId:parentId, filename:file\.name\}\)/g)||[]).length===3,
+   'all three token calls say what they are uploading');
+ok(!/proxyCall\('uploadToken',\{folderId:parentId\}\)/.test(html), 'and none of them leaves it out');
+{
+  const c = srv.split('async function schedMayUpload')[1].split('// True when this caller may see or write')[0];
+  ok(/if \(!String\(filename \|\| ''\)\.trim\(\)\) return false;/.test(c),
+     'a rule that decides on a name refuses when there is no name, rather than matching an empty one');
+}
+// And a refresh that fails is not an upload that failed.
+{
+  const c = html.split('async function schedUpload(f, company, periodLabel, say)')[1].split('\nfunction ')[0];
+  ok(/Past this point the file is in Box/.test(c), 'the read-back is outside the try that reports failure');
+  ok(/console\.warn\('schedule refresh:'/.test(c),
+     'so a folder that cannot be listed does not report a landed schedule as lost');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-schedupdate.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
