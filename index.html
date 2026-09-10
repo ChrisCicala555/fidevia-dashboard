@@ -1708,18 +1708,21 @@
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
     <div class="modal-body">
-      <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status"></select></div>
+      <div class="field" id="reply-status-field"><label>Action / Status</label><select id="reply-status" onchange="replyStatusChanged()"></select></div>
       <p id="reply-status-note" style="display:none;margin:-4px 0 12px;font-size:13px;color:var(--muted);"></p>
       <div id="reply-closed-note" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:6px;
         background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label id="reply-file-label">Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
+      <p id="reply-return-note" style="display:none;margin:-4px 0 14px;font-size:13px;color:var(--olive-900);
+        background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:9px 11px;"></p>
       <div class="field" id="reply-next-field" style="display:none;">
         <label>What are you doing?</label>
-        <select id="reply-action" onchange="replyActionChanged()">
+        <select id="reply-action" onchange="replyActionSyncsStatus();replyActionChanged()">
           <option value="continue">Recording my review &mdash; the chain moves on as configured</option>
           <option value="also">Recording my review, and sending it to somebody else as well</option>
           <option value="reassign">Handing this step to somebody else instead of me</option>
+          <option value="return">Sending it back to be revised and resubmitted</option>
         </select>
         <div id="reply-next-who" style="display:none;margin-top:10px;">
           <label>Who</label>
@@ -4594,7 +4597,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 09:15';
+const BUILD_STAMP='2026-09-10 10:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11699,12 +11702,72 @@ function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i);
 // The person picker only matters for two of the three answers, and what it
 // means differs between them, so the hint changes with the choice rather than
 // trying to describe both at once.
+// Sending something back is one of the things a reviewer does with a step, so
+// it belongs in the list of things a reviewer does with a step.
+//
+// It was only ever a status, and the two controls could contradict each other:
+// choosing Revise and Resubmit while the action still read "the chain moves on
+// as configured" was a sentence that was not true, adding a further reviewer
+// alongside it was silently dropped, and handing the step to somebody else was
+// acted on *instead* of the return — so the status said Revise and Resubmit
+// while the chain went to a third party.
+//
+// Now either control can say it and the other follows, so whichever one the
+// reader reaches for, both read the same when they submit.
+const REPLY_RETURN_ACTION='return';
+function replyReturnTarget(){
+  const r=(REPLY_CTX && (allData[REPLY_CTX.key]||[])[REPLY_CTX.i])||{};
+  return rowSubmitterName(r)||rowCompany(r)||'whoever filed it';
+}
+function replySyncReturn(returning){
+  const note=document.getElementById('reply-return-note');
+  const who=document.getElementById('reply-next-who');
+  if(returning && who) who.style.display='none';   // the person is not a choice
+  if(note){
+    note.style.display = returning ? '' : 'none';
+    note.textContent = returning
+      ? ('This goes back to '+replyReturnTarget()+' to revise and resubmit. They become the next step, '
+        +'and it returns to you when they resubmit.')
+      : '';
+  }
+}
+// The status was changed: bring the action into line with it.
+function replyStatusChanged(){
+  const sel=document.getElementById('reply-status');
+  const act=document.getElementById('reply-action');
+  if(!sel) return;
+  const returning=wfIsReturnOutcome(sel.value);
+  if(act){
+    if(returning) act.value=REPLY_RETURN_ACTION;
+    else if(act.value===REPLY_RETURN_ACTION) act.value='continue';
+  }
+  replySyncReturn(returning);
+  try{ replyActionChanged(); }catch(e){}
+}
+// The action was changed: bring the status into line with it.
+function replyActionSyncsStatus(){
+  const act=document.getElementById('reply-action');
+  const sel=document.getElementById('reply-status');
+  if(!act||!sel) return;
+  const returning=act.value===REPLY_RETURN_ACTION;
+  if(returning){
+    const hit=[...sel.options].find(o=>wfIsReturnOutcome(o.value));
+    if(hit) sel.value=hit.value;
+  } else if(wfIsReturnOutcome(sel.value)){
+    const hit=[...sel.options].find(o=>!wfIsReturnOutcome(o.value));
+    if(hit) sel.value=hit.value;
+  }
+  replySyncReturn(returning);
+}
 function replyActionChanged(){
   const act=(document.getElementById('reply-action')||{}).value||'continue';
   const who=document.getElementById('reply-next-who');
   const hint=document.getElementById('reply-next-hint');
-  if(who) who.style.display = act==='continue' ? 'none' : '';
-  if(hint) hint.textContent = act==='reassign'
+  // Returning names nobody: it goes to whoever filed the thing.
+  if(who) who.style.display = (act==='continue'||act===REPLY_RETURN_ACTION) ? 'none' : '';
+  if(hint) hint.textContent = act===REPLY_RETURN_ACTION
+    ? 'It goes back to '+replyReturnTarget()+', who become the next step. Nobody else is added.'
+    : act==='reassign'
     ? 'They take over this step. Your approval is not recorded, because you are not giving one \u2014 the item waits for them instead. This item only; the project\u2019s workflow is unchanged.'
     : 'Your review is recorded, and they are added after you as one more step. This item only; the project\u2019s workflow is unchanged.';
 }
@@ -11805,6 +11868,10 @@ function openReply(key,i,advance){
     }
   }
   if(r['Status']){ [...sel.options].forEach(o=>{ if(o.value===r['Status']) sel.value=r['Status']; }); }
+  // After the choices exist and one is selected, so a dialog that opens already
+  // showing a return hides the question straight away rather than on the first
+  // change.
+  try{ replyStatusChanged(); }catch(e){}
   document.getElementById('reply-note').value=''; document.getElementById('reply-file').value='';
   document.getElementById('reply-progress').style.display='none'; document.getElementById('reply-submit-btn').disabled=false;
   document.getElementById('reply-backdrop').classList.add('open');
@@ -12011,10 +12078,16 @@ function applyReviewAdvance(key, row, by){
   const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
   const emailOf=nm=>{ const o=ns&&[...ns.options].find(x=>x.value===nm); return (o&&o.getAttribute('data-email'))||''; };
 
+  // Whether this is a return, from either control. Settled before the handover
+  // branch below, which would otherwise act on "hand it to somebody else"
+  // while the status said Revise and Resubmit and send it to a third party.
+  const _outcome0=String((document.getElementById('reply-status')||{}).value||'');
+  const _returning = act===REPLY_RETURN_ACTION || wfIsReturnOutcome(_outcome0);
+
   // Handing the step over is not an approval, so nothing is signed and the
   // chain does not move: the item simply waits for somebody else now. Signing
   // on the way out would put an approval on the record that nobody gave.
-  if(act==='reassign' && pick){
+  if(!_returning && act==='reassign' && pick){
     const target = mine.length ? mine[0] : gs;
     const moved=wfReassigned(row);
     moved[String(target)]={person:pick, email:emailOf(pick), by:(by||ME_NAME||ME_EMAIL||''), at:etToday()};
@@ -12063,7 +12136,7 @@ function applyReviewAdvance(key, row, by){
   // Revise and resubmit: the item goes back to whoever filed it, as a step
   // anybody can see, rather than the chain quietly carrying on to the next
   // reviewer as though the drawing had been accepted.
-  if(wfIsReturnOutcome(outcome)){
+  if(_returning){
     const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
     const extra=wfExtraSteps(row);
     extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
