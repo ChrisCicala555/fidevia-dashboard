@@ -81,7 +81,9 @@ console.log('The generator will refuse rather than print a blank');
 const rd=grab(src,'function coDocumentReadiness');
 ok('it checks the contractor',         /\['Contractor',companyName\]/.test(rd));
 ok('it checks the owner',              /\['Owner',/.test(rd));
-ok('it names what is missing',         /need\.push\(nm\+' has no address on file'\)/.test(rd));
+// It used to say only "has no address on file". It now names the fields and
+// the party; the behaviour is exercised in tools-test-coreadiness.mjs.
+ok('it names what is missing',         /orgMissingBits\(r\)/.test(rd) && /role\.toLowerCase\(\)/.test(rd));
 ok('it catches a party not recorded at all', /is not recorded on this project/.test(rd));
 ok('it reports ready only when nothing is missing', /ready:!need\.length/.test(rd));
 
