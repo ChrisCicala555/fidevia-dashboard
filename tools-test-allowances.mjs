@@ -72,7 +72,7 @@ ok(/'Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause'/
    'the log records which allowance, and the list for a change order covering several');
 // The allowance is set on the change order now, not the proposal.
 ok(/id="cg-allow-rows"/.test(html), 'the change order asks which');
-ok(/class="'\+pre\+'-allow-amt"/.test(html), 'and how much, per line');
+ok(/class="allow-c2 '\+pre\+'-allow-amt"/.test(html), 'and how much, per line');
 ok(!/id="f-allow-id"/.test(html) && !/id="f-allow"/.test(html),
    'the proposal form no longer allocates one');
 ok(/function coGenAllowFill/.test(html), 'options come from that contract');
