@@ -4583,7 +4583,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 21:15';
+const BUILD_STAMP='2026-09-09 22:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11896,7 +11896,28 @@ async function submitReply(){
     // chain left sitting on the person who had just answered.
     let _advanced=false, _added='';
     if(REPLY_CTX && REPLY_CTX.advance && _wfChange!=='stopped'){
-      try{ _added=applyReviewAdvance(key,row,by); _advanced=true; }catch(e){ console.warn('advance:',e.message); }
+      // This used to swallow the failure: the version was written, the chain
+      // never moved, and nobody was told. That leaves the record in exactly the
+      // state it should never be in — a resubmission on file with the item
+      // still sitting on the step it was resubmitted from — and it looks like
+      // the dashboard ignoring the press rather than something going wrong.
+      // Half of an action is worse than none of it, so nothing is written.
+      const _before=String(row['Workflow Step']||'')+'|'+String(row['Workflow Status']||'')
+        +'|'+String(row['Workflow Extra']||'')+'|'+String(row['Workflow Signed']||'')
+        +'|'+String(row['Workflow Reassigned']||'');
+      try{ _added=applyReviewAdvance(key,row,by); _advanced=true; }
+      catch(e){
+        console.warn('advance:',e.message);
+        throw new Error('The review could not be recorded against the workflow ('
+          +(e.message||'unknown error')+'). Nothing has been saved — reload and try again.');
+      }
+      // Advancing that changes nothing at all is the same failure quietly: it
+      // means the step was not this reader's after all, and the reader is about
+      // to be told their review moved the chain.
+      const _after=String(row['Workflow Step']||'')+'|'+String(row['Workflow Status']||'')
+        +'|'+String(row['Workflow Extra']||'')+'|'+String(row['Workflow Signed']||'')
+        +'|'+String(row['Workflow Reassigned']||'');
+      if(_after===_before) _advanced=false;
     }
     prog.textContent='Updating log…';
     if(EXTERNAL){
@@ -11938,6 +11959,7 @@ async function submitReply(){
     const _returnedTo=(REPLY_CTX&&REPLY_CTX._returnedTo)||'';
     const _handedTo=(REPLY_CTX&&REPLY_CTX._reassignedTo)||'';
     const _backToReviewer=(REPLY_CTX&&REPLY_CTX._backToReviewer)||'';
+    const REPLY_CTX_ADVANCED_NOOP=!!(REPLY_CTX&&REPLY_CTX.advance)&&!_advanced&&_wfChange!=='stopped';
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
     else if(_wfChange==='reopened') alert('Marked '+status+'. The review chain is open again, at the step it was left on.');
@@ -11949,6 +11971,8 @@ async function submitReply(){
       +'. Your approval was not recorded \u2014 the item is waiting on them now.');
     else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
     else if(_advanced) alert('Review recorded and the chain has moved on.');
+    else if(REPLY_CTX_ADVANCED_NOOP) alert('Saved. The review chain was not moved \u2014 this step is not yours, '
+      +'so your note and any file are on the record but the item still waits on whoever it is with.');
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
 }
