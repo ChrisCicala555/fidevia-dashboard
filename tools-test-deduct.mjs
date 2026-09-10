@@ -111,7 +111,8 @@ console.log('It says so on the form');
 {
   const f = html.split('  co:{title:')[1].split('`},')[0];
   ok(/Enter a deduct as a negative, e\.g\. -8400/.test(f), 'the cost field explains the convention');
-  ok(/cannot draw on an allowance/.test(f), 'and what a deduct will not do');
+  ok(/Which allowances it writes down, if any, is set on the change order/.test(f),
+     'and points at where the allowances are chosen — a deduct writes them down, which is decided with the change order, not the proposal');
 }
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-deduct.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
