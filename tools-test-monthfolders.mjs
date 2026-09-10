@@ -209,5 +209,91 @@ console.log('Certified Payrolls moved to Recordkeeping');
   ok(!/owner-ok/.test(item), 'carrying the same classes it had before, so nobody gained or lost sight of it');
 }
 
+console.log('Months on the dashboard, not just in Box');
+const Q = bootPage();
+Q.run(SEED);
+Q.run(`ensureMonthFolders=()=>{};`);
+const thisYm = Q.run(`ymOf(new Date())`);
+const lastYm = Q.run(`(function(){const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return ymOf(d);})()`);
+Q.run(`allData.contractor_daily=[
+ {'Date':'${thisYm}-08','Company':'Summit Builders','Submitted By':'A','Attachment File ID':'f1','Attachment Name':'a.pdf'},
+ {'Date':'${thisYm}-02','Company':'Summit Builders','Submitted By':'B','Attachment File ID':'f2','Attachment Name':'b.pdf'},
+ {'Date':'${lastYm}-20','Company':'Summit Builders','Submitted By':'Carla','Attachment File ID':'f3','Attachment Name':'c.pdf'},
+ {'Date':'','Company':'Summit Builders','Submitted By':'D','Attachment File ID':'f4','Attachment Name':'d.pdf'}]`);
+Q.run(`renderContractorDaily()`);
+const body = () => Q.run(`document.getElementById('tbody-cdaily').innerHTML`);
+{
+  const h = body();
+  ok(h.indexOf('mo-head')>=0, 'the log is broken into month headings');
+  ok(h.indexOf('>'+Q.run(`schedPeriodLabel('${thisYm}')`)+'<')>=0, 'named as a person would say the month');
+  ok(/2 reports<\/span>/.test(h) && /1 report<\/span>/.test(h),
+     'each counting its own rows, and counting one as one');
+  ok(h.indexOf(thisYm+'"')<h.indexOf(lastYm+'"'), 'newest month first');
+  ok(h.indexOf('No date recorded')>h.indexOf(lastYm),
+     'and rows with no date land at the bottom rather than inventing a month');
+}
+{
+  // Folding is the point: a year of daily reports is three hundred rows.
+  const h = body();
+  const rowsOf = ym => (h.match(new RegExp('<tr data-mo="contractor_daily:'+ym+'"[^>]*>','g'))||[]);
+  ok(rowsOf(thisYm).every(t=>t.indexOf('display:none')<0), 'this month is open');
+  ok(rowsOf(lastYm).every(t=>t.indexOf('display:none')>=0), 'and earlier months are folded');
+  ok(rowsOf(lastYm).length===1 && rowsOf(thisYm).length===2,
+     'and every row is inside exactly one month, none dropped on the way');
+}
+{
+  // Every row action addresses a record by its index in the underlying array.
+  // Grouping reorders how rows read; it must not renumber them.
+  const h = body();
+  const idx = [...h.matchAll(/askDelete\(event,'contractor_daily',(\d+)\)/g)].map(m=>+m[1]);
+  ok(idx.join()==='0,1,2,3', 'and the delete buttons still point at the records they did before');
+}
+{
+  const before = body();
+  Q.run(`moToggle('contractor_daily','${lastYm}')`);
+  ok(Q.run(`MO_COLLAPSED['contractor_daily:${lastYm}']`)===false,
+     'clicking a folded month opens it');
+  Q.run(`moToggle('contractor_daily','${lastYm}')`);
+  ok(Q.run(`MO_COLLAPSED['contractor_daily:${lastYm}']`)===true, 'and clicking again folds it');
+  ok(before===body(), 'without re-rendering the table underneath');
+}
+{
+  // A heading over nothing is a lie, and a match hidden inside a folded month
+  // is worse — counted as shown, impossible to see.
+  // The DOM stub does not model querySelectorAll, so this reads the filter's
+  // source rather than running it. Each line below is covered by a mutation.
+  ok(/tbody\.querySelectorAll\('tr\.mo-head, li\.mo-head'\)/.test(html),
+     'the filter hides a heading whose rows all failed the filter');
+  ok(/h\.style\.display = \(!q \|\| moHits\[k\]\) \? '' : 'none'/.test(html),
+     'and shows it again when the filter is cleared');
+  ok(/if\(head\.classList\.contains\('mo-head'\)\) return;/.test(html),
+     'headings are not themselves counted as rows that matched');
+  ok(/match \? \(\(q\|\|moRowVisible\(row\)\) \? '' : 'none'\) : 'none'/.test(html),
+     'a filter opens every month, so a matching row in a folded one is visible');
+}
+{
+  // Sorting moves rows between months. Headings cannot survive that.
+  ok(/moFlatten\(tbody\);/.test(html.split('function sortByHeader(th){')[1].split('const dir =')[0]),
+     'sorting a grouped log flattens it first');
+  const f = html.split('function moFlatten(tbody){')[1].split('function makeSortableTables')[0];
+  ok(/querySelectorAll\('tr\.mo-head'\)\.forEach\(h=>h\.remove\(\)\)/.test(f),
+     'dropping the headings rather than leaving rows under the wrong one');
+  ok(/r\.style\.display=''; r\.removeAttribute\('data-mo'\)/.test(f),
+     'and revealing the rows that were folded away, which the sort is meant to include');
+}
+{
+  // Fidevia's own daily log is a list, not a table, so the heading is an li.
+  Q.run(`allData.daily=[{'Date':'${thisYm}-03','Submitted By':'Chris','Work Performed':'Formwork','Attachment File ID':'g1','Attachment Name':'r.pdf'},
+                        {'Date':'${lastYm}-11','Submitted By':'Chris','Work Performed':'Excavation','Attachment File ID':'g2','Attachment Name':'q.pdf'}]`);
+  Q.run(`renderDailyLogs()`);
+  const h = Q.run(`document.getElementById('list-daily').innerHTML`);
+  ok(/<li class="mo-head"/.test(h), 'the daily logs list groups by month too');
+  ok(h.indexOf('<td')<0, 'as list items, not table cells, because that list is not a table');
+  ok(h.indexOf('data-mo="daily:'+thisYm+'"')>=0 && h.indexOf('data-mo="daily:'+lastYm+'"')>=0,
+     'with each row tagged to the month it belongs to');
+  ok(h.indexOf('daily:'+thisYm)<h.indexOf('daily:'+lastYm),
+     'newest month first here too — this list used to read in order of filing, which put a late upload above newer reports');
+}
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-monthfolders.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

@@ -641,6 +641,16 @@
   .cb-items{display:flex;gap:32px;flex-wrap:wrap;}
   /* Schedules read as one card per contract, the same shape as a pay app
      group: a summary you can scan and a body you open. */
+  /* Months as sections inside a log. Reads as part of the table rather than a
+     separate control, because it is a way of looking at the rows, not a filter
+     applied to them. */
+  tr.mo-head>td, li.mo-head{background:var(--cream);border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border);cursor:pointer;user-select:none;padding:9px 16px;}
+  tr.mo-head:hover>td, li.mo-head:hover{background:var(--khaki-100,#EDEBE0);}
+  li.mo-head{display:flex;align-items:center;gap:10px;list-style:none;}
+  .mo-caret{display:inline-block;transition:transform .12s;color:var(--olive-700);font-size:11px;margin-right:9px;}
+  .mo-name{font-weight:700;font-size:13px;color:var(--olive-900);letter-spacing:.2px;}
+  .mo-count{color:var(--muted);font-size:12.5px;margin-left:10px;font-weight:500;}
   .sched-group{border:1px solid var(--border);border-radius:8px;margin:0 14px 10px;overflow:hidden;background:var(--white);}
   .sched-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13.5px;}
   .sched-group-head:hover{background:var(--khaki-50,#f7f5ef);}
@@ -3804,9 +3814,11 @@ function applyFilter(panel){
     if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
     else { cur=[row]; groups.push(cur); }
   });
+  const moHits={};
   groups.forEach(function(g){
     const head=g[0];
     if(head.classList.contains('empty-row')||head.classList.contains('loading-row')) return;
+    if(head.classList.contains('mo-head')) return;
     if(head.classList.contains('total-row')){ g.forEach(r=>r.style.display=''); return; }
     total++;
     if(g.length>1) hasThreads=true;
@@ -3817,16 +3829,28 @@ function applyFilter(panel){
     const inThread = !!q && !inHead
       && g.slice(1).some(r=>!rowHiddenFromViewer(r) && r.textContent.toLowerCase().includes(q));
     const match = inHead || inThread;
+    const mo=head.getAttribute && head.getAttribute('data-mo');
+    if(mo && match) moHits[mo]=(moHits[mo]||0)+1;
     if(match) shown++;
     if(inThread) deep++;
     g.forEach(function(row,idx){
-      if(idx===0){ row.style.display = match ? '' : 'none'; return; }
+      // While a filter is running the months are all opened: a row that matched
+      // has to be visible, and one that did not is hidden on its own account.
+      if(idx===0){ row.style.display = match ? ((q||moRowVisible(row)) ? '' : 'none') : 'none'; return; }
       if(!match){ setThreadOpen(row, false, true); return; }
       // A row matched on text nobody can see would look arbitrary, so the
       // thread is opened to show what matched.
       if(inThread) setThreadOpen(row, true, true);
       else if(row._filterOpened) setThreadOpen(row, false, true);
     });
+  });
+  // A heading survives only if something under it did.
+  tbody.querySelectorAll('tr.mo-head, li.mo-head').forEach(function(h){
+    const k=h.getAttribute('data-mo-head')||'';
+    h.style.display = (!q || moHits[k]) ? '' : 'none';
+    const c=h.querySelector('.mo-caret');
+    if(c && q) c.style.transform='rotate(90deg)';
+    else if(c) c.style.transform = moOpenByKey(k) ? 'rotate(90deg)' : '';
   });
   // Only claim to search the replies where there are replies to search.
   if(hasThreads && inp.placeholder.indexOf('replies')<0)
@@ -3837,6 +3861,13 @@ function applyFilter(panel){
     : '';
 }
 function reapplyFilters(){ document.querySelectorAll('.panel').forEach(p=>{ const i=p.querySelector('.filter-input'); if(i&&i.value.trim()) applyFilter(p); }); }
+function moFlatten(tbody){
+  if(!tbody || !tbody.querySelector('tr.mo-head')) return;
+  tbody.querySelectorAll('tr.mo-head').forEach(h=>h.remove());
+  tbody.querySelectorAll('[data-mo]').forEach(function(r){
+    r.style.display=''; r.removeAttribute('data-mo');
+  });
+}
 function makeSortableTables(){
   document.querySelectorAll('.panel table thead th').forEach(function(th){
     if(th._sortWired) return; th._sortWired=true;
@@ -3849,6 +3880,10 @@ function makeSortableTables(){
 function sortByHeader(th){
   const headRow=th.parentElement; const col=[...headRow.children].indexOf(th);
   const table=th.closest('table'); const tbody=table&&table.querySelector('tbody'); if(!tbody) return;
+  // Sorting is a flat view of the whole log. Keeping the month headings while
+  // moving rows between months would put rows under the wrong heading, which
+  // is worse than losing the headings until the next render.
+  moFlatten(tbody);
   const groups=[]; let cur=null;
   [...tbody.children].forEach(function(row){
     if(row.classList.contains('thread-detail')){ if(cur) cur.push(row); }
@@ -4304,6 +4339,73 @@ function countFooter(shown, total, noun){
 }
 function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
 
+
+// ── MONTH SECTIONS ─────────────────────────────────────────────────────────
+// Daily reports and payrolls arrive every day and every week. A year in, one
+// flat list is three hundred rows nobody scrolls. They are filed by month in
+// Box, so the log reads by month too — the current one open, the rest folded,
+// because the row somebody wants is nearly always a recent one.
+let MO_COLLAPSED={};
+function moKey(key,ym){ return key+':'+ym; }
+function moIsOpen(key,ym){
+  const k=moKey(key,ym);
+  if(Object.prototype.hasOwnProperty.call(MO_COLLAPSED,k)) return !MO_COLLAPSED[k];
+  return ym===ymOf(new Date());
+}
+function moToggle(key,ym){
+  const k=moKey(key,ym), shut=moIsOpen(key,ym);
+  MO_COLLAPSED[k]=shut;
+  document.querySelectorAll('[data-mo="'+k+'"]').forEach(function(el){
+    el.style.display = shut ? 'none' : '';
+  });
+  const c=document.querySelector('[data-mo-head="'+k+'"] .mo-caret');
+  if(c) c.style.transform = shut ? '' : 'rotate(90deg)';
+  // A month folded while the filter was running would leave the count lying.
+  const panel=document.querySelector('[data-mo-head="'+k+'"]');
+  if(panel && panel.closest) { const pn=panel.closest('.panel'); if(pn) applyFilter(pn); }
+}
+// A row or heading carries its section key; these read the open state back off
+// it, so the filter does not need to know which module a table belongs to.
+function moOpenByKey(k){
+  const i=String(k||'').lastIndexOf(':');
+  return i<0 ? true : moIsOpen(k.slice(0,i), k.slice(i+1));
+}
+function moRowVisible(row){
+  const k=row && row.getAttribute && row.getAttribute('data-mo');
+  return k ? moOpenByKey(k) : true;
+}
+function moHeadHTML(key, ym, count, noun, cols){
+  const k=moKey(key,ym), open=moIsOpen(key,ym);
+  const label = ym ? schedPeriodLabel(ym) : 'No date recorded';
+  const inner='<span class="mo-caret"'+(open?' style="transform:rotate(90deg)"':'')+'>\u25B8</span>'
+    +'<span class="mo-name">'+esc(label)+'</span>'
+    +'<span class="mo-count">'+count+' '+noun+(count===1?'':'s')+'</span>';
+  const attrs=' class="mo-head" data-mo-head="'+esc(k)+'" onclick=\'moToggle('
+    +JSON.stringify(key)+','+JSON.stringify(ym)+')\'';
+  return cols
+    ? '<tr'+attrs+'><td colspan="'+cols+'">'+inner+'</td></tr>'
+    : '<li'+attrs+'>'+inner+'</li>';
+}
+// pairs are {r,idx} already in the order they should read. Returns the markup
+// for the whole body: a heading per month, then that month's rows.
+function moSections(key, pairs, dateField, noun, cols, rowHTML){
+  const order=[], byYm=new Map();
+  pairs.forEach(function(p){
+    const ym=ymOf(p.r[dateField])||'';
+    if(!byYm.has(ym)){ byYm.set(ym,[]); order.push(ym); }
+    byYm.get(ym).push(p);
+  });
+  // Undated rows last: they are a data problem, not a month.
+  order.sort(function(a,b){ if(!a) return 1; if(!b) return -1; return 0; });
+  return order.map(function(ym){
+    const g=byYm.get(ym), k=moKey(key,ym), hide=moIsOpen(key,ym)?'':' style="display:none"';
+    return moHeadHTML(key, ym, g.length, noun, cols)
+      + g.map(function(p){
+          return rowHTML(p).replace(/^(\s*<(?:tr|li))/, '$1 data-mo="'+esc(k)+'"'+hide);
+        }).join('');
+  }).join('');
+}
+
 // ── RENDERERS ──
 function renderRFIs(){
   const all=allData.rfi||[], tb=document.getElementById('tbody-rfis');
@@ -4447,12 +4549,16 @@ function renderDailyLogs(){
   try{ ensureMonthFolders('daily'); }catch(e){}
   const rows=allData.daily||[], ul=document.getElementById('list-daily');
   if(!rows.length){ul.innerHTML='<li><span class="desc" style="color:var(--muted);font-style:italic;">No daily logs yet.</span></li>';return;}
-  ul.innerHTML=rows.slice().reverse().map(r=>{
+  // Newest first by the date on the report. This list used to read in reverse
+  // order of filing, which is not the same thing — a report uploaded late came
+  // out above newer ones. Invisible while it was one flat list; with months as
+  // headings it puts July above September.
+  ul.innerHTML=moSections('daily', withIdxSorted(rows,'Date'), 'Date', 'report', 0, ({r})=>{
     const fid=r['Attachment File ID'],fn=r['Attachment Name'];
     const link=fid?('<a href="#" onclick="openBoxFile(\''+esc(fid)+'\',event);return false;">Open file</a>'
       +dlBtn(fid, fn, 'Daily log '+String(r['Date']||'').trim())):'<span class="no-link">No file attached</span>';
     return '<li><span class="date">'+esc(fmtDMY(r['Date']))+'</span><span class="desc">'+esc(r['Submitted By'])+' &mdash; '+esc(r['Work Performed'])+'</span>'+link+'</li>';
-  }).join('');
+  });
 }
 
 function renderContacts(){
@@ -4606,7 +4712,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 19:35';
+const BUILD_STAMP='2026-09-10 20:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5703,17 +5809,17 @@ function renderContractorDaily(){
   if(!rows.length){tb.innerHTML=emptyRow(5);return;}
   // Contractors upload the report itself; the document is the record, so the
   // weather / crew / work columns were always empty and have been dropped.
-  tb.innerHTML=withIdxSorted(rows,'Date').map(({r,idx})=>{ const i=idx;
+  tb.innerHTML=moSections('contractor_daily', withIdxSorted(rows,'Date'), 'Date', 'report', 5, ({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
-  }).join('');
+  });
 }
 function renderPayrolls(){
   try{ ensureMonthFolders('payrolls'); }catch(e){}
   const rows=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(6);return;}
-  tb.innerHTML=withIdxSorted(rows,'Week Ending').map(({r,idx})=>{ const i=idx;
+  tb.innerHTML=moSections('payrolls', withIdxSorted(rows,'Week Ending'), 'Week Ending', 'payroll', 6, ({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Week Ending']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Payroll #'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('payrolls',i)+'</td></tr>';
-  }).join('');
+  });
 }
 function renderDocsTable(key, tbodyId){
   const rows=allData[key]||[], tb=document.getElementById(tbodyId); if(!tb) return;
