@@ -651,6 +651,12 @@
   .mo-caret{display:inline-block;transition:transform .12s;color:var(--olive-700);font-size:11px;margin-right:9px;}
   .mo-name{font-weight:700;font-size:13px;color:var(--olive-900);letter-spacing:.2px;}
   .mo-count{color:var(--muted);font-size:12.5px;margin-left:10px;font-weight:500;}
+  /* Sits quietly on the row until wanted: an override is a normal thing to
+     need and an odd thing to reach for, so it should be neither hidden nor
+     inviting. */
+  .wf-ov{border:1px solid var(--border);background:var(--white);color:var(--muted);border-radius:4px;
+    cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;margin-left:6px;font-family:inherit;}
+  .wf-ov:hover{background:var(--khaki-100,#EDEBE0);color:var(--olive-900);border-color:var(--khaki-300);}
   .sched-group{border:1px solid var(--border);border-radius:8px;margin:0 14px 10px;overflow:hidden;background:var(--white);}
   .sched-group-head{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13.5px;}
   .sched-group-head:hover{background:var(--khaki-50,#f7f5ef);}
@@ -1722,6 +1728,29 @@
     </div>
   </div>
 </div>
+<div class="modal-backdrop" id="wfov-backdrop" onclick="if(event.target===this)closeWfOverride()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header"><h3>Override a review step</h3><button class="modal-close" onclick="closeWfOverride()">&#10005;</button></div>
+    <div class="modal-body">
+      <p id="wfov-who" style="margin:0 0 14px;font-size:13.5px;color:var(--olive-900);"></p>
+      <div class="field"><label>Record the outcome as</label>
+        <select id="wfov-outcome"></select>
+        <p class="file-hint" style="font-size:12.5px;">Sending it back for revision is not here: that returns the item to whoever submitted it and has to remember who raised the objection, which only the reviewer themselves can properly say. Use Reply for that.</p>
+      </div>
+      <div class="field"><label>Why (required)</label>
+        <textarea id="wfov-reason" rows="3" autocomplete="off"
+          placeholder="e.g. Confirmed by phone with Dana Rowe on 10 Sep; written confirmation to follow."></textarea>
+        <p class="file-hint" style="font-size:12.5px;">This is recorded against the step, shown in the workflow, written to the audit log and sent with the notification. It is the only record of why somebody else&rsquo;s approval was entered by Fidevia, so it should say enough to stand on its own later.</p>
+      </div>
+      <p id="wfov-err" style="display:none;margin:0 0 10px;font-size:13px;color:var(--danger);"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="wfov-go" onclick="submitWfOverride()">Record override</button>
+      <button class="btn-secondary" onclick="closeWfOverride()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
@@ -4783,7 +4812,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 03:20';
+const BUILD_STAMP='2026-09-11 04:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11831,9 +11860,13 @@ function wfSignedMap(row){
   try{ const o=JSON.parse((row&&row['Workflow Signed'])||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
   catch(e){ return {}; }
 }
-function wfMarkSigned(row, idx, by, override, outcome, forName){
+function wfMarkSigned(row, idx, by, override, outcome, forName, reason){
   const m=wfSignedMap(row);
   m[String(idx)]={by:String(by||''), at:etToday(), override:!!override};
+  // Why somebody else's answer was entered here. Kept with the step, because
+  // an audit entry alone leaves the workflow itself unable to explain a tick
+  // that nobody on that step put there.
+  { const why=String(reason||'').trim(); if(why) m[String(idx)].reason=why; }
   // A colleague standing in for the named reviewer. Not an override — they are
   // entitled to act — but the record should not read as though the person the
   // step names was the one who answered it.
@@ -11926,6 +11959,65 @@ function wfCanAdvance(steps, gs, ge){
   // cannot disagree about who is entitled to act.
   return steps.slice(gs,ge+1).some(wfStepIsMine);
 }
+// Fidevia standing in for a reviewer who has answered off the record — an
+// architect rings to say they are content, a signed page arrives by post. That
+// is a real thing to need, and it already half-existed: wfAdvance would record
+// somebody else's approval through a confirm() and a numbered prompt, with no
+// choice of outcome and nowhere to say why. The reason is the part that matters
+// later, so it is now required and kept with the step.
+function wfMayOverride(){ return IS_ADMIN && !viewingAsExternal(); }
+// Only a step in the group the item is actually on, and only one nobody has
+// answered. Overriding a future step would jump the queue; overriding a signed
+// one would overwrite somebody's own answer.
+function wfOverridableSteps(key,row){
+  if(!wfMayOverride() || !row) return [];
+  if(wfIsStopped(row) || wfIsDone(row)) return [];
+  const steps=wfEffectiveSteps(key,row); if(!steps.length) return [];
+  const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
+  const signed=wfSignedMap(row);
+  let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+  if(!Array.isArray(done)) done=[];
+  const out=[];
+  for(let n=gs;n<=ge;n++) if(!signed[String(n)] && done.indexOf(n)<0) out.push(n);
+  return out;
+}
+const WFOV_OUTCOMES=['Approved','Rejected'];
+let WFOV_CTX=null;
+function openWfOverride(key, i, n){
+  const r=(allData[key]||[])[i]; if(!r) return;
+  if(wfOverridableSteps(key,r).indexOf(n)<0) return;
+  const steps=wfEffectiveSteps(key,r);
+  const st=steps[n]||{};
+  const who=String(st.person||st.name||('Step '+(n+1)));
+  const co=wfCompanyOf(st.person);
+  WFOV_CTX={key, i, n, id:rowIdOf(key,r), who};
+  const el=id=>document.getElementById(id);
+  el('wfov-who').innerHTML='Recording <strong>'+esc(who)+(co?(' ('+esc(co)+')'):'')+'</strong>\u2019s answer on '
+    +esc(String(st.name||('step '+(n+1))))+', because they gave it somewhere other than here. '
+    +'It will be logged as an override by you, and the workflow will name you as the person who entered it.';
+  el('wfov-outcome').innerHTML=WFOV_OUTCOMES.map(o=>'<option>'+esc(o)+'</option>').join('');
+  el('wfov-reason').value=''; el('wfov-err').style.display='none';
+  el('wfov-go').disabled=false;
+  document.getElementById('wfov-backdrop').classList.add('open');
+}
+function closeWfOverride(){ document.getElementById('wfov-backdrop').classList.remove('open'); WFOV_CTX=null; }
+async function submitWfOverride(){
+  if(!WFOV_CTX) return;
+  const err=document.getElementById('wfov-err');
+  const reason=String((document.getElementById('wfov-reason')||{}).value||'').trim();
+  if(!reason){
+    err.textContent='A reason is required. Without one the record says somebody else approved this and cannot say why.';
+    err.style.display=''; return;
+  }
+  err.style.display='none';
+  const btn=document.getElementById('wfov-go'); btn.disabled=true;
+  const {key,i,n}=WFOV_CTX;
+  const outcome=String((document.getElementById('wfov-outcome')||{}).value||'Approved');
+  try{
+    await wfAdvance(key, i, {stepIdx:n, outcome, reason});
+    closeWfOverride();
+  }catch(e){ err.textContent=e&&e.message?e.message:String(e); err.style.display=''; btn.disabled=false; }
+}
 function wfProgressHTML(key,r,i){
   const steps=wfEffectiveSteps(key, r); if(!steps.length) return '';
   // A stopped chain is not a finished one. wfIsDone covers both so archiving
@@ -11941,6 +12033,7 @@ function wfProgressHTML(key,r,i){
   // one put words in a reviewer's mouth.
   const signed=wfSignedMap(r);
   const attributed=wfHasSignatureRecord(r);
+  const canOv=wfOverridableSteps(key,r);
   const items=steps.map((s,n)=>{
     const sig=signed[String(n)];
     const passed = complete || n<gs;
@@ -11990,8 +12083,19 @@ function wfProgressHTML(key,r,i){
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':(s.rereview?'revision':'added'))+'</span>':'')
       +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
-      +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;">override</span>':'')
-      +note+'</div>';
+      +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;"'
+          +(sig.reason?(' title="'+esc(String(sig.reason))+'"'):'')+'>override</span>':'')
+      +(canOv.indexOf(n)>=0
+          ? '<button class="wf-ov" title="Record this step on their behalf" onclick="event.stopPropagation();openWfOverride('
+            +JSON.stringify(key)+','+i+','+n+')">\u22ef</button>' : '')
+      +note
+      // The reason is the whole point of an override, so it reads on the row
+      // rather than only in the audit log somebody has to go and find.
+      +(sig&&sig.override&&sig.reason
+          ? '<div style="font-size:11.5px;color:var(--muted);font-style:italic;padding:2px 0 0 18px;">'
+            +'Override by '+esc(String(sig.by||'Fidevia').replace(/\s*\(override\)$/,''))+': '+esc(String(sig.reason))+'</div>'
+          : '')
+      +'</div>';
   }).join('')
   + (!attributed && (complete||gs>0)
       ? '<div style="font-size:11.5px;color:var(--muted);font-style:italic;padding:3px 0;">Approvals on this item were recorded before each one was attributed.</div>' : '');
@@ -12028,7 +12132,7 @@ function wfProgressHTML(key,r,i){
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';
 }
-async function wfAdvance(key, i){
+async function wfAdvance(key, i, ov){
   const _r0=(allData[key]||[])[i];
   const steps=wfEffectiveSteps(key, _r0); if(!steps.length) return;
   // The decision went against this item. Signing it now would carry a dead
@@ -12074,7 +12178,17 @@ async function wfAdvance(key, i){
   // advanced on one person and the panel drew a tick against all of them.
   const mine=wfMyStepsIn(steps,gs,ge);
   let toSign=mine, override=false;
-  if(!toSign.length){
+  // Named explicitly by the override dialog: which step, what it decided, and
+  // why. No confirm, no numbered prompt — it has already been asked properly.
+  if(ov && ov.stepIdx!=null){
+    if(!IS_ADMIN || viewingAsExternal()) return;
+    if(!(ov.stepIdx>=gs && ov.stepIdx<=ge)) throw new Error('That step is not the one this item is on. Reload and try again.');
+    const _sg=wfSignedMap(row);
+    if(_sg[String(ov.stepIdx)]) throw new Error('That step has already been answered. Reload to see who by.');
+    if(!String(ov.reason||'').trim()) throw new Error('A reason is required.');
+    toSign=[ov.stepIdx]; override=true;
+  }
+  else if(!toSign.length){
     if(!IS_ADMIN) return;                        // not theirs to advance
     // Fidevia is not in this chain. Recording an approval here is standing in
     // for somebody else, which is a real thing to need — an architect signs on
@@ -12102,10 +12216,40 @@ async function wfAdvance(key, i){
     override=true;
   }
   let _by=''; try{ const u=await auth0Client.getUser(); _by=u.name||u.email||''; }catch(e){}
-  toSign.forEach(n=>wfMarkSigned(row, n, override?((ME_NAME||ME_EMAIL||'Fidevia')+' (override)'):(_by||ME_NAME||ME_EMAIL||''), override));
+  toSign.forEach(n=>wfMarkSigned(row, n,
+    override?((ME_NAME||ME_EMAIL||'Fidevia')+' (override)'):(_by||ME_NAME||ME_EMAIL||''),
+    override, ov&&ov.outcome, '', ov&&ov.reason));
   if(override){ try{ auditLog('Workflow override', key, row,
     'Recorded '+toSign.map(n=>String((steps[n]&&(steps[n].person||steps[n].name))||('step '+(n+1)))).join(', ')
-    +' on their behalf'); }catch(e){} }
+    +' on their behalf'
+    +(ov&&ov.outcome?(' as '+String(ov.outcome)):'')
+    +(ov&&ov.reason?(' \u2014 '+String(ov.reason)):'')); }catch(e){} }
+  // An override that says no closes the item, exactly as the reviewer saying
+  // it themselves would. Advancing past a rejection would record the refusal
+  // and then carry on as though it had not happened.
+  if(override && ov && DECIDED_AGAINST.test(String(ov.outcome||''))){
+    row['Status']=String(ov.outcome);
+    wfApplyDecision(key, row, String(ov.outcome), (ME_NAME||ME_EMAIL||'Fidevia')+' (override)');
+    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    allData[key]=rows;
+    try{
+      const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
+      const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+      const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - CO'}[key];
+      const who=String((steps[ov.stepIdx]&&(steps[ov.stepIdx].person||steps[ov.stepIdx].name))||'a reviewer');
+      notifyContacts(notifyField,
+        '[Fidevia] '+label+' '+(row[idf]||row['PCO #']||'')+' \u2014 '+String(ov.outcome),
+        emailTemplate(label+' '+String(ov.outcome),
+          [[label+' #', row[idf]||row['PCO #']||''],
+           ['Outcome', String(ov.outcome)],
+           ['Recorded for', who],
+           ['Entered by', (ME_NAME||ME_EMAIL||'Fidevia')+' \u2014 override'],
+           ['Reason', String(ov.reason||'')]],
+          currentProject.name));
+    }catch(e){}
+    renderAll();
+    return;
+  }
   if(needsAll){
     let doneIdx=[]; try{ doneIdx=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
     if(!Array.isArray(doneIdx)) doneIdx=[];

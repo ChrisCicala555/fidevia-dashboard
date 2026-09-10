@@ -24,6 +24,10 @@ let ME_COMPANY='';
 function myCompany(){ return ME_COMPANY; }
 function wfCanAdvance(){ return true; }
 function withBusy(){}
+// The slice below now also carries wfMayOverride / wfOverridableSteps, which
+// sit immediately above wfProgressHTML. They ask whether the reader is looking
+// at the project as somebody else; in here nobody is.
+function viewingAsExternal(){ return false; }
 // The panel reads the chain as it applies to one row, and marks the reader's
 // own step. Neither existed when this test was written; the steps are set
 // explicitly here, so the effective chain is the set chain.
