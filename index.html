@@ -1209,7 +1209,7 @@
           </div>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All change orders</span><span class="src">Box · 02 - Change Orders</span></div>
+          <div class="panel-header"><span>All Change Orders</span><span class="src">Box · 02 - Change Orders</span></div>
           <table><thead><tr><th>PCO / CO #</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th title="Portion funded from the contractor's allowance">From Allowance</th><th title="Portion that increases the contract">To Contract</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-cos"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
           <div class="table-count" id="changeorder-count"></div>
@@ -1223,7 +1223,7 @@
           <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button>
         </div>
         <div class="panel">
-          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">All submittals<select id="sub-spec-filter" onchange="setSpecFilter(this.value)" style="font-family:inherit;font-size:12.5px;font-weight:600;color:var(--olive-900);padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--white);max-width:340px;"><option value="">All spec sections</option></select></span><span class="src">Box · 03 - Submittals</span></div>
+          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">All Submittals<select id="sub-spec-filter" onchange="setSpecFilter(this.value)" style="font-family:inherit;font-size:12.5px;font-weight:600;color:var(--olive-900);padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--white);max-width:340px;"><option value="">All spec sections</option></select></span><span class="src">Box · 03 - Submittals</span></div>
           <table><thead><tr><th>Submittal #</th><th>Spec Section</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Assigned To</th><th>Review Due</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-submittals"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
           <div class="table-count" id="submittal-count"></div>
@@ -4812,7 +4812,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 04:10';
+const BUILD_STAMP='2026-09-11 04:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
