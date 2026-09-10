@@ -1812,13 +1812,13 @@
       </div>
 
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
-      <div class="field-row">
-        <div class="field" style="flex:1.3;"><label>Drawn from</label>
-          <select id="nc-allow-id" onchange="newCoTotals()"><option value="">— None —</option></select></div>
-        <div class="field" style="flex:1;"><label>Amount ($)</label>
-          <input id="nc-allow-amt" autocomplete="off" placeholder="0" oninput="newCoTotals()"></div>
+      <div id="nc-allow-head" style="display:flex;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px;">
+        <span style="flex:1.3;">Allowance</span><span style="flex:1;">Amount ($)</span><span style="width:34px;"></span>
       </div>
-      <p id="nc-allow-note" style="font-size:12.5px;color:var(--muted);margin:0;"></p>
+      <div id="nc-allow-rows"></div>
+      <button type="button" class="btn-secondary" id="nc-allow-add" style="padding:6px 12px;margin-top:2px;"
+        onclick="allowRowAdd('nc', ALLOW_LIST_CACHE.nc||[]); newCoAllowChanged();">+ Another allowance</button>
+      <p id="nc-allow-note" style="font-size:12.5px;color:var(--muted);margin:6px 0 0;"></p>
 
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Proposals covered</div>
       <p id="nc-roll-none" style="display:none;font-size:13px;color:var(--muted);margin:0 0 8px;">No open PCOs on this contract. The change order will stand on its own.</p>
@@ -1869,13 +1869,13 @@
         </div>
 
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
-        <div class="field-row">
-          <div class="field" style="flex:1.3;"><label>Drawn from</label>
-            <select id="cg-allow-id" onchange="coGenAllowNote()"><option value="">— None —</option></select></div>
-          <div class="field" style="flex:1;"><label>Amount ($)</label>
-            <input id="cg-allow-amt" autocomplete="off" placeholder="0" oninput="coGenAllowNote()"></div>
+        <div id="cg-allow-head" style="display:flex;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px;">
+          <span style="flex:1.3;">Allowance</span><span style="flex:1;">Amount ($)</span><span style="width:34px;"></span>
         </div>
-        <p id="cg-allow-note" style="font-size:12.5px;color:var(--muted);margin:0 0 4px;"></p>
+        <div id="cg-allow-rows"></div>
+        <button type="button" class="btn-secondary" id="cg-allow-add" style="padding:6px 12px;margin-top:2px;"
+          onclick="allowRowAdd('cg', ALLOW_LIST_CACHE.cg||[]); coGenAllowChanged();">+ Another allowance</button>
+        <p id="cg-allow-note" style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;"></p>
 
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Roll in other PCOs</div>
         <p id="cg-roll-none" style="display:none;font-size:13px;color:var(--muted);margin:0 0 8px;">
@@ -2370,7 +2370,7 @@ function toCSV(headers, rows){
 // ── MODULE DEFS ──
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
@@ -4774,7 +4774,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 00:15';
+const BUILD_STAMP='2026-09-11 01:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8762,10 +8762,8 @@ async function generateChangeOrder(){
   const say=t=>showStatus('cogen-status',t,'info');
   try{
     say('Building the document\u2026');
-    const allowId=String((document.getElementById('cg-allow-id')||{}).value||'');
-    const allowAmt=payNum((document.getElementById('cg-allow-amt')||{}).value);
     // Applied before the maths so the document and the row agree.
-    r['Allowance']=allowId; r['Applied to Allowance']=allowAmt?String(allowAmt):'';
+    coSetAllowanceSplits(r, allowRowsRead('cg'));
     const rolledSet=coGenRolledSet();
     const rolled=rolledSet.map(x=>x.row);
     const math=coContractMathFor(r, rolledSet);
@@ -8967,7 +8965,8 @@ function openNewCo(){
     .filter(c=>c.active!==false);
   sel.innerHTML='<option value="">— Select contract —</option>'
     +cts.map(c=>'<option>'+esc(c.name)+'</option>').join('');
-  ['nc-num','nc-desc','nc-days','nc-allow-amt'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['nc-num','nc-desc','nc-days'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  allowRowsRender('nc', ALLOW_LIST_CACHE.nc||[], []);
   const d=document.getElementById('nc-date'); if(d) d.value=etToday();
   const f=document.getElementById('nc-file'); if(f) f.value='';
   const st=document.getElementById('nc-status'); if(st){ st.textContent=''; st.className='status-msg'; }
@@ -8978,12 +8977,14 @@ function closeNewCo(){ document.getElementById('newco-backdrop').classList.remov
 function newCoCompany(){ return String((document.getElementById('nc-company')||{}).value||'').trim(); }
 function newCoCompanyChanged(){
   const co=newCoCompany();
-  const sel=document.getElementById('nc-allow-id');
-  if(sel){
+  {
     const list=allowancesFor(co);
-    sel.innerHTML='<option value="">— None —</option>'
-      +list.map(a=>'<option value="'+esc(a.id)+'">Allowance '+esc(a.id)+(a.name?(' — '+esc(a.name)):'')+'</option>').join('');
-    const wrap=sel.closest('.field-row'); if(wrap) wrap.style.display=list.length?'':'none';
+    ALLOW_LIST_CACHE.nc=list;
+    allowRowsRender('nc', list, []);
+    const show=list.length?'':'none';
+    ['nc-allow-head','nc-allow-rows','nc-allow-add'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.style.display=show;
+    });
   }
   const box=document.getElementById('nc-roll-list');
   const none=document.getElementById('nc-roll-none');
@@ -9018,24 +9019,38 @@ function newCoSet(){
     return row ? { i, row, amount: inp?payNum(inp.value):proposed, proposed } : null;
   }).filter(Boolean);
 }
+function newCoAllowChanged(){ newCoTotals(); }
 function newCoTotals(){
   const el=document.getElementById('nc-total');
   const note=document.getElementById('nc-allow-note');
   const co=newCoCompany();
   const set=newCoSet();
   const gross=set.reduce((s,e)=>s+e.amount,0);
-  const id=String((document.getElementById('nc-allow-id')||{}).value||'');
-  const amt=payNum((document.getElementById('nc-allow-amt')||{}).value);
+  const rows=allowRowsRead('nc');
+  const amt=rows.reduce((sum,x)=>sum+x.amount,0);
   if(note){
+    const dup=rows.length !== new Set(rows.map(x=>x.id)).size;
     if(!co){ note.textContent=''; }
     else if(!allowancesFor(co).length){ note.textContent='This contract carries no allowances.'; note.style.color='var(--muted)'; }
-    else if(!id){ note.textContent = amt ? 'Choose which allowance this is drawn from.' : 'Nothing drawn from an allowance.';
-      note.style.color = amt ? 'var(--danger)' : 'var(--muted)'; }
+    else if(dup){ note.textContent='The same allowance is on two lines. Combine them into one.'; note.style.color='var(--danger)'; }
+    else if(!rows.length){ note.textContent = gross<0
+        ? 'Writing down no allowance \u2014 the whole credit comes off the contract. Add a line for each allowance this settles.'
+        : 'Nothing drawn from an allowance.';
+      note.style.color='var(--muted)'; }
+    else if(gross<0){
+      const cut=Math.abs(gross);
+      const over=rows.filter(x=>x.amount > Math.max(0, (allowancesFor(co).find(y=>y.id===x.id)||{amount:0}).amount - allowanceUsedById(co,x.id)));
+      if(over.length){ note.textContent='Allowance '+over[0].id+' has less than '+fmtMoney(over[0].amount)+' left to write off.'; note.style.color='var(--danger)'; }
+      else if(amt>cut){ note.textContent='The lines write off '+fmtMoney(amt)+' but the change order returns only '+fmtMoney(cut)+'.'; note.style.color='var(--danger)'; }
+      else { note.textContent=rows.map(x=>'Allowance '+x.id+' reduced by '+fmtMoney(x.amount)).join('  \u00b7  ')
+        +(amt<cut?('  \u00b7  '+fmtMoney(cut-amt)+' is a plain contract credit.'):''); note.style.color='var(--muted)'; }
+    }
     else {
-      const left=allowanceRemainingById(co, id);
-      if(amt>left){ note.textContent='Only '+fmtMoney(left)+' remains on Allowance '+id+'.'; note.style.color='var(--danger)'; }
-      else { note.textContent=fmtMoney(left)+' remaining on Allowance '+id
-        +(amt?(', '+fmtMoney(left-amt)+' after this change order.'):'.'); note.style.color='var(--muted)'; }
+      const over=rows.filter(x=>x.amount>allowanceRemainingById(co,x.id));
+      if(over.length){ note.textContent='Only '+fmtMoney(allowanceRemainingById(co,over[0].id))+' remains on Allowance '+over[0].id+'.'; note.style.color='var(--danger)'; }
+      else if(amt>gross){ note.textContent='The lines draw '+fmtMoney(amt)+' but the change order is worth '+fmtMoney(gross)+'.'; note.style.color='var(--danger)'; }
+      else { note.textContent=rows.map(x=>'Allowance '+x.id+': '+fmtMoney(allowanceRemainingById(co,x.id)-x.amount)+' left').join('  \u00b7  ');
+        note.style.color='var(--muted)'; }
     }
   }
   if(!el) return;
@@ -9056,8 +9071,7 @@ async function submitNewCo(){
   if(!desc) return say('Give the change order a description.','error');
   const set=newCoSet();
   const gross=set.reduce((s,e)=>s+e.amount,0);
-  const allowId=String((document.getElementById('nc-allow-id')||{}).value||'');
-  const allowAmt=payNum((document.getElementById('nc-allow-amt')||{}).value);
+  const allowSplits=allowRowsRead('nc');
   if(allowAmt && !allowId) return say('Choose which allowance the draw comes from.','error');
   if(allowAmt > gross && gross) return say('The allowance draw is more than the change order is worth.','error');
   const btn=document.getElementById('nc-go'); btn.disabled=true;
@@ -9081,7 +9095,7 @@ async function submitNewCo(){
     MODULES.co.headers.forEach(h=>row[h]='');
     row['PCO #']=''; row['CO #']=num; row['Description']=desc; row['Submitted By']=by;
     row['Cost Impact']=String(gross); row['Approved Amount']=String(gross);
-    row['Applied to Allowance']=allowAmt?String(allowAmt):''; row['Allowance']=allowId;
+    coSetAllowanceSplits(row, allowSplits);
     row['Schedule Impact (Days)']=String((document.getElementById('nc-days')||{}).value||'').trim();
     row['Status']='Approved';
     row['Date Submitted']=String((document.getElementById('nc-date')||{}).value||'')||etToday();
@@ -9142,20 +9156,62 @@ function coRollCandidates(idx){
       // Already has its own change order document, so it is not loose.
       && !String(x['Signed File Name']||'').trim());
 }
+// A change order can touch several allowances — a closeout settling three at
+// once, or work funded partly from two — so the one picker became a list. Both
+// dialogs that allocate allowances share these, keyed by an id prefix.
+function allowRowHTML(pre, list, sel, amt, i){
+  return '<div class="allow-row" data-i="'+i+'" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">'
+    +'<select class="'+pre+'-allow-sel" style="flex:1.3;" onchange="'+pre+'AllowChanged()">'
+    +'<option value="">\u2014 Choose \u2014</option>'
+    +list.map(a=>'<option value="'+esc(a.id)+'"'+(String(sel||'').toUpperCase()===a.id?' selected':'')+'>'
+        +'Allowance '+esc(a.id)+(a.name?(' \u2014 '+esc(a.name)):'')+'</option>').join('')
+    +'</select>'
+    +'<input class="'+pre+'-allow-amt" autocomplete="off" placeholder="0" style="flex:1;" '
+      +'value="'+esc(amt?String(amt):'')+'" oninput="'+pre+'AllowChanged()">'
+    +'<button type="button" class="btn-secondary allow-del" title="Remove this line" '
+      +'style="padding:6px 10px;flex:0 0 auto;" onclick="allowRowRemove(this,\''+pre+'\')">\u00d7</button>'
+    +'</div>';
+}
+function allowRowsRender(pre, list, splits){
+  const box=document.getElementById(pre+'-allow-rows'); if(!box) return;
+  const rows=(splits&&splits.length)?splits:[{id:'',amount:''}];
+  box.innerHTML=rows.map((x,i)=>allowRowHTML(pre,list,x.id,x.amount,i)).join('');
+}
+function allowRowsRead(pre){
+  const box=document.getElementById(pre+'-allow-rows'); if(!box) return [];
+  return [...box.querySelectorAll('.allow-row')].map(row=>({
+    id: String((row.querySelector('.'+pre+'-allow-sel')||{}).value||''),
+    amount: payNum((row.querySelector('.'+pre+'-allow-amt')||{}).value)
+  })).filter(x=>x.id && x.amount);
+}
+function allowRowAdd(pre, list){
+  const box=document.getElementById(pre+'-allow-rows'); if(!box) return;
+  box.insertAdjacentHTML('beforeend', allowRowHTML(pre, list, '', '', box.children.length));
+}
+function allowRowRemove(btn, pre){
+  const row=btn&&btn.closest?btn.closest('.allow-row'):null;
+  const box=document.getElementById(pre+'-allow-rows');
+  if(row) row.remove();
+  // Never leave nothing to type into.
+  if(box && !box.children.length) box.innerHTML=allowRowHTML(pre, ALLOW_LIST_CACHE[pre]||[], '', '', 0);
+  const fn=window[pre+'AllowChanged']; if(typeof fn==='function') fn();
+}
+let ALLOW_LIST_CACHE={};
+
 // The allowance is decided here, where the change is agreed, rather than on the
 // proposal. A contractor proposing work has no business allocating money inside
 // its own contract, and the figure is not settled until the change order is.
+function coGenAllowChanged(){ coGenAllowNote(); }
 function coGenAllowFill(idx){
   const r=(allData.co||[])[idx]; if(!r) return;
-  const sel=document.getElementById('cg-allow-id'); if(!sel) return;
+  const box=document.getElementById('cg-allow-rows'); if(!box) return;
   const list=allowancesFor(rowCompany(r));
-  sel.innerHTML='<option value="">— None —</option>'
-    +list.map(a=>'<option value="'+esc(a.id)+'"'+((String(r['Allowance']||'').toUpperCase()===a.id)?' selected':'')+'>'
-      +'Allowance '+esc(a.id)+(a.name?(' — '+esc(a.name)):'')+'</option>').join('');
-  const amt=document.getElementById('cg-allow-amt');
-  if(amt) amt.value = payNum(r['Applied to Allowance']) ? String(payNum(r['Applied to Allowance'])) : '';
-  const wrap=sel.closest('.field-row');
-  if(wrap) wrap.style.display = list.length ? '' : 'none';
+  ALLOW_LIST_CACHE.cg=list;
+  allowRowsRender('cg', list, coAllowanceSplits(r));
+  const show=list.length?'':'none';
+  ['cg-allow-head','cg-allow-rows','cg-allow-add'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=show;
+  });
   const note=document.getElementById('cg-allow-note');
   if(note && !list.length){ note.textContent='This contract carries no allowances. Add them in Settings → Allowances if any apply.'; }
   coGenAllowNote();
@@ -9165,59 +9221,76 @@ function coGenAllowNote(){
   const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
   const list=allowancesFor(rowCompany(r));
   if(!list.length) return;
-  // A deduct does not draw from an allowance, it writes the allowance down —
-  // the $60,000 line becomes $50,000. So the picker stays live and the draw
-  // amount goes away: the reduction is the change order's own value.
-  {
-    const amtEl=document.getElementById('cg-allow-amt');
-    const wrap=amtEl && amtEl.closest('.field');
-    if(wrap) wrap.style.display = coIsDeduct(r) ? 'none' : '';
-    if(coIsDeduct(r) && amtEl){ amtEl.value=''; r['Applied to Allowance']=''; }
+  const co=rowCompany(r);
+  const rows=allowRowsRead('cg');
+  const total=rows.reduce((sum,x)=>sum+x.amount,0);
+  const dup=rows.length !== new Set(rows.map(x=>x.id)).size;
+  if(dup){
+    note.textContent='The same allowance is on two lines. Combine them into one, or the total is ambiguous.';
+    note.style.color='var(--danger)'; coGenRollTotal(COGEN_IDX); return;
   }
   if(coIsDeduct(r)){
-    const id=(document.getElementById('cg-allow-id')||{}).value||'';
     const cut=Math.abs(coApprovedAmount(r));
-    if(!id){
-      note.textContent='A deduct of '+fmtMoney(cut)+'. It reduces the contract. '
-        +'Choose an allowance if it is writing one down \u2014 an allowance reconciled at closeout, or scope dropped.';
-      note.style.color='var(--muted)';
-      coGenRollTotal(COGEN_IDX); return;
+    if(!rows.length){
+      note.textContent='A deduct of '+fmtMoney(cut)+'. It reduces the contract and writes down no allowance. '
+        +'Add a line for each allowance it settles \u2014 a closeout can cover several at once.';
+      note.style.color='var(--muted)'; coGenRollTotal(COGEN_IDX); return;
     }
-    const a=allowancesFor(rowCompany(r)).find(x=>x.id===id);
-    const spent=allowanceUsedById(rowCompany(r), id);
-    // The allowance as it stands BEFORE this change order, so editing one does
-    // not appear to write the allowance down twice.
-    const before=(a?a.amount:0) + (coAllowanceId(r)===id ? cut : 0);
-    const headroom=Math.max(0, before-spent);
-    if(cut>headroom){
-      note.textContent=fmtMoney(spent)+' of Allowance '+id+' has already been spent, so only '
-        +fmtMoney(headroom)+' can be written off. Reducing it by '+fmtMoney(cut)+' would claim back money that is gone.';
-      note.style.color='var(--danger)';
-    } else {
-      note.textContent='Allowance '+id+' reduced from '+fmtMoney(before)+' to '+fmtMoney(before-cut)
-        +(spent?(' \u2014 '+fmtMoney(spent)+' spent, '+fmtMoney(before-cut-spent)+' remaining'):'')+'.';
-      note.style.color='var(--muted)';
+    // Every line is measured against its own allowance BEFORE this change
+    // order, so editing one does not appear to write it down twice.
+    const over=[];
+    const parts=rows.map(x=>{
+      const a=allowancesFor(co).find(y=>y.id===x.id);
+      const spent=allowanceUsedById(co, x.id);
+      const before=(a?a.amount:0) + coAllowanceAmountFor(r, x.id);
+      const headroom=Math.max(0, before-spent);
+      if(x.amount>headroom) over.push({id:x.id, headroom, spent, want:x.amount});
+      return 'Allowance '+x.id+' '+fmtMoney(before)+' \u2192 '+fmtMoney(before-x.amount);
+    });
+    if(over.length){
+      const o=over[0];
+      note.textContent=fmtMoney(o.spent)+' of Allowance '+o.id+' has already been spent, so only '
+        +fmtMoney(o.headroom)+' can be written off. Reducing it by '+fmtMoney(o.want)
+        +' would claim back money that is gone.';
+      note.style.color='var(--danger)'; coGenRollTotal(COGEN_IDX); return;
     }
-    coGenRollTotal(COGEN_IDX); return;
-  }
-  const id=(document.getElementById('cg-allow-id')||{}).value||'';
-  const amt=payNum((document.getElementById('cg-allow-amt')||{}).value);
-  if(!id){
-    note.textContent = amt ? 'Choose which allowance this is drawn from, or the draw cannot be tracked.'
-                           : 'Nothing drawn from an allowance — the whole amount increases the contract.';
-    note.style.color = amt ? 'var(--danger)' : 'var(--muted)';
-    coGenRollTotal(COGEN_IDX); return;
-  }
-  // What remains, ignoring this change order's own recorded draw so editing it
-  // does not appear to consume the allowance twice.
-  const left=allowanceRemainingById(rowCompany(r), id) + Math.min(payNum(r['Applied to Allowance']), coApprovedAmount(r));
-  if(amt>left){
-    note.textContent='Only '+fmtMoney(left)+' remains on Allowance '+id+'. Drawing '+fmtMoney(amt)+' would exceed it.';
-    note.style.color='var(--danger)';
-  } else {
-    note.textContent=fmtMoney(left)+' remaining on Allowance '+id+(amt?(', '+fmtMoney(left-amt)+' after this change order.'):'.');
+    if(total>cut){
+      note.textContent='The lines write off '+fmtMoney(total)+' but the change order is only worth '
+        +fmtMoney(cut)+'. An allowance cannot be reduced by money the change order does not return.';
+      note.style.color='var(--danger)'; coGenRollTotal(COGEN_IDX); return;
+    }
+    note.textContent=parts.join('  \u00b7  ')
+      +(total<cut?('  \u00b7  '+fmtMoney(cut-total)+' is a plain contract credit.'):'');
     note.style.color='var(--muted)';
+    coGenRollTotal(COGEN_IDX); return;
   }
+  if(!rows.length){
+    note.textContent='Nothing drawn from an allowance \u2014 the whole amount increases the contract.';
+    note.style.color='var(--muted)'; coGenRollTotal(COGEN_IDX); return;
+  }
+  // Each line against its own allowance, ignoring this change order's own
+  // recorded draw so editing it does not appear to consume the allowance twice.
+  const over=[];
+  const parts=rows.map(x=>{
+    const left=allowanceRemainingById(co, x.id) + coAllowanceAmountFor(r, x.id);
+    if(x.amount>left) over.push({id:x.id, left, want:x.amount});
+    return 'Allowance '+x.id+': '+fmtMoney(left-x.amount)+' left of '+fmtMoney(left);
+  });
+  if(over.length){
+    const o=over[0];
+    note.textContent='Only '+fmtMoney(o.left)+' remains on Allowance '+o.id+'. Drawing '
+      +fmtMoney(o.want)+' would exceed it.';
+    note.style.color='var(--danger)'; coGenRollTotal(COGEN_IDX); return;
+  }
+  const worth=coApprovedAmount(r);
+  if(total>worth){
+    note.textContent='The lines draw '+fmtMoney(total)+' but the change order is only worth '
+      +fmtMoney(worth)+'. A draw cannot exceed what is being paid.';
+    note.style.color='var(--danger)'; coGenRollTotal(COGEN_IDX); return;
+  }
+  note.textContent=parts.join('  \u00b7  ')
+    +'  \u00b7  '+fmtMoney(Math.max(0,worth-total))+' reaches the contract.';
+  note.style.color='var(--muted)';
   coGenRollTotal(COGEN_IDX);
 }
 function coGenRollList(idx){
@@ -9298,7 +9371,7 @@ function coContractMathFor(r, rolled){
       ? x
       : { row:x, amount:coApprovedAmount(x), proposed:coApprovedAmount(x) }));
   const drawOf=e=>(e.amount<0) ? 0
-    : Math.max(0, Math.min(payNum(e.row&&e.row['Applied to Allowance']), e.amount));
+    : Math.max(0, Math.min(coSplitsTotal(e.row), e.amount));
   const impactOf=e=>(e.amount<0) ? e.amount : Math.max(0, e.amount-drawOf(e));
   const thisImpact=set.reduce((sum,e)=>sum+impactOf(e),0);
   return { company:co, original, previous, prior:original+previous,
@@ -10416,7 +10489,7 @@ function coAllowanceDraw(r){
   // nothing. The lower bound is what handles a deduct: it returns money to the
   // owner rather than funding scope, and Math.min against a negative amount
   // used to return a NEGATIVE draw, which credited the allowance back.
-  return Math.max(0, Math.min(payNum(r&&r['Applied to Allowance']), coApprovedAmount(r)));
+  return Math.max(0, Math.min(coSplitsTotal(r), coApprovedAmount(r)));
 }
 // The part that actually lands on the contract. A deduct lands in full and
 // reduces it — clamping at zero here made a credit disappear from the
@@ -10455,9 +10528,18 @@ function allowanceReducedById(name, id){
   const want=String(id||'').trim().toUpperCase();
   return (allData.co||[]).filter(r=>coIsApproved(r)
       && String(r['Company']||'').trim().toLowerCase()===norm
-      && coApprovedAmount(r) < 0
-      && coAllowanceId(r)===want)
-    .reduce((sum,r)=>sum+Math.abs(coApprovedAmount(r)), 0);
+      && coApprovedAmount(r) < 0)
+    .reduce((sum,r)=>{
+      // A deduct writes down the allowances named on it. Where it names none,
+      // the whole reduction is a plain contract credit and touches no
+      // allowance at all.
+      const share=coAllowanceAmountFor(r, want);
+      if(!share) return sum;
+      // It can write off no more in total than the change order is worth.
+      const total=coSplitsTotal(r), cut=Math.abs(coApprovedAmount(r));
+      const scale=total>cut ? cut/total : 1;
+      return sum + share*scale;
+    }, 0);
 }
 // `amount` is what the allowance is worth NOW. `original` is what the contract
 // set it at. Callers asking what is left, or what may still be drawn, want the
@@ -10490,6 +10572,63 @@ function allowanceFor(name){
   return allowancesFor(name).reduce((s,a)=>s+a.amount,0);
 }
 function coAllowanceId(r){ return String((r&&r['Allowance'])||'').trim().toUpperCase(); }
+// Every allowance this change order touches, as [{id, amount}] with positive
+// amounts. What the amounts MEAN depends on the sign of the change order: on a
+// positive one they are draws, on a deduct they are write-downs. Rows written
+// before allowances could be shared carry the single Allowance / Applied to
+// Allowance pair, which reads back as a list of one.
+function coAllowanceSplits(r){
+  if(!r) return [];
+  const out=[];
+  const add=(id,amt)=>{
+    // A line carries a magnitude; the change order's own sign decides whether
+    // it means a draw or a write-down. A NEGATIVE line is not a magnitude — it
+    // is bad data, and reading it as either would be guessing, so it is ignored.
+    const i=String(id||'').trim().toUpperCase(), a=payNum(amt);
+    if(!i || !(a>0)) return;
+    const found=out.find(x=>x.id===i);
+    if(found) found.amount+=a; else out.push({id:i, amount:a});
+  };
+  let raw=[];
+  try{ raw=JSON.parse(r['Allowance Splits']||'[]'); }catch(e){ raw=[]; }
+  if(Array.isArray(raw) && raw.length){ raw.forEach(x=>x&&add(x.id,x.amount)); return out; }
+  // The single pair, with the two things it left implicit made explicit:
+  //
+  //  - A draw recorded before allowances were named carries an amount and no
+  //    letter. It belonged to the only allowance there was, which is A.
+  //  - A deduct names the allowance it settles and leaves the amount blank,
+  //    because the amount was the change order's own value. With several
+  //    allowances every line must say how much, so the single case fills it in.
+  const id=String(r['Allowance']||'').trim().toUpperCase();
+  const amt=payNum(r['Applied to Allowance']);
+  if(amt) add(id||'A', amt);
+  else if(id && coApprovedAmount(r)<0) add(id, Math.abs(coApprovedAmount(r)));
+  return out;
+}
+function coSplitsTotal(r){ return coAllowanceSplits(r).reduce((s,x)=>s+x.amount,0); }
+// Writing the list back. The single pair is kept in step when there is exactly
+// one, so anything still reading it — an older export, a spreadsheet somebody
+// keeps — is not silently wrong.
+function coSetAllowanceSplits(r, splits){
+  if(!r) return;
+  const clean=[];
+  (splits||[]).forEach(x=>{
+    const id=String((x&&x.id)||'').trim().toUpperCase(), amt=payNum(x&&x.amount);
+    if(!id || !(amt>0)) return;
+    const f=clean.find(y=>y.id===id);
+    if(f) f.amount+=amt; else clean.push({id, amount:amt});
+  });
+  r['Allowance Splits'] = clean.length>1 ? JSON.stringify(clean) : '';
+  r['Allowance'] = clean.length===1 ? clean[0].id : (clean.length ? '' : '');
+  r['Applied to Allowance'] = clean.length===1 ? String(clean[0].amount) : '';
+  if(clean.length>1){ r['Allowance']=clean.map(x=>x.id).join('+'); r['Applied to Allowance']=String(clean.reduce((s,x)=>s+x.amount,0)); }
+}
+// What one allowance gets from this change order, whichever way it points.
+function coAllowanceAmountFor(r, id){
+  const want=String(id||'').trim().toUpperCase();
+  const f=coAllowanceSplits(r).find(x=>x.id===want);
+  return f ? f.amount : 0;
+}
 // Fill the picker from whichever company the change order belongs to, and say
 // what is left so an over-draw is visible before it is submitted rather than
 // after it is approved.
@@ -10501,9 +10640,17 @@ function allowanceUsedById(name, id){
   const norm=String(name||'').trim().toLowerCase();
   const want=String(id||'').trim().toUpperCase();
   return (allData.co||[]).filter(r=>coIsApproved(r)
-      && String(r['Company']||'').trim().toLowerCase()===norm
-      && (coAllowanceId(r)===want || (!coAllowanceId(r) && want==='A')))
-    .reduce((s,r)=>s+coAllowanceDraw(r),0);
+      && String(r['Company']||'').trim().toLowerCase()===norm)
+    .reduce((sum,r)=>{
+      // The draw is capped at what the change order is worth, so when it is
+      // split across several allowances each takes its share of the cap rather
+      // than each being capped separately. The same scaling is what excludes a
+      // deduct: coAllowanceDraw is zero on one, so its lines contribute
+      // nothing here and are counted as write-downs instead.
+      const total=coSplitsTotal(r);
+      const scale=total>0 ? Math.min(1, coAllowanceDraw(r)/total) : 0;
+      return sum + coAllowanceAmountFor(r, want)*scale;
+    },0);
 }
 function allowanceUsedBy(name){
   const norm=String(name||'').trim().toLowerCase();

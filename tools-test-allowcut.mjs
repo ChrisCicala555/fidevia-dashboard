@@ -73,10 +73,10 @@ ok(P.run(`allowanceReducibleById('Summit Builders','A')`)===60000, 'an untouched
 ok(P.run(`allowanceReducibleById('Summit Builders','ZZ')`)===0, 'and an allowance that does not exist, by nothing');
 {
   const g = html.split('function coGenAllowNote(){')[1].split('\n}')[0];
-  ok(/if\(cut>headroom\)/.test(g), 'the generator refuses to go further');
+  ok(/if\(x\.amount>headroom\) over\.push/.test(g), 'the generator refuses to go further');
   ok(/would claim back money that is gone/.test(g), 'and says why in those terms');
-  ok(/const before=\(a\?a\.amount:0\) \+ \(coAllowanceId\(r\)===id \? cut : 0\)/.test(g),
-     'measuring against the allowance BEFORE this change order, so editing it does not appear to cut twice');
+  ok(/const before=\(a\?a\.amount:0\) \+ coAllowanceAmountFor\(r, x\.id\)/.test(g),
+     'measuring each line against its own allowance BEFORE this change order, so editing it does not appear to cut twice');
 }
 
 console.log('Never below zero');
@@ -86,14 +86,12 @@ ok(A().amount===0, 'writing off more than the allowance holds floors it at nothi
 console.log('What the generator shows');
 {
   const g = html.split('function coGenAllowNote(){')[1].split('\n}')[0];
-  ok(/reduced from '\+fmtMoney\(before\)\+' to '\+fmtMoney\(before-cut\)/.test(g),
-     'a deduct says what the allowance was and what it becomes');
-  ok(/Choose an allowance if it is writing one down/.test(g),
-     'a deduct with none chosen says it may want one, rather than silently being contract-only');
-  ok(/if\(wrap\) wrap\.style\.display = coIsDeduct\(r\) \? 'none' : ''/.test(g),
-     'the draw amount field is hidden on a deduct — the reduction is the change order’s own value, not a second number');
-  ok(/if\(coIsDeduct\(r\) && amtEl\)\{ amtEl\.value=''; r\['Applied to Allowance'\]=''; \}/.test(g),
-     'and any draw already recorded is cleared, so a row cannot both draw and reduce');
+  ok(/fmtMoney\(before\)\+' \\u2192 '\+fmtMoney\(before-x\.amount\)/.test(g),
+     'a deduct says what each allowance was and what it becomes');
+  ok(/Add a line for each allowance it settles/.test(g),
+     'a deduct naming none is told it may want some, rather than silently being contract-only');
+  ok(/The lines write off '\+fmtMoney\(total\)\+' but the change order is only worth/.test(g),
+     'and the lines together cannot write off more than the change order returns');
 }
 ok(/\(a\.reduced\?\(' \(reduced from '\+fmtMoney\(a\.original\)\+'\)'\):''\)/.test(html),
    'and the financial summary says an allowance was reduced rather than quietly showing a smaller number');

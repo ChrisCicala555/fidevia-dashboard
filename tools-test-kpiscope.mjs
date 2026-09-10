@@ -31,7 +31,8 @@ function allowanceFor(n){const c=currentProject.config.contractors.find(x=>x.nam
 `;
 
 const code=[harness,
-  grab('function coApprovedAmount'), grab('function coAllowanceDraw'),
+  grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
+  grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'),
   grab('function allowanceUsedBy'), grab('function coContractImpactFor'),
   grab('function financialTotals'),

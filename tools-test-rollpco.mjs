@@ -96,9 +96,16 @@ ok(/function coGenRolledSet/.test(html), 'the agreed amounts are read back');
   // These two used to match the exact text of the expressions, and broke when
   // deducts gave them a lower bound and a negative branch — while the thing
   // they were checking never changed. They now run the expressions instead.
-  const drawOf = eval('(' + cm.split('const drawOf=')[1].split(';\n')[0] + ')');
-  const impactOf = eval('(' + cm.split('const impactOf=')[1].split(';\n')[0] + ')');
+  // drawOf leans on the shared allowance accessors, so those come along rather
+  // than being reimplemented here — a second copy would drift from the first.
   const payNum = x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
+  const grabFn = name => 'function '+name+html.split('function '+name)[1].split('\n}')[0]+'\n}';
+  // One scope: a module is strict, so eval'd declarations do not leak out of it.
+  const [drawOf, impactOf] = eval('(function(){'
+    + "const payNum = x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\\-]/g,''))||0;"
+    + grabFn('coApprovedAmount') + grabFn('coAllowanceSplits') + grabFn('coSplitsTotal')
+    + 'return [' + cm.split('const drawOf=')[1].split(';\n')[0] + ','
+                 + cm.split('const impactOf=')[1].split(';\n')[0] + '];})()');
   {
     // Proposed 10,000, agreed 6,000, with 8,000 recorded against an allowance.
     const e={row:{'Applied to Allowance':'8000'}, amount:6000, proposed:10000};

@@ -68,24 +68,28 @@ ok(/function alwRemove/.test(html) && !/function alwReletter/.test(html),
 
 // ── change orders ──
 // 'Rolled Into' now sits between them.
-ok(/'Applied to Allowance','Allowance','Rolled Into','Cause'/.test(html), 'the log records which allowance');
+ok(/'Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause'/.test(html),
+   'the log records which allowance, and the list for a change order covering several');
 // The allowance is set on the change order now, not the proposal.
-ok(/id="cg-allow-id"/.test(html), 'the change order asks which');
-ok(/id="cg-allow-amt"/.test(html), 'and how much');
+ok(/id="cg-allow-rows"/.test(html), 'the change order asks which');
+ok(/class="'\+pre\+'-allow-amt"/.test(html), 'and how much, per line');
 ok(!/id="f-allow-id"/.test(html) && !/id="f-allow"/.test(html),
    'the proposal form no longer allocates one');
 ok(/function coGenAllowFill/.test(html), 'options come from that contract');
 {
   const cn = html.split('function coGenAllowNote')[1].split('function coGenRollList')[0];
   ok(/would exceed it/.test(cn), 'an over-draw is flagged before generating');
-  ok(/or the draw cannot be tracked/.test(cn), 'an amount with no allowance named is flagged');
-  ok(/after this change order/.test(cn), 'and what is left afterwards is shown');
-  ok(/ignoring this change order's own recorded draw|Math\.min\(payNum\(r\['Applied to Allowance'\]\)/.test(cn),
+  ok(/Nothing drawn from an allowance/.test(cn), 'no allocation at all is stated plainly');
+  ok(/left of '\+fmtMoney\(left\)/.test(cn), 'and what is left afterwards is shown');
+  ok(/allowanceRemainingById\(co, x\.id\) \+ coAllowanceAmountFor\(r, x\.id\)/.test(cn),
      'editing an existing draw does not read as consuming the allowance twice');
 }
 {
-  const ub = html.split('function allowanceUsedById')[1].split('function allowanceUsedBy\\(name\\)')[0];
-  ok(/!coAllowanceId\(r\) && want==='A'/.test(ub),
+  // This rule moved into coAllowanceSplits when a change order could name
+  // several allowances: it is a fact about reading an old row, not about
+  // totalling, and it belongs with the other legacy handling.
+  const sp = html.split('function coAllowanceSplits')[1].split('\nfunction coSplitsTotal')[0];
+  ok(/if\(amt\) add\(id\|\|'A', amt\)/.test(sp),
      'a draw recorded before allowances were named counts against A, so totals still add up');
 }
 

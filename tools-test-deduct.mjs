@@ -96,12 +96,13 @@ console.log('A deduct never draws, but may write an allowance down');
 {
   const g = html.split('function coGenAllowNote(){')[1].split('\n}')[0];
   ok(/if\(coIsDeduct\(r\)\)\{/.test(g), 'a deduct takes its own path through the note');
-  ok(/if\(wrap\) wrap\.style\.display = coIsDeduct\(r\) \? 'none' : ''/.test(g),
-     'the DRAW amount field is hidden, because a deduct spends nothing');
-  ok(/if\(coIsDeduct\(r\) && amtEl\)\{ amtEl\.value=''; r\['Applied to Allowance'\]=''; \}/.test(g),
-     'and any draw already recorded is cleared, so one row cannot both draw and reduce');
-  ok(/reduced from '\+fmtMoney\(before\)\+' to '\+fmtMoney\(before-cut\)/.test(g),
-     'while the allowance picker stays live and says what the allowance becomes');
+  // The single draw field is gone: a change order can name several allowances,
+  // so each line carries its own amount and the deduct branch reads the list.
+  ok(/const rows=allowRowsRead\('cg'\)/.test(g), 'the note reads every line, not one field');
+  ok(/fmtMoney\(before\)\+' \\u2192 '\+fmtMoney\(before-x\.amount\)/.test(g),
+     'and says what each allowance becomes');
+  ok(/is a plain contract credit/.test(g),
+     'while any part of the deduct beyond the allowances it settles is named as what it is');
 }
 ok(R(`coAllowanceDraw(${CO(-10000,'5000')})`)===0,
    'and whatever is on the row, a deduct still draws nothing');

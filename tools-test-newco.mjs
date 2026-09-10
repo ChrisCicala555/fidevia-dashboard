@@ -28,7 +28,8 @@ ok(/if\(!newCoMayIssue\(\)\) return;/.test(html), 'and so is submitting');
 // the form
 ok(/id="nc-company"/.test(html) && /id="nc-desc"/.test(html) && /id="nc-file"/.test(html),
    'contract, description and document are asked for');
-ok(/id="nc-allow-id"/.test(html) && /id="nc-allow-amt"/.test(html), 'the allowance is set here');
+ok(/id="nc-allow-rows"/.test(html) && /allowRowAdd\('nc'/.test(html),
+   'the allowances are set here, one line each so a change order can cover several');
 ok(/id="nc-roll-list"/.test(html), 'and the proposals it covers');
 ok(/class="nc-roll-amt"[^>]*data-proposed/.test(html) || /nc-roll-amt/.test(html),
    'each at the amount agreed');
