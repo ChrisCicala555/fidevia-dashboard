@@ -1855,7 +1855,7 @@
         <div class="field" style="flex:1;"><label>Change order #</label>
           <input id="nc-num" autocomplete="off" placeholder="Auto if left blank"></div>
       </div>
-      <div class="field"><label>Description *</label><input id="nc-desc" autocomplete="off" placeholder="Structural revisions per ASI-004"></div>
+      <div class="field"><label>Description *</label><input id="nc-desc" autocomplete="off" placeholder="Structural revisions per ASI-004" oninput="newCoDescTyped()"></div>
       <div class="field-row">
         <div class="field" style="flex:1;"><label>Date issued</label><input type="date" id="nc-date"></div>
         <div class="field" style="flex:1;"><label>Amount ($)</label>
@@ -4834,7 +4834,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 06:45';
+const BUILD_STAMP='2026-09-11 07:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9029,6 +9029,7 @@ function openNewCo(){
     +cts.map(c=>'<option>'+esc(c.name)+'</option>').join('');
   ['nc-num','nc-desc','nc-amount'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   { const f=document.getElementById('nc-file'); if(f) f.value=''; }
+  NC_DESC_AUTO=true;
   newCoFileChanged();
   allowRowsRender('nc', ALLOW_LIST_CACHE.nc||[], []);
   const d=document.getElementById('nc-date'); if(d) d.value=etToday();
@@ -9094,6 +9095,22 @@ function newCoFileChanged(){
     ? 'The executed change order, uploaded to Box against this record. Nothing will be drawn.'
     : 'Leave this empty and the change order document is drawn for you. Upload one only if it was written outside the dashboard.';
 }
+// Ticking a proposal fills the description from it, because the change order
+// is describing that work and retyping it is both a waste and a chance to
+// disagree with the proposal.
+//
+// It stops as soon as somebody types their own, and starts again if they clear
+// the field: an autofill that overwrites what a person wrote is worse than no
+// autofill at all.
+let NC_DESC_AUTO=true;
+function newCoDescTyped(){
+  const el=document.getElementById('nc-desc');
+  NC_DESC_AUTO = !el || !String(el.value||'').trim();
+}
+function newCoDescFrom(set){
+  return (set||[]).map(e=>String((e.row&&e.row['Description'])||'').trim())
+    .filter(Boolean).join('; ');
+}
 function newCoAllowChanged(){ newCoTotals(); }
 function newCoTotals(){
   const el=document.getElementById('nc-total');
@@ -9105,6 +9122,8 @@ function newCoTotals(){
   // this, so a standalone deduct has to be seen as a deduct here too.
   const gross=set.length ? set.reduce((s,e)=>s+e.amount,0)
                          : payNum((document.getElementById('nc-amount')||{}).value);
+  { const d=document.getElementById('nc-desc');
+    if(d && NC_DESC_AUTO) d.value=newCoDescFrom(set); }
   { const el=document.getElementById('nc-amount'), hint=document.getElementById('nc-amount-hint');
     if(el){
       if(set.length){
