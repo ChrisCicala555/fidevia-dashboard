@@ -71,6 +71,7 @@ purpose.
 |---|---|
 | Allowance Adjustment document (`TODO-allowance-adjustment.md`) | The arithmetic now exists: a deduct tied to an allowance writes it down and reduces the contract. What is left is the document itself — the paper that records the reconciliation |
 | Who owns schedule updates; projected vs actual milestone dates (`TODO-schedule-ownership-and-projected.md`) | Both need a decision from you about how the project is run, not a technical one |
+| E-signature: one document all parties sign (`TODO-esignature.md`) | The requirement is settled and the vendor model fits it. Blocked on a volume figure — PCOs raised vs change orders executed — because that is what any quote is priced against |
 | Restore something from a Deleted folder | Recovery is currently manual: move the folder back in Box, re-create the row. Worth building only if it happens more than rarely |
 | `[Fidevia]` prefix on the invite and "added to" emails | The only two without it. Looks accidental, but changing it changes mail people have already been trained to look for |
 | More notification subjects editable in Settings | Only new RFI, CO and submittal are editable today. Waiting on your marked-up copy of the notification emails document |
