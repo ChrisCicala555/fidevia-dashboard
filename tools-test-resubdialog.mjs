@@ -45,9 +45,14 @@ console.log('The contractor sending a revision back');
 
 console.log('The reviewers still get their dialog');
 {
+  // On the returned step the item is with the contractor, so the architect is
+  // a reviewer with nothing to review here. Put the chain back on them to ask
+  // the question this assertion is actually about.
+  b.run("allData.sub[0]['Workflow Step']='0';");
   const a=open('a@x.test','Architect 2','architect',true,false,true);
   ok(/^Review — /.test(a.title), 'the architect is reviewing');
   ok(a.asks, 'and is asked what kind of review — the three answers are all theirs');
+  b.run("allData.sub[0]['Workflow Step']='1';");
   const f=open('cc@fidevia.com','Fidevia','',false,true,true);
   ok(f.asks && f.status, 'Fidevia keeps both the question and the decision');
 }
@@ -67,10 +72,14 @@ console.log('The rule');
      'who reviews decides whether the question is asked');
   ok(/const _sendingBack = advance && !_reviews;/.test(c),
      'and somebody advancing who does not review is sending a revision back');
-  ok(/nf\.style\.display = \(advance && _reviews\) \? '' : 'none';/.test(c),
+  ok(/nf\.style\.display = \(advance && _decides\) \? '' : 'none';/.test(c),
      'so the reviewer’s question is hidden from them');
-  ok(/if\(act && !_reviews\) act\.value='continue';/.test(c),
+  ok(/if\(act && !_decides\) act\.value='continue';/.test(c),
      'left on continue rather than on whatever it held last time');
+  // Being a reviewer is not enough: an architect whose item has gone back to
+  // the contractor is a reviewer with nothing to review here.
+  const v=open('a@x.test','Architect 2','architect',true,false,true);
+  ok(!v.asks, 'a reviewer looking at somebody else’s step is not asked either');
 }
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-resubdialog.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));

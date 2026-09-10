@@ -72,12 +72,20 @@ ok(opened().decides, 'Fidevia keeps it — acting on somebody else’s step is t
 
 console.log('The rule');
 {
-  const c = html.split("const sf=document.getElementById('reply-status-field')")[1].slice(0,900);
-  ok(/const mineNow=replyStepIsMine\(key, r\);/.test(c), 'whose step it is');
-  ok(/const rules = !EXTERNAL \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\);/.test(c),
+  const _fn = html.split('function openReply')[1];
+  const c = _fn.slice(0, _fn.indexOf('\nfunction '));
+  ok(/const _mineNow = replyStepIsMine\(key, r\);/.test(c), 'whose step it is');
+  ok(/const _reviews = !EXTERNAL \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\);/.test(c),
      'and whether the reader decides at all');
-  ok(/const decides = \(mineNow && rules\) \|\| \(IS_ADMIN && !viewingAsExternal\(\)\);/.test(c),
+  ok(/const _decides = \(_mineNow && _reviews\) \|\| \(IS_ADMIN && !viewingAsExternal\(\)\);/.test(c),
      'both required — dropping either one hands somebody a decision that is not theirs');
+  // Both fields are halves of the same act, and one of them used to answer a
+  // looser question: an architect told the decision was not theirs to record
+  // was asked, immediately below, which kind of review they were recording.
+  ok(/nf\.style\.display = \(advance && _decides\) \? '' : 'none';/.test(c),
+     'and the same answer governs "What are you doing?" as governs the status');
+  ok(/if\(sf\) sf\.style\.display = _decides \? '' : 'none';/.test(c),
+     'computed once rather than twice, so they cannot drift apart');
 }
 {
   const c = html.split('function replyStepIsMine')[1].split('\n// The reader is the side')[0];

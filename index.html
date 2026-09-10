@@ -4583,7 +4583,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-09 22:10';
+const BUILD_STAMP='2026-09-09 23:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11712,7 +11712,17 @@ function openReply(key,i,advance){
   // they are sending the revision back. So the question is asked of reviewers,
   // and the title says which of the two things is happening rather than calling
   // a resubmission a review.
+  // Three facts, worked out once: is this reader somebody who reviews at all,
+  // is the chain on them now, and therefore may they record a review here.
+  //
+  // The status field already used all three. "What are you doing?" used only
+  // the first, so an architect looking at an item that had gone back to the
+  // contractor was told the decision was not theirs to record and then asked
+  // which kind of review they were recording. Both fields belong to the same
+  // act, so they now answer to the same condition.
   const _reviews = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+  const _mineNow = replyStepIsMine(key, r);
+  const _decides = (_mineNow && _reviews) || (IS_ADMIN && !viewingAsExternal());
   const _sendingBack = advance && !_reviews;
   document.getElementById('reply-title').textContent=
     (_sendingBack ? 'Submit Revision — ' : (advance ? 'Review — ' : 'Reply — '))
@@ -11721,11 +11731,11 @@ function openReply(key,i,advance){
   {
     const nf=document.getElementById('reply-next-field'), ns=document.getElementById('reply-next');
     if(nf && ns){
-      nf.style.display = (advance && _reviews) ? '' : 'none';
+      nf.style.display = (advance && _decides) ? '' : 'none';
       // Left on 'continue' when it is hidden, so the answer the submitter never
       // gave is the one that simply moves the chain along.
-      { const act=document.getElementById('reply-action'); if(act && !_reviews) act.value='continue'; }
-      if(advance && _reviews){
+      { const act=document.getElementById('reply-action'); if(act && !_decides) act.value='continue'; }
+      if(advance && _decides){
         const seen=new Set(); const opts=[];
         (allData.contacts||[]).forEach(c=>{
           const nm=String(c['Name']||'').trim(); const em=String(c['Email']||'').trim();
@@ -11774,14 +11784,11 @@ function openReply(key,i,advance){
     // reader is somebody who decides at all: a contractor answering a return is
     // on their own step and is still resubmitting, not ruling on their own
     // submittal. Dropping the second half would have handed them Approve.
-    const mineNow=replyStepIsMine(key, r);
-    const rules = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
-    const decides = (mineNow && rules) || (IS_ADMIN && !viewingAsExternal());
-    if(sf) sf.style.display = decides ? '' : 'none';
+    if(sf) sf.style.display = _decides ? '' : 'none';
     if(hint){
-      hint.style.display = (decides || !rules) ? 'none' : '';
-      const who=(decides || !rules) ? '' : replyWaitingOn(key, r);
-      hint.textContent = (decides || !rules) ? ''
+      hint.style.display = (_decides || !_reviews) ? 'none' : '';
+      const who=(_decides || !_reviews) ? '' : replyWaitingOn(key, r);
+      hint.textContent = (_decides || !_reviews) ? ''
         : (who ? 'This is with '+who+'. You can add a version or a note here; the decision is theirs to record.'
                : 'You can add a version or a note here. Recording a decision is for whoever the chain is on.');
     }
