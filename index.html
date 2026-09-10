@@ -4605,7 +4605,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 16:20';
+const BUILD_STAMP='2026-09-10 17:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7014,19 +7014,19 @@ const FORMS = {
     <div class="field"><label>File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Any file type — uploaded directly to Box.</p></div>`},
   cdaily_ext:{title:'Upload Daily Report',html:`
     <p class="file-hint" style="margin:0 0 14px;">Upload your daily report. Fidevia records it against <strong id="f-ext-co-label"></strong> and today's date, then reviews it.</p>
-    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF or photos.</p></div>`},
+    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">PDF or photos. Choose several to file a batch \u2014 each becomes its own row.</p></div>`},
   payapp_ext:{title:'Upload Payment Application',html:`
     <p class="file-hint" style="margin:0 0 14px;">Upload your pay application. Fidevia records it against <strong id="f-ext-co-label"></strong>, enters the amounts from your document, then reviews and signs.</p>
     <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
     <div class="field"><label>Notes</label><textarea autocomplete="off" id="f-notes" placeholder="Optional — anything worth recording alongside the report."></textarea></div>
-    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The report document itself.</p></div>`},
+    <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">The report document itself. Choose several to file a batch — each becomes its own row, sharing the date and company above.</p></div>`},
   payroll:{title:'Upload Certified Payroll',html:`
     <div class="field-row"><div class="field"><label>Week Ending</label><input autocomplete="off" type="date" id="f-week"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
     <div class="field-row"><div class="field"><label>Payroll #</label><input autocomplete="off" id="f-num" placeholder="e.g. 12"></div><div class="field"></div></div>
     <div class="field"><label>Notes</label><textarea autocomplete="off" id="f-notes"></textarea></div>
-    <div class="field"><label>Certified Payroll File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Upload the signed certified payroll (PDF).</p></div>`},
+    <div class="field"><label>Certified Payroll File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">The signed certified payroll (PDF). Choose several to file a batch — each becomes its own row, sharing the week ending and company above.</p></div>`},
   gendocument:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Permit set, RFI response packet…"></div>
     <div class="field-row"><div class="field"><label>Category</label><select autocomplete="off" id="f-cat"><option>General</option><option>Permits</option><option>Reports</option><option>Correspondence</option><option>Closeout</option><option>Other</option></select></div><div class="field"><label>Version</label><input autocomplete="off" id="f-ver" placeholder="Rev 1"></div></div>
@@ -7812,6 +7812,12 @@ async function submitForm(){
     }
 
     let attachId='',attachName='';
+    // A contractor filing a week of reports should not have to open this form
+    // seven times. Each file still becomes its own row — the log is one report
+    // per day, and that does not change — they just share the date and company
+    // typed once above.
+    const BATCH_FORMS=['cdaily','cdaily_ext','payroll'];
+    const _batch=[];
     const fi=document.getElementById('f-file');
     if(fi&&fi.files.length>0){
       let uploadFolderId=folderId;
@@ -7821,10 +7827,26 @@ async function submitForm(){
       }
       const _num=(currentModal==='document')?v('f-name'):(PRE_NUM||v('f-num'));
       if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
-      prog.textContent='Uploading file to Box…';
-      const up=await boxUploadBinary(fi.files[0],uploadFolderId, uploadProgressTo(prog,'Uploading file'));
-      const entry=up.entries?up.entries[0]:up;
-      attachId=entry.id||''; attachName=fi.files[0].name;
+      const _files=[...fi.files];
+      const _many=BATCH_FORMS.includes(currentModal) && _files.length>1;
+      const _list=_many?_files:[_files[0]];
+      for(let _i=0;_i<_list.length;_i++){
+        const _f=_list[_i];
+        // One that fails does not take the rest with it: on a batch of ten, the
+        // nine that landed are worth keeping.
+        try{
+          prog.textContent = _many ? ('Uploading '+_f.name+' ('+(_i+1)+' of '+_list.length+')…') : 'Uploading file to Box…';
+          const up=await boxUploadBinary(_f,uploadFolderId, uploadProgressTo(prog,(_many?('Uploading '+(_i+1)+' of '+_list.length):'Uploading file')));
+          const entry=up.entries?up.entries[0]:up;
+          _batch.push({id:entry.id||'', name:(up&&up._renamedTo)||_f.name});
+        }catch(e){
+          if(!_many) throw e;
+          _batch.push({id:'', name:_f.name, error:e.message||'upload failed'});
+        }
+      }
+      const _ok=_batch.filter(x=>x.id);
+      if(!_ok.length && _batch.length) throw new Error('Nothing could be uploaded: '+(_batch[0].error||'unknown error'));
+      attachId=_ok[0].id; attachName=_ok[0].name;
     }
 
     let _senderEmail=''; try{ const u=await auth0Client.getUser(); _senderEmail=u.email||''; }catch(e){}
@@ -7926,21 +7948,38 @@ async function submitForm(){
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfStepsFor(key, rowCompany(newRow)); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
+    // One row per file. The first is the row built above; the rest are copies
+    // of it carrying their own attachment.
+    const _ok=_batch.filter(x=>x.id);
+    const _newRows=[newRow];
+    if(newRow && _ok.length>1){
+      for(let _i=1;_i<_ok.length;_i++){
+        const _r=Object.assign({}, newRow);
+        _r['Attachment File ID']=_ok[_i].id; _r['Attachment Name']=_ok[_i].name;
+        // One number cannot describe several payrolls, so it stays with the
+        // row the person typed it for rather than being copied onto all of them.
+        if(headers.includes('Payroll #')) _r['Payroll #']='';
+        _newRows.push(_r);
+      }
+    }
+    const _failed=_batch.filter(x=>!x.id);
     if(EXTERNAL){
-      await proxyCall('appendRow',{folderId, filename:MODULES[key].log, headers, row:newRow});
-      allData[key]=(allData[key]||[]).concat([newRow]);
+      for(const _r of _newRows) await proxyCall('appendRow',{folderId, filename:MODULES[key].log, headers, row:_r});
+      allData[key]=(allData[key]||[]).concat(_newRows);
     } else {
       const existing=await findFile(folderId,MODULES[key].log);
       let rows=[];
       if(existing){ rows=(parseCSV(await boxGetText(existing.id))).rows; }
-      rows.push(newRow);
+      _newRows.forEach(_r=>rows.push(_r));
       await boxUploadText(MODULES[key].log, toCSV(headers,rows), folderId, existing?existing.id:null);
       allData[key]=rows;
     }
+    if(_failed.length) setTimeout(()=>alert(_newRows.length+' filed. '+_failed.length+' could not be uploaded: '
+      +_failed.map(x=>x.name).join(', ')+'. Try those again.'), 50);
     try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]; 
       sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
         emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],['Due Date',fmtDMY(newRow['Due Date']||'')||'—']], currentProject.name)); } }catch(e){}
-    try{ auditLog('Created', key, newRow, (newRow['Attachment Name']||newRow['File Name']||'')); }catch(e){}
+    try{ _newRows.forEach(_r=>auditLog('Created', key, _r, (_r['Attachment Name']||_r['File Name']||''))); }catch(e){}
     // Adding someone to a project should tell them so, without an administrator
     // having to remember to press Invite afterwards.
     if(key==='contacts'){ try{ await notifyContactAdded(newRow, currentProject&&currentProject.name); }catch(e){} }
