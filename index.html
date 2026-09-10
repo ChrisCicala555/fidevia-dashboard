@@ -1730,6 +1730,8 @@
       <p id="reply-status-note" style="display:none;margin:-4px 0 12px;font-size:13px;color:var(--muted);"></p>
       <div id="reply-closed-note" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:6px;
         background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
+      <div id="reply-again-note" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:6px;
+        background:var(--khaki-100,#EDEBE0);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
       <div class="field"><label>Note (optional)</label><textarea id="reply-note" rows="3" placeholder="e.g. Revise dimensions on sheet A-3" autocomplete="off"></textarea></div>
       <div class="field"><label id="reply-file-label">Upload new version (optional)</label><input type="file" id="reply-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">Adds a new version; the previous version is kept in the history below.</p></div>
       <p id="reply-return-note" style="display:none;margin:-4px 0 14px;font-size:13px;color:var(--olive-900);
@@ -4781,7 +4783,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 02:45';
+const BUILD_STAMP='2026-09-11 03:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12465,6 +12467,16 @@ function openReply(key,i,advance){
   // offered in passing.
   { const fl=document.getElementById('reply-file-label');
     if(fl) fl.textContent = _sendingBack ? 'Revised document' : 'Upload new version (optional)'; }
+  { const an=document.getElementById('reply-again-note');
+    if(an){
+      const prev=_decides ? replyAlreadyReviewed(key, r) : null;
+      an.style.display = prev ? '' : 'none';
+      an.innerHTML = prev ? ('<strong>'+(prev.mine?'You have':esc(prev.by)+' has')+' already reviewed this.</strong> '
+        +esc(prev.step)+' was recorded as '+esc(prev.outcome).toLowerCase()
+        +(prev.at?(' on '+esc(fmtDMY(prev.at))):'')+'. '
+        +'Submitting again records a second review \u2014 which is right if the document has changed or you have '
+        +'changed your mind. The earlier one stays in the history either way.') : '';
+    } }
   { const cn=document.getElementById('reply-closed-note');
     if(cn){
       const why=replyClosedReason(key, r);
@@ -12552,6 +12564,34 @@ function replyWaitingOn(key, row){
   }catch(e){ return ''; }
 }
 // Why this item is settled, in words, or '' when it is still live.
+// Whether a review for the step this dialog is acting on is already recorded,
+// and by whom. Reviewing twice is allowed — a reviewer may change their mind, or
+// the document may have been revised since — but doing it without being told is
+// how somebody ends up with two approvals on the record and no idea why.
+function replyAlreadyReviewed(key, row){
+  if(!row) return null;
+  const steps=wfEffectiveSteps(key,row);
+  if(!steps.length) return null;
+  const cur=wfActiveIdx(row);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  const map=wfSignedMap(row);
+  const mine=String(myCompany()||'').trim().toLowerCase();
+  for(let i=gs;i<=ge;i++){
+    const sig=map[String(i)];
+    if(!sig) continue;
+    // Mine if I signed it, or if my firm did and the step belongs to my firm —
+    // the same rule that lets anyone at the firm act on it in the first place.
+    const by=String(sig.by||'').trim();
+    const byEmail=wfEmailOf(by)||by.toLowerCase();
+    const isMe = (ME_EMAIL && byEmail===String(ME_EMAIL).toLowerCase())
+      || (ME_NAME && by.toLowerCase()===String(ME_NAME).trim().toLowerCase());
+    const firmStep = mine && wfStepCompany(steps[i]).toLowerCase()===mine;
+    if(!isMe && !firmStep) continue;
+    return { step:String((steps[i]&&steps[i].name)||'this step'), by:by||'somebody at your firm',
+             at:String(sig.at||''), mine:!!isMe, outcome:String(sig.outcome||'Approved') };
+  }
+  return null;
+}
 function replyClosedReason(key, row){
   try{
     if(wfIsStopped(row)) return 'It was marked '+String(row['Status']||'decided against')+', so the review chain is closed.';
