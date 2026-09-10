@@ -1060,12 +1060,12 @@
     <div class="nav-item" data-section="gendocs">Documents</div>
     <div class="nav-item nav-dailylogs" data-section="dailylogs">Daily Reports</div>
     <div class="nav-item" data-section="cdaily">Contractor Daily Reports</div>
+    <div class="nav-item" data-section="payrolls">Certified Payrolls</div>
     <div class="nav-item owner-ok hide-contractor" data-section="board" style="display:none;">Board Reports</div>
     <div class="nav-section-label">Financial Management</div>
     <div class="nav-item owner-ok" data-section="financials">Financial Summary</div>
     <div class="nav-item owner-ok" data-section="cos">Change Orders</div>
     <div class="nav-item owner-ok" data-section="payapps">Payment Applications</div>
-    <div class="nav-item" data-section="payrolls">Certified Payrolls</div>
     <div class="nav-section-label admin-only ae-admin-label">Admin</div>
     <div class="nav-item admin-only ae-readonly" data-section="settings">Settings</div>
     <div class="sidebar-footer">
@@ -4605,7 +4605,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 17:40';
+const BUILD_STAMP='2026-09-10 19:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5697,6 +5697,7 @@ async function docsCatchUp(){
 }
 function renderGenDocs(){}
 function renderContractorDaily(){
+  try{ ensureMonthFolders('contractor_daily'); }catch(e){}
   const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(5);return;}
   // Contractors upload the report itself; the document is the record, so the
@@ -5706,6 +5707,7 @@ function renderContractorDaily(){
   }).join('');
 }
 function renderPayrolls(){
+  try{ ensureMonthFolders('payrolls'); }catch(e){}
   const rows=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
   if(!rows.length){tb.innerHTML=emptyRow(6);return;}
   tb.innerHTML=withIdxSorted(rows,'Week Ending').map(({r,idx})=>{ const i=idx;
@@ -6172,6 +6174,67 @@ async function submitSchedUpload(){
 const SCHED_MONTHS=['January','February','March','April','May','June','July','August',
   'September','October','November','December'];
 function schedMonthLabel(){ const d=new Date(); return SCHED_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
+// Contractor daily reports and certified payrolls are filed month by month, so
+// the folders are month by month too: a year of a subcontractor's paperwork in
+// one folder is not a record anybody reads.
+//
+// Named YYYY-MM first so Box sorts them in order, then the month in words so a
+// person scanning the list does not have to do arithmetic.
+const MONTH_MODULES=['contractor_daily','payrolls'];
+function ymOf(d){
+  const x=(d instanceof Date)?d:parseLocalDate(String(d||''));
+  if(!x||isNaN(x)) return '';
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');
+}
+function monthFolderName(ym){
+  const m=String(ym||'').match(/^(\d{4})-(\d{2})$/);
+  return m ? (m[1]+'-'+m[2]+' '+(SCHED_MONTHS[parseInt(m[2],10)-1]||'')) : '';
+}
+// Where the filing starts: Notice to Proceed, because that is when a contractor
+// begins owing paperwork. Mobilize and the contract date are fallbacks for a
+// project that never recorded one.
+function projectStartYM(){
+  const st=(typeof scheduleObligationStart==='function') ? scheduleObligationStart() : null;
+  return (st ? ymOf(st) : '')
+    || ymOf((currentProject&&currentProject.config&&currentProject.config.contractDate)||'')
+    || ymOf(new Date());   // no dates on record: start here rather than guess
+}
+function monthsFrom(startYM, endYM){
+  const a=String(startYM||'').match(/^(\d{4})-(\d{2})$/), b=String(endYM||'').match(/^(\d{4})-(\d{2})$/);
+  if(!a||!b) return [];
+  let y=+a[1], m=+a[2]; const ey=+b[1], em=+b[2];
+  const out=[];
+  // A project whose start is somehow far in the past should not try to create
+  // a decade of folders in one go.
+  while((y<ey || (y===ey && m<=em)) && out.length<120){
+    out.push(y+'-'+String(m).padStart(2,'0'));
+    m++; if(m>12){ m=1; y++; }
+  }
+  return out;
+}
+// Idempotent, and run once per project per module: the folders that exist are
+// listed, and only the missing ones are created.
+let MONTHS_DONE={};
+async function ensureMonthFolders(key){
+  if(!MONTH_MODULES.includes(key)) return;
+  if(!currentProject || !currentProject.folders[key]) return;
+  if(!(IS_ADMIN && !viewingAsExternal())) return;   // Fidevia keeps the filing tidy
+  const tag=String(currentProject.folderId)+':'+key;
+  if(MONTHS_DONE[tag]) return; MONTHS_DONE[tag]=true;
+  const want=monthsFrom(projectStartYM(), ymOf(new Date())).map(monthFolderName).filter(Boolean);
+  if(!want.length) return;
+  const cos=((currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
+  if(!cos.length) return;
+  try{
+    for(const co of cos){
+      const coId=await findOrCreateFolder(co, currentProject.folders[key]);
+      if(!coId) continue;
+      const have=new Set((await boxList(coId)).filter(e=>e.type==='folder').map(e=>String(e.name||'').trim()));
+      for(const nm of want) if(!have.has(nm)) await findOrCreateFolder(nm, coId);
+    }
+  }catch(e){ console.warn('month folders:', e.message); MONTHS_DONE[tag]=false; }
+}
 // Everything this contract has handed over. Documents used to be where you
 // went to open one; it is not any more, so if this does not list them there is
 // nowhere to read a programme from at all.
@@ -6355,7 +6418,7 @@ async function sendScheduleChaseNow(company){
 // not been authorised to begin.
 function scheduleObligationStart(){
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
-  const d=s=>{ const x=new Date(s); return isNaN(x)?null:x; };
+  const d=s=>parseLocalDate(s);
   const pick=n=>{ const m=ms.find(x=>String(x.name||'').toLowerCase().includes(n)); return m?d(m.contract):null; };
   const cands=[pick('notice'), pick('mobilize')].filter(Boolean);
   if(!cands.length) return null;
@@ -7824,6 +7887,17 @@ async function submitForm(){
       if(['pay_apps','contractor_daily','payrolls'].includes(key)){
         const _co = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (v('f-company')||v('f-contr')||'');
         if(_co){ prog.textContent='Preparing company folder…'; try{ uploadFolderId=await (EXTERNAL ? proxyCall('ensureFolder',{parentId:folderId,name:_co}).then(d=>d.id||folderId) : findOrCreateFolder(_co, folderId)); }catch(e){} }
+        // The month the report is for, which is not always the month it is
+        // filed in — a Friday report uploaded on Monday belongs to Friday, and
+        // a payroll for the last week of a month is that month's.
+        if(MONTH_MODULES.includes(key) && uploadFolderId){
+          const _d = v('f-date-sub') || v('f-week') || etToday();
+          const _mf = monthFolderName(ymOf(_d) || ymOf(new Date()));
+          if(_mf){ prog.textContent='Preparing '+_mf+'\u2026';
+            try{ uploadFolderId = await (EXTERNAL
+              ? proxyCall('ensureFolder',{parentId:uploadFolderId,name:_mf}).then(d=>d.id||uploadFolderId)
+              : findOrCreateFolder(_mf, uploadFolderId)); }catch(e){} }
+        }
       }
       const _num=(currentModal==='document')?v('f-name'):(PRE_NUM||v('f-num'));
       if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
