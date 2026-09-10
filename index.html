@@ -4605,7 +4605,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 15:10';
+const BUILD_STAMP='2026-09-10 16:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11125,7 +11125,16 @@ function wfHasWorkflow(key){
 }
 function wfHealReturn(key,row){
   if(!row || !wfHasWorkflow(key)) return false;
-  if(!WF_RETURNED.test(String(row['Status']||''))) return false;
+  // wfIsReturnOutcome, not the loose word match. "Resubmitted" contains
+  // "resubmit", so a contractor posting a new version — which sets that status
+  // — was read as evidence that somebody had sent the item back, and this
+  // manufactured a Revise and Resubmit step nobody had asked for. The chain
+  // then moved onto it, past an architect who was still reading the thing.
+  //
+  // I introduced wfIsReturnOutcome for exactly this and converted three other
+  // callers, and left this one on the reasoning that a return step would
+  // already exist. When none exists is precisely when this invents one.
+  if(!wfIsReturnOutcome(String(row['Status']||''))) return false;
   if(wfIsDone(row) || wfIsStopped(row)) return false;
   const steps=wfEffectiveSteps(key,row); if(!steps.length) return false;
   if(steps.some(st=>st&&st.returned)) return false;      // already says so
@@ -11954,6 +11963,17 @@ function replyStepIsMine(key, row){
     return wfMyStepsIn(steps,gs,ge).length>0;
   }catch(e){ return false; }
 }
+// Is the chain sitting on a step that was sent back? Only then is a version
+// from the submitting side an answer to a request rather than a correction
+// filed while somebody else is still reading.
+function replyOnReturnedStep(key, row){
+  try{
+    const steps=wfEffectiveSteps(key,row);
+    if(!steps.length || wfIsDone(row) || wfIsStopped(row)) return false;
+    const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
+    return steps.slice(gs,ge+1).some(st=>st&&st.returned);
+  }catch(e){ return false; }
+}
 // The reader is the side that files the thing, so a version from them is a
 // resubmission rather than a comment.
 function replyIsSubmitterSide(key, row){
@@ -12009,12 +12029,18 @@ async function submitReply(){
   // exactly where the last person with the authority to set it left it —
   // rather than silently stamping 'Resubmitted' over their decision.
   const _row0=(allData[key]||[])[i]||{};
-  // A version added to a settled item does not restate the outcome. Forcing
-  // 'Resubmitted' here is what turned an approved submittal into a resubmitted
-  // one while its workflow still said complete.
+  // A version is a resubmission only when somebody asked for one. Adding one
+  // while the item is still with a reviewer is a correction, not an answer to a
+  // request that was never made — and calling it Resubmitted was what let the
+  // repair above read it as a return.
+  //
+  // A version added to a settled item does not restate the outcome either.
+  // Forcing 'Resubmitted' there is what turned an approved submittal into a
+  // resubmitted one while its workflow still said complete.
   const _closed=!!replyClosedReason(key,_row0);
+  const _answering=replyIsSubmitterSide(key,_row0) && !_closed && replyOnReturnedStep(key,_row0);
   const status=_canDecide ? document.getElementById('reply-status').value
-    : ((replyIsSubmitterSide(key,_row0) && !_closed) ? 'Resubmitted' : String(_row0['Status']||''));
+    : (_answering ? 'Resubmitted' : String(_row0['Status']||''));
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;

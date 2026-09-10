@@ -45,8 +45,7 @@ ok(b.run("allData.sub[0]['Workflow Step']")==='1', 'and the return moves it to t
   b.run(`allData.sub[0]['Status']='Revise and Resubmit';
     document.getElementById('reply-note').value='another look';`);
   const c = html.split('async function submitReply')[1].split('\n// Completing a review')[0];
-  ok(/replyIsSubmitterSide\(key,_row0\)[^?]*\? 'Resubmitted'/.test(c)
-     && /: String\(_row0\['Status'\]\|\|''\)/.test(c),
+  ok(/_answering \? 'Resubmitted'/.test(c) && /: String\(_row0\['Status'\]\|\|''\)/.test(c),
      'somebody who cannot decide leaves the status where the last decision left it');
   ok(!/_canDecide \? document\.getElementById\('reply-status'\)\.value : 'Resubmitted'/.test(c),
      'rather than stamping Resubmitted over it, which is what a reviewer would have done');

@@ -26,10 +26,11 @@ ok(/'Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejecte
   // note and must not stamp a status over the last real decision.
   ok(/_canDecide \? document\.getElementById\('reply-status'\)\.value/.test(c),
      'whoever was shown the field chooses');
-  ok(/replyIsSubmitterSide\(key,_row0\)[^?]*\? 'Resubmitted'/.test(c),
-     'the side that filed it is resubmitting');
-  ok(/&& !_closed\) \? 'Resubmitted'/.test(c),
-     'unless the item is already closed, where a version restates nothing');
+  ok(/replyIsSubmitterSide\(key,_row0\)/.test(c), 'the side that filed it is resubmitting');
+  ok(/replyOnReturnedStep\(key,_row0\)/.test(c),
+     'but only when answering a request — a version filed while a reviewer still has it is a correction');
+  ok(/&& !_closed &&/.test(c),
+     'and not on an item already closed, where a version restates nothing');
   ok(/: String\(_row0\['Status'\]\|\|''\)/.test(c),
      'and anybody else leaves the status exactly where it was');
 }

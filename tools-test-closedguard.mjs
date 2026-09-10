@@ -62,8 +62,9 @@ console.log('Filing against a closed record does not restate the outcome');
 {
   const c = html.split('async function submitReply')[1].split('\n// Completing a review')[0];
   ok(/const _closed=!!replyClosedReason\(key,_row0\);/.test(c), 'the write knows the item is settled');
-  ok(/\(replyIsSubmitterSide\(key,_row0\) && !_closed\) \? 'Resubmitted'/.test(c),
+  ok(/const _answering=replyIsSubmitterSide\(key,_row0\) && !_closed && replyOnReturnedStep\(key,_row0\);/.test(c),
      'so the submitter’s version stops being recorded as a resubmission of a finished review');
+  ok(/_answering \? 'Resubmitted'/.test(c), 'and only an answer to a request is called one');
   ok(/if\(why && !confirm\(/.test(c), 'and the guard runs before anything is written');
 }
 {
