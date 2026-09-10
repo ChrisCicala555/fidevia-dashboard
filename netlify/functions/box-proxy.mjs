@@ -393,6 +393,63 @@ async function notifyAdminsOfRequest(projectName, requester, H, projectId){
 // one company may write inside their own, or directly into the module folder —
 // never into another firm's.
 const PRIVATE_FOLDER_PREFIX = ['09', '13', '14'];
+// Deleting a record on the dashboard used to leave its documents in Box with
+// nothing pointing at them: an RFI vanished from the log while its attachment
+// and every supplementary document sat in the RFI folder, findable only by
+// someone browsing Box and unexplainable when they got there. They are moved
+// into a bin beside the module instead, so the record of what was deleted is
+// as legible as the record of what was not.
+const DELETED_BIN = {
+  rfi:'Deleted RFIs', co:'Deleted Change Orders', sub:'Deleted Submittals',
+  pay_apps:'Deleted Payment Applications', docs:'Deleted Drawings & Specs',
+  gendocs:'Deleted Documents', daily:'Deleted Daily Reports',
+  contractor_daily:'Deleted Contractor Daily Reports',
+  payrolls:'Deleted Certified Payrolls', meetings:'Deleted Meeting Minutes',
+  board:'Deleted Board Reports'
+};
+// Whatever is being moved has to already live under the module folder the
+// caller named. Without this an admin-authenticated call could name any Box id
+// and have it filed away — the ids come from a CSV, which is not a capability.
+async function underFolder(H, kind, id, ancestorId){
+  try{
+    const r = await boxFetch(`https://api.box.com/2.0/${kind}/${encodeURIComponent(id)}?fields=id,name,path_collection`, { headers: H });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const chain = ((d.path_collection && d.path_collection.entries) || []).map(e => String(e.id));
+    return chain.includes(String(ancestorId)) ? d : null;
+  }catch(e){ return null; }
+}
+async function findOrMakeChild(H, parentId, name){
+  const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+  const items = lr.ok ? ((await lr.json()).entries || []) : [];
+  const found = items.find(i => i.type === 'folder' && i.name === name);
+  if (found) return found.id;
+  const cr = await boxFetch('https://api.box.com/2.0/folders', { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent: { id: String(parentId) } }) });
+  if (cr.ok) return (await cr.json()).id;
+  if (cr.status === 409) {
+    const l2 = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(parentId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+    const i2 = l2.ok ? ((await l2.json()).entries || []) : [];
+    const f2 = i2.find(i => i.type === 'folder' && i.name === name);
+    if (f2) return f2.id;
+  }
+  throw new Error('Could not open the bin folder (Box ' + cr.status + ')');
+}
+// Deleting RFI-GC-001, raising it again and deleting it again would collide in
+// the bin. The second one keeps its name and gains the date it was binned.
+async function moveInto(H, kind, id, parentId, name, stamp){
+  const put = (body) => boxFetch(`https://api.box.com/2.0/${kind}/${encodeURIComponent(id)}`,
+    { method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let r = await put({ parent: { id: String(parentId) } });
+  if (r.status === 409) {
+    const dot = kind === 'files' ? String(name || '').lastIndexOf('.') : -1;
+    const alt = dot > 0 ? (name.slice(0, dot) + ' (' + stamp + ')' + name.slice(dot))
+                        : (String(name || 'item') + ' (' + stamp + ')');
+    r = await put({ parent: { id: String(parentId) }, name: alt });
+    if (r.ok) return alt;
+  }
+  if (!r.ok) throw new Error('Box ' + r.status + ' moving ' + (name || id));
+  return name;
+}
 async function folderWritableBy(H, t, grants, who, folderId){
   if (who.isAdmin) return true;
   if (!folderId) return false;
@@ -1763,6 +1820,49 @@ export default async (req) => {
       const r = await boxFetch(`https://upload.box.com/api/2.0/files/${encodeURIComponent(fileId)}/content`, { method: 'POST', headers: H, body: form });
       if (!r.ok) return json({ error: 'Upload failed ' + r.status }, r.status);
       return json({ ok: true, file: await r.json(), name: meta.name });
+    }
+
+    // Move a deleted record's documents into the module's bin. Called before
+    // the row is removed from the log: if this fails the caller stops, so a
+    // record is never dropped from the dashboard while its files stay put.
+    if (op === 'retireItem') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const bin = DELETED_BIN[String(body.module || '')];
+      if (!bin) return json({ error: 'That module does not file anything in Box' }, 400);
+      const modId = String(body.moduleFolderId || '');
+      if (!modId) return json({ error: 'moduleFolderId required' }, 400);
+      if (!await guardFolder(modId)) return json({ error: 'Access denied' }, 403);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const itemName = String(body.itemFolderName || '').trim();
+      const fileIds = (Array.isArray(body.fileIds) ? body.fileIds : [])
+        .map(String).map(x => x.trim()).filter(Boolean);
+      if (!itemName && !fileIds.length) return json({ ok: true, moved: [], nothing: true });
+      let binId = null;
+      const moved = [];
+      try {
+        // The item's own folder holds the attachment and every supplementary
+        // document filed against it, so moving the folder takes them all.
+        if (itemName) {
+          const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(modId)}/items?limit=1000&fields=id,name,type`, { headers: H });
+          const items = lr.ok ? ((await lr.json()).entries || []) : [];
+          const f = items.find(i => i.type === 'folder' && i.name === itemName);
+          if (f) {
+            binId = binId || await findOrMakeChild(H, modId, bin);
+            moved.push(await moveInto(H, 'folders', f.id, binId, itemName, stamp));
+          }
+        }
+        // Modules with no item folder — daily reports, payrolls — keep one
+        // attachment per row wherever it was filed, so the file itself moves.
+        for (const fid of fileIds) {
+          const d = await underFolder(H, 'files', fid, modId);
+          if (!d) continue;                       // already gone, or not ours to move
+          binId = binId || await findOrMakeChild(H, modId, bin);
+          moved.push(await moveInto(H, 'files', fid, binId, d.name, stamp));
+        }
+      } catch (e) {
+        return json({ error: String(e.message || e) }, 502);
+      }
+      return json({ ok: true, moved, bin, binId });
     }
 
     if (op === 'ensureFolder') {

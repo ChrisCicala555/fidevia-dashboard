@@ -81,12 +81,18 @@ ok('Archive is wrapped',        /withBusy\(event,\\?'Archiving/.test(src));
 ok('Delete is wrapped',         /withBusy\(ev,'Deleting/.test(src));
 ok('Delete asks for an optional reason', /askDelete\(ev, key, i\)/.test(src) && /Reason \(optional\)/.test(src));
 ok('cancelling the prompt cancels the delete', /if\(why===null\) return;/.test(src));
-ok('the reason reaches the audit log', /auditLog\('Deleted', key, removed, why\)/.test(src));
+// The reason still reaches the audit log, now alongside where the documents
+// were moved to — the two together are what make a deletion traceable later.
+ok('the reason reaches the audit log', /auditLog\('Deleted', key, removed, why\+where\)/.test(src));
 ok('the reason is omitted from the email when blank', /if\(why\) rows\.push\(\['Reason'/.test(src));
 ok('Restore is wrapped',        /withBusy\(event,\\?'Restoring/.test(src));
 ok('Approve Step is wrapped',   /withBusy\(event,\\?'Approving/.test(src));
 ok('Archive asks first',        /Archive this item\?/.test(src));
-ok('Delete still warns it is permanent', /Delete this item permanently\?/.test(src));
+// It used to say "permanently… cannot be undone", which was true of the row and
+// false of the documents: they stayed in Box. It now warns about the part that
+// really is irreversible and is honest about the part that is not.
+ok('Delete warns the record does not come back', /cannot be undone here/.test(src));
+ok('while saying the documents are kept', /"Deleted" folder in Box rather than destroyed/.test(src));
 ok('no duplicate confirm left in deleteRow',
    !/async function deleteRow[\s\S]{0,120}confirm\(/.test(src));
 ok('no duplicate confirm left in setArchived',

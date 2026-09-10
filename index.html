@@ -4003,9 +4003,10 @@ function applyReadOnlyBanners(){
 
 // ── HELPERS ──
 function delBtn(key,i){ return IS_ADMIN ? '<button class="row-act act-delete" title="Delete this record" onclick="event.stopPropagation();askDelete(event,\''+key+'\','+i+')">Delete</button>' : ''; }
-// Deletion is permanent and the audit log is the only record of it, so a note
-// about why is worth asking for. Optional: cancelling the prompt cancels the
-// deletion, but leaving it blank does not.
+// Deletion removes the row and moves the documents to the module's bin; it does
+// not destroy anything. The audit log is the only record of why, so a note is
+// worth asking for. Optional: cancelling the prompt cancels the deletion, but
+// leaving it blank does not.
 function askDelete(ev, key, i){
   let alsoRevoke=false;
   if(key==='contacts'){
@@ -4016,9 +4017,10 @@ function askDelete(ev, key, i){
       alsoRevoke=true;
     }
   }
-  const why=prompt('Delete this item permanently? This cannot be undone.\n\nReason (optional) — this is recorded in the audit log and sent to the Fidevia team:');
+  const why=prompt('Remove this record from the dashboard?\n\nIt cannot be undone here. Any documents attached to it are moved to the module\u2019s "Deleted" folder in Box rather than destroyed.\n\nReason (optional) \u2014 this is recorded in the audit log and sent to the Fidevia team:');
   if(why===null) return;                    // Cancel means cancel
-  return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why,alsoRevoke));
+  return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why,alsoRevoke))
+    .catch(e=>{ alert(e && e.message ? e.message : String(e)); });
 }
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
 const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
@@ -4092,10 +4094,56 @@ async function withBusy(ev, label, fn, confirmMsg){
   }
 }
 
+// Every Box file a row owns: the attachment, a signed copy, and each revision
+// in the version history. A row that has been revised four times points at four
+// files, and leaving three of them behind would only half-answer the question.
+function rowFileIds(row){
+  const out=[];
+  const push=v=>{ const x=String(v||'').trim(); if(x && out.indexOf(x)<0) out.push(x); };
+  if(!row) return out;
+  push(row['Attachment File ID']); push(row['File ID']); push(row['Signed File ID']);
+  try{
+    (JSON.parse(row['Version History']||'[]')||[]).forEach(v=>{ if(v) push(v.fileId); });
+  }catch(e){}
+  return out;
+}
+// The number that names the item's folder in Box, where it has one.
+// Not rowItemNumber, which already exists and answers a different question:
+// that one reads whichever number a row happens to carry, for labelling. This
+// one asks what the item's folder in Box is named, which depends on the module
+// and is blank for the modules that have no item folder.
+function rowFolderNumber(key,row){
+  if(!row) return '';
+  const f={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #',
+           docs:'Document Name',gendocs:'Document Name'}[key];
+  if(!f) return '';
+  // A change order filed as a PCO has no CO number yet, and its folder is
+  // named for the PCO.
+  return String(row[f]||(key==='co'?row['PCO #']:'')||'').trim();
+}
+async function retireRowAssets(key,row){
+  const modId=currentProject && currentProject.folders && currentProject.folders[key];
+  if(!modId) return null;
+  const num=rowFolderNumber(key,row);
+  if(!num && !rowFileIds(row).length) return {moved:[], nothing:true};
+  const d=await proxyCall('retireItem',{ module:key, moduleFolderId:modId,
+    itemFolderName: num ? itemFolderName(key,num) : '', fileIds: rowFileIds(row) });
+  return d;
+}
+
 async function deleteRow(key,i,reason,alsoRevoke){
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
   const removed=(allData[key]||[])[i];
   const why=String(reason||'').trim();
+  // Move the documents first. If Box cannot be reached the row stays on the
+  // dashboard: a record that disappears while its files sit where they were is
+  // the failure this whole change exists to prevent.
+  let retired=null;
+  try{ retired=await retireRowAssets(key,removed); }
+  catch(e){
+    throw new Error('Nothing was deleted. The documents could not be moved to '
+      +'the deleted folder in Box \u2014 '+(e.message||e)+'. The record is still here; try again.');
+  }
   // Revoke before the row goes, so a failure here leaves both records intact
   // rather than a contact deleted and access quietly still granted.
   if(alsoRevoke && removed && removed['Email']){
@@ -4108,7 +4156,11 @@ async function deleteRow(key,i,reason,alsoRevoke){
   allData[key]=rows; renderAll();
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
   // The reason belongs in the audit log first — that is the durable record.
-  auditLog('Deleted', key, removed, why);
+  // What went where, so a deletion can be traced back to the files afterwards.
+  const where=(retired && retired.moved && retired.moved.length)
+    ? (' [moved to '+retired.bin+': '+retired.moved.join(', ')+']')
+    : (retired && retired.nothing ? ' [no documents attached]' : '');
+  auditLog('Deleted', key, removed, why+where);
   try{
     // Deletion notices go to Fidevia (internal) contacts only — never external parties.
     const internal=(allData.contacts||[]).map(c=>String(c['Email']||'').trim()).filter(e=>e && e.toLowerCase().endsWith('@fidevia.com'));
@@ -4116,6 +4168,8 @@ async function deleteRow(key,i,reason,alsoRevoke){
     if(to.length){
       const rows=[['Module',MODULE_LABEL[key]||key],['Item',itemLabel(key,removed)],['Deleted By',by||'\u2014'],['When',fmtDMY(etToday())]];
       if(why) rows.push(['Reason',esc(why)]);
+      if(retired && retired.moved && retired.moved.length)
+        rows.push(['Documents','Moved to <strong>'+esc(retired.bin)+'</strong> in Box: '+esc(retired.moved.join(', '))]);
       sendEmail(to, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
         emailTemplate('A record was deleted', rows, currentProject.name));
     }
@@ -4712,7 +4766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 20:30';
+const BUILD_STAMP='2026-09-10 21:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
