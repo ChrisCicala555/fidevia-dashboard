@@ -4834,7 +4834,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 07:05';
+const BUILD_STAMP='2026-09-11 07:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9528,6 +9528,17 @@ function orgAddressLines(name){
           [[o.city,o.state].filter(Boolean).join(', '), o.zip].filter(Boolean).join(' ')].filter(x=>String(x).trim());
 }
 
+// The contractor's and the owner's addresses head the change order, so the
+// document cannot be drawn without them. Saying which fields are missing beats
+// "no address on file", which sends somebody to a form to work out for
+// themselves what it is unhappy about.
+const ORG_ADDR_FIELDS=[['line1','a street address'],['city','a city'],['state','a state'],['zip','a ZIP code']];
+function orgMissingBits(r){
+  return ORG_ADDR_FIELDS.filter(([k])=>!String((r&&r[k])||'').trim()).map(([,label])=>label);
+}
+function andList(a){
+  return a.length>1 ? (a.slice(0,-1).join(', ')+' and '+a[a.length-1]) : (a[0]||'');
+}
 function coDocumentReadiness(companyName){
   const need=[];
   const parties=[['Contractor',companyName],
@@ -9535,7 +9546,11 @@ function coDocumentReadiness(companyName){
   parties.forEach(([role,nm])=>{
     if(!String(nm||'').trim()){ need.push(role+' is not recorded on this project'); return; }
     const r=orgRecordFor(nm);
-    if(!r || !r.complete) need.push(nm+' has no address on file');
+    if(r && r.complete) return;
+    // No record at all is a different problem from a half-filled one, and
+    // "needs nothing on file at all" reads as though nothing were needed.
+    need.push(r ? (nm+' ('+role.toLowerCase()+') needs '+andList(orgMissingBits(r)))
+                : (nm+' ('+role.toLowerCase()+') has no organization record yet'));
   });
   return { ready:!need.length, missing:need };
 }
