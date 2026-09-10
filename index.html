@@ -3401,7 +3401,7 @@ function wfStepRow(prefix,key,name,person,parallel,requireAll){
     +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'" placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Company</label><input class="wf-co" autocomplete="off" readonly placeholder="—" style="background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;"></div>'
     +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one person in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. Use for signatures."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+' style="width:auto;margin-right:4px;">All must sign</label>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. A parallel group already requires this — two reviewers means two reviews — so this only adds anything to a step standing on its own."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+' style="width:auto;margin-right:4px;">All must sign</label>'
     +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
 }
 function wfBlock(prefix,key,label,steps){
@@ -4605,7 +4605,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 13:55';
+const BUILD_STAMP='2026-09-10 15:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11269,8 +11269,13 @@ function wfMarkSigned(row, idx, by, override, outcome, forName){
   // A colleague standing in for the named reviewer. Not an override — they are
   // entitled to act — but the record should not read as though the person the
   // step names was the one who answered it.
+  // "for Test Architect" means somebody else acted on their behalf. The same
+  // person recorded under their address rather than their name is not somebody
+  // else, so match on the address too before claiming a stand-in.
   { const nm=String(forName||'').trim();
-    if(nm && nm.toLowerCase()!==String(by||'').trim().toLowerCase()) m[String(idx)].forName=nm; }
+    const who=String(by||'').trim().toLowerCase();
+    const same = nm && (nm.toLowerCase()===who || wfEmailOf(nm)===who);
+    if(nm && !same) m[String(idx)].forName=nm; }
   // What they decided, where they said something other than plain approval.
   if(outcome && !/^approved?$/i.test(String(outcome))) m[String(idx)].outcome=String(outcome);
   row['Workflow Signed']=JSON.stringify(m);
@@ -11280,6 +11285,20 @@ function wfMarkSigned(row, idx, by, override, outcome, forName){
 // those, so they keep the old position-based marks rather than being quietly
 // rewritten — but the panel says so instead of implying attribution.
 function wfHasSignatureRecord(row){ return Object.keys(wfSignedMap(row)).length>0; }
+// Everybody in a review group has to act before the item moves past it.
+//
+// A parallel group used to advance on whichever member answered first, so an
+// architect approving an RFI carried it past an engineer who had not read it —
+// and the engineer's step was then drawn as approved. Putting two people in a
+// group is a statement that both of them review the thing; if only one of them
+// needs to, that is one step, not two.
+//
+// requireAll stays honoured for anything that sets it explicitly, but a group
+// of more than one no longer needs it.
+function wfGroupNeedsAll(steps, gs, ge){
+  if(ge>gs) return true;
+  return (steps||[]).slice(gs,ge+1).some(st=>st&&st.requireAll);
+}
 function wfGroupAt(steps, idx){ // returns [startIdx, endIdx] of the parallel group containing idx
   let start=idx; while(start>0 && steps[start] && steps[start].parallel) start--;
   let end=start; while(end+1<steps.length && steps[end+1] && steps[end+1].parallel) end++;
@@ -11362,17 +11381,31 @@ function wfProgressHTML(key,r,i){
     // A step whose outcome was "send it back" is not an approval, and a tick
     // beside it would say it was.
     const returned = !!(sig && wfIsReturnOutcome(sig.outcome));
-    const isDone = sig ? !returned : (!attributed && passed);
-    const isSkipped = !sig && attributed && passed;
+    // A tick means this person approved. Nothing else may draw one.
+    //
+    // It used to fall back to position on an item with no signature record at
+    // all — every step before the current one got a tick. So a contractor
+    // resubmitting moved the chain past the architect and the engineer, and the
+    // panel then showed both of their reviews as approved. Neither had done
+    // anything. The italic line underneath explained the fallback, but a tick
+    // beside somebody's name is a much louder claim than a line of small print
+    // is a retraction.
+    const isDone = sig ? !returned : false;
+    // Passed without a signature. Two different reasons, told apart: the group
+    // moved on without needing this person, or the item predates attribution
+    // and we genuinely do not know.
+    const isSkipped = !sig && passed && attributed;
+    const isUnknown = !sig && passed && !attributed;
     const isCur = !complete && !stopped && n>=gs && n<=ge;
     const isDead = stopped && n>=gs;
     const color = isDone?'var(--olive-700)':(isCur?'var(--danger)':'var(--muted)');
-    const mark = returned?'\u21a9':(isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped)?'\u2014':'\u25cb')));
+    const mark = returned?'\u21a9':(isDone?'\u2713':(isCur?'\u25cf':((isDead||isSkipped||isUnknown)?'\u2014':'\u25cb')));
     const note = sig
       ? '<span style="font-size:11.5px;color:var(--muted);">'+esc(sig.outcome||'approved')+' '+esc(sig.at||'')
         +(sig.by?(' \u00b7 '+esc(sig.by)):'')
         +(sig.forName?(' <span style="font-style:italic;">for '+esc(sig.forName)+'</span>'):'')+'</span>'
-      : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>' : '');
+      : (isSkipped ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">not required \u2014 the group moved on</span>'
+        : (isUnknown ? '<span style="font-size:11.5px;color:var(--muted);font-style:italic;">no approval on record</span>' : ''));
     // The reader's own step, said plainly. A chain of names means nothing until
     // you have found yourself in it, and everyone was reading every row to work
     // out whether the thing was theirs.
@@ -11466,7 +11499,7 @@ async function wfAdvance(key, i){
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
   // Fidevia signing on the record still only completes their own step when the
   // group requires everybody.
-  const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);
+  const needsAll=wfGroupNeedsAll(steps,gs,ge);
   await resolveMe();
   // Whose approval is being recorded. Every group records this now, not just
   // the ones that require everybody: without it a parallel review group
@@ -12205,7 +12238,7 @@ function applyReviewAdvance(key, row, by){
   // Recomputed: the chain is a step longer if one was just added, and the
   // group must still be satisfied before anything moves.
   const after=wfEffectiveSteps(key,row);
-  const needsAll=after.slice(gs,ge+1).some(st=>st&&st.requireAll);
+  const needsAll=wfGroupNeedsAll(after,gs,ge);
   if(needsAll){
     let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
     if(!Array.isArray(done)) done=[];

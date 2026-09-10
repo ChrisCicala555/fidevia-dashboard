@@ -125,7 +125,12 @@ ok('the log carries the column',   (html.match(/'Workflow Done'/g)||[]).length>=
 ok('the editor offers the option', /class="wf-all"/.test(src));
 ok('it is saved with the step',    /requireAll:!!\(r\.querySelector\('\.wf-all'\)/.test(src));
 ok('external signers see who is left', /Still waiting on: '\+\(\(res\.outstanding/.test(src));
-ok('Fidevia signing on the record behaves the same', /const needsAll=steps\.slice\(gs,ge\+1\)\.some/.test(src));
+ok('Fidevia signing on the record behaves the same', /const needsAll=wfGroupNeedsAll\(steps,gs,ge\)/.test(src));
+// A group of more than one now needs all of it without requireAll being set,
+// because putting two reviewers on a step is already the statement that both
+// of them review it.
+ok('and a group of two needs both without being told to',
+   /function wfGroupNeedsAll\(steps, gs, ge\)\{\s*\n\s*if\(ge>gs\) return true;/.test(src));
 
 console.log('Default chains match how Fidevia runs them');
 const T=src.slice(src.indexOf('const WF_TEMPLATES'), src.indexOf('const WF_DEFAULTS'));

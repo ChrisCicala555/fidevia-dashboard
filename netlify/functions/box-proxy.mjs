@@ -1956,7 +1956,11 @@ export default async (req) => {
       // A group marked requireAll needs every member, not just the first to
       // act. Signatures are the reason: four parties each have to sign, and a
       // group that advanced on one of them would close all four.
-      const groupNeedsAll = steps.slice(gs, ge + 1).some(st => st && st.requireAll);
+      // Two people in a group means two people have to act. It used to advance
+      // on whichever answered first, so an architect approving carried the item
+      // past an engineer who had not read it. requireAll is still honoured, but
+      // a group of more than one no longer needs it set.
+      const groupNeedsAll = (ge > gs) || steps.slice(gs, ge + 1).some(st => st && st.requireAll);
       let doneIdx = []; try { doneIdx = JSON.parse(row['Workflow Done'] || '[]'); } catch (e) {}
       if (!Array.isArray(doneIdx)) doneIdx = [];
 

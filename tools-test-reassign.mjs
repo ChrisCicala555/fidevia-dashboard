@@ -31,7 +31,10 @@ const run = (action, who) => {
 {
   const r = run('continue','');
   ok(r.signed.join()==='0', 'reviewing signs the reviewer’s own step');
-  ok(r.status==='Complete', 'and the chain moves on');
+  // The seeded submittal chain is an architect and an engineer in parallel, and
+  // a group of two now needs both. One review signs its own step and leaves the
+  // item with the other reviewer rather than finishing it.
+  ok(r.status==='In Review', 'and the chain waits for the other reviewer in the group');
   ok(!/Further Review/.test(r.chain), 'with nobody added');
 }
 // ── review, and send it on as well ──

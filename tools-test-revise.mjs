@@ -70,7 +70,10 @@ const review = (status) => {
 {
   const r = review('Approved');
   ok(!/Revise and Resubmit/.test(r.chain), 'approving adds nothing');
-  ok(r.wfStatus==='Complete', 'and finishes the chain');
+  // The seeded chain is an architect and an engineer in parallel. Approving as
+  // the architect no longer finishes it — the engineer has not answered.
+  ok(r.wfStatus==='In Review', 'and leaves the group waiting on the other reviewer');
+  ok(r.sig['0'] && !r.sig['0'].outcome, 'with the approval recorded against the architect’s own step');
   ok(r.sig['0'] && !r.sig['0'].outcome,
      'a plain approval records no outcome, because approved is what a tick already means');
 }

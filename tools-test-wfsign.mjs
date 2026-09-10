@@ -70,7 +70,13 @@ ok((out.match(/✓/g)||[]).length===2, 'and it does count as approved');
 
 // ── records that predate attribution ──
 out=strip(H.wfProgressHTML('sub',{'Workflow Step':'1','Workflow Status':'Complete'},0));
-ok((out.match(/✓/g)||[]).length===2, 'an older item keeps the marks it had');
+// This used to assert the opposite — that an item predating attribution kept
+// its position-inferred ticks rather than being "rewritten to claim nobody
+// signed". That reasoning does not survive contact with a reader: a tick beside
+// a name says that person approved, and on these items nobody knows whether
+// they did. Saying so is the honest version.
+ok((out.match(/✓/g)||[]).length===0, 'an older item claims no approvals it cannot evidence');
+ok(/no approval on record/.test(out), 'each step says so');
 ok(/recorded before each one was attributed/.test(out),
    'but says so, rather than implying it knows who signed');
 ok(!H.wfHasSignatureRecord({}), 'an item with no record is recognised as having none');
@@ -118,7 +124,7 @@ ok((html.match(/'Workflow Signed'/g)||[]).length>=5,
 
 // ── the advance path ──
 {
-  const c = html.split('const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);')[1].split('const next=ge+1;')[0];
+  const c = html.split('const needsAll=wfGroupNeedsAll(steps,gs,ge);')[1].split('const next=ge+1;')[0];
   ok(/const mine=wfMyStepsIn\(steps,gs,ge\);/.test(c), 'every group works out whose approval it is');
   ok(!/if\(needsAll\)\{[\s\S]*const mine=/.test(c),
      'not only the groups that require everybody, which was the gap');

@@ -47,7 +47,7 @@ ok(span[1] - span[0] > 100, 'the section spans all of its panes rather than endi
 
 // ── the parallel group ──
 {
-  const c = html.split('const needsAll=steps.slice(gs,ge+1).some(st=>st&&st.requireAll);')[1].split('const next=ge+1;')[0];
+  const c = html.split('const needsAll=wfGroupNeedsAll(steps,gs,ge);')[1].split('const next=ge+1;')[0];
   ok(!/\|\| IS_ADMIN\)\{ if\(!doneIdx\.includes\(n\)\) doneIdx\.push\(n\); \}/.test(c),
      'an administrator no longer signs every step in the group at once');
   // Whose approval it is is worked out for every group now, not only the ones

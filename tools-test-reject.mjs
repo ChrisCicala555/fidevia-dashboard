@@ -55,8 +55,11 @@ ok(/reject\|denied\|\\bden\\b\|void\|withdrawn\|cancell\?ed/.test(srv),
   // attribution itself.
   // Tighter than it was: a signature whose outcome was "send it back" is not
   // an approval either, so it does not draw a tick.
-  ok(/const isDone = sig \? !returned : \(!attributed && passed\);/.test(pg),
-     'a tick means somebody approved, not that the chain moved past or that they sent it back');
+  // Tighter again: it used to fall back to position when the item carried no
+  // signatures at all, so a chain moving past two reviewers drew a tick for
+  // each of them. Now a tick has exactly one source.
+  ok(/const isDone = sig \? !returned : false;/.test(pg),
+     'a tick means somebody approved — not that the chain moved past, not that they sent it back, and not that the item is old');
   ok(/const returned = !!\(sig && wfIsReturnOutcome\(sig\.outcome\)\)/.test(pg),
      'and a returned step is recognised as its own outcome');
   // Not by the looser word match: "Resubmitted" contains "resubmit", so a

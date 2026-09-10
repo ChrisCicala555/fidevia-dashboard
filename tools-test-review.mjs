@@ -87,8 +87,19 @@ const added = b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')
 ok(added==='Dave Chen', 'the chosen person is added');
 ok(/Further Review\/Dave Chen/.test(b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(s.person||'')).join(' -> ')")),
    'and appears in this item’s chain');
-ok(b.run("(()=>{const st=wfEffectiveSteps('sub',allData.sub[0]);const n=+allData.sub[0]['Workflow Step'];return st[n]&&st[n].person;})()")==='Dave Chen',
-   'the item is now waiting on them');
+// Not immediately, though. The seeded chain is an architect and an engineer in
+// parallel and a group of two needs both, so the item stays with the engineer
+// and the person who was sent it comes after the group — which is what "as
+// well" means. It used to land on Dave straight away because one approval
+// carried the whole group.
+// The index stays at the head of the group, so reading st[n] gives the
+// architect who has just signed. What the item is waiting on is what the panel
+// says, which is also what a person sees.
+ok(/Awaiting[^<]*Penelope Odiem/.test(b.run("wfProgressHTML('sub',allData.sub[0],0)").replace(/<[^>]+>/g,'')),
+   'the item still waits on the rest of the group');
+ok(b.run("allData.sub[0]['Workflow Status']")==='In Review', 'so the chain has not moved on');
+ok(b.run("(()=>{const st=wfEffectiveSteps('sub',allData.sub[0]);return st[st.length-1].person;})()")==='Dave Chen',
+   'and the person sent it is queued after them');
 ok(b.run("JSON.stringify(currentProject.config.workflows.sub.map(s=>s.name))")==='["Architect Review","Engineer Review"]',
    'the project’s own workflow is untouched — this was one item, not the job');
 ok(b.run("JSON.stringify(Object.keys(wfSignedMap(allData.sub[0])))")==='["0"]',
