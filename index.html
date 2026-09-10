@@ -1864,7 +1864,7 @@
         </div>
       </div>
 
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Funded from</div>
       <div id="nc-allow-wrap">
         <div class="allow-head"><span class="allow-c1">Allowance</span><span class="allow-c2">Amount ($)</span><span class="allow-c3"></span></div>
         <div id="nc-allow-rows"></div>
@@ -1921,7 +1921,7 @@
           </div>
         </div>
 
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Allowance</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Funded from</div>
         <div id="cg-allow-wrap">
           <div class="allow-head"><span class="allow-c1">Allowance</span><span class="allow-c2">Amount ($)</span><span class="allow-c3"></span></div>
           <div id="cg-allow-rows"></div>
@@ -4834,7 +4834,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 05:35';
+const BUILD_STAMP='2026-09-11 06:00';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9039,7 +9039,8 @@ function newCoCompany(){ return String((document.getElementById('nc-company')||{
 function newCoCompanyChanged(){
   const co=newCoCompany();
   {
-    const list=allowancesFor(co);
+    const list=allowancesFor(co).map(a=>Object.assign({}, a,
+      {left: allowanceRemainingById(co, a.id)}));
     ALLOW_LIST_CACHE.nc=list;
     allowRowsRender('nc', list, []);
     const show=list.length?'':'none';
@@ -9236,12 +9237,20 @@ function coRollCandidates(idx){
 // A change order can touch several allowances — a closeout settling three at
 // once, or work funded partly from two — so the one picker became a list. Both
 // dialogs that allocate allowances share these, keyed by an id prefix.
+function allowOptionLabel(a){
+  const base='Allowance '+a.id+(a.name?(' \u2014 '+a.name):'');
+  const left=(a.left==null) ? a.amount : a.left;
+  // "$50,000 left of $50,000" on an untouched allowance is noise; the second
+  // figure earns its place only once the two have parted company.
+  return base+'  \u00b7  '+(left===a.amount ? fmtMoney(a.amount)
+                                             : (fmtMoney(left)+' left of '+fmtMoney(a.amount)));
+}
 function allowRowHTML(pre, list, sel, amt, i){
   return '<div class="allow-row" data-i="'+i+'">'
     +'<select class="allow-c1 '+pre+'-allow-sel" onchange="'+pre+'AllowChanged()">'
     +'<option value="">\u2014 Choose \u2014</option>'
     +list.map(a=>'<option value="'+esc(a.id)+'"'+(String(sel||'').toUpperCase()===a.id?' selected':'')+'>'
-        +'Allowance '+esc(a.id)+(a.name?(' \u2014 '+esc(a.name)):'')+'</option>').join('')
+        +esc(allowOptionLabel(a))+'</option>').join('')
     +'</select>'
     +'<input class="allow-c2 '+pre+'-allow-amt" autocomplete="off" placeholder="0" '
       +'value="'+esc(amt?String(amt):'')+'" oninput="'+pre+'AllowChanged()">'
@@ -9282,7 +9291,11 @@ function coGenAllowChanged(){ coGenAllowNote(); }
 function coGenAllowFill(idx){
   const r=(allData.co||[])[idx]; if(!r) return;
   const box=document.getElementById('cg-allow-rows'); if(!box) return;
-  const list=allowancesFor(rowCompany(r));
+  // Ignoring this change order's own line, so reopening it does not show the
+  // allowance already consumed by the figure sitting in the box.
+  const co0=rowCompany(r);
+  const list=allowancesFor(co0).map(a=>Object.assign({}, a,
+    {left: allowanceRemainingById(co0, a.id) + coAllowanceAmountFor(r, a.id)}));
   ALLOW_LIST_CACHE.cg=list;
   allowRowsRender('cg', list, coAllowanceSplits(r));
   const show=list.length?'':'none';
