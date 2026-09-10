@@ -4597,7 +4597,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 10:30';
+const BUILD_STAMP='2026-09-10 11:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11719,13 +11719,24 @@ function replyReturnTarget(){
   const r=(REPLY_CTX && (allData[REPLY_CTX.key]||[])[REPLY_CTX.i])||{};
   return rowSubmitterName(r)||rowCompany(r)||'whoever filed it';
 }
+// Only the person choosing to send something back is told what sending it back
+// will do. The note is written in the second person — "it returns to you when
+// they resubmit" — and the reader it kept appearing for was the contractor, who
+// is the "they". They were being told their own submittal was about to be sent
+// to them, by them, because the row's status already said Revise and Resubmit
+// and the dialog reads that status on open.
+function replyDecidesHere(){
+  const sf=document.getElementById('reply-status-field');
+  return !!sf && sf.style.display!=='none';
+}
 function replySyncReturn(returning){
   const note=document.getElementById('reply-return-note');
   const who=document.getElementById('reply-next-who');
+  const show = returning && replyDecidesHere();
   if(returning && who) who.style.display='none';   // the person is not a choice
   if(note){
-    note.style.display = returning ? '' : 'none';
-    note.textContent = returning
+    note.style.display = show ? '' : 'none';
+    note.textContent = show
       ? ('This goes back to '+replyReturnTarget()+' to revise and resubmit. They become the next step, '
         +'and it returns to you when they resubmit.')
       : '';
@@ -11736,7 +11747,9 @@ function replyStatusChanged(){
   const sel=document.getElementById('reply-status');
   const act=document.getElementById('reply-action');
   if(!sel) return;
-  const returning=wfIsReturnOutcome(sel.value);
+  // A reader who cannot set the status is not choosing a return, whatever the
+  // status happens to say — the row arrived that way.
+  const returning=replyDecidesHere() && wfIsReturnOutcome(sel.value);
   if(act){
     if(returning) act.value=REPLY_RETURN_ACTION;
     else if(act.value===REPLY_RETURN_ACTION) act.value='continue';

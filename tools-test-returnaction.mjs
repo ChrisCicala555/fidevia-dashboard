@@ -84,5 +84,47 @@ console.log('And the chain actually goes back, chosen either way');
      'and it is settled before the handover branch, which is what made them contradict');
 }
 
+console.log('Only the person choosing it is told what it does');
+// The note is written in the second person — "it returns to you when they
+// resubmit" — and the reader it appeared for was the contractor, who is the
+// "they". They were told their own submittal was about to be sent to them, by
+// them, because the row already said Revise and Resubmit and the dialog reads
+// the status on open.
+{
+  const b2 = bootPage('index.html'); b2.run(SEED);
+  const base=`allData.contacts=[{'Name':'Test Architect','Company':'Architect 2','Email':'a@x.test'},
+    {'Name':'Test Contractor','Company':'Summit Builders','Email':'gc@s.test'}];
+  currentProject.config.workflows.sub=[{name:'Architect Review',person:'Test Architect',email:'a@x.test'}];
+  allData.sub=[{'Submittal #':'SUB-GC-001','Description':'d','Submitted By (Sub)':'gc@s.test (Summit Builders)',
+    'Company':'Summit Builders','Reviewer':'Architect 2','Status':'Revise and Resubmit','Workflow Step':'1',
+    'Workflow Status':'In Review','Version History':'[]','Workflow Signed':'',
+    'Workflow Extra':JSON.stringify([{after:0,name:'Revise and Resubmit',person:'Test Contractor',
+      company:'Summit Builders',email:'gc@s.test',returned:true}])}];`;
+  const noteFor=(email,co,role,ext,adm)=>{
+    b2.run(base+`EXTERNAL=${ext};IS_ADMIN=${adm};ME_EMAIL='${email}';ME_COMPANY='${co}';
+      currentProject.userCompany='${co}';currentProject.userRole='${role}';DATA_READY=true;openReply('sub',0,true);`);
+    return b2.run("document.getElementById('reply-return-note').style.display")!=='none'; };
+  ok(!noteFor('gc@s.test','Summit Builders','contractor',true,false),
+     'the contractor revising it is not told it is about to be sent to them');
+  ok(!noteFor('a@x.test','Architect 2','architect',true,false),
+     'nor the architect, who already sent it and cannot decide again here');
+  ok(!noteFor('cc@fidevia.com','Fidevia','',false,true),
+     'nor Fidevia merely opening it — nobody has chosen anything yet');
+  // But the reviewer who is choosing it, is.
+  b2.run(base+`EXTERNAL=true;IS_ADMIN=false;ME_EMAIL='a@x.test';ME_COMPANY='Architect 2';
+    currentProject.userCompany='Architect 2';currentProject.userRole='architect';
+    allData.sub[0]['Workflow Step']='0'; allData.sub[0]['Status']='Pending Review';
+    allData.sub[0]['Workflow Extra']=''; DATA_READY=true; openReply('sub',0,true);
+    document.getElementById('reply-action').value='return'; replyActionSyncsStatus();`);
+  ok(b2.run("document.getElementById('reply-return-note').style.display")!=='none',
+     'the reviewer choosing to send it back is');
+  ok(/This goes back to Test Contractor/.test(b2.run("document.getElementById('reply-return-note').textContent")),
+     'and told who to');
+}
+ok(/const returning=replyDecidesHere\(\) && wfIsReturnOutcome\(sel\.value\)/.test(html),
+   'a status the reader cannot change is not a choice they are making');
+ok(/const show = returning && replyDecidesHere\(\);/.test(html),
+   'and the note follows the same rule');
+
 console.log((bad?'FAIL ':'ok   ')+'tools-test-returnaction.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
