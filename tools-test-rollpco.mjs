@@ -93,9 +93,22 @@ ok(/function coGenRolledSet/.test(html), 'the agreed amounts are read back');
 }
 {
   const cm = html.split('function coContractMathFor')[1].split('function orgAddressLines')[0];
-  ok(/const drawOf=e=>Math\.min\(payNum\(e\.row&&e\.row\['Applied to Allowance'\]\), e\.amount\)/.test(cm),
-     'an allowance draw is capped at the agreed amount, not the proposed one');
-  ok(/const impactOf=e=>Math\.max\(0, e\.amount-drawOf\(e\)\)/.test(cm), 'the impact uses the agreed amount');
+  // These two used to match the exact text of the expressions, and broke when
+  // deducts gave them a lower bound and a negative branch — while the thing
+  // they were checking never changed. They now run the expressions instead.
+  const drawOf = eval('(' + cm.split('const drawOf=')[1].split(';\n')[0] + ')');
+  const impactOf = eval('(' + cm.split('const impactOf=')[1].split(';\n')[0] + ')');
+  const payNum = x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
+  {
+    // Proposed 10,000, agreed 6,000, with 8,000 recorded against an allowance.
+    const e={row:{'Applied to Allowance':'8000'}, amount:6000, proposed:10000};
+    ok(drawOf(e)===6000, 'an allowance draw is capped at the agreed amount, not the proposed one');
+    ok(impactOf(e)===0, 'and the impact uses the agreed amount');
+  }
+  {
+    const e={row:{'Applied to Allowance':'2000'}, amount:6000, proposed:10000};
+    ok(impactOf(e)===4000, 'with only the part above the draw reaching the contract');
+  }
   ok(/reduced:e\.amount<e\.proposed/.test(cm), 'a part acceptance is flagged');
 }
 ok(/if\(c\.reduced\)/.test(html) && /proposed '\+fmtMoney\(c\.proposed\)/.test(html),

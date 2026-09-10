@@ -3749,19 +3749,27 @@ function wrapTables(){
     t.style.minWidth = cols>=7 ? (cols*116)+'px' : '';
   });
 }
-function fmtMoneyInput(el){
+function fmtMoneyInput(el, allowNegative){
   if(!el) return;
-  const raw=String(el.value||'').replace(/[^0-9.]/g,'');
-  if(!raw){ el.value=''; return; }
+  const src=String(el.value||'');
+  // Only a leading minus, and only where a deduct makes sense. An allowance
+  // draw or a billed amount has no meaning below zero.
+  const neg = !!allowNegative && /^\s*-/.test(src);
+  const raw=src.replace(/[^0-9.]/g,'');
+  if(!raw){ el.value = neg ? '-' : ''; return; }   // keep the sign mid-typing
   const parts=raw.split('.');
   const whole=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,',');
-  el.value = parts.length>1 ? whole+'.'+parts[1].slice(0,2) : whole;
+  el.value = (neg?'-':'') + (parts.length>1 ? whole+'.'+parts[1].slice(0,2) : whole);
 }
+// Cost Impact is the only money field that may go below zero: a deduct returns
+// money to the owner. Everything else counts up.
+const NEGATIVE_OK=['f-cost'];
 function wireMoneyInputs(){
   ['f-cost','f-allow','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
     const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
-    el.addEventListener('blur',function(){ fmtMoneyInput(el); });
-    el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
+    const negOk=NEGATIVE_OK.includes(id);
+    el.addEventListener('blur',function(){ fmtMoneyInput(el,negOk); if(el.value==='-') el.value=''; });
+    el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el,negOk); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
   });
 }
 function makeFilterBars(){
@@ -4766,7 +4774,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 22:05';
+const BUILD_STAMP='2026-09-10 23:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5916,8 +5924,11 @@ function renderFinancials(){
     const contract = (pa && num(pa['Contract Amount'])) ? num(pa['Contract Amount']) : num(c.contract);
     // Only the part of approved change orders NOT funded from the allowance
     // increases the contract; the allowance was already inside it.
+    // Zero is an answer, not an absence: a deduct cancelling an addition nets
+    // to nought, and falling through to the pay application there would show a
+    // different number without saying so.
     const coFromLog = coContractImpactFor(c.name);
-    const co = coFromLog || (pa ? num(pa['Approved Change Orders']) : 0);
+    const co = coHasApproved(c.name) ? coFromLog : (pa ? num(pa['Approved Change Orders']) : 0);
     const allowTotal = allowanceFor(c.name);
     const allowUsed  = allowanceUsedBy(c.name);
     const allowLeft  = allowTotal - allowUsed;
@@ -7200,7 +7211,7 @@ const FORMS = {
   co:{title:'New PCO',html:`
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
-    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"></div><div class="field"><label>Cause</label><select autocomplete="off" id="f-cause"><option value="">—</option><option>Unforeseen</option><option>Owner Request</option><option>Code</option><option>Error</option><option>Omission</option><option>Other</option></select></div></div>
+    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"><p class="file-hint" style="margin-top:3px;">Enter a deduct as a negative, e.g. -8400. A deduct reduces the contract and cannot draw on an allowance.</p></div><div class="field"><label>Cause</label><select autocomplete="off" id="f-cause"><option value="">—</option><option>Unforeseen</option><option>Owner Request</option><option>Code</option><option>Error</option><option>Omission</option><option>Other</option></select></div></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'New Submittal',html:`
@@ -9032,7 +9043,7 @@ function newCoTotals(){
   el.innerHTML='Covers <strong>'+set.length+'</strong> proposal'+(set.length===1?'':'s')+', '
     +fmtMoney(gross)+' agreed'
     +(amt?(', '+fmtMoney(amt)+' from the allowance'):'')
-    +' \u2014 reaching the contract: <strong>'+fmtMoney(Math.max(0,gross-amt))+'</strong>.'
+    +' \u2014 reaching the contract: <strong>'+fmtMoney(gross<0?gross:Math.max(0,gross-amt))+'</strong>.'
     +(reduced.length?'<div style="color:#8a6d3b;margin-top:5px;">'+reduced.length+' accepted for less than proposed.</div>':'');
 }
 async function submitNewCo(){
@@ -9153,6 +9164,19 @@ function coGenAllowNote(){
   const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
   const list=allowancesFor(rowCompany(r));
   if(!list.length) return;
+  // A deduct returns money rather than spending an allowance. Disabling the
+  // controls says so; leaving them live invites a number that is then ignored.
+  if(coIsDeduct(r)){
+    const sel=document.getElementById('cg-allow-id'), amt=document.getElementById('cg-allow-amt');
+    if(sel){ sel.value=''; sel.disabled=true; }
+    if(amt){ amt.value=''; amt.disabled=true; }
+    r['Allowance']=''; r['Applied to Allowance']='';
+    note.textContent='This is a deduct of '+fmtMoney(coApprovedAmount(r))+'. It reduces the contract and does not draw on an allowance.';
+    note.style.color='var(--muted)';
+    coGenRollTotal(COGEN_IDX); return;
+  }
+  { const sel=document.getElementById('cg-allow-id'), amt=document.getElementById('cg-allow-amt');
+    if(sel) sel.disabled=false; if(amt) amt.disabled=false; }
   const id=(document.getElementById('cg-allow-id')||{}).value||'';
   const amt=payNum((document.getElementById('cg-allow-amt')||{}).value);
   if(!id){
@@ -9250,8 +9274,9 @@ function coContractMathFor(r, rolled){
     .concat((rolled||[]).filter(Boolean).map(x=>x.row
       ? x
       : { row:x, amount:coApprovedAmount(x), proposed:coApprovedAmount(x) }));
-  const drawOf=e=>Math.min(payNum(e.row&&e.row['Applied to Allowance']), e.amount);
-  const impactOf=e=>Math.max(0, e.amount-drawOf(e));
+  const drawOf=e=>(e.amount<0) ? 0
+    : Math.max(0, Math.min(payNum(e.row&&e.row['Applied to Allowance']), e.amount));
+  const impactOf=e=>(e.amount<0) ? e.amount : Math.max(0, e.amount-drawOf(e));
   const thisImpact=set.reduce((sum,e)=>sum+impactOf(e),0);
   return { company:co, original, previous, prior:original+previous,
            approved:set.reduce((sum,e)=>sum+e.amount,0),
@@ -10362,12 +10387,22 @@ function coApprovedAmount(r){
   const a=payNum(r&&r['Approved Amount']);
   return a || payNum(r&&r['Cost Impact']);
 }
+function coIsDeduct(r){ return coApprovedAmount(r) < 0; }
 function coAllowanceDraw(r){
-  // Never draw more than the change order is worth.
-  return Math.min(payNum(r&&r['Applied to Allowance']), coApprovedAmount(r));
+  // Never draw more than the change order is worth, and never less than
+  // nothing. The lower bound is what handles a deduct: it returns money to the
+  // owner rather than funding scope, and Math.min against a negative amount
+  // used to return a NEGATIVE draw, which credited the allowance back.
+  return Math.max(0, Math.min(payNum(r&&r['Applied to Allowance']), coApprovedAmount(r)));
 }
-// The part that actually increases the contract.
-function coContractImpact(r){ return Math.max(0, coApprovedAmount(r)-coAllowanceDraw(r)); }
+// The part that actually lands on the contract. A deduct lands in full and
+// reduces it — clamping at zero here made a credit disappear from the
+// financials rather than lowering anything.
+function coContractImpact(r){
+  const amt=coApprovedAmount(r);
+  if(amt < 0) return amt;
+  return Math.max(0, amt-coAllowanceDraw(r));
+}
 function coIsApproved(r){
   const st=String((r&&r['Status'])||'').toLowerCase();
   return st.indexOf('approv')>=0 || st.indexOf('execut')>=0;
@@ -10433,6 +10468,11 @@ function allowanceRemainingById(name, id){
 }
 function allowanceRemaining(name){ return allowanceFor(name)-allowanceUsedBy(name); }
 // Approved CO value that lands on the contract, for one contractor.
+// Whether anything is on the log at all, as distinct from netting to zero.
+function coHasApproved(name){
+  const norm=String(name||'').trim().toLowerCase();
+  return (allData.co||[]).some(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm);
+}
 function coContractImpactFor(name){
   const norm=String(name||'').trim().toLowerCase();
   return (allData.co||[]).filter(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
