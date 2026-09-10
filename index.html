@@ -1847,7 +1847,7 @@
   <div class="modal" style="max-width:720px;">
     <div class="modal-header"><h3>Issue a Change Order</h3><button class="modal-close" onclick="closeNewCo()">&times;</button></div>
     <div class="modal-body">
-      <p class="form-desc" style="margin-top:0;">For a change order written outside the dashboard. Upload the signed document, say which proposals it covers, and record what is drawn from an allowance.</p>
+      <p class="form-desc" style="margin-top:0;">Raise a change order directly, with or without a proposal behind it. Leave the document empty and the dashboard draws one from what you enter here; upload a signed one instead if it was written elsewhere.</p>
 
       <div class="field-row">
         <div class="field" style="flex:1.2;"><label>Contract *</label>
@@ -1879,10 +1879,10 @@
       <p id="nc-total" style="font-size:13px;color:var(--muted);margin:8px 0 0;"></p>
 
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Signed document</div>
-      <div class="field"><input type="file" id="nc-file" accept="application/pdf,image/*"><p class="file-hint">The executed change order, uploaded to Box against this record.</p></div>
+      <div class="field"><input type="file" id="nc-file" accept="application/pdf,image/*" onchange="newCoFileChanged()"><p class="file-hint" id="nc-file-hint">Leave this empty and the change order document is drawn for you. Upload one only if it was written outside the dashboard.</p></div>
     </div>
     <div class="modal-footer">
-      <button class="btn-primary" id="nc-go" onclick="submitNewCo()">Record Change Order</button>
+      <button class="btn-primary" id="nc-go" onclick="submitNewCo()">Record &amp; Generate</button>
       <button class="btn-secondary" onclick="closeNewCo()">Cancel</button>
       <span class="status-msg" id="nc-status" style="margin-left:8px;"></span>
     </div>
@@ -4834,7 +4834,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 06:00';
+const BUILD_STAMP='2026-09-11 06:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8898,8 +8898,9 @@ async function generateChangeOrder(){
                                   : 'Change order document generated.'});
       r['Version History']=JSON.stringify(vs);
       r['Signed File ID']=ent.id||''; r['Signed File Name']=fname;
-      // The allocation decided on this screen is recorded on the change order.
-      r['Allowance']=allowId; r['Applied to Allowance']=allowAmt?String(allowAmt):'';
+      // The allocation decided on this screen was recorded on the row before
+      // the maths ran, so that the document and the row could not disagree.
+      // Setting it again here read two variables that no longer exist.
       // A rolled-in proposal is covered by this change order. Recording that
       // keeps it out of the candidate list next time, closes it rather than
       // leaving it open forever, and says on the row where it went.
@@ -9027,6 +9028,8 @@ function openNewCo(){
   sel.innerHTML='<option value="">— Select contract —</option>'
     +cts.map(c=>'<option>'+esc(c.name)+'</option>').join('');
   ['nc-num','nc-desc','nc-amount'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  { const f=document.getElementById('nc-file'); if(f) f.value=''; }
+  newCoFileChanged();
   allowRowsRender('nc', ALLOW_LIST_CACHE.nc||[], []);
   const d=document.getElementById('nc-date'); if(d) d.value=etToday();
   const f=document.getElementById('nc-file'); if(f) f.value='';
@@ -9078,6 +9081,18 @@ function newCoSet(){
     const proposed=payNum(inp&&inp.dataset.proposed);
     return row ? { i, row, amount: inp?payNum(inp.value):proposed, proposed } : null;
   }).filter(Boolean);
+}
+// The button says which of the two things pressing it will do, because the
+// answer changes depending on whether a document has been chosen.
+function newCoFileChanged(){
+  const f=document.getElementById('nc-file');
+  const has=!!(f && f.files && f.files.length);
+  const btn=document.getElementById('nc-go');
+  if(btn) btn.textContent = has ? 'Record Change Order' : 'Record & Generate';
+  const hint=document.getElementById('nc-file-hint');
+  if(hint) hint.textContent = has
+    ? 'The executed change order, uploaded to Box against this record. Nothing will be drawn.'
+    : 'Leave this empty and the change order document is drawn for you. Upload one only if it was written outside the dashboard.';
 }
 function newCoAllowChanged(){ newCoTotals(); }
 function newCoTotals(){
@@ -9150,8 +9165,13 @@ async function submitNewCo(){
                          : payNum((document.getElementById('nc-amount')||{}).value);
   if(!set.length && !gross) return say('Give the change order an amount, or cover a proposal that has one.','error');
   const allowSplits=allowRowsRead('nc');
-  if(allowAmt && !allowId) return say('Choose which allowance the draw comes from.','error');
-  if(allowAmt > gross && gross) return say('The allowance draw is more than the change order is worth.','error');
+  { // Same two guards, over the list that replaced the single pair.
+    const _bad=allowSplits.find(x=>!x.id);
+    if(_bad) return say('Choose which allowance each line comes from.','error');
+    const _tot=allowSplits.reduce((sum,x)=>sum+x.amount,0);
+    if(gross && _tot > Math.abs(gross))
+      return say('The allowance lines come to more than the change order is worth.','error');
+  }
   const btn=document.getElementById('nc-go'); btn.disabled=true;
   try{
     const fid=currentProject.folders.co;
@@ -9204,9 +9224,18 @@ async function submitNewCo(){
       {project:currentProject.name,number:num,title:desc,submitter:by},
       [['CO #',num],['Contract',co],['Issued By',by],['Amount',fmtMoney(gross)],
        ['Covers',set.length?set.map(e=>e.row['PCO #']||'').filter(Boolean).join(', '):'\u2014']]); }catch(e){}
-    showStatus('nc-status','Recorded '+num+(set.length?(' \u2014 covering '+set.length+' proposal'+(set.length===1?'':'s')):'')+'.','success');
     renderAll();
-    setTimeout(closeNewCo, 1200);
+    // Nothing was uploaded, so the document has to come from here. Handing the
+    // new row to the generator rather than drawing it a second way keeps one
+    // implementation of the change order document.
+    if(!fileId){
+      showStatus('nc-status','Recorded '+num+'. Opening the document\u2026','success');
+      const _at=rows.length-1;
+      setTimeout(()=>{ closeNewCo(); openCoGen(_at); }, 700);
+    } else {
+      showStatus('nc-status','Recorded '+num+(set.length?(' \u2014 covering '+set.length+' proposal'+(set.length===1?'':'s')):'')+'.','success');
+      setTimeout(closeNewCo, 1200);
+    }
   }catch(e){ showStatus('nc-status','Error: '+(e.message||e),'error'); }
   btn.disabled=false;
 }

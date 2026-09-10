@@ -39,7 +39,9 @@ ok(/class="nc-roll-amt"[^>]*data-proposed/.test(html) || /nc-roll-amt/.test(html
   const sb = html.split('async function submitNewCo')[1].split('// ── Rolling several')[0];
   ok(/Choose which contract/.test(sb), 'a contract is required');
   ok(/Give the change order a description/.test(sb), 'so is a description');
-  ok(/Choose which allowance the draw comes from/.test(sb), 'an amount with no allowance is refused');
+  // One allowance became a list, so the guard is per line. Behaviour is checked
+  // by running it in tools-test-corunnable.mjs; this only pins that it is here.
+  ok(/Choose which allowance each line comes from/.test(sb), 'an amount with no allowance is refused');
   ok(/more than the change order is worth/.test(sb), 'and a draw larger than the change order');
   ok(/row\['Status'\]='Approved'/.test(sb), 'an issued change order is approved');
   ok(/row\['Workflow Status'\]='Complete'/.test(sb),
