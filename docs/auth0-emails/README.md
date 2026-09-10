@@ -30,31 +30,16 @@ The raw URL is kept, once, at the bottom in small muted type — a reset mail
 that only offers a button is unusable in a client that strips them, and a
 password link is the worst place to leave somebody stuck.
 
-## 2. `dev-477eis4yqjwd6d4g.us.auth0.com`
+## 2. The domain the reset link came from
 
-That is the tenant's default Auth0 domain, and it is what the reset link and
-the login page are served from. It is fixable, and it is worth fixing: a
-password page on a domain nobody recognises is exactly what a phishing page
-looks like, and telling people to trust it teaches them the wrong lesson.
+**Correction to an earlier version of this note.** It said the fix was to set
+up an Auth0 custom domain. That was written without reading the config, and it
+was wrong: the custom domain already exists. Commit c007542 moved both the
+client SDK and the server-side token validation to `login.fidevia.com`, and
+`box-proxy.mjs` keeps `dev-477eis4yqjwd6d4g.us.auth0.com` only as
+`AUTH0_DOMAIN_FALLBACK`, for tokens issued before the switch.
 
-**The fix is an Auth0 custom domain** — `login.fidevia.com`, say. Auth0's Free
-plan includes one custom domain; a card has to be on file for verification but
-is not charged. Branding → Custom Domains, then add the CNAME/TXT records
-Auth0 gives you to the fidevia.com DNS.
-
-Three things to do at the same time, or the change breaks sign-in:
-
-1. Update `auth0Client` in index.html to the new domain.
-2. Add the new domain to Allowed Callback/Logout/Web Origins on the
-   application.
-3. Re-check the Auth0 Action that assigns internal/external roles — it keys on
-   the email domain, not the tenant, so it should be unaffected, but confirm.
-
-**The `dev-` prefix is the other half of it.** That is a Development tenant.
-Auth0 rate-limits those harder than production ones, and the 503 back-off in
-`proxyCall` exists partly because of it. A production tenant with the custom
-domain on it is the real answer; moving means recreating the application, the
-Action and the connection, and every existing user record.
-
-Neither is a code change, which is why both are written down here rather than
-done.
+So a password reset arriving on the dev domain is not a missing feature. It is
+one flow still using the old domain while everything else uses the new one, and
+that is written up in `docs/TODO-auth0-logins.md` along with the sign-in
+failure that came with it.
