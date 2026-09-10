@@ -1,5 +1,6 @@
 // Named allowances per contract, and change orders drawing against them.
 import fs from 'fs';
+import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
@@ -11,8 +12,17 @@ ok(/function allowanceRemainingById/.test(html), 'remaining is available per all
 {
   const af = html.split('function allowancesFor')[1].split('function allowanceFor')[0];
   ok(/const legacy=payNum\(c\.allowance\)/.test(af), 'the old single number is still read');
-  ok(/legacy:true/.test(af), 'and marked as such');
-  ok(/id:'A'/.test(af), 'as Allowance A, so existing figures do not move');
+  // These two matched the literals `legacy:true` and `id:'A'`, which moved into
+  // a helper when allowances gained a write-down. What they check never changed,
+  // so they now run the function rather than reading it.
+  {
+    const P = bootPage(); P.run(SEED);
+    P.run(`currentProject.config.contractors=[{name:'Old Co',contract:'500000',active:true,allowance:'25000'}]`);
+    P.run(`allData.co=[]`);
+    const a = JSON.parse(P.run(`JSON.stringify(allowancesFor('Old Co'))`));
+    ok(a.length===1 && a[0].legacy===true, 'and marked as such');
+    ok(a[0].id==='A' && a[0].amount===25000, 'as Allowance A, so existing figures do not move');
+  }
 }
 {
   const tot = html.split('function allowanceFor(name)')[1].split('function coAllowanceId')[0];

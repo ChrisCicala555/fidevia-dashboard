@@ -4774,7 +4774,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 23:10';
+const BUILD_STAMP='2026-09-11 00:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5949,7 +5949,8 @@ function renderFinancials(){
     const allowList = allowancesFor(c.name);
     const allowTip = allowList.length>1
       ? allowList.map(a=>'Allowance '+a.id+(a.name?(' — '+a.name):'')+': '
-          +fmtMoney(allowanceRemainingById(c.name,a.id))+' of '+fmtMoney(a.amount)).join('\n')
+          +fmtMoney(allowanceRemainingById(c.name,a.id))+' of '+fmtMoney(a.amount)
+          +(a.reduced?(' (reduced from '+fmtMoney(a.original)+')'):'')).join('\n')
       : '';
     const allowCell = allowTotal
       ? '<span'+(allowTip?' title="'+esc(allowTip)+'"':'')+'>'
@@ -9164,19 +9165,41 @@ function coGenAllowNote(){
   const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
   const list=allowancesFor(rowCompany(r));
   if(!list.length) return;
-  // A deduct returns money rather than spending an allowance. Disabling the
-  // controls says so; leaving them live invites a number that is then ignored.
+  // A deduct does not draw from an allowance, it writes the allowance down —
+  // the $60,000 line becomes $50,000. So the picker stays live and the draw
+  // amount goes away: the reduction is the change order's own value.
+  {
+    const amtEl=document.getElementById('cg-allow-amt');
+    const wrap=amtEl && amtEl.closest('.field');
+    if(wrap) wrap.style.display = coIsDeduct(r) ? 'none' : '';
+    if(coIsDeduct(r) && amtEl){ amtEl.value=''; r['Applied to Allowance']=''; }
+  }
   if(coIsDeduct(r)){
-    const sel=document.getElementById('cg-allow-id'), amt=document.getElementById('cg-allow-amt');
-    if(sel){ sel.value=''; sel.disabled=true; }
-    if(amt){ amt.value=''; amt.disabled=true; }
-    r['Allowance']=''; r['Applied to Allowance']='';
-    note.textContent='This is a deduct of '+fmtMoney(coApprovedAmount(r))+'. It reduces the contract and does not draw on an allowance.';
-    note.style.color='var(--muted)';
+    const id=(document.getElementById('cg-allow-id')||{}).value||'';
+    const cut=Math.abs(coApprovedAmount(r));
+    if(!id){
+      note.textContent='A deduct of '+fmtMoney(cut)+'. It reduces the contract. '
+        +'Choose an allowance if it is writing one down \u2014 an allowance reconciled at closeout, or scope dropped.';
+      note.style.color='var(--muted)';
+      coGenRollTotal(COGEN_IDX); return;
+    }
+    const a=allowancesFor(rowCompany(r)).find(x=>x.id===id);
+    const spent=allowanceUsedById(rowCompany(r), id);
+    // The allowance as it stands BEFORE this change order, so editing one does
+    // not appear to write the allowance down twice.
+    const before=(a?a.amount:0) + (coAllowanceId(r)===id ? cut : 0);
+    const headroom=Math.max(0, before-spent);
+    if(cut>headroom){
+      note.textContent=fmtMoney(spent)+' of Allowance '+id+' has already been spent, so only '
+        +fmtMoney(headroom)+' can be written off. Reducing it by '+fmtMoney(cut)+' would claim back money that is gone.';
+      note.style.color='var(--danger)';
+    } else {
+      note.textContent='Allowance '+id+' reduced from '+fmtMoney(before)+' to '+fmtMoney(before-cut)
+        +(spent?(' \u2014 '+fmtMoney(spent)+' spent, '+fmtMoney(before-cut-spent)+' remaining'):'')+'.';
+      note.style.color='var(--muted)';
+    }
     coGenRollTotal(COGEN_IDX); return;
   }
-  { const sel=document.getElementById('cg-allow-id'), amt=document.getElementById('cg-allow-amt');
-    if(sel) sel.disabled=false; if(amt) amt.disabled=false; }
   const id=(document.getElementById('cg-allow-id')||{}).value||'';
   const amt=payNum((document.getElementById('cg-allow-amt')||{}).value);
   if(!id){
@@ -10425,18 +10448,43 @@ function contractorRec(name){
 // The list for one contractor. A project set up before allowances were named
 // carries a single number on the contractor; it is read as Allowance A so the
 // figures do not change underneath anyone.
+// How much an allowance has been written down by approved deducts tied to it.
+// Reads the change order log directly, so it must not call allowancesFor.
+function allowanceReducedById(name, id){
+  const norm=String(name||'').trim().toLowerCase();
+  const want=String(id||'').trim().toUpperCase();
+  return (allData.co||[]).filter(r=>coIsApproved(r)
+      && String(r['Company']||'').trim().toLowerCase()===norm
+      && coApprovedAmount(r) < 0
+      && coAllowanceId(r)===want)
+    .reduce((sum,r)=>sum+Math.abs(coApprovedAmount(r)), 0);
+}
+// `amount` is what the allowance is worth NOW. `original` is what the contract
+// set it at. Callers asking what is left, or what may still be drawn, want the
+// current figure — which is why the reduction is applied here rather than at
+// each call site, where one would eventually be missed.
 function allowancesFor(name){
   const c=contractorRec(name);
   if(!c) return [];
+  const build=(id,nm,amt,legacy)=>{
+    const cut=allowanceReducedById(name,id);
+    return { id, name:nm, original:amt, reduced:cut,
+             amount:Math.max(0, amt-cut), legacy:!!legacy };
+  };
   if(Array.isArray(c.allowances) && c.allowances.length){
-    return c.allowances.map((a,i)=>({
-      id: String((a&&a.id)||allowanceLetter(i)),
-      name: String((a&&a.name)||''),
-      amount: payNum(a&&a.amount)
-    }));
+    return c.allowances.map((a,i)=>build(
+      String((a&&a.id)||allowanceLetter(i)), String((a&&a.name)||''), payNum(a&&a.amount)));
   }
   const legacy=payNum(c.allowance);
-  return legacy ? [{ id:'A', name:'Allowance', amount:legacy, legacy:true }] : [];
+  return legacy ? [build('A','Allowance',legacy,true)] : [];
+}
+// What a deduct tied to this allowance may still take out: the money that is
+// there and has not already been spent. Reducing below what has been drawn
+// would claim back money that is gone.
+function allowanceReducibleById(name, id){
+  const a=allowancesFor(name).find(x=>x.id===String(id||'').trim().toUpperCase());
+  if(!a) return 0;
+  return Math.max(0, a.amount - allowanceUsedById(name, id));
 }
 function allowanceFor(name){
   return allowancesFor(name).reduce((s,a)=>s+a.amount,0);

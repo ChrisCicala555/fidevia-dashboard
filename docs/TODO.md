@@ -69,7 +69,7 @@ purpose.
 
 | Item | Why it is parked |
 |---|---|
-| Allowance Adjustment document (`TODO-allowance-adjustment.md`) | Needs the form of the document settled first |
+| Allowance Adjustment document (`TODO-allowance-adjustment.md`) | The arithmetic now exists: a deduct tied to an allowance writes it down and reduces the contract. What is left is the document itself — the paper that records the reconciliation |
 | Who owns schedule updates; projected vs actual milestone dates (`TODO-schedule-ownership-and-projected.md`) | Both need a decision from you about how the project is run, not a technical one |
 | Restore something from a Deleted folder | Recovery is currently manual: move the folder back in Box, re-create the row. Worth building only if it happens more than rarely |
 | `[Fidevia]` prefix on the invite and "added to" emails | The only two without it. Looks accidental, but changing it changes mail people have already been trained to look for |

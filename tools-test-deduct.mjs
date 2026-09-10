@@ -87,18 +87,24 @@ console.log('The generated document agrees with the dashboard');
      'and the running note in the generator says the same');
 }
 
-console.log('The allowance controls switch off on a deduct');
+// This block asserted that a deduct could not be tied to an allowance at all,
+// which was too blunt: a deduct does not DRAW from an allowance, but writing an
+// allowance down is exactly what a deduct is for at closeout. The rule that
+// survived is the narrow one — no draw. See tools-test-allowcut.mjs for the
+// write-down, which is now allowed.
+console.log('A deduct never draws, but may write an allowance down');
 {
   const g = html.split('function coGenAllowNote(){')[1].split('\n}')[0];
-  ok(/if\(coIsDeduct\(r\)\)\{/.test(g), 'a deduct disables them');
-  ok(/sel\.disabled=true/.test(g) && /amt\.disabled=true/.test(g),
-     'rather than leaving a live field whose value would then be ignored');
-  ok(/r\['Allowance'\]=''; r\['Applied to Allowance'\]='';/.test(g),
-     'and clears anything already recorded, so the row cannot keep a draw it no longer makes');
-  ok(/It reduces the contract and does not draw on an allowance/.test(g), 'and says why');
-  ok(/if\(sel\) sel\.disabled=false; if\(amt\) amt\.disabled=false;/.test(g),
-     'while a positive change order re-enables them — a disabled field must not stick');
+  ok(/if\(coIsDeduct\(r\)\)\{/.test(g), 'a deduct takes its own path through the note');
+  ok(/if\(wrap\) wrap\.style\.display = coIsDeduct\(r\) \? 'none' : ''/.test(g),
+     'the DRAW amount field is hidden, because a deduct spends nothing');
+  ok(/if\(coIsDeduct\(r\) && amtEl\)\{ amtEl\.value=''; r\['Applied to Allowance'\]=''; \}/.test(g),
+     'and any draw already recorded is cleared, so one row cannot both draw and reduce');
+  ok(/reduced from '\+fmtMoney\(before\)\+' to '\+fmtMoney\(before-cut\)/.test(g),
+     'while the allowance picker stays live and says what the allowance becomes');
 }
+ok(R(`coAllowanceDraw(${CO(-10000,'5000')})`)===0,
+   'and whatever is on the row, a deduct still draws nothing');
 
 console.log('It says so on the form');
 {

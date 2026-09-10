@@ -16,7 +16,10 @@ fs.writeFileSync('.cg.tmp.mjs', [
   grab('function rowCompany'), grab('function coApprovedAmount'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'),
   // allowanceFor now sums a named list, so its helpers come too.
-  grab('function allowanceLetter'), grab('function contractorRec'), grab('function allowancesFor'),
+  grab('function allowanceLetter'), grab('function contractorRec'),
+  // allowancesFor nets off approved deducts tied to each allowance, so its
+  // write-down helper comes with it.
+  grab('function allowanceReducedById'), grab('function allowancesFor'),
   // Signatures are exact: grab matches the first occurrence, and
   // allowanceRemainingById is declared above allowanceRemaining.
   grab('function allowanceFor(name)'), grab('function coAllowanceId'),
