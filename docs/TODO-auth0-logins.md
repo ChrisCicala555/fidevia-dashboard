@@ -1,5 +1,7 @@
 # Parked: logins, password resets and the Auth0 domain
 
+> Part of the outstanding list in `TODO.md`.
+
 Raised 10 Sep 2026 and deliberately parked to stay on the dashboard itself.
 Nothing here is a code change waiting to be written — all of it needs somebody
 inside the Auth0 dashboard first, and possibly a decision about tenants.
