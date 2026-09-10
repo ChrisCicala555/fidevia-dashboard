@@ -133,8 +133,19 @@ console.log('Filing an upload into the right month');
      'and it nests inside the company folder rather than replacing it');
   ok(/if\(_mf\)/.test(c), 'a date that will not parse files at company level, not in a folder called NaN');
 }
-ok(/MONTH_MODULES=\['contractor_daily','payrolls'\]/.test(html),
-   'only daily reports and payrolls are filed by month; pay applications keep their own numbering');
+ok(/MONTH_MODULES=\['daily','contractor_daily','payrolls'\]/.test(html),
+   'the three report modules are filed by month; pay applications keep their own numbering');
+ok(/MONTH_BY_COMPANY=\['contractor_daily','payrolls'\]/.test(html),
+   'and only what contractors file is split by company first');
+{
+  // Fidevia's own daily report has no company above it, so the month step
+  // cannot live inside the company step.
+  const blk = html.split('let uploadFolderId=folderId;')[1].split('const _num=')[0];
+  const co = blk.indexOf("if(['pay_apps','contractor_daily','payrolls'].includes(key)){");
+  const mo = blk.indexOf('if(MONTH_MODULES.includes(key)');
+  ok(co>=0 && mo>co && blk.slice(co,mo).split('}').length>1,
+     'the month step sits outside the company step, so a module with no company still gets one');
+}
 {
   // A week of reports uploaded together shares the one date typed on the form,
   // so the folder has to be settled before the loop rather than inside it.
@@ -146,6 +157,40 @@ ok(/MONTH_MODULES=\['contractor_daily','payrolls'\]/.test(html),
   const map = html.match(/const keyMap=\{[^}]*\}/)[0];
   ok(/cdaily_ext:'contractor_daily'/.test(map) && /payroll:'payrolls'/.test(map),
      'and the contractor’s own upload forms reach those same two modules');
+}
+
+console.log('Fidevia’s own daily report');
+call(stub);
+call(`currentProject.config.milestones=currentProject.config.milestones.filter(m=>!/notice|mobil/i.test(m.name))`);
+call(`currentProject.config.milestones.push({name:'Notice to Proceed', contract:ymOf(new Date())+'-05'})`);
+await call(`ensureMonthFolders('daily')`);
+{
+  const made = JSON.parse(call(`JSON.stringify(MADE)`));
+  const thisMonth = call(`monthFolderName(ymOf(new Date()))`);
+  ok(made.includes('4/'+thisMonth),
+     'the month hangs straight off the daily reports folder — this is Fidevia’s record, not a contractor’s');
+  ok(!made.some(x=>x.indexOf('Summit Builders')>=0),
+     'with no company folder in between, which would put Fidevia’s report under a contractor');
+}
+{
+  // The generator writes two things to Box: the PDF and the log CSV that
+  // indexes every report ever filed. Only the first belongs in a month folder.
+  const g = html.split("const fname='Daily Report '+date+'.pdf';")[1].split('renderAll(); closeDailyGen();')[0];
+  ok(/boxUploadBinary\(file, upFid/.test(g), 'the PDF goes into the month folder');
+  ok(/const _mf=monthFolderName\(ymOf\(date\)\)/.test(g),
+     'the month being the one the report covers, which is the date on the form');
+  ok(/findFile\(fid,mod\.log\)/.test(g) && /boxUploadText\(mod\.log,toCSV\(mod\.headers,rows\),fid/.test(g),
+     'while the log CSV stays at the module root, where everything that reads it looks');
+  ok(/appendRow',\{folderId:fid/.test(g), 'externally too');
+  ok(/upFid=fid;/.test(g) && /\|\| fid; \}catch\(e\)\{\}/.test(g),
+     'and a month folder that cannot be made falls back to the root rather than losing the report');
+}
+{
+  // Photos already file themselves under Photos/<date>, which is finer than by
+  // month. Nothing here should have disturbed that.
+  const ph = html.split('async function uploadPhotos(input){')[1].split('async function loadProjectPhotos')[0];
+  ok(/findOrCreateFolder\('Photos', dailyFid\)/.test(ph) && /findOrCreateFolder\(td, photosFid\)/.test(ph),
+     'site photos keep their own day folders under Photos, untouched');
 }
 
 console.log('Certified Payrolls moved to Recordkeeping');

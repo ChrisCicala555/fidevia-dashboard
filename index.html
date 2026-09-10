@@ -4444,6 +4444,7 @@ function renderSubmittals(){
 }
 
 function renderDailyLogs(){
+  try{ ensureMonthFolders('daily'); }catch(e){}
   const rows=allData.daily||[], ul=document.getElementById('list-daily');
   if(!rows.length){ul.innerHTML='<li><span class="desc" style="color:var(--muted);font-style:italic;">No daily logs yet.</span></li>';return;}
   ul.innerHTML=rows.slice().reverse().map(r=>{
@@ -4605,7 +4606,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 19:05';
+const BUILD_STAMP='2026-09-10 19:35';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6180,7 +6181,8 @@ function schedMonthLabel(){ const d=new Date(); return SCHED_MONTHS[d.getMonth()
 //
 // Named YYYY-MM first so Box sorts them in order, then the month in words so a
 // person scanning the list does not have to do arithmetic.
-const MONTH_MODULES=['contractor_daily','payrolls'];
+const MONTH_MODULES=['daily','contractor_daily','payrolls'];
+const MONTH_BY_COMPANY=['contractor_daily','payrolls'];
 function ymOf(d){
   const x=(d instanceof Date)?d:parseLocalDate(String(d||''));
   if(!x||isNaN(x)) return '';
@@ -6223,12 +6225,19 @@ async function ensureMonthFolders(key){
   if(MONTHS_DONE[tag]) return; MONTHS_DONE[tag]=true;
   const want=monthsFrom(projectStartYM(), ymOf(new Date())).map(monthFolderName).filter(Boolean);
   if(!want.length) return;
-  const cos=((currentProject.config&&currentProject.config.contractors)||[])
-    .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
-  if(!cos.length) return;
+  // Where the months hang: inside each contractor's folder for what
+  // contractors file, and directly under the module for Fidevia's own reports.
+  let parents;
+  if(MONTH_BY_COMPANY.includes(key)){
+    const cos=((currentProject.config&&currentProject.config.contractors)||[])
+      .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
+    if(!cos.length) return;
+    parents=cos;
+  } else parents=[null];
   try{
-    for(const co of cos){
-      const coId=await findOrCreateFolder(co, currentProject.folders[key]);
+    for(const co of parents){
+      const coId = co ? await findOrCreateFolder(co, currentProject.folders[key])
+                      : currentProject.folders[key];
       if(!coId) continue;
       const have=new Set((await boxList(coId)).filter(e=>e.type==='folder').map(e=>String(e.name||'').trim()));
       for(const nm of want) if(!have.has(nm)) await findOrCreateFolder(nm, coId);
@@ -7887,17 +7896,17 @@ async function submitForm(){
       if(['pay_apps','contractor_daily','payrolls'].includes(key)){
         const _co = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (v('f-company')||v('f-contr')||'');
         if(_co){ prog.textContent='Preparing company folder…'; try{ uploadFolderId=await (EXTERNAL ? proxyCall('ensureFolder',{parentId:folderId,name:_co}).then(d=>d.id||folderId) : findOrCreateFolder(_co, folderId)); }catch(e){} }
-        // The month the report is for, which is not always the month it is
-        // filed in — a Friday report uploaded on Monday belongs to Friday, and
-        // a payroll for the last week of a month is that month's.
-        if(MONTH_MODULES.includes(key) && uploadFolderId){
-          const _d = v('f-date-sub') || v('f-week') || etToday();
-          const _mf = monthFolderName(ymOf(_d) || ymOf(new Date()));
-          if(_mf){ prog.textContent='Preparing '+_mf+'\u2026';
-            try{ uploadFolderId = await (EXTERNAL
-              ? proxyCall('ensureFolder',{parentId:uploadFolderId,name:_mf}).then(d=>d.id||uploadFolderId)
-              : findOrCreateFolder(_mf, uploadFolderId)); }catch(e){} }
-        }
+      }
+      // The month the report is for, which is not always the month it is filed
+      // in — a Friday report uploaded on Monday belongs to Friday, and a
+      // payroll for the last week of a month is that month's. Below the company
+      // folder where there is one, directly under the module where there isn't.
+      if(MONTH_MODULES.includes(key) && uploadFolderId){
+        const _mf = monthFolderName(ymOf(v('f-date-sub') || v('f-week') || etToday()) || ymOf(new Date()));
+        if(_mf){ prog.textContent='Preparing '+_mf+'\u2026';
+          try{ uploadFolderId = await (EXTERNAL
+            ? proxyCall('ensureFolder',{parentId:uploadFolderId,name:_mf}).then(d=>d.id||uploadFolderId)
+            : findOrCreateFolder(_mf, uploadFolderId)); }catch(e){} }
       }
       const _num=(currentModal==='document')?v('f-name'):(PRE_NUM||v('f-num'));
       if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
@@ -10844,9 +10853,17 @@ async function dgGenerate(){
     const blob=doc.output('blob');
     const fname='Daily Report '+date+'.pdf';
     const file=new File([blob], fname, {type:'application/pdf'});
-    prog.textContent='Uploading to Box…';
     const fid=currentProject.folders.daily;
-    const up=await boxUploadBinary(file, fid, uploadProgressTo(prog,'Uploading report'));
+    // The report is filed under the month it covers. The log CSV stays at the
+    // module root — it indexes every month, and everything that reads it looks
+    // for it there.
+    let upFid=fid;
+    const _mf=monthFolderName(ymOf(date));
+    if(_mf){ prog.textContent='Preparing '+_mf+'\u2026';
+      try{ upFid = await (EXTERNAL ? proxyCall('ensureFolder',{parentId:fid,name:_mf}).then(d=>d.id||fid)
+                                   : findOrCreateFolder(_mf, fid)) || fid; }catch(e){} }
+    prog.textContent='Uploading to Box…';
+    const up=await boxUploadBinary(file, upFid, uploadProgressTo(prog,'Uploading report'));
     const entry=up.entries?up.entries[0]:up;
     prog.textContent='Updating log…';
     const mod=MODULES.daily;
