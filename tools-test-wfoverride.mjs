@@ -78,6 +78,26 @@ console.log('It shows on the row, not only in the log');
   ok(/event\.stopPropagation\(\);openWfOverride\(/.test(w),
      'with the click held back from the row underneath, which would otherwise fold the thread');
 }
+{
+  // This assertion used to check only that the call appeared in the source,
+  // which it did — inside an onclick attribute that JSON.stringify had already
+  // broken by putting DOUBLE quotes round the key. The button rendered and did
+  // nothing. So the check is now on the rendered markup.
+  const P2 = bootPage(); P2.run(SEED);
+  P2.run(`currentProject.config.workflows.co=[
+    {name:'Fidevia Review',person:'Christopher Cicala',email:'cc@fidevia.com',company:'Fidevia'},
+    {name:'Architect Review',person:'Test Architect',email:'a@x.test',company:'Architect 2',parallel:true}];
+    IS_ADMIN=true;`);
+  const out = P2.run(`wfProgressHTML('co',{'PCO #':'PCO-GC-001','Company':'Summit Builders',
+    'Workflow Step':'0','Workflow Status':'In Review',
+    'Workflow Signed':JSON.stringify({'0':{by:'cc@fidevia.com',at:'2026-09-10'}})},0)`);
+  const btn = (out.match(/<button class="wf-ov"[^>]*>/)||[''])[0];
+  ok(btn.length>0, 'the button renders');
+  ok(/onclick="event\.stopPropagation\(\);openWfOverride\('co',0,1\)"/.test(btn),
+     'and its onclick survives into the attribute intact, arguments and all');
+  ok((btn.match(/"/g)||[]).length % 2 === 0,
+     'with balanced quotes — an odd one closes the attribute early and truncates the handler');
+}
 
 console.log('What the dialog insists on');
 {

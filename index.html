@@ -4812,7 +4812,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 04:25';
+const BUILD_STAMP='2026-09-11 04:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12085,9 +12085,12 @@ function wfProgressHTML(key,r,i){
       +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
       +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;"'
           +(sig.reason?(' title="'+esc(String(sig.reason))+'"'):'')+'>override</span>':'')
+      // Single quotes inside the attribute. JSON.stringify puts DOUBLE quotes
+      // round the key, which closed onclick=" early and left the handler
+      // truncated — the button rendered and did nothing.
       +(canOv.indexOf(n)>=0
-          ? '<button class="wf-ov" title="Record this step on their behalf" onclick="event.stopPropagation();openWfOverride('
-            +JSON.stringify(key)+','+i+','+n+')">\u22ef</button>' : '')
+          ? '<button class="wf-ov" title="Record this step on their behalf" onclick="event.stopPropagation();openWfOverride(\''
+            +esc(key)+'\','+i+','+n+')">\u22ef</button>' : '')
       +note
       // The reason is the whole point of an override, so it reads on the row
       // rather than only in the audit log somebody has to go and find.
