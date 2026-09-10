@@ -3962,7 +3962,10 @@ function nextItemNumber(key, comp){
   const code=tradeCodeFor(comp);
   const rows=allData[key]||[]; let max=0;
   rows.forEach(r=>{
-    const v=String(r[idField]||'');
+    // A change order's number lives in 'PCO #' until it is executed. Reading
+    // only 'CO #' meant a log full of proposals scanned as empty and every new
+    // one was handed 001.
+    const v=String(r[idField]||'') || (key==='co' ? String(r['PCO #']||'') : '');
     // The new form carries its own code. Anything numbered before this change
     // is matched by the company it belongs to, so an existing log continues
     // into the right run instead of restarting at 001.
@@ -4778,7 +4781,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 02:05';
+const BUILD_STAMP='2026-09-11 02:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11323,6 +11326,17 @@ function sendItemNotif(notifyField, type, def, vars, rows, opts){ const c=notifC
 // ══════════════════════════════════════════════
 const REPLY_STATUS={rfi:['Open','Answered','Closed'],co:['Open','Approved','Rejected','Revise & Resubmit'],sub:['Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejected']};
 const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'};
+// What a row is called, for finding it again. A change order answers to its CO
+// number once it has one and to its PCO number before that — keying only on
+// 'CO #' left every proposal with a blank identity, and a blank identity
+// matches nothing.
+function rowIdOf(key, r){
+  if(!r) return '';
+  const f=REPLY_IDF[key];
+  const v=String((f && r[f])||'').trim();
+  if(v) return v;
+  return key==='co' ? String(r['PCO #']||'').trim() : '';
+}
 // Find a row again in a log that has been re-read, by what it is rather than
 // by where it was.
 //
@@ -11336,13 +11350,21 @@ const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'};
 // The server already does this properly for external callers: updateRow finds
 // by the identifier and 404s when it is gone. This is the same rule for the
 // path that rewrites the whole file.
-function rowIndexById(key, rows, id){
-  const f=REPLY_IDF[key]; if(!f || !id) return -1;
-  const want=String(id).trim().toLowerCase();
+function rowIndexById(key, rows, id, hint){
+  const want=String(id||'').trim().toLowerCase();
+  if(!want) return -1;
+  const hits=[];
   for(let n=0;n<rows.length;n++){
-    if(String(rows[n][f]||'').trim().toLowerCase()===want) return n;
+    if(rowIdOf(key, rows[n]).toLowerCase()===want) hits.push(n);
   }
-  return -1;
+  if(hits.length===1) return hits[0];
+  if(!hits.length) return -1;
+  // Numbers are meant to be unique, and a log that has been through a
+  // numbering bug may carry duplicates. Prefer the row this page was actually
+  // looking at, if it is still one of them; otherwise refuse, because writing
+  // to whichever came first would be writing to the wrong record.
+  const h=parseInt(hint,10);
+  return (hits.indexOf(h)>=0) ? h : -1;
 }
 // What to say when it has gone. Naming the item matters: "reload and try again"
 // on its own reads as a glitch rather than as somebody having deleted it.
@@ -12036,8 +12058,8 @@ async function wfAdvance(key, i){
   const existing=await findFile(fid,mod.log);
   let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
   // Same rule as the reply path: what it is, not where it was.
-  const _wantId=String((_r0||{})[REPLY_IDF[key]]||'');
-  const _n=rowIndexById(key, rows, _wantId);
+  const _wantId=rowIdOf(key, _r0);
+  const _n=rowIndexById(key, rows, _wantId, i);
   if(_n<0){ alert(rowGoneError(key,_wantId).message); try{ await loadDashboard(); }catch(e){} return; }
   const row=rows[_n];
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
@@ -12390,7 +12412,7 @@ function openReply(key,i,advance){
   // The identifier is captured here rather than looked up at save time, so a
   // list that has been re-rendered underneath the open dialog cannot change
   // which item the reply was written about.
-  REPLY_CTX={key,i,advance:!!advance,id:String(r[REPLY_IDF[key]]||'')};
+  REPLY_CTX={key,i,advance:!!advance,id:rowIdOf(key,r)};
   // Every one of the three answers under "What are you doing?" is a reviewer's
   // answer — record my review, add somebody to the review, hand my review to
   // somebody else. A contractor answering a return is not reviewing anything;
@@ -12586,8 +12608,8 @@ async function submitReply(){
     let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
     // By identifier, against the log as it is now — not by the position this
     // page was drawn with.
-    const _wantId=(REPLY_CTX&&REPLY_CTX.id)||String(((allData[key]||[])[i]||{})[REPLY_IDF[key]]||'');
-    const _n=rowIndexById(key, rows, _wantId);
+    const _wantId=(REPLY_CTX&&REPLY_CTX.id)||rowIdOf(key, (allData[key]||[])[i]);
+    const _n=rowIndexById(key, rows, _wantId, i);
     if(_n<0) throw rowGoneError(key, _wantId);
     const row=rows[_n];
     // Who said it, and on whose behalf. Entries used to carry one string that

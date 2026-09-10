@@ -45,7 +45,10 @@ console.log('What it says');
 console.log('Both write paths use it');
 {
   const c = html.split('async function submitReply')[1].split('\n// Completing a review')[0];
-  ok(/const _n=rowIndexById\(key, rows, _wantId\);/.test(c), 'the reply path finds by identifier');
+  // The call gained a position argument used only to break a tie between rows
+  // that share a number; the lookup is still by identifier.
+  ok(/const _n=rowIndexById\(key, rows, _wantId(, i)?\);/.test(c), 'the reply path finds by identifier');
+  ok(!/rows\[i\]/.test(c.split('const _n=')[0].slice(-400)), 'and not by the position the page was drawn with');
   ok(/if\(_n<0\) throw rowGoneError\(key, _wantId\);/.test(c), 'and refuses when it is gone');
   ok(/const row=rows\[_n\];/.test(c) && !/const row=rows\[i\];/.test(c),
      'and writes to the row it found, not to the index the page was drawn with');
@@ -54,7 +57,7 @@ console.log('Both write paths use it');
 }
 {
   const c = html.split('async function wfAdvance')[1].split('\nasync function ')[0];
-  ok(/const _n=rowIndexById\(key, rows, _wantId\);/.test(c), 'so does the approve path');
+  ok(/const _n=rowIndexById\(key, rows, _wantId(, i)?\);/.test(c), 'so does the approve path');
   ok(/alert\(rowGoneError\(key,_wantId\)\.message\)/.test(c), 'which says the same thing');
   ok(/await loadDashboard\(\)/.test(c), 'and reloads, so the reader is not left looking at a ghost');
   ok(!/const row=rows\[i\]; if\(!row\) return;/.test(c), 'the positional lookup is gone');
