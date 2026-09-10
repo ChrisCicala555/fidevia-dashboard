@@ -1023,7 +1023,13 @@ export default async (req) => {
     }
 
     // ---- LIST ALL PROJECT NAMES (any authenticated user) for the request dropdown ----
+    // Every project Fidevia has, to anybody with an account. It existed to fill
+    // a dropdown on the Request Access screen — so a contractor on one job
+    // could read the name of every other job in the business, including ones
+    // not yet announced. The screen asks them to type a name instead, and this
+    // is Fidevia's alone.
     if (op === 'listAllProjectNames') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
       const d = await r.json();
       return json({ projects: (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name)).map(e => ({ id: e.id, name: e.name })) });
@@ -1031,16 +1037,43 @@ export default async (req) => {
 
     // ---- REQUEST ACCESS to a project (any authenticated user) ----
     if (op === 'requestAccess') {
-      const projectId = String(body.projectId || '');
-      if (!projectId) return json({ error: 'projectId required' }, 400);
+      // The requester types what they are looking for; the server works out
+      // which project that is. Sending them a list to choose from is what
+      // leaked the list, and the id they would send back could be any id.
+      const typed = String(body.projectName || '').trim().slice(0, 200);
+      const note = String(body.note || '').trim().slice(0, 500);
+      if (!typed) return json({ error: 'Say which project you are asking about.' }, 400);
+      let projectId = '', matched = '';
+      try {
+        const r = await boxFetch(`https://api.box.com/2.0/folders/${process.env.BOX_PROJECTS_ROOT_ID}/items?limit=1000&fields=id,name,type`, { headers: H });
+        const d = await r.json();
+        const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const projects = (d.entries || []).filter(e => e.type === 'folder' && !SYSTEM_FOLDERS.includes(e.name));
+        const want = norm(typed);
+        // Exact first, then a containment either way, so "Ithaca" finds
+        // "Ithaca Housing Complex" and the full name finds it too. Anything
+        // vaguer is left for a person to read.
+        const hit = projects.find(p => norm(p.name) === want)
+          || (want.length >= 4 ? projects.find(p => norm(p.name).includes(want) || want.includes(norm(p.name))) : null);
+        if (hit) { projectId = String(hit.id); matched = hit.name; }
+      } catch (e) {}
+      // Unmatched requests are still requests. They go in a bucket a person
+      // reads rather than being refused, because the alternative is telling the
+      // requester which names exist — one guess at a time.
+      const bucket = projectId || 'unmatched';
       const prof = await getProfileBySub(who.sub);
       const snap = prof ? { name: ((prof.first_name||'')+' '+(prof.last_name||'')).trim()||who.name||'', company: prof.company||'', role: prof.title||prof.involvement||'', phone: prof.phone||'' } : { name: who.name||'' };
-      await requestsStore().setJSON(reqKey(projectId, who.email), {
-        email: who.email, name: who.name || '', snap, projectId, projectName: body.projectName || '', requestedAt: new Date().toISOString()
+      await requestsStore().setJSON(reqKey(bucket, who.email), {
+        email: who.email, name: who.name || '', snap, projectId,
+        projectName: matched || typed, asked: typed, note,
+        matched: !!projectId, requestedAt: new Date().toISOString()
       });
       // Best effort: the request is already stored, so a mail failure must not
       // make the person think their request did not go through.
-      try { await notifyAdminsOfRequest(body.projectName || '', { name: snap.name, email: who.email, company: snap.company, role: snap.role }, H, projectId); } catch(e) {}
+      try { await notifyAdminsOfRequest(matched || typed, { name: snap.name, email: who.email, company: snap.company, role: snap.role, asked: typed, note, matched: !!projectId }, H, projectId); } catch(e) {}
+      // The same answer whether or not it matched. Anything else turns this
+      // screen into a way of asking "does a project by this name exist?", one
+      // guess at a time — which is the leak it was built to close.
       return json({ ok: true });
     }
 

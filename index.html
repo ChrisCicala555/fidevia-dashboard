@@ -895,8 +895,16 @@
 <div id="screen-request" class="screen" style="align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;">
   <div class="form-card" style="max-width:520px;width:100%;">
     <h2>Request Project Access</h2>
-    <p class="form-desc">Select the project you need access to. A Fidevia administrator will review your request.</p>
-    <div class="field"><label>Project *</label><select id="req-project"><option value="">Loading projects…</option></select></div>
+    <p class="form-desc">Tell us which project you need access to and a Fidevia administrator will review your
+      request. Your name, company and email come with it, so we know who is asking.</p>
+    <div class="field"><label>Project *</label>
+      <input id="req-project-name" type="text" autocomplete="off" placeholder="e.g. Ithaca Housing Complex"
+        oninput="document.getElementById('req-status').textContent='';">
+      <p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">
+        The project name or job number, as you know it. It does not have to be exact.</p></div>
+    <div class="field"><label>Anything else that helps us place you (optional)</label>
+      <textarea id="req-project-note" rows="2" autocomplete="off"
+        placeholder="e.g. mechanical sub for Summit Builders, starting on site in October"></textarea></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="submitRequest()" id="btn-request">Request Access</button>
       <button class="btn-secondary" onclick="loadPicker()">Back</button>
@@ -4597,7 +4605,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 11:05';
+const BUILD_STAMP='2026-09-10 12:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7942,21 +7950,34 @@ async function submitForm(){
 }
 
 // ── EXTERNAL: REQUEST PROJECT ACCESS ──
-async function openRequest(){
+// This screen used to fetch every project Fidevia has and put them in a
+// dropdown. Anybody with an account could read the name of every job in the
+// business, including ones not yet announced, from a screen whose whole
+// purpose is being used by people who are not on a project yet.
+//
+// They type it instead, and the server works out which one they mean. It also
+// answers the same way whether or not it recognised the name — otherwise the
+// screen becomes a way of asking "does a project called this exist?", one guess
+// at a time, which is the same leak with more steps.
+function openRequest(){
   showScreen('screen-request');
-  try{
-    const d=await proxyCall('listAllProjectNames',{});
-    const sel=document.getElementById('req-project');
-    sel.innerHTML='<option value="">Select a project…</option>'+(d.projects||[]).map(p=>'<option value="'+esc(p.id)+'" data-name="'+esc(p.name)+'">'+esc(p.name)+'</option>').join('');
-  }catch(e){ document.getElementById('req-project').innerHTML='<option value="">Error loading projects</option>'; }
+  const el=document.getElementById('req-project-name');
+  const note=document.getElementById('req-project-note');
+  if(el){ el.value=''; el.focus(); }
+  if(note) note.value='';
+  const st=document.getElementById('req-status'); if(st) st.textContent='';
 }
 async function submitRequest(){
-  const sel=document.getElementById('req-project');
-  const projectId=sel.value; const opt=sel.options[sel.selectedIndex];
-  const projectName=opt?opt.getAttribute('data-name'):'';
-  if(!projectId){ showStatus('req-status','Please select a project.','error'); return; }
+  const name=String((document.getElementById('req-project-name')||{}).value||'').trim();
+  const note=String((document.getElementById('req-project-note')||{}).value||'').trim();
+  if(!name){ showStatus('req-status','Type the project name or job number you are asking about.','error'); return; }
   const btn=document.getElementById('btn-request'); btn.disabled=true;
-  try{ await proxyCall('requestAccess',{projectId,projectName}); showStatus('req-status','Request submitted, thank you. Fidevia will review and respond shortly.','success'); }
+  try{
+    await proxyCall('requestAccess',{projectName:name, note});
+    showStatus('req-status','Request submitted, thank you. Fidevia will review and respond shortly.','success');
+    const el=document.getElementById('req-project-name'); if(el) el.value='';
+    const nt=document.getElementById('req-project-note'); if(nt) nt.value='';
+  }
   catch(e){ showStatus('req-status','Error: '+e.message,'error'); }
   btn.disabled=false;
 }
