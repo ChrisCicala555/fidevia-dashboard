@@ -48,7 +48,10 @@ ok(/const iw=\(W-2\*M\)\/ids\.length;/.test(html),
 console.log('Kept where removing it would destroy something');
 // The explanation is a comment spanning several lines, so match one line of it
 // rather than a phrase that a line break runs through.
-ok(/it was dropped from the form, the log and[\s\S]{0,400}const MODULES = \{/.test(html),
+// The note now covers Cause and Schedule Impact together, so match the part
+// about the columns rather than a sentence that has since gained a second
+// subject.
+ok(/dropped from the forms and from the generated change order[\s\S]{0,300}const MODULES = \{/.test(html),
    'the column stays in the log, with the reason written down beside the headers it belongs to');
 {
   const hdr = html.split("co:       {folder:'02 - Change Orders'")[1].split(']}')[0];
