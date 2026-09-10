@@ -4766,7 +4766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-10 21:20';
+const BUILD_STAMP='2026-09-10 22:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7256,7 +7256,7 @@ const FORMS = {
     <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">The report document itself. Choose several to file a batch — each becomes its own row, sharing the date and company above.</p></div>`},
   payroll:{title:'Upload Certified Payroll',html:`
     <div class="field-row"><div class="field"><label>Week Ending</label><input autocomplete="off" type="date" id="f-week"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
-    <div class="field-row"><div class="field"><label>Payroll #</label><input autocomplete="off" id="f-num" placeholder="e.g. 12"></div><div class="field"></div></div>
+    <div class="field-row"><div class="field"><label>Payroll #</label><input autocomplete="off" id="f-num" placeholder="e.g. 12"><p class="file-hint" style="margin-top:3px;">Optional \u2014 leave blank if the payroll is unnumbered.</p></div><div class="field"></div></div>
     <div class="field"><label>Notes</label><textarea autocomplete="off" id="f-notes"></textarea></div>
     <div class="field"><label>Certified Payroll File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">The signed certified payroll (PDF). Choose several to file a batch — each becomes its own row, sharing the week ending and company above.</p></div>`},
   gendocument:{title:'Upload Document',html:`
@@ -8177,7 +8177,11 @@ async function submitForm(){
     } else if(currentModal==='payroll'){
       if(!attachId) throw new Error('A certified payroll file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
-      newRow={'Week Ending':v('f-week'),'Company':_comp,'Payroll #':v('f-num'),'Submitted By':_senderEmail||'','Notes':v('f-notes'),'Attachment File ID':attachId,'Attachment Name':attachName};
+      if(!_comp) throw new Error('Company is required.');
+      // Payroll # stays optional: a subcontractor filing through a GC often has
+      // no number of their own, and refusing the document over it would be
+      // refusing the record for the sake of the index.
+      newRow={'Week Ending':(v('f-week')||etToday()),'Company':_comp,'Payroll #':v('f-num'),'Submitted By':_senderEmail||'','Notes':v('f-notes'),'Attachment File ID':attachId,'Attachment Name':attachName};
     } else if(currentModal==='document'||currentModal==='gendocument'){
 
       if(!v('f-name')||!attachId) throw new Error('Document Name and File are required.');
