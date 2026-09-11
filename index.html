@@ -3466,20 +3466,28 @@ const WF_TEMPLATES={
 // WF_TEMPLATES when the gathered steps are empty, and these rows were not
 // empty, WF_TEMPLATES never applied to anything made in the wizard. One set of
 // defaults now, in WF_TEMPLATES, rendered and saved.
+function wfMayEditSettings(){ return IS_ADMIN && !viewingAsExternal(); }
 function wfStepRow(prefix,key,name,person,parallel,requireAll){
+  const ed=wfMayEditSettings();
+  const lock=ed?'':' readonly style="background:#f0efe9;color:#555;cursor:default;"';
+  const dis=ed?'':' disabled';
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
-    +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"></div>'
-    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'" placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
+    +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"'+lock+'></div>'
+    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'"'+lock+' placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Company</label><input class="wf-co" autocomplete="off" readonly placeholder="—" style="background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;"></div>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one person in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+' style="width:auto;margin-right:4px;">Parallel</label>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. A parallel group already requires this — two reviewers means two reviews — so this only adds anything to a step standing on its own."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+' style="width:auto;margin-right:4px;">All must sign</label>'
-    +'<button type="button" class="btn-secondary" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button></div>';
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one person in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+dis+' style="width:auto;margin-right:4px;">Parallel</label>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. A parallel group already requires this — two reviewers means two reviews — so this only adds anything to a step standing on its own."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+dis+' style="width:auto;margin-right:4px;">All must sign</label>'
+    +(ed ? '<button type="button" class="btn-secondary wf-edit" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button>' : '')
+    +'</div>';
 }
 function wfBlock(prefix,key,label,steps){
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">'
     +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(label)+'</div>'
     +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel,s.requireAll)).join('')+'</div>'
-    +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;" onclick="wfAddStep(\''+prefix+'\',\''+key+'\')">+ Add Step</button></div>';
+    +(wfMayEditSettings()
+        ? '<button type="button" class="btn-secondary wf-edit" style="padding:5px 11px;margin-top:2px;" onclick="wfAddStep(\''+prefix+'\',\''+key+'\')">+ Add Step</button>'
+        : '')
+    +'</div>';
 }
 function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false,false)); }
 function wfRenderAll(prefix, containerId, workflows, peopleList){
@@ -3532,6 +3540,16 @@ function loadWorkflowSettings(){
     if(revert) revert.style.display = custom ? 'inline-block' : 'none';
   }
   wfRenderAll('wfs','wf-settings-body',wf,people);
+  // Save, revert and the row controls all write. A reader gets none of them,
+  // and is told why rather than left wondering where the button went.
+  const ed=wfMayEditSettings();
+  ['btn-wf-save','btn-wf-revert'].forEach(id=>{
+    const b=document.getElementById(id); if(!b) return;
+    if(!ed) b.style.display='none';
+    else if(id==='btn-wf-save') b.style.display='';
+  });
+  if(!ed && hint) hint.innerHTML='This is the review chain items follow on this project. '
+    +'It is set by Fidevia \u2014 you can see it here, but not change it.';
 }
 function wfScopeChanged(){
   const sel=document.getElementById('wf-scope');
