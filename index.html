@@ -4899,7 +4899,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 12:05';
+const BUILD_STAMP='2026-09-11 12:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11737,7 +11737,10 @@ async function dgGenerate(){
   const btn=document.getElementById('dg-submit'), prog=document.getElementById('dg-progress');
   const date=document.getElementById('dg-date').value;
   if(!date){ showStatus('dg-status','Report date is required.','error'); return; }
-  const {crews}=dgGather();
+  // Every section, because the row written below stores the whole report for
+  // tomorrow to start from. Taking only crews here left the other three
+  // undefined, and reading an undeclared name throws.
+  const {crews,notes,deliveries,inspections}=dgGather();
   if(!crews.length){ showStatus('dg-status','Add at least one company / work entry.','error'); return; }
   btn.disabled=true; prog.style.display='inline'; prog.textContent='Building PDF…';
   try{
