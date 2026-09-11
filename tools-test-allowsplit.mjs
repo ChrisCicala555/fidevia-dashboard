@@ -9,6 +9,9 @@
 import fs from 'fs';
 import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
+// Fixture rows carry a CO number now: an approved row WITHOUT one is a
+// proposal, and proposals no longer move the contract. The arithmetic under
+// test is unchanged; only which rows take part in it.
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const P = bootPage(); P.run(SEED);
@@ -16,7 +19,7 @@ P.run(`currentProject.config.contractors=[{name:'Summit Builders',contract:'2000
   allowances:[{id:'A',name:'Floor leveler',amount:'60000'},{id:'B',name:'Hardware',amount:'20000'},
               {id:'C',name:'Paint',amount:'15000'}]}]`);
 const R = e => P.run(e);
-const splitRow = (amt, pairs) => JSON.stringify({'Status':'Approved','Company':'Summit Builders',
+const splitRow = (amt, pairs) => JSON.stringify({'CO #':'CO-X','Status':'Approved','Company':'Summit Builders',
   'Approved Amount':String(amt), 'Allowance Splits':JSON.stringify(pairs)});
 const set = js => R(`allData.co=${js}`);
 const now = id => R(`allowancesFor('Summit Builders').find(x=>x.id==='${id}').amount`);
@@ -91,7 +94,7 @@ ok(Math.round(60000-now('A'))===5000 && Math.round(20000-now('B'))===5000,
    'a write-down is scaled the same way, so a deduct cannot erase more allowance than it returns');
 
 console.log('A deduct naming no allowance');
-set(`[${JSON.stringify({'Status':'Approved','Company':'Summit Builders','Approved Amount':'-9000'})}]`);
+set(`[${JSON.stringify({'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'-9000'})}]`);
 ok(now('A')===60000 && now('B')===20000 && now('C')===15000,
    'writes none of them down — it is a plain contract credit');
 ok(contract()===-9000, 'and still comes off the contract');

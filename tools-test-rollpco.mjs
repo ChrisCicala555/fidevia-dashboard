@@ -30,8 +30,11 @@ ok(/approved:set\.reduce\(\(sum,e\)=>sum\+e\.amount,0\)/.test(cm), 'so does the 
 ok(/allowance:set\.reduce\(\(sum,e\)=>sum\+drawOf\(e\),0\)/.test(cm), 'and the allowance draw');
 ok(/x\.row\s*\n?\s*\? x\s*\n?\s*: \{ row:x/.test(cm) || /\? x$/m.test(cm),
    'a bare row is still accepted, so older callers keep working');
-ok(/x!==r && coIsApproved\(x\)/.test(cm),
-   'the running total still counts only earlier approved ones, so a rolled proposal is not counted twice');
+// Executed, not merely approved: an agreed proposal does not move the contract
+// until a change order is written, so it must not appear in the running total
+// printed on the document either.
+ok(/x!==r && coIsExecuted\(x\)/.test(cm),
+   'the running total still counts only earlier executed ones, so a rolled proposal is not counted twice');
 ok(/covers:set\.map/.test(cm), 'each covered proposal is listed');
 
 // the document

@@ -15,7 +15,7 @@ fs.writeFileSync('.cg.tmp.mjs', [
   "const orgKeyOf=n=>String(n||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\\s+/g,' ');",
   grab('function rowCompany'), grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
   grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
-  grab('function coContractImpact('), grab('function coIsApproved'),
+  grab('function coContractImpact('), grab('function coIsApproved'), grab('function coIsExecuted'),
   // allowanceFor now sums a named list, so its helpers come too.
   grab('function allowanceLetter'), grab('function contractorRec'),
   // allowancesFor nets off approved deducts tied to each allowance, so its

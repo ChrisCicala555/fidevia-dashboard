@@ -7,6 +7,9 @@
 import fs from 'fs';
 import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
+// Fixture rows carry a CO number now: an approved row WITHOUT one is a
+// proposal, and proposals no longer move the contract. The arithmetic under
+// test is unchanged; only which rows take part in it.
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const P = bootPage(); P.run(SEED);
@@ -31,7 +34,7 @@ ok(label(`{id:'B',name:'Hardware',amount:20000,left:0}`)
 
 console.log('Where the figure comes from');
 {
-  R(`allData.co=[{'Status':'Approved','Company':'Summit Builders','Approved Amount':'8000',
+  R(`allData.co=[{'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'8000',
       'Allowance Splits':JSON.stringify([{id:'A',amount:8000}])}]`);
   const list=JSON.parse(R(`JSON.stringify(allowancesFor('Summit Builders').map(a=>
     allowOptionLabel(Object.assign({},a,{left:allowanceRemainingById('Summit Builders',a.id)}))))`));
@@ -41,7 +44,7 @@ console.log('Where the figure comes from');
 {
   // An allowance written down reads at its CURRENT amount. It is not "left of"
   // the original, because the original is no longer owed.
-  R(`allData.co=[{'Status':'Approved','Company':'Summit Builders','Approved Amount':'-5000',
+  R(`allData.co=[{'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'-5000',
       'Allowance Splits':JSON.stringify([{id:'B',amount:5000}])}]`);
   const b=R(`(function(){const a=allowancesFor('Summit Builders').find(x=>x.id==='B');
     return allowOptionLabel(Object.assign({},a,{left:allowanceRemainingById('Summit Builders','B')}));})()`);

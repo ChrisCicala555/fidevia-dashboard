@@ -83,7 +83,8 @@ ok('Delete asks for an optional reason', /askDelete\(ev, key, i\)/.test(src) && 
 ok('cancelling the prompt cancels the delete', /if\(why===null\) return;/.test(src));
 // The reason still reaches the audit log, now alongside where the documents
 // were moved to — the two together are what make a deletion traceable later.
-ok('the reason reaches the audit log', /auditLog\('Deleted', key, removed, why\+where\)/.test(src));
+// The details now also name any proposals reopened by deleting a change order.
+ok('the reason reaches the audit log', /auditLog\('Deleted', key, removed, why\+where/.test(src));
 ok('the reason is omitted from the email when blank', /if\(why\) rows\.push\(\['Reason'/.test(src));
 ok('Restore is wrapped',        /withBusy\(event,\\?'Restoring/.test(src));
 ok('Approve Step is wrapped',   /withBusy\(event,\\?'Approving/.test(src));

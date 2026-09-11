@@ -11,6 +11,9 @@
 import fs from 'fs';
 import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
+// Fixture rows carry a CO number now: an approved row WITHOUT one is a
+// proposal, and proposals no longer move the contract. The arithmetic under
+// test is unchanged; only which rows take part in it.
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const P = bootPage(); P.run(SEED);
@@ -48,7 +51,7 @@ ok(R(`EL.value`)==='-1,234.56', 'and the two-decimal cap still applies');
 }
 
 console.log('What a deduct does to the contract');
-const CO = (amt, allow) => `({'Status':'Approved','Company':'Summit Builders','Approved Amount':'${amt}','Applied to Allowance':'${allow||''}'})`;
+const CO = (amt, allow) => `({'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'${amt}','Applied to Allowance':'${allow||''}'})`;
 ok(R(`coApprovedAmount(${CO(-8400)})`)===-8400, 'the amount reads back negative');
 ok(R(`coIsDeduct(${CO(-8400)})`)===true && R(`coIsDeduct(${CO(8400)})`)===false, 'and is recognised as a deduct');
 ok(R(`coContractImpact(${CO(-8400)})`)===-8400,
@@ -65,15 +68,15 @@ ok(R(`coAllowanceDraw(${CO(8400,'3000')})`)===3000, 'a normal draw is untouched'
 ok(R(`coAllowanceDraw(${CO(8400,'99999')})`)===8400, 'and is still capped at what the change order is worth');
 ok(R(`coAllowanceDraw(${CO(8400,'-500')})`)===0, 'a negative draw recorded by hand is refused, not honoured');
 {
-  R(`allData.co=[{'Status':'Approved','Company':'Summit Builders','Approved Amount':'-8400'}]`);
+  R(`allData.co=[{'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'-8400'}]`);
   ok(R(`allowanceUsedBy('Summit Builders')`)===0,
      'so a contract with a deduct on it shows no allowance consumed');
 }
 
 console.log('Netting to zero is an answer, not an absence');
 {
-  R(`allData.co=[{'Status':'Approved','Company':'Summit Builders','Approved Amount':'5000'},
-                 {'Status':'Approved','Company':'Summit Builders','Approved Amount':'-5000'}]`);
+  R(`allData.co=[{'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'5000'},
+                 {'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':'-5000'}]`);
   ok(R(`coContractImpactFor('Summit Builders')`)===0, 'an addition and a matching deduct cancel');
   ok(R(`coHasApproved('Summit Builders')`)===true,
      'but the log still says something is on it');

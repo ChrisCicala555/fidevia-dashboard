@@ -4203,6 +4203,22 @@ async function retireRowAssets(key,row){
   return d;
 }
 
+// Proposals a change order had absorbed, put back as they were.
+function coUnrollCovered(rows, removed){
+  const num=String((removed&&(removed['CO #']||removed['PCO #']))||'').trim();
+  if(!num) return [];
+  const back=[];
+  (rows||[]).forEach(x=>{
+    if(!x || x===removed) return;
+    if(String(x['Rolled Into']||'').trim()!==num) return;
+    x['Rolled Into']='';
+    // Back to agreed and uncovered. The amount agreed at the time stays: the
+    // negotiation happened, and only the paperwork has gone.
+    x['Status']='Approved';
+    back.push(String(x['PCO #']||x['CO #']||''));
+  });
+  return back;
+}
 async function deleteRow(key,i,reason,alsoRevoke){
   const mod=MODULES[key], fid=currentProject.folders[key]; if(!fid) return;
   const removed=(allData[key]||[])[i];
@@ -4224,6 +4240,7 @@ async function deleteRow(key,i,reason,alsoRevoke){
   }
   const existing=await findFile(fid,mod.log);
   const rows=(allData[key]||[]).slice(); rows.splice(i,1);
+  const _unrolled = key==='co' ? coUnrollCovered(rows, removed) : [];
   await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
   allData[key]=rows; renderAll();
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
@@ -4232,7 +4249,8 @@ async function deleteRow(key,i,reason,alsoRevoke){
   const where=(retired && retired.moved && retired.moved.length)
     ? (' [moved to '+retired.bin+': '+retired.moved.join(', ')+']')
     : (retired && retired.nothing ? ' [no documents attached]' : '');
-  auditLog('Deleted', key, removed, why+where);
+  auditLog('Deleted', key, removed, why+where
+    +(_unrolled.length?(' [reopened '+_unrolled.join(', ')+', which it had covered]'):''));
   try{
     // Deletion notices go to Fidevia (internal) contacts only — never external parties.
     const internal=(allData.contacts||[]).map(c=>String(c['Email']||'').trim()).filter(e=>e && e.toLowerCase().endsWith('@fidevia.com'));
@@ -4242,6 +4260,8 @@ async function deleteRow(key,i,reason,alsoRevoke){
       if(why) rows.push(['Reason',esc(why)]);
       if(retired && retired.moved && retired.moved.length)
         rows.push(['Documents','Moved to <strong>'+esc(retired.bin)+'</strong> in Box: '+esc(retired.moved.join(', '))]);
+      if(_unrolled.length)
+        rows.push(['Reopened',esc(_unrolled.join(', '))+' \u2014 covered by this change order, now agreed and uncovered again']);
       sendEmail(to, '[Fidevia] Record deleted: '+(MODULE_LABEL[key]||key)+' '+itemLabel(key,removed),
         emailTemplate('A record was deleted', rows, currentProject.name));
     }
@@ -5980,7 +6000,7 @@ function renderFinancials(){
   const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
   const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
-  let tC=0,tCO=0,tR=0,tB=0,tRem=0,tAllow=0,tAllowUsed=0;
+  let tC=0,tCO=0,tR=0,tB=0,tRem=0,tAllow=0,tAllowUsed=0,tPending=0;
   const out=[];
   contractors.forEach(c=>{
     const pa=latestFor(c.name);
@@ -6002,6 +6022,9 @@ function renderFinancials(){
     tAllow+=allowTotal; tAllowUsed+=allowUsed;
     const pct = revised>0 ? billed/revised : 0;
     const coPct = contract>0 ? co/contract : 0;
+    // Agreed and waiting to be papered. Not in the contract, and not invisible.
+    const pending = coPendingFor(c.name);
+    tPending+=pending;
     // A negative balance means the allowance is overdrawn — show it, do not hide it.
     // The total is what the column shows; the letters are on hover, so a
     // contract carrying four allowances does not need four columns to be read.
@@ -6022,7 +6045,10 @@ function renderFinancials(){
         +(allowLeft<0?'<div style="color:var(--danger);font-size:11px;font-weight:600;">Overdrawn</div>':'')
         +'</span>'
       : '<span style="color:var(--muted);">—</span>';
-    out.push('<tr><td>'+tradeCell+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+allowCell+'</td><td>'+fmtMoney(co)+'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
+    out.push('<tr><td>'+tradeCell+'</td><td>'+esc(c.name)+'</td><td>'+fmtMoney(contract)+'</td><td>'+allowCell+'</td><td>'+fmtMoney(co)
+      +(pending?('<div style="color:var(--muted);font-size:11px;" title="Approved proposals not yet written into a change order. They do not move the contract until one is.">'
+         +fmtSigned(String(pending))+' pending</div>'):'')
+      +'</td><td>'+fmtMoney(revised)+'</td><td>'+fmtMoney(billed)+'</td><td>'+fmtMoney(remaining)+'</td><td>'+(pct*100).toFixed(1)+'%</td><td>'+(coPct*100).toFixed(1)+'%</td></tr>');
   });
   if(!contractors.length){
     tb.innerHTML='<tr class="empty-row"><td colspan="10">'+(EXTERNAL?'No contract information is associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — use “Manage Contractors” above to add them.':'.')))+'</td></tr>';
@@ -6032,8 +6058,15 @@ function renderFinancials(){
     tb.innerHTML=out.join('');
   }
   const kp=document.getElementById('fin-kpis');
-  if(kp){ const card=(l,v)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div></div>';
-    kp.innerHTML=card('Revised Contract',fmtMoney(tR))+card('Billed to Date',fmtMoney(tB))+card('Remaining',fmtMoney(tRem))+card('% Billed',(tR>0?(tB/tR*100).toFixed(1):'0')+'%'); }
+  if(kp){ const card=(l,v,sub)=>'<div class="stat-card"><div class="label">'+l+'</div><div class="value" style="font-size:20px;">'+v+'</div>'
+      +(sub?('<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">'+sub+'</div>'):'')+'</div>';
+    // Approved proposals are agreed money that no change order has written into
+    // the contract yet. Saying so under the figure keeps the contract sum
+    // contractual without the pending work vanishing from view.
+    const pendSub = tPending
+      ? (fmtSigned(String(tPending))+' approved, not yet in a change order')
+      : '';
+    kp.innerHTML=card('Revised Contract',fmtMoney(tR),pendSub)+card('Billed to Date',fmtMoney(tB))+card('Remaining',fmtMoney(tRem))+card('% Billed',(tR>0?(tB/tR*100).toFixed(1):'0')+'%'); }
 }
 
 // ── MANAGE CONTRACTORS (admin) ──
@@ -9500,7 +9533,7 @@ function coContractMathFor(r, rolled){
   const mine=(allData.co||[]).filter(x=>norm(rowCompany(x))===norm(co));
   const dateOf=x=>Date.parse(x['Date Approved']||x['Date Submitted']||'')||0;
   const thisDate=dateOf(r);
-  const previous=mine.filter(x=>x!==r && coIsApproved(x) && dateOf(x)<=thisDate)
+  const previous=mine.filter(x=>x!==r && coIsExecuted(x) && dateOf(x)<=thisDate)
                      .reduce((sum,x)=>sum+coContractImpact(x),0);
   // Rolled-in proposals are part of this change order, so they count once —
   // here, with it — and are excluded from the running total above.
@@ -10681,6 +10714,15 @@ function coIsApproved(r){
   const st=String((r&&r['Status'])||'').toLowerCase();
   return st.indexOf('approv')>=0 || st.indexOf('execut')>=0;
 }
+function coIsExecuted(r){ return coIsApproved(r) && !!String((r&&r['CO #'])||'').trim(); }
+// Agreed, but not yet papered. These are the ones that move the contract the
+// moment somebody writes the change order, and nothing before.
+function coIsPending(r){ return coIsApproved(r) && !coIsExecuted(r); }
+function coPendingFor(name){
+  const norm=String(name||'').trim().toLowerCase();
+  return (allData.co||[]).filter(r=>coIsPending(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+    .reduce((s,r)=>s+coContractImpact(r),0);
+}
 // ── Allowances ────────────────────────────────────────────────────────────
 // A contract can carry several, each for a defined scope, so one unnamed
 // number could not say which had been drawn down. They are lettered A, B, C
@@ -10704,7 +10746,7 @@ function contractorRec(name){
 function allowanceReducedById(name, id){
   const norm=String(name||'').trim().toLowerCase();
   const want=String(id||'').trim().toUpperCase();
-  return (allData.co||[]).filter(r=>coIsApproved(r)
+  return (allData.co||[]).filter(r=>coIsExecuted(r)
       && String(r['Company']||'').trim().toLowerCase()===norm
       && coApprovedAmount(r) < 0)
     .reduce((sum,r)=>{
@@ -10817,7 +10859,7 @@ function coAllowanceAmountFor(r, id){
 function allowanceUsedById(name, id){
   const norm=String(name||'').trim().toLowerCase();
   const want=String(id||'').trim().toUpperCase();
-  return (allData.co||[]).filter(r=>coIsApproved(r)
+  return (allData.co||[]).filter(r=>coIsExecuted(r)
       && String(r['Company']||'').trim().toLowerCase()===norm)
     .reduce((sum,r)=>{
       // The draw is capped at what the change order is worth, so when it is
@@ -10832,7 +10874,7 @@ function allowanceUsedById(name, id){
 }
 function allowanceUsedBy(name){
   const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).filter(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+  return (allData.co||[]).filter(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
     .reduce((s,r)=>s+coAllowanceDraw(r),0);
 }
 function allowanceRemainingById(name, id){ 
@@ -10844,11 +10886,11 @@ function allowanceRemaining(name){ return allowanceFor(name)-allowanceUsedBy(nam
 // Whether anything is on the log at all, as distinct from netting to zero.
 function coHasApproved(name){
   const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).some(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm);
+  return (allData.co||[]).some(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm);
 }
 function coContractImpactFor(name){
   const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).filter(r=>coIsApproved(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+  return (allData.co||[]).filter(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
     .reduce((s,r)=>s+coContractImpact(r),0);
 }
 

@@ -12,12 +12,15 @@
 import fs from 'fs';
 import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
+// Fixture rows carry a CO number now: an approved row WITHOUT one is a
+// proposal, and proposals no longer move the contract. The arithmetic under
+// test is unchanged; only which rows take part in it.
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const P = bootPage(); P.run(SEED);
 P.run(`currentProject.config.contractors=[{name:'Summit Builders',contract:'2000000',active:true,
   allowances:[{id:'A',name:'Floor leveler',amount:'60000'},{id:'B',name:'Hardware',amount:'20000'}]}]`);
-const CO = (amt,draw,id)=>({'Status':'Approved','Company':'Summit Builders','Approved Amount':String(amt),
+const CO = (amt,draw,id)=>({'CO #':'CO-X','Status':'Approved','Company':'Summit Builders','Approved Amount':String(amt),
   'Applied to Allowance':draw==null?'':String(draw),'Allowance':id||''});
 const set = cos => P.run(`allData.co=${JSON.stringify(cos)}`);
 const A = () => JSON.parse(P.run(`JSON.stringify(allowancesFor('Summit Builders').find(x=>x.id==='A'))`));
@@ -99,7 +102,7 @@ ok(/\(a\.reduced\?\(' \(reduced from '\+fmtMoney\(a\.original\)\+'\)'\):''\)/.te
 console.log('Legacy single-allowance contracts');
 {
   P.run(`currentProject.config.contractors=[{name:'Old Co',contract:'500000',active:true,allowance:'25000'}]`);
-  set([{'Status':'Approved','Company':'Old Co','Approved Amount':'-5000','Allowance':'A'}]);
+  set([{'CO #':'CO-X','Status':'Approved','Company':'Old Co','Approved Amount':'-5000','Allowance':'A'}]);
   const a=JSON.parse(P.run(`JSON.stringify(allowancesFor('Old Co')[0])`));
   ok(a.legacy===true && a.original===25000 && a.amount===20000,
      'a contract from before named allowances is written down the same way');

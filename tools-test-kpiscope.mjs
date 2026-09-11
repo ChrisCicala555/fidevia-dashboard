@@ -19,7 +19,9 @@ let allData={ pay_apps:[
 ], co:[
   // Approved CO worth 219,500 with 100,000 drawn from Summit's allowance:
   // only 119,500 should reach the contract.
-  {Company:'Summit Builders', Status:'Approved','Approved Amount':'219500','Applied to Allowance':'100000'}
+  // Carries a CO number: an approved row without one is a proposal, and a
+  // proposal does not move the contract until a change order is written.
+  {Company:'Summit Builders', 'CO #':'CO-GC-001', Status:'Approved','Approved Amount':'219500','Applied to Allowance':'100000'}
 ]};
 let VIEWER_ROLE='', VIEWER_COMPANY='', EXTERNAL=false;
 const payNum=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\\-]/g,''))||0;
@@ -33,7 +35,7 @@ function allowanceFor(n){const c=currentProject.config.contractors.find(x=>x.nam
 const code=[harness,
   grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
   grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
-  grab('function coContractImpact('), grab('function coIsApproved'),
+  grab('function coContractImpact('), grab('function coIsApproved'), grab('function coIsExecuted'),
   grab('function allowanceUsedBy'), grab('function coContractImpactFor'),
   grab('function financialTotals'),
 ].join('\n')+`
