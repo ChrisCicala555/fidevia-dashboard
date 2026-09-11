@@ -834,7 +834,9 @@
     <div class="wiz-step" data-step="1">
       <h3 style="font-size:16px;margin:0 0 12px;">Project Basics</h3>
       <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Lebanon Intermediate School Additions"></div>
-      <div class="field-row"><div class="field"><label>Owner / Client</label><input autocomplete="off" id="np-owner" placeholder="e.g. Lebanon School District"></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" oninput="wizCheckJobNumber()" placeholder="e.g. 26-108"><div id="np-jobnum-note" style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4;"></div></div></div>
+      <div class="field-row"><div class="field"><label>Owner / Client</label>
+        <input autocomplete="off" id="np-owner" list="owner-orgs" placeholder="e.g. Lebanon School District" oninput="ownerMatchNote('np-owner','np-owner-note')">
+        <p class="file-hint" id="np-owner-note" style="margin-top:3px;"></p></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" oninput="wizCheckJobNumber()" placeholder="e.g. 26-108"><div id="np-jobnum-note" style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4;"></div></div></div>
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
       <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
@@ -1440,7 +1442,9 @@
           <p class="form-desc" style="max-width:640px;">The project's own details. These appear on generated documents, so a change order names the project and its address exactly as recorded here.</p>
           <div class="panel" style="padding:20px;max-width:680px;">
             <div class="field-row">
-              <div class="field" style="flex:2;"><label>Owner</label><input id="ps-owner" autocomplete="off" placeholder="Lincoln School District"></div>
+              <div class="field" style="flex:2;"><label>Owner</label>
+                <input id="ps-owner" autocomplete="off" list="owner-orgs" placeholder="Lincoln School District" oninput="ownerMatchNote('ps-owner','ps-owner-note')">
+                <p class="file-hint" id="ps-owner-note" style="margin-top:3px;"></p></div>
               <div class="field" style="flex:1;"><label>Job number</label><input id="ps-jobnum" autocomplete="off"></div>
             </div>
             <div class="field-row">
@@ -2811,7 +2815,11 @@ function wizClearProjectContext(){
 }
 function openNewProject(){
   wizClearProjectContext();
-  WIZ_DRAFT_ID=''; initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople(); }
+  WIZ_DRAFT_ID=''; initWizard(); showScreen('screen-new-project'); wizFillJobNumber(); loadFideviaPeople();
+  // The organization list is global, so a new project can pick an owner that
+  // already exists rather than typing a second spelling of it.
+  try{ ownerListRefresh(); ownerMatchNote('np-owner','np-owner-note'); }catch(e){}
+}
 
 // ── Pausing a setup ───────────────────────────────────────────────────────
 // The wizard held everything in the page, so closing it lost the lot. The
@@ -8654,8 +8662,58 @@ async function loadProjectOrgs(){
     (d.companies||[]).forEach(o=>{ PROJECT_ORGS[o.key]=o; });
   }catch(e){}
   try{ renderOrgGaps(); }catch(e){}
+  // The owner picker offers what is on file, so it is refilled with it.
+  try{ ownerListRefresh(); }catch(e){}
+  try{ ownerMatchNote('ps-owner','ps-owner-note'); }catch(e){}
 }
 const orgKeyOf = n => String(n||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\s+/g,' ');
+// Names the owner field offers: every organization on file, plus every company
+// named on this project, since the body paying for the work is usually already
+// somewhere in the directory under its own name.
+function ownerNameChoices(){
+  const out=new Set();
+  Object.keys(PROJECT_ORGS||{}).forEach(k=>{ const o=PROJECT_ORGS[k]; if(o&&o.name) out.add(String(o.name).trim()); });
+  try{ projectCompanyNames().forEach(nm=>out.add(nm)); }catch(e){}
+  return [...out].filter(Boolean).sort((a,b)=>a.localeCompare(b));
+}
+function ownerDatalistHTML(){
+  return '<datalist id="owner-orgs">'
+    +ownerNameChoices().map(nm=>'<option value="'+esc(nm)+'"></option>').join('')+'</datalist>';
+}
+// One datalist, shared by the settings field and the wizard's, refilled
+// whenever the organization list changes. A list built once at page load would
+// not contain an organization added a minute ago.
+function ownerListRefresh(){
+  let host=document.getElementById('owner-orgs-host');
+  if(!host){
+    host=document.createElement('div');
+    host.id='owner-orgs-host'; host.style.display='none';
+    document.body.appendChild(host);
+  }
+  host.innerHTML=ownerDatalistHTML();
+}
+// Says, while it is being typed, whether this name will find an organization —
+// which is the difference between a change order that generates and one that
+// stops with a checklist.
+function ownerMatchNote(inputId, noteId){
+  const el=document.getElementById(inputId), note=document.getElementById(noteId);
+  if(!note) return;
+  const nm=String((el&&el.value)||'').trim();
+  if(!nm){ note.innerHTML='The body the work is for. Choose an organization already on file where there is one \u2014 a change order names it in full.'; note.style.color=''; return; }
+  const r=orgRecordFor(nm);
+  if(!r){
+    note.innerHTML='No organization called <strong>'+esc(nm)+'</strong> is on file. '
+      +'A change order cannot be generated until one exists with an address.';
+    note.style.color='var(--danger)'; return;
+  }
+  if(!r.complete){
+    note.innerHTML='Matches <strong>'+esc(r.name||nm)+'</strong>, which still needs '
+      +esc(andList(orgMissingBits(r)))+' before a change order can be generated.';
+    note.style.color='var(--danger)'; return;
+  }
+  note.innerHTML='Matches <strong>'+esc(r.name||nm)+'</strong> in the Directory, with a full address on file.';
+  note.style.color='var(--muted)';
+}
 function orgRecordFor(name){ return PROJECT_ORGS[orgKeyOf(name)]||null; }
 // Every company named on this project, from the contractor list and the
 // contact sheet.
@@ -9708,7 +9766,9 @@ function relocateDatesPanel(){
 function fillProjectSettings(){
   const c=(currentProject&&currentProject.config)||{}, a=c.address||{};
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  ownerListRefresh();
   set('ps-owner',c.owner); set('ps-jobnum',c.jobNumber); set('ps-cm',c.onsiteCM);
+  try{ ownerMatchNote('ps-owner','ps-owner-note'); }catch(e){}
   set('ps-contractdate',c.contractDate); set('ps-scope',c.scope); set('ps-admin',c.projectAdmin);
   const bd=document.getElementById('ps-board'); if(bd) bd.checked=!!c.boardReportsEnabled;
   psLogoShow();
