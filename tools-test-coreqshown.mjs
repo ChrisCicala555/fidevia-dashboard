@@ -70,8 +70,14 @@ console.log('Where it is shown');
 ok(/<label>Street address \*<\/label>/.test(html) && /<label>City \*<\/label>/.test(html)
    && /<label>State \*<\/label>/.test(html) && /<label>ZIP \*<\/label>/.test(html),
    'and the four fields are marked required');
-ok(/<label>Line 2 <span[^>]*>\(optional\)/.test(html),
-   'while line 2 stays marked optional, so the asterisks mean something');
+{
+  // Scoped to the organization form. Unscoped, this matched another form's
+  // Line 2 field and stayed green while this one was marked required.
+  const og = html.split('id="og-line1"')[1].split('id="og-merge"')[0];
+  ok(/<label>Line 2 <span[^>]*>\(optional\)/.test(og),
+     'while line 2 stays marked optional, so the asterisks mean something');
+  ok(!/<label>Line 2 \*/.test(og), 'and is not quietly marked required alongside them');
+}
 
 console.log('The fields listed are the fields checked');
 {
