@@ -10757,7 +10757,8 @@ function contractBaseFor(name){
 // What deleting this row does to the money, in a sentence. Answered before the
 // deletion rather than discovered after it.
 function coDeleteEffect(row){
-  if(!row) return '';
+  // No company means nothing to price the change against, and that covers an
+  // absent row too — rowCompany answers '' for one.
   const co=rowCompany(row);
   if(!co) return '';
   const base=contractBaseFor(co);
