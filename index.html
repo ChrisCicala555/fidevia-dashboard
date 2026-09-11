@@ -1973,14 +1973,17 @@
           <option value="other">Other</option>
         </select>
         <p class="file-hint" id="og-cat-note" style="margin-top:4px;display:none;"></p></div>
-      <div class="field"><label>Street address</label><input id="og-line1" autocomplete="off" placeholder="124 West Church Street"></div>
+      <p class="file-hint" style="margin:0 0 10px;padding:8px 10px;background:var(--cream);border:1px solid var(--border);border-radius:6px;">
+        <strong>Street address, city, state and ZIP are required to generate a change order</strong> for this organization — the document names each party in full. Line 2 is optional.</p>
+      <div class="field"><label>Street address *</label><input id="og-line1" autocomplete="off" placeholder="124 West Church Street"></div>
       <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="og-line2" autocomplete="off" placeholder="Suite 300"></div>
       <div class="field-row">
-        <div class="field" style="flex:2;"><label>City</label><input id="og-city" autocomplete="off" placeholder="Dillsburg"></div>
-        <div class="field" style="flex:1;"><label>State</label><input id="og-state" autocomplete="off" placeholder="PA"></div>
-        <div class="field" style="flex:1;"><label>ZIP</label><input id="og-zip" autocomplete="off" placeholder="17019"></div>
+        <div class="field" style="flex:2;"><label>City *</label><input id="og-city" autocomplete="off" placeholder="Dillsburg"></div>
+        <div class="field" style="flex:1;"><label>State *</label><input id="og-state" autocomplete="off" placeholder="PA"></div>
+        <div class="field" style="flex:1;"><label>ZIP *</label><input id="og-zip" autocomplete="off" placeholder="17019"></div>
       </div>
       <p class="file-hint" style="margin-top:2px;">Used on change orders and other formal documents, which name each party in full.</p>
+
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Same firm under another name?</div>
         <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
@@ -8943,8 +8946,11 @@ function openCoGen(idx){
   const rd=coDocumentReadiness(contractor);
   if(!rd.ready){
     blocked.style.display='block';
-    blocked.innerHTML='<strong>Cannot generate yet.</strong> '+esc(rd.missing.join('; '))
-      +'. <a href="#" onclick="closeCoGen();openContactDir().then(()=>cdTab(\'orgs\'));return false;">Complete the organization records</a> and try again.';
+    blocked.innerHTML='<strong>Cannot generate yet.</strong> A change order names both parties in full, '
+      +'so each needs a street address, a city, a state and a ZIP code on its organization record.'
+      +coReadinessHTML(contractor)
+      +'<div style="margin-top:10px;">'+esc(rd.missing.join('; '))
+      +'. <a href="#" onclick="closeCoGen();openContactDir().then(()=>cdTab(\'orgs\'));return false;">Complete the organization records</a> and try again.</div>';
     form.style.display='none'; go.disabled=true;
     document.getElementById('cogen-backdrop').classList.add('open');
     return;
@@ -9538,6 +9544,27 @@ function orgMissingBits(r){
 }
 function andList(a){
   return a.length>1 ? (a.slice(0,-1).join(', ')+' and '+a[a.length-1]) : (a[0]||'');
+}
+// What a change order needs from each party, shown in full rather than only
+// where it is absent, so the requirement is legible before anything is typed.
+function coReadinessHTML(companyName){
+  const parties=[['Contractor',companyName],
+                 ['Owner',(currentProject&&currentProject.config&&currentProject.config.owner)||'']];
+  const tick='<span style="color:var(--olive-700);font-weight:700;">\u2713</span>';
+  const cross='<span style="color:var(--danger);font-weight:700;">\u2715</span>';
+  return parties.map(([role,nm])=>{
+    const named=!!String(nm||'').trim();
+    const r=named?orgRecordFor(nm):null;
+    const head='<div style="font-weight:700;margin-top:8px;">'+esc(role)+' \u2014 '
+      +(named?esc(nm):'<span style="color:var(--danger);">not recorded on this project</span>')+'</div>';
+    if(!named) return head;
+    const bits=ORG_ADDR_FIELDS.map(([k,label])=>{
+      const have=!!String((r&&r[k])||'').trim();
+      return '<span style="display:inline-block;margin-right:14px;white-space:nowrap;">'
+        +(have?tick:cross)+' '+esc(label.replace(/^an? /,''))+'</span>';
+    }).join('');
+    return head+'<div style="margin-top:2px;font-size:12.5px;">'+bits+'</div>';
+  }).join('');
 }
 function coDocumentReadiness(companyName){
   const need=[];
