@@ -4107,7 +4107,13 @@ function askDelete(ev, key, i){
       alsoRevoke=true;
     }
   }
-  const why=prompt('Remove this record from the dashboard?\n\nIt cannot be undone here. Any documents attached to it are moved to the module\u2019s "Deleted" folder in Box rather than destroyed.\n\nReason (optional) \u2014 this is recorded in the audit log and sent to the Fidevia team:');
+  // A change order carries money, so say what deleting it does to the contract
+  // before asking rather than after.
+  let _money='';
+  if(key==='co'){ try{ _money=coDeleteEffect((allData.co||[])[i]); }catch(e){ _money=''; } }
+  const why=prompt('Remove this record from the dashboard?\n\n'
+    +(_money?(_money+'\n\n'):'')
+    +'It cannot be undone here. Any documents attached to it are moved to the module\u2019s "Deleted" folder in Box rather than destroyed.\n\nReason (optional) \u2014 this is recorded in the audit log and sent to the Fidevia team:');
   if(why===null) return;                    // Cancel means cancel
   return withBusy(ev,'Deleting\u2026',()=>deleteRow(key,i,why,alsoRevoke))
     .catch(e=>{ alert(e && e.message ? e.message : String(e)); });
@@ -6022,7 +6028,7 @@ function renderFinancials(){
   const out=[];
   contractors.forEach(c=>{
     const pa=latestFor(c.name);
-    const contract = (pa && num(pa['Contract Amount'])) ? num(pa['Contract Amount']) : num(c.contract);
+    const contract = contractBaseFor(c.name);
     // Only the part of approved change orders NOT funded from the allowance
     // increases the contract; the allowance was already inside it.
     // Zero is an answer, not an absence: a deduct cancelling an addition nets
@@ -10736,6 +10742,58 @@ function coIsExecuted(r){ return coIsApproved(r) && !!String((r&&r['CO #'])||'')
 // Agreed, but not yet papered. These are the ones that move the contract the
 // moment somebody writes the change order, and nothing before.
 function coIsPending(r){ return coIsApproved(r) && !coIsExecuted(r); }
+// The contract a company started with, before any change order. Pay
+// applications carry the figure once one has been raised; otherwise it is what
+// the contractor record says. renderFinancials works it out the same way, and
+// reads it from here so the two cannot drift.
+function contractBaseFor(name){
+  const cfg=(currentProject&&currentProject.config)||{};
+  const rec=(cfg.contractors||[]).find(c=>String(c.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
+  const pays=(allData.pay_apps||[]).filter(p=>String(p['Contractor']||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
+  const pa=pays.length?pays[pays.length-1]:null;
+  const fromPa=pa?payNum(pa['Contract Amount']):0;
+  return fromPa || payNum(rec&&rec.contract);
+}
+// What deleting this row does to the money, in a sentence. Answered before the
+// deletion rather than discovered after it.
+function coDeleteEffect(row){
+  if(!row) return '';
+  const co=rowCompany(row);
+  if(!co) return '';
+  const base=contractBaseFor(co);
+  const now=base+coContractImpactFor(co);
+  if(coIsExecuted(row)){
+    const impact=coContractImpact(row);
+    // Deleting it also releases the proposals it covered, which go back to
+    // being agreed-but-unpapered and stop counting toward the contract.
+    const back=(allData.co||[]).filter(x=>x!==row
+      && String(x['Rolled Into']||'').trim()===String(row['CO #']||row['PCO #']||'').trim()
+      && String(x['Rolled Into']||'').trim());
+    const after=now-impact;
+    // Phrased around the contract rather than with a possessive, which reads
+    // badly on a name already ending in s.
+    let out='This is an executed change order. The contract for '+co+' goes from '
+      +fmtMoney(now)+' to '+fmtMoney(after)+'.';
+    if(back.length){
+      const one=back.length===1;
+      out+='\n\n'+back.length+(one?' proposal it covered (':' proposals it covered (')
+        +back.map(x=>String(x['PCO #']||x['CO #']||'?')).join(', ')
+        +(one?') goes':') go')+' back to approved and uncovered, and '+(one?'shows':'show')
+        +' as pending until another change order picks '+(one?'it':'them')+' up.';
+    }
+    return out;
+  }
+  if(coIsPending(row)){
+    return 'This is an approved proposal that no change order has picked up yet, so the contract does not move. '
+      +fmtMoney(Math.abs(coContractImpact(row)))+' stops showing as pending against '+co+'.';
+  }
+  // Covered by a change order, which carries the money now. Saying "not
+  // approved" would be true of the status field and misleading about the item.
+  const into=String(row['Rolled Into']||'').trim();
+  if(into) return 'This proposal is covered by '+into+', which carries its value now. '
+    +'Deleting it does not change the contract, and leaves '+into+' as it is.';
+  return 'It has not been approved, so the contract does not move.';
+}
 function coPendingFor(name){
   const norm=String(name||'').trim().toLowerCase();
   return (allData.co||[]).filter(r=>coIsPending(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
