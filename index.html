@@ -1706,9 +1706,19 @@
         <div id="dg-snapshot" style="font-size:12px;color:var(--muted);"></div>
       </div>
 
+      <div id="dg-carried" style="display:none;margin:0 0 12px;padding:10px 12px;border-radius:6px;
+        background:var(--warn-bg);border:1px solid var(--khaki-300);font-size:13px;color:var(--olive-900);"></div>
       <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Manpower &amp; Work Performed</strong></div>
       <div id="dg-crew-rows"></div>
       <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddCrew()">+ Add Company</button>
+
+      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Material Deliveries</strong></div>
+      <div id="dg-del-rows"></div>
+      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddDelivery()">+ Add Delivery</button>
+
+      <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Inspections</strong></div>
+      <div id="dg-insp-rows"></div>
+      <button type="button" class="btn-secondary" style="padding:5px 11px;margin-bottom:14px;" onclick="dgAddInspection()">+ Add Inspection</button>
 
       <div style="margin-bottom:6px;"><strong style="color:var(--olive-900);">Notable Events</strong></div>
       <div id="dg-note-rows"></div>
@@ -2437,7 +2447,7 @@ const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
-  daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name']},
+  daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name','Report Data']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
@@ -4889,7 +4899,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 07:30';
+const BUILD_STAMP='2026-09-11 12:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11297,14 +11307,40 @@ let DG_SNAPSHOT=[];
 function dgCrewRow(){
   return '<div class="dg-crew" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">'
     +'<div class="field-row" style="margin:0 0 6px;">'
-    +'<div class="field" style="margin:0;flex:1.4;"><label style="font-size:11px;">Company</label><input class="dg-co" list="contr-list-dg" placeholder="Contractor"></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Subcontractor</label><input class="dg-sub" placeholder="Subcontractor on site"></div>'
+    +'<div class="field" style="margin:0;flex:2.4;"><label style="font-size:11px;">Contractor</label><input class="dg-co" list="contr-list-dg" placeholder="Who was on site"></div>'
     +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Workers</label><input class="dg-workers" type="number" min="0"></div>'
-    +'<div class="field" style="margin:0;width:90px;"><label style="font-size:11px;">Hours</label><input class="dg-hours" type="number" min="0" step="0.5"></div>'
+    +'<div class="field" style="margin:0;width:120px;"><label style="font-size:11px;">Time on site</label>'
+    +'<select class="dg-day"><option value="">\u2014</option><option value="full">Full day</option><option value="half">Half day</option></select></div>'
     +'<button type="button" class="btn-secondary" style="padding:9px 0;align-self:flex-end;flex:0 0 auto;width:42px;text-align:center;" title="Remove this row" onclick="this.closest(\'.dg-crew\').remove()">×</button></div>'
     +'<div class="field" style="margin:0;"><label style="font-size:11px;">Work Performed</label><textarea class="dg-work" rows="2" placeholder="Describe the work completed"></textarea></div></div>';
 }
 function dgAddCrew(){ document.getElementById('dg-crew-rows').insertAdjacentHTML('beforeend', dgCrewRow()); }
+function dgDayValue(v){ return v==='full' ? 1 : (v==='half' ? 0.5 : 0); }
+function dgDayLabel(v){ return v==='full' ? 'Full day' : (v==='half' ? 'Half day' : '\u2014'); }
+function dgDaysLabel(n){
+  if(!n) return '\u2014';
+  const s=(Math.round(n*2)/2).toString();
+  return s+(n===1?' day':' days');
+}
+function dgDeliveryRow(){
+  return '<div class="dg-del" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">'
+    +'<div class="field" style="margin:0;flex:1.2;"><label style="font-size:11px;">Supplier</label><input class="dg-del-from" placeholder="Who delivered"></div>'
+    +'<div class="field" style="margin:0;flex:2;"><label style="font-size:11px;">Material</label><input class="dg-del-what" placeholder="What arrived"></div>'
+    +'<div class="field" style="margin:0;width:110px;"><label style="font-size:11px;">Quantity</label><input class="dg-del-qty" placeholder="e.g. 12 pallets"></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Received by</label><input class="dg-del-by" placeholder="Name"></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 0;flex:0 0 auto;width:42px;text-align:center;" title="Remove this row" onclick="this.closest(\'.dg-del\').remove()">\u00d7</button></div>';
+}
+function dgAddDelivery(){ document.getElementById('dg-del-rows').insertAdjacentHTML('beforeend', dgDeliveryRow()); }
+function dgInspectionRow(){
+  return '<div class="dg-insp" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">'
+    +'<div class="field" style="margin:0;flex:1.4;"><label style="font-size:11px;">Inspection</label><input class="dg-insp-what" placeholder="e.g. Footing rebar"></div>'
+    +'<div class="field" style="margin:0;flex:1.2;"><label style="font-size:11px;">Inspector / agency</label><input class="dg-insp-who" placeholder="Who attended"></div>'
+    +'<div class="field" style="margin:0;width:130px;"><label style="font-size:11px;">Result</label>'
+    +'<select class="dg-insp-result"><option value="">\u2014</option><option>Passed</option><option>Failed</option><option>Partial</option><option>Observed</option></select></div>'
+    +'<div class="field" style="margin:0;flex:1.4;"><label style="font-size:11px;">Notes</label><input class="dg-insp-note" placeholder="Anything to record"></div>'
+    +'<button type="button" class="btn-secondary" style="padding:9px 0;flex:0 0 auto;width:42px;text-align:center;" title="Remove this row" onclick="this.closest(\'.dg-insp\').remove()">\u00d7</button></div>';
+}
+function dgAddInspection(){ document.getElementById('dg-insp-rows').insertAdjacentHTML('beforeend', dgInspectionRow()); }
 function dgNoteRow(){
   return '<div class="dg-note" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;">'
     +'<div class="field" style="margin:0;flex:1;"><label style="font-size:11px;">Event</label><input class="dg-event" placeholder="What happened"></div>'
@@ -11313,13 +11349,73 @@ function dgNoteRow(){
 }
 function dgAddNote(){ document.getElementById('dg-note-rows').insertAdjacentHTML('beforeend', dgNoteRow()); }
 
+// ── Carrying yesterday forward ─────────────────────────────────────────────
+// Most of a daily report is the same as the one before it: the same firms, the
+// same distribution list, work that continues. Retyping it every morning is
+// where the mistakes come from. The last report filed is loaded as a starting
+// point, and the dialog says so — carried text that nobody looked at is worse
+// than a blank form, so the banner is part of the feature rather than a
+// decoration on it.
+function dgLastReport(){
+  const rows=(allData.daily||[]).filter(r=>{
+    try{ const d=JSON.parse(r['Report Data']||'null'); return d&&typeof d==='object'; }catch(e){ return false; }
+  });
+  if(!rows.length) return null;
+  rows.sort((a,b)=>(Date.parse(b['Date']||'')||0)-(Date.parse(a['Date']||'')||0));
+  const r=rows[0];
+  try{ return {date:r['Date']||'', data:JSON.parse(r['Report Data'])}; }catch(e){ return null; }
+}
+function dgFillRows(hostId, list, rowHTML, fill){
+  const host=document.getElementById(hostId); if(!host) return;
+  host.innerHTML='';
+  (list&&list.length?list:[null]).forEach(item=>{
+    host.insertAdjacentHTML('beforeend', rowHTML());
+    if(item) fill(host.lastElementChild, item);
+  });
+}
+function dgSetVal(row, sel, v){ const el=row&&row.querySelector(sel); if(el) el.value=v==null?'':String(v); }
+function dgApplyCarry(d){
+  d=d||{};
+  dgFillRows('dg-crew-rows', d.crews, dgCrewRow, (row,c)=>{
+    dgSetVal(row,'.dg-co',c.company); dgSetVal(row,'.dg-workers',c.workers);
+    dgSetVal(row,'.dg-day',c.day);    dgSetVal(row,'.dg-work',c.work);
+  });
+  dgFillRows('dg-note-rows', d.notes, dgNoteRow, (row,n)=>{
+    dgSetVal(row,'.dg-event',n.event); dgSetVal(row,'.dg-note-text',n.text);
+  });
+  dgFillRows('dg-del-rows', d.deliveries, dgDeliveryRow, (row,x)=>{
+    dgSetVal(row,'.dg-del-from',x.from); dgSetVal(row,'.dg-del-what',x.what);
+    dgSetVal(row,'.dg-del-qty',x.qty);   dgSetVal(row,'.dg-del-by',x.by);
+  });
+  dgFillRows('dg-insp-rows', d.inspections, dgInspectionRow, (row,x)=>{
+    dgSetVal(row,'.dg-insp-what',x.what);   dgSetVal(row,'.dg-insp-who',x.who);
+    dgSetVal(row,'.dg-insp-result',x.result); dgSetVal(row,'.dg-insp-note',x.note);
+  });
+  const cp=document.getElementById('dg-copies'); if(cp) cp.value=d.copies||'';
+}
+function dgStartBlank(){
+  dgApplyCarry(null);
+  const b=document.getElementById('dg-carried'); if(b) b.style.display='none';
+}
+
 async function openDailyGen(){
   document.getElementById('dg-date').value = etToday();
-  document.getElementById('dg-crew-rows').innerHTML=''; dgAddCrew();
-  document.getElementById('dg-note-rows').innerHTML=''; dgAddNote();
+  // Yesterday's report as the starting point, and a banner saying so. Carried
+  // text nobody looked at is worse than a blank form, so the warning is part of
+  // the feature rather than a decoration on it.
+  const prev=dgLastReport();
+  dgApplyCarry(prev && prev.data);
+  { const b=document.getElementById('dg-carried');
+    if(b){
+      b.style.display = prev ? '' : 'none';
+      b.innerHTML = prev
+        ? ('Carried over from the report of <strong>'+esc(fmtDMY(prev.date)||prev.date)+'</strong>. '
+           +'Check every line before generating \u2014 what is here describes that day, not this one. '
+           +'<a href="#" onclick="dgStartBlank();return false;">Start blank instead</a>')
+        : '';
+    } }
   document.getElementById('dg-photos').value='';
   DG_FILES=[]; DG_CAPTIONS={}; dgRenderPhotoList();
-  document.getElementById('dg-copies').value='';
   showStatus('dg-status','','');
   document.getElementById('dg-progress').style.display='none';
   document.getElementById('dg-submit').disabled=false;
@@ -11435,16 +11531,24 @@ async function dgFetchWeather(){
 function dgGather(){
   const crews=[...document.querySelectorAll('#dg-crew-rows .dg-crew')].map(r=>({
     company:(r.querySelector('.dg-co').value||'').trim(),
-    sub:(r.querySelector('.dg-sub').value||'').trim(),
     workers:(r.querySelector('.dg-workers').value||'').trim(),
-    hours:(r.querySelector('.dg-hours').value||'').trim(),
+    day:((r.querySelector('.dg-day')||{}).value||'').trim(),
     work:(r.querySelector('.dg-work').value||'').trim()
   })).filter(c=>c.company||c.work);
   const notes=[...document.querySelectorAll('#dg-note-rows .dg-note')].map(r=>({
     event:(r.querySelector('.dg-event').value||'').trim(),
     text:(r.querySelector('.dg-note-text').value||'').trim()
   })).filter(n=>n.event||n.text);
-  return {crews,notes};
+  const val=(r,sel)=>((r.querySelector(sel)||{}).value||'').trim();
+  const deliveries=[...document.querySelectorAll('#dg-del-rows .dg-del')].map(r=>({
+    from:val(r,'.dg-del-from'), what:val(r,'.dg-del-what'),
+    qty:val(r,'.dg-del-qty'),  by:val(r,'.dg-del-by')
+  })).filter(d=>d.from||d.what);
+  const inspections=[...document.querySelectorAll('#dg-insp-rows .dg-insp')].map(r=>({
+    what:val(r,'.dg-insp-what'), who:val(r,'.dg-insp-who'),
+    result:val(r,'.dg-insp-result'), note:val(r,'.dg-insp-note')
+  })).filter(x=>x.what||x.who);
+  return {crews,notes,deliveries,inspections};
 }
 
 async function urlToDataURL(url){
@@ -11462,7 +11566,7 @@ async function dgBuildPDF(){
   const date=document.getElementById('dg-date').value;
   const by=document.getElementById('dg-by').value;
   const copies=document.getElementById('dg-copies').value;
-  const {crews,notes}=dgGather();
+  const {crews,notes,deliveries,inspections}=dgGather();
   const dObj=new Date(date+'T12:00:00');
   const dayName=dObj.toLocaleDateString('en-US',{weekday:'long'});
 
@@ -11517,18 +11621,50 @@ async function dgBuildPDF(){
   // ---- manpower / work ----
   sect('Manpower & Work Performed');
   const totW=crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0);
-  const totH=crews.reduce((s,c)=>s+(parseFloat(c.hours)||0),0);
+  // Days, not hours: a full day counts one, a half counts half, and a row that
+  // says neither counts nothing rather than being guessed at.
+  const totD=crews.reduce((s,c)=>s+dgDayValue(c.day),0);
   doc.autoTable({
     startY:y, margin:{left:40,right:40},
-    head:[['#','Company','Subcontractor','Workers','Hours','Work Performed']],
-    body:crews.map((c,i)=>[i+1,c.company,c.sub,c.workers||'—',c.hours||'—',c.work]),
-    foot:[['','Total','',String(totW),String(totH),'']],
+    head:[['#','Contractor','Workers','Time on site','Work Performed']],
+    body:crews.map((c,i)=>[i+1,c.company,c.workers||'—',dgDayLabel(c.day),c.work]),
+    foot:[['','Total',String(totW),dgDaysLabel(totD),'']],
     theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8},
     footStyles:{fillColor:LIGHT,textColor:INK,fontStyle:'bold',fontSize:8},
     bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
-    columnStyles:{0:{cellWidth:22},3:{cellWidth:48,halign:'center'},4:{cellWidth:44,halign:'center'},5:{cellWidth:180}}
+    columnStyles:{0:{cellWidth:22},2:{cellWidth:48,halign:'center'},3:{cellWidth:44,halign:'center'},4:{cellWidth:220}}
   });
   y=doc.lastAutoTable.finalY+18;
+
+  // ---- deliveries ----
+  if(deliveries.length){
+    if(y>640){ doc.addPage(); y=60; }
+    sect('Material Deliveries');
+    doc.autoTable({
+      startY:y, margin:{left:40,right:40},
+      head:[['#','Supplier','Material','Quantity','Received by']],
+      body:deliveries.map((d,i)=>[i+1,d.from||'\u2014',d.what||'\u2014',d.qty||'\u2014',d.by||'\u2014']),
+      theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8},
+      bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
+      columnStyles:{0:{cellWidth:22},3:{cellWidth:80},4:{cellWidth:100}}
+    });
+    y=doc.lastAutoTable.finalY+18;
+  }
+
+  // ---- inspections ----
+  if(inspections.length){
+    if(y>640){ doc.addPage(); y=60; }
+    sect('Inspections');
+    doc.autoTable({
+      startY:y, margin:{left:40,right:40},
+      head:[['#','Inspection','Inspector / agency','Result','Notes']],
+      body:inspections.map((x,i)=>[i+1,x.what||'\u2014',x.who||'\u2014',x.result||'\u2014',x.note||'']),
+      theme:'grid', headStyles:{fillColor:OLIVE,textColor:255,fontSize:8},
+      bodyStyles:{fontSize:8,textColor:INK}, styles:{cellPadding:5},
+      columnStyles:{0:{cellWidth:22},3:{cellWidth:70,halign:'center'}}
+    });
+    y=doc.lastAutoTable.finalY+18;
+  }
 
   // ---- notes ----
   if(notes.length){
@@ -11623,7 +11759,11 @@ async function dgGenerate(){
     const entry=up.entries?up.entries[0]:up;
     prog.textContent='Updating log…';
     const mod=MODULES.daily;
-    const row={'Date':date,'Submitted By':document.getElementById('dg-by').value,'Submitted By Email':ME_EMAIL||'','Weather':(document.getElementById('dg-w-low').value||'')+'–'+(document.getElementById('dg-w-high').value||'')+'°F','Crew Count':String(crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0)),'Work Performed':crews.map(c=>c.company+': '+c.work).join(' | ').slice(0,300),'Delays / Issues':'','Photo Notes':Object.values(DG_CAPTIONS).filter(v=>v&&v.trim()).join(' | ').slice(0,500),'Attachment File ID':entry.id||'','Attachment Name':fname};
+    const row={'Date':date,'Submitted By':document.getElementById('dg-by').value,'Submitted By Email':ME_EMAIL||'','Weather':(document.getElementById('dg-w-low').value||'')+'–'+(document.getElementById('dg-w-high').value||'')+'°F','Crew Count':String(crews.reduce((s,c)=>s+(parseFloat(c.workers)||0),0)),'Work Performed':crews.map(c=>c.company+': '+c.work).join(' | ').slice(0,300),'Delays / Issues':'','Photo Notes':Object.values(DG_CAPTIONS).filter(v=>v&&v.trim()).join(' | ').slice(0,500),'Attachment File ID':entry.id||'','Attachment Name':fname,
+      // The report as entered, so tomorrow can start from today rather than
+      // from nothing.
+      'Report Data':JSON.stringify({crews,notes,deliveries,inspections,
+        copies:String((document.getElementById('dg-copies')||{}).value||'').trim()})};
     if(EXTERNAL){ await proxyCall('appendRow',{folderId:fid, filename:mod.log, headers:mod.headers, row}); allData.daily=(allData.daily||[]).concat([row]); }
     else { const ex=await findFile(fid,mod.log); let rows=ex?(parseCSV(await boxGetText(ex.id))).rows:[]; rows.push(row); await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,ex?ex.id:null); allData.daily=rows; }
     doc.save(fname);

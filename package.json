@@ -4,5 +4,8 @@
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
   }
 }
