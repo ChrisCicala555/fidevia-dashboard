@@ -53,9 +53,17 @@ ok(/\.dl-btn\{/.test(html) && /\.dl-btn\.dl-busy\{/.test(html), 'it has a style,
 
 // ── where it appears ──
 {
-  const c = html.split('function fileCell(r)')[1].split('// "Showing 1 to 5')[0];
-  ok(/dlBtn\(fid, fn, rowItemNumber\(r\)\)/.test(c),
+  // Run rather than matched: the markup moved into fileLink when the cell
+  // learned to show the generated document too, and an assertion reading
+  // fileCell's own text went red on a change that took nothing away.
+  const { bootPage, SEED } = await import('./tools-harness.mjs');
+  const P=bootPage(); P.run(SEED);
+  const one=P.run(`fileCell({'RFI #':'RFI-GC-001','Attachment File ID':'a1','Attachment Name':'sketch.pdf'})`);
+  ok((one.match(/dl-btn/g)||[]).length===1,
      'the shared attachment cell carries one, so every module that uses it gains one');
+  const two=P.run(`fileCell({'CO #':'CO-GC-002','Attachment File ID':'a1','Attachment Name':'sketch.pdf','Signed File ID':'s1','Signed File Name':'CO-GC-002.pdf'})`);
+  ok((two.match(/dl-btn/g)||[]).length===2,
+     'and a row showing the document and its attachment can save either');
 }
 ok(/dlBtn\(r\['Attachment File ID'\], r\['Attachment Name'\]\|\|'', pfx\)/.test(html),
    'a pay application can be saved');
