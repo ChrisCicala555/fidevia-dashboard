@@ -4899,7 +4899,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-12 10:05';
+const BUILD_STAMP='2026-09-13 08:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7351,7 +7351,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
     <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"><p class="file-hint" style="margin-top:3px;">Enter a deduct as a negative, e.g. -8400. A deduct reduces the contract. Which allowances it writes down, if any, is set on the change order.</p></div><div class="field"></div></div>
-    <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="RFI-001"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
+    <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="Type a number or a subject…" oninput="rfiShowAC(this)" onfocus="rfiShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-linked-note"></p></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'New Submittal',html:`
     <div class="field-row"><div class="field"><label>Review Due</label><input autocomplete="off" type="date" id="f-sub-due"><p class="file-hint" style="margin-top:3px;" id="f-sub-due-hint"></p></div><div class="field"></div></div>
@@ -7508,6 +7508,7 @@ function openModal(type){
     }
   }
   if(['rfi','co','submittal','daily'].includes(type)){ fillSubmittedBy(); }
+  if(type==='co'){ rfiLinkNote(document.getElementById('f-linked')); }
   // The allowance list belongs to whichever contract the change order is
   // against, so it is filled once the company is known and refreshed if the
   // company is changed.
@@ -12008,6 +12009,103 @@ async function cdPickLoad(){
   if(CD_PICK.length) return;
   try{ const d=await proxyCall('allContacts',{},{quiet:true}); CD_PICK=d.contacts||[]; }catch(e){ CD_PICK=[]; }
 }
+// ── LINKED RFI PICKER ──
+//
+// A proposal nearly always answers an RFI that is already in the log, and
+// nobody remembers whether it was 007 or 017. Asking for the number and
+// leaving the contractor to go back to the RFI tab and read it off is how a
+// PCO ends up linked to the wrong RFI, or to none.
+
+// Two RFI numbers are the same RFI if they differ only in punctuation, the
+// "RFI" prefix or leading zeros. Somebody typing "7" means RFI-007.
+function rfiNumKey(s){
+  return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'').replace(/^rfi/,'').replace(/^0+/,'');
+}
+// Every RFI the reader can already see. The proxy decides that, so this adds
+// no visibility: it only saves them the trip to the other tab.
+function linkedRfiChoices(){
+  const mine=String(myCompany()||'').trim().toLowerCase();
+  const seen=new Set();
+  return (allData.rfi||[]).map(r=>({
+      num:String(r['RFI #']||'').trim(),
+      subject:String(r['Subject']||'').trim(),
+      company:String(rowCompany(r)||'').trim(),
+      status:String(r['Status']||'').trim(),
+      date:String(r['Date Submitted']||'').trim()
+    })).filter(x=>x.num)
+    .filter(x=>{ const k=rfiNumKey(x.num); if(seen.has(k)) return false; seen.add(k); return true; })
+    // Their own firm's RFIs first, because those are the ones a proposal
+    // answers; newest first inside each group, because an RFI raised months
+    // ago is rarely the one being priced today.
+    .sort((a,b)=>{
+      const am=(mine && a.company.toLowerCase()===mine)?0:1;
+      const bm=(mine && b.company.toLowerCase()===mine)?0:1;
+      if(am!==bm) return am-bm;
+      if(a.date!==b.date) return a.date<b.date?1:-1;
+      return a.num.localeCompare(b.num);
+    });
+}
+// Matched on the number and on the subject, because somebody who remembers
+// "the beam clearance one" and not its number is the whole point of this.
+//
+// The number is matched two ways and neither is a plain substring: "7" must
+// find RFI-007 and must not also find RFI-017, which contains a 7. So the
+// digits are compared as a prefix once the prefix and leading zeros are off,
+// and the written form is compared as a prefix as typed, which is what makes
+// "rfi-0" offer the whole 0-hundreds.
+function rfiMatches(q){
+  const list=linkedRfiChoices();
+  const t=String(q||'').trim().toLowerCase();
+  if(!t) return list.slice(0,12);
+  const raw=t.replace(/[^a-z0-9]/g,''), n=rfiNumKey(t);
+  return list.filter(x=>{
+    const xraw=x.num.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(n && rfiNumKey(x.num).indexOf(n)===0) return true;
+    if(raw && xraw.indexOf(raw)===0) return true;
+    return x.subject.toLowerCase().indexOf(t)>=0;
+  }).slice(0,12);
+}
+function rfiCloseAC(){ document.querySelectorAll('.rfi-ac').forEach(el=>el.remove()); }
+function rfiShowAC(inp){
+  rfiCloseAC();
+  if(!inp) return;
+  rfiLinkNote(inp);
+  const matches=rfiMatches(inp.value);
+  if(!matches.length) return;
+  const box=document.createElement('div');
+  box.className='rfi-ac';
+  box.style.cssText='position:absolute;z-index:1200;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 26px rgba(0,0,0,0.16);max-height:230px;overflow-y:auto;left:0;right:0;margin-top:2px;';
+  box.innerHTML=matches.map(x=>'<div class="rfi-ac-item" data-num="'+esc(x.num)+'" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--khaki-100);">'
+    +'<div style="font-weight:600;color:var(--ink);">'+esc(x.num)+(x.status?' <span style="font-size:11px;font-weight:600;color:var(--muted);">\u00b7 '+esc(x.status)+'</span>':'')+'</div>'
+    +(x.subject?'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+esc(x.subject)+'</div>':'')
+    +'</div>').join('');
+  const wrap=inp.parentElement; wrap.style.position='relative'; wrap.appendChild(box);
+  // mousedown, not click: the input blurs first and the list would be gone.
+  box.querySelectorAll('.rfi-ac-item').forEach(it=>{
+    it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-num'); rfiCloseAC(); rfiLinkNote(inp); });
+    it.addEventListener('mouseenter',function(){ it.style.background='var(--cream)'; });
+    it.addEventListener('mouseleave',function(){ it.style.background=''; });
+  });
+}
+// Names the RFI the typed number actually is, so a wrong digit is visible
+// while the proposal is being written rather than after it is filed. A number
+// that matches nothing is still accepted — an RFI can live outside the
+// dashboard — but it says so.
+function rfiLinkNote(inp){
+  const note=document.getElementById('f-linked-note'); if(!note) return;
+  const t=String((inp&&inp.value)||'').trim();
+  if(!t){
+    note.style.color='';
+    note.innerHTML=(allData.rfi||[]).length?'Start typing to pick from this project\u2019s RFIs.':'';
+    return;
+  }
+  const hit=linkedRfiChoices().find(x=>rfiNumKey(x.num)===rfiNumKey(t));
+  if(hit){ note.style.color='var(--olive-700)'; note.innerHTML='\u2713 '+esc(hit.num)+(hit.subject?' \u2014 '+esc(hit.subject):''); }
+  else { note.style.color='var(--muted)'; note.innerHTML='No RFI with that number on this project \u2014 it will be saved as typed.'; }
+}
+document.addEventListener('click',function(e){
+  try{ if(!(e.target&&e.target.closest&&e.target.closest('#f-linked'))) rfiCloseAC(); }catch(_){ rfiCloseAC(); }
+});
 function cdPickSearch(){
   const inp=document.getElementById('f-dirsearch'), box=document.getElementById('f-dirresults');
   if(!inp||!box) return;
