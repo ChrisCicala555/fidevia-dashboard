@@ -4933,7 +4933,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 12:35';
+const BUILD_STAMP='2026-09-13 13:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9393,11 +9393,24 @@ function newCoCompanyChanged(){
       // An empty picker that says "none" when there are four on the contract
       // is how somebody concludes the dashboard has lost them.
       const gone=coRollExcluded(co);
-      none.innerHTML=gone.length
-        ? 'No open PCOs on this contract \u2014 the change order will stand on its own. '
+      const away=coRollElsewhere(co);
+      let msg='No open PCOs on this contract. The change order will stand on its own.';
+      if(gone.length) msg='No open PCOs on this contract \u2014 the change order will stand on its own. '
           +esc(gone.length===1?'The one on file ':'The '+gone.length+' on file ')
-          +'cannot be covered: '+gone.map(e=>esc(e.num||'a proposal')+' '+esc(e.reason)).join('; ')+'.'
-        : 'No open PCOs on this contract. The change order will stand on its own.';
+          +'cannot be covered: '+gone.map(e=>esc(e.num||'a proposal')+' '+esc(e.reason)).join('; ')+'.';
+      if(away.length){
+        // Named rather than counted: the name written on the row is the whole
+        // diagnosis, and comparing it to the contract is the fix.
+        const bad=away.filter(e=>e.orphan);
+        msg+=' '+(away.length===1?'One open proposal is':away.length+' open proposals are')
+          +' recorded under '+andList([...new Set(away.map(e=>'\u201c'+esc(e.company||'no company')+'\u201d'))])
+          +' \u2014 '+away.map(e=>esc(e.num||'a proposal')).join(', ')+'.'
+          +(bad.length
+              ? ' That is not a contract on this project, so '+(bad.length===1?'it belongs':'they belong')
+                +' to nobody. Correct the company on the row, or add that contract.'
+              : ' Choose that contract above to cover '+(away.length===1?'it':'them')+'.');
+      }
+      none.innerHTML=msg;
     }
     newCoTotals(); return;
   }
@@ -9701,6 +9714,38 @@ function coRollExcluded(company, skipIdx){
     .filter(({x,i})=> i!==skip && String(rowCompany(x)||'').trim().toLowerCase()===co && !coRollEligible(x))
     .map(({x})=>({ num:String(x['PCO #']||x['CO #']||'').trim(), reason:why(x) }))
     .filter(e=>e.reason);
+}
+// Proposals that would be offered but for the company recorded on them.
+//
+// "No open PCOs on this contract" is true and useless when the PCO is sitting
+// on the screen behind the dialog. A proposal is tied to a contract by a name
+// written on the row, and if that name is not exactly the contractor's the row
+// belongs to nobody. That is invisible: the log shows the company, the picker
+// shows nothing, and neither says they disagree.
+// No skip index, unlike its neighbours: this is only ever asked from the New CO
+// dialog, which is not generating from a row. A parameter nothing passes is a
+// parameter nothing tests.
+function coRollElsewhere(company){
+  const co=String(company||'').trim().toLowerCase();
+  const known=new Set(((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .map(c=>String(c.name||'').trim().toLowerCase()).filter(Boolean));
+  const out=[];
+  (allData.co||[]).forEach(x=>{
+    // Only proposals that would be offered but for the name. One that is
+    // archived or decided against is not waiting for a contract to be chosen,
+    // and saying so would send somebody after it for nothing.
+    if(!coRollEligible(x)) return;
+    const nm=String(rowCompany(x)||'').trim();
+    if(nm.toLowerCase()===co) return;
+    out.push({ num:String(x['PCO #']||x['CO #']||'').trim(),
+               company:nm,
+               // Recorded under a name that is not a contract on this project
+               // at all, which is a different problem from being another
+               // contractor's. A blank name is in this set already: no contract
+               // is called nothing, so `known` cannot hold it.
+               orphan: !known.has(nm.toLowerCase()) });
+  });
+  return out;
 }
 function coRollCandidates(idx){
   const r=(allData.co||[])[idx]; if(!r) return [];
