@@ -4899,7 +4899,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-11 12:40';
+const BUILD_STAMP='2026-09-12 09:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8705,6 +8705,56 @@ function ownerListRefresh(){
 // Says, while it is being typed, whether this name will find an organization —
 // which is the difference between a change order that generates and one that
 // stops with a checklist.
+// How close two organization names are, 0 to 1. Deliberately crude: shared
+// words first, because "Ithaca Admin" and "Ithaca Housing Project" are the
+// shape this takes in practice, then a character comparison to catch a
+// misspelling of a single-word name.
+function orgNameScore(a,b){
+  const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  const A=norm(a), B=norm(b);
+  if(!A || !B) return 0;
+  if(A===B) return 1;
+  const wa=A.split(' ').filter(Boolean), wb=B.split(' ').filter(Boolean);
+  // Words that carry no identity on their own would match everything.
+  const dull=new Set(['the','of','and','inc','llc','ltd','co','company','corp','group','admin','office']);
+  const ka=wa.filter(w=>!dull.has(w)), kb=wb.filter(w=>!dull.has(w));
+  const shared=ka.filter(w=>kb.indexOf(w)>=0);
+  if(shared.length){
+    // Proportion of the smaller name's meaningful words that are shared, so a
+    // short name inside a long one still scores well.
+    return 0.5 + 0.5*(shared.length/Math.min(ka.length||1, kb.length||1));
+  }
+  // One word each, spelled differently: count matching leading characters.
+  if(wa.length===1 && wb.length===1){
+    let i=0; while(i<A.length && i<B.length && A[i]===B[i]) i++;
+    const r=i/Math.max(A.length,B.length);
+    return r>=0.6 ? r*0.7 : 0;
+  }
+  return 0;
+}
+// The organizations most likely to be the one somebody meant.
+function orgSuggestFor(name, limit){
+  const nm=String(name||'').trim();
+  if(!nm || orgRecordFor(nm)) return [];
+  const seen=new Set();
+  return Object.keys(PROJECT_ORGS||{})
+    .map(k=>PROJECT_ORGS[k]).filter(o=>o&&o.name)
+    .map(o=>({org:o, score:orgNameScore(nm,o.name)}))
+    .filter(x=>x.score>=0.5)
+    .filter(x=>{ const k=orgKeyOf(x.org.name); if(seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a,b)=>b.score-a.score || a.org.name.localeCompare(b.org.name))
+    .slice(0, limit||3)
+    .map(x=>x.org);
+}
+// Adopt a suggestion: the project's owner becomes the organization's own name,
+// which is the direction that keeps the good record and drops the typed one.
+function ownerAdopt(name, inputId, noteId){
+  const el=document.getElementById(inputId||'ps-owner');
+  if(el) el.value=String(name||'');
+  ownerMatchNote(inputId||'ps-owner', noteId||'ps-owner-note');
+  const st=document.getElementById('ps-status');
+  if(st) showStatus('ps-status','Owner set to \u201c'+name+'\u201d. Save settings to keep it.','info');
+}
 function ownerMatchNote(inputId, noteId){
   const el=document.getElementById(inputId), note=document.getElementById(noteId);
   if(!note) return;
@@ -8712,8 +8762,15 @@ function ownerMatchNote(inputId, noteId){
   if(!nm){ note.innerHTML='The body the work is for. Choose an organization already on file where there is one \u2014 a change order names it in full.'; note.style.color=''; return; }
   const r=orgRecordFor(nm);
   if(!r){
+    const near=orgSuggestFor(nm);
     note.innerHTML='No organization called <strong>'+esc(nm)+'</strong> is on file. '
-      +'A change order cannot be generated until one exists with an address.';
+      +'A change order cannot be generated until one exists with an address.'
+      +(near.length
+        ? ('<div style="margin-top:4px;">Did you mean '
+           +near.map(o=>'<a href="#" onclick="ownerAdopt('+esc(JSON.stringify(o.name))
+              +',\''+esc(inputId)+'\',\''+esc(noteId)+'\');return false;">'+esc(o.name)+'</a>').join(' or ')
+           +'?</div>')
+        : '');
     note.style.color='var(--danger)'; return;
   }
   if(!r.complete){
@@ -9688,8 +9745,33 @@ function coReadinessHTML(companyName){
       return '<span style="display:inline-block;margin-right:14px;white-space:nowrap;">'
         +(have?tick:cross)+' '+esc(label.replace(/^an? /,''))+'</span>';
     }).join('');
-    return head+'<div style="margin-top:2px;font-size:12.5px;">'+bits+'</div>';
+    // Where the name matches nothing, the closest records are offered with a
+    // way to adopt one, because that is the fix and it is one click from here.
+    let fix='';
+    if(!r && role==='Owner'){
+      const near=orgSuggestFor(nm);
+      if(near.length) fix='<div style="margin-top:4px;font-size:12.5px;">Did you mean '
+        +near.map(o=>'<a href="#" onclick="coGenAdoptOwner('+esc(JSON.stringify(o.name))
+            +');return false;">'+esc(o.name)+'</a>').join(' or ')+'?</div>';
+    }
+    return head+'<div style="margin-top:2px;font-size:12.5px;">'+bits+'</div>'+fix;
   }).join('');
+}
+// Adopting a suggested owner from the generator. The project is saved before
+// anything is redrawn, so the change survives the reload rather than sitting in
+// a field somebody has to remember to save.
+async function coGenAdoptOwner(name){
+  if(!currentProject || !currentProject.config) return;
+  const before=currentProject.config.owner;
+  currentProject.config.owner=String(name||'');
+  try{
+    await writeProjectConfig(currentProject.folderId, currentProject.config);
+    try{ await loadProjectOrgs(); }catch(e){}
+    if(COGEN_IDX>=0) openCoGen(COGEN_IDX);
+  }catch(e){
+    currentProject.config.owner=before;
+    alert('Could not save the owner: '+(e.message||e));
+  }
 }
 function coDocumentReadiness(companyName){
   const need=[];
@@ -9701,8 +9783,10 @@ function coDocumentReadiness(companyName){
     if(r && r.complete) return;
     // No record at all is a different problem from a half-filled one, and
     // "needs nothing on file at all" reads as though nothing were needed.
-    need.push(r ? (nm+' ('+role.toLowerCase()+') needs '+andList(orgMissingBits(r)))
-                : (nm+' ('+role.toLowerCase()+') has no organization record yet'));
+    if(r){ need.push(nm+' ('+role.toLowerCase()+') needs '+andList(orgMissingBits(r))); return; }
+    const near=orgSuggestFor(nm);
+    need.push(nm+' ('+role.toLowerCase()+') has no organization record yet'
+      + (near.length ? (' \u2014 did you mean '+near.map(o=>o.name).join(' or ')+'?') : ''));
   });
   return { ready:!need.length, missing:need };
 }

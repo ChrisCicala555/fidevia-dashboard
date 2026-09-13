@@ -15,7 +15,10 @@ console.log('No handler is built by embedding JSON.stringify in a double-quoted 
   // The shape: on<event>=" ... JSON.stringify( ... ) ... " with no single-quote
   // wrapping. Concatenated source, so this reads the code rather than markup.
   const hits=[];
-  const re=/on(?:click|change|input|submit|blur|focus)="[^"]{0,400}?\+JSON\.stringify\(/g;
+  // esc(JSON.stringify(x)) is the safe form: esc turns the quotes JSON adds
+  // into &quot;, which the attribute parser hands back as quotes, and an
+  // apostrophe in a name survives too. Only the raw call is the bug.
+  const re=/on(?:click|change|input|submit|blur|focus)="[^"]{0,400}?\+(?!esc\(JSON)JSON\.stringify\(/g;
   let m; while((m=re.exec(html))) hits.push(html.slice(m.index, m.index+120));
   ok(hits.length===0,
      'nothing embeds a JSON.stringify result straight into a double-quoted handler'
