@@ -1945,6 +1945,7 @@
     <div class="modal-body">
       <div id="cogen-blocked" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:16px;font-size:13.5px;color:var(--olive-900);"></div>
       <div id="cogen-form">
+        <div id="cogen-unreviewed" style="display:none;background:#fdf6e3;border:1px solid #e2c98a;border-radius:8px;padding:12px 15px;margin-bottom:16px;font-size:13.5px;color:var(--olive-900);"></div>
         <div id="cogen-summary" style="background:var(--khaki-50,#f7f5ef);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:18px;font-size:13.5px;"></div>
         <div id="cogen-rev" style="display:none;background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:8px;padding:10px 14px;margin:-8px 0 18px;font-size:13px;color:var(--olive-900);"></div>
 
@@ -5036,7 +5037,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 16:40';
+const BUILD_STAMP='2026-09-13 17:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7479,6 +7480,51 @@ function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemCom
 // A proposal is what goes out for pricing and signature, so it has to be
 // producible while the change is still being decided. Once approved the same
 // generator produces the executed change order.
+// ── ISSUING AHEAD OF THE REVIEW ──
+//
+// Generating the PROPOSAL document before the review is finished is the point
+// of it: that document is what goes out to get the reviews. Generating the
+// EXECUTED change order before them is different. That document says the
+// parties have agreed the change, and the dashboard is the only thing that
+// knows they have not.
+
+// The review steps nobody has signed off. Read the same way the override menu
+// reads them, so the two cannot disagree about what is outstanding.
+function wfOutstandingSteps(key, row){
+  if(!row || wfIsDone(row)) return [];
+  // No early exit for an empty chain: the loop below walks nothing and returns
+  // nothing, so a project with no workflow configured falls out here anyway.
+  const steps=wfEffectiveSteps(key, row);
+  const signed=wfSignedMap(row);
+  let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+  if(!Array.isArray(done)) done=[];
+  const out=[];
+  steps.forEach((st,n)=>{
+    if(signed[String(n)] || done.indexOf(n)>=0) return;
+    out.push({ n, person:String((st&&st.person)||'').trim(),
+               role:String((st&&(st.role||st.label))||'').trim(),
+               company:wfStepCompany(st) });
+  });
+  return out;
+}
+// Only the executed document is held to this. A row with no chain configured
+// has nothing outstanding and is not warned about.
+function coGenNeedsReview(row){
+  return coIsApproved(row) ? wfOutstandingSteps('co', row) : [];
+}
+function coUnreviewedHTML(row){
+  const out=coGenNeedsReview(row);
+  if(!out.length) return '';
+  const who=o=>'<li>'+esc(o.person||o.role||('Step '+(o.n+1)))
+    +(o.role&&o.person?' <span style="color:var(--muted);">\u00b7 '+esc(o.role)+'</span>':'')
+    +(o.company?' <span style="color:var(--muted);">\u2014 '+esc(o.company)+'</span>':'')+'</li>';
+  return '<strong>The review is not finished.</strong> This document states that the parties have '
+    +'agreed the change, and '+(out.length===1?'one step has':out.length+' steps have')
+    +' not been signed off:<ul style="margin:6px 0 0 18px;padding:0;">'+out.map(who).join('')+'</ul>'
+    +'<div style="margin-top:10px;">Finish the review on the change order log, or use the \u22ef menu '
+    +'on that row to record an approval given outside the dashboard against the person who gave it. '
+    +'Generating now is still possible, and the audit log will say the review was unfinished.</div>';
+}
 function coGenBtn(i,r){
   if(!IS_ADMIN || viewingAsExternal()) return '';
   if(wfIsStopped(r)) return '';   // decided against; there is nothing to issue
@@ -9249,6 +9295,16 @@ async function nextCoDocName(r, company, folderId){
 
 async function generateChangeOrder(){
   const r=(allData.co||[])[COGEN_IDX]; if(!r) return;
+  // Asked once, at the press, because the panel above has been on screen long
+  // enough to stop being read. Not a block: an approval given by phone is
+  // ordinary, and the record of it is what matters.
+  const _pending=coGenNeedsReview(r);
+  if(_pending.length){
+    const names=_pending.map(o=>o.person||o.role||('step '+(o.n+1)));
+    if(!confirm('Issue the change order before the review is finished?\n\nStill to sign off: '
+      +names.join(', ')+'.\n\nThe document says the parties have agreed the change. '
+      +'The audit log will record that the review was unfinished.')) return;
+  }
   const btn=document.getElementById('cogen-go'); btn.disabled=true;
   const say=t=>showStatus('cogen-status',t,'info');
   try{
@@ -9351,7 +9407,9 @@ async function generateChangeOrder(){
       await boxUploadText(MODULES.co.log, toCSV(MODULES.co.headers, rows), currentProject.folders.co, existing?existing.id:null);
     }catch(e){}
     try{ auditLog('Generated change order','co',r,
-      fname+(rolled.length?(' \u2014 covering '+rolled.map(x=>x['PCO #']||x['CO #']||'?').join(', ')):'')); }catch(e){}
+      fname+(rolled.length?(' \u2014 covering '+rolled.map(x=>x['PCO #']||x['CO #']||'?').join(', ')):'')
+      +(_pending.length?(' [REVIEW UNFINISHED \u2014 not signed off by '
+         +_pending.map(o=>o.person||o.role||('step '+(o.n+1))).join(', ')+']'):'')); }catch(e){}
 
     showStatus('cogen-status', (picked.rev>1 ? 'Generated revision '+picked.rev+'.' : 'Generated.')
       +(rolled.length?(' Covers '+(rolled.length+1)+' proposals.'):'')+mergeNote,'success');
@@ -9383,6 +9441,12 @@ function openCoGen(idx){
     return;
   }
   blocked.style.display='none'; form.style.display=''; go.disabled=false;
+  {
+    // Shown above the summary rather than in place of the form: this is a
+    // warning about the document's standing, not a missing input.
+    const warn=document.getElementById('cogen-unreviewed');
+    if(warn){ const h=coUnreviewedHTML(r); warn.innerHTML=h; warn.style.display=h?'':'none'; }
+  }
 
   const money=v=>fmtMoney(v);
   document.getElementById('cogen-summary').innerHTML=
