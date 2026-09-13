@@ -970,13 +970,34 @@
       <button class="cd-tab" data-tab="access" onclick="cdTab('access')">Project Access</button>
     </div>
     <div id="cd-pane-orgs" style="display:none;">
-      <p class="form-desc" style="margin-top:0;max-width:640px;">Every company that appears on someone&rsquo;s profile shows up here. Addresses are needed on formal documents — a change order names the contractor, architect and owner in full.</p>
+      <p class="form-desc" style="margin-top:0;max-width:640px;">Every company on someone&rsquo;s profile, named as a project&rsquo;s owner, or added here by hand. Addresses are needed on formal documents — a change order names the contractor, architect and owner in full.</p>
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
         <span class="cd-search-wrap">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           <input id="org-search" autocomplete="off" placeholder="Search organizations…" oninput="renderOrgs()">
         </span>
+        <button class="btn-secondary" onclick="orgAddOpen()">+ Add Organization</button>
         <span id="org-count" style="font-size:12.5px;color:var(--muted);"></span>
+      </div>
+      <div id="org-addform" style="display:none;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+        <p class="form-desc" style="margin-top:0;">For a firm nobody on the dashboard works for yet — an owner, an architect, a consultant. The address is asked for next.</p>
+        <div class="field-row">
+          <div class="field" style="flex:2;"><label>Organization name *</label><input id="org-add-name" autocomplete="off" placeholder="Ithaca Admin" onkeydown="if(event.key==='Enter'){event.preventDefault();orgAddSubmit();}" oninput="orgAddNote()"><p class="file-hint" style="margin-top:3px;" id="org-add-note"></p></div>
+          <div class="field" style="flex:1;"><label>Category</label>
+            <select id="org-add-cat">
+              <option value="">— Not categorised —</option>
+              <option value="architect">Architect</option>
+              <option value="engineer">Engineer</option>
+              <option value="contractor">Contractor</option>
+              <option value="owner">Owner</option>
+              <option value="other">Other</option>
+            </select></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn-primary" id="org-add-btn" onclick="orgAddSubmit()">Add and Enter Address</button>
+          <button class="btn-secondary" onclick="orgAddClose()">Cancel</button>
+          <span id="org-add-status" class="status-msg"></span>
+        </div>
       </div>
       <div id="org-list"><div style="color:var(--muted)">Loading…</div></div>
     </div>
@@ -4899,7 +4920,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 08:20';
+const BUILD_STAMP='2026-09-13 09:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9754,9 +9775,31 @@ function coReadinessHTML(companyName){
       if(near.length) fix='<div style="margin-top:4px;font-size:12.5px;">Did you mean '
         +near.map(o=>'<a href="#" onclick="coGenAdoptOwner('+esc(JSON.stringify(o.name))
             +');return false;">'+esc(o.name)+'</a>').join(' or ')+'?</div>';
+      // Nothing on file resembles it, so there is nothing to conform to and
+      // the answer is that this is a firm the dashboard has not met. Adding it
+      // is the fix, and it is the address that is actually wanted - so this
+      // creates the record and opens it rather than naming a tab to go find.
+      fix+='<div style="margin-top:4px;font-size:12.5px;">'
+        +(near.length?'Or add ':'Not on file anywhere. Add ')
+        +'<a href="#" onclick="coGenAddOwnerOrg('+esc(JSON.stringify(nm))
+        +');return false;">'+esc(nm)+'</a> to the organization directory and enter its address.</div>';
     }
     return head+'<div style="margin-top:2px;font-size:12.5px;">'+bits+'</div>'+fix;
   }).join('');
+}
+// A party nobody on the dashboard works for has no organization record, so
+// there is nowhere to keep the address a change order needs. Creating it and
+// opening it in one step, from the panel that reported the problem.
+async function coGenAddOwnerOrg(name){
+  const nm=String(name||'').trim(); if(!nm) return;
+  try{
+    await orgEnsure(nm,'owner');
+    await loadOrgs();
+    try{ await loadProjectOrgs(); }catch(e){}
+    const made=ORGS.find(o=>o.key===orgKeyOf(nm));
+    if(made) openOrg(made.key);
+    else alert('Added, but could not open it \u2014 find it under Contact Directory \u203a Organizations.');
+  }catch(e){ alert('Could not add the organization: '+(e.message||e)); }
 }
 // Adopting a suggested owner from the generator. The project is saved before
 // anything is redrawn, so the change survives the reload rather than sitting in
@@ -9910,6 +9953,11 @@ async function saveProjectSettings(){
       psLogoShow();
     }
     try{ await proxyCall('recordJobNumber',{ jobNumber:c.jobNumber, project:currentProject.name },{quiet:true}); }catch(e){}
+    // The owner is named on every change order this project generates, so it
+    // needs a record to hold an address. Nobody from the owner's office
+    // necessarily has a dashboard profile, which is the only other way a
+    // company got onto the list - so setting one here files it.
+    try{ if(await orgEnsure(c.owner,'owner')) await loadProjectOrgs(); }catch(e){}
     showStatus('ps-status','Saved.','success');
     renderAll();
   }catch(e){ showStatus('ps-status','Error: '+e.message,'error'); }
@@ -9947,7 +9995,7 @@ function renderOrgs(){
     ? (q?list.length+' of '+ORGS.length:ORGS.length+' organization'+(ORGS.length===1?'':'s'))
       +(missing?' \u00b7 '+missing+' needing an address':'')
     : '';
-  if(!ORGS.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">No organizations yet. They appear here as soon as someone records a company on their profile.</div>'; return; }
+  if(!ORGS.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">No organizations yet. One appears as soon as somebody records a company on their profile or a project names an owner \u2014 or add one with the button above.</div>'; return; }
   if(!list.length){ box.innerHTML='<div class="cd-card" style="padding:18px;color:var(--muted);font-style:italic;">Nothing matches \u201c'+esc(q)+'\u201d.</div>'; return; }
   let rows='';
   // Fidevia first, always — it is the construction manager on every project
@@ -9980,6 +10028,71 @@ function renderOrgs(){
   box.innerHTML='<div class="cd-card"><table><thead><tr>'
     +'<th>Organization</th><th class="nw">Category</th><th>Address</th><th class="nw" style="text-align:right;">Actions</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+// ── ADDING AN ORGANIZATION BY HAND ──
+//
+// The list is built from companies people are recorded under, which leaves a
+// hole: an owner named on a project that nobody on the dashboard works for has
+// no record here, so there is nowhere to put its address, and a change order
+// naming it cannot be generated. saveProjectSettings now files the owner as it
+// is set, and this is the way in for everyone else - a consultant, a surety, a
+// second architect - who will never appear on a profile.
+function orgAddOpen(){
+  const box=document.getElementById('org-addform'); if(!box) return;
+  box.style.display='';
+  const nm=document.getElementById('org-add-name');
+  if(nm){ nm.value=''; nm.focus(); }
+  const cat=document.getElementById('org-add-cat'); if(cat) cat.value='';
+  showStatus('org-add-status','','info'); orgAddNote();
+}
+function orgAddClose(){
+  const box=document.getElementById('org-addform'); if(box) box.style.display='none';
+}
+// Says, while it is typed, that this name is already here. Adding a second
+// spelling of a firm that exists is the problem the directory has, not a
+// feature of it.
+function orgAddNote(){
+  const note=document.getElementById('org-add-note'); if(!note) return;
+  const nm=String((document.getElementById('org-add-name')||{}).value||'').trim();
+  // No early return for a blank name: it matches nothing and scores nothing
+  // against everything, so it falls through to the same cleared note. A guard
+  // here would be unreachable code that reads like it is doing something.
+  const exact=ORGS.find(o=>o.key===orgKeyOf(nm));
+  if(exact){ note.style.color='#8a5a00'; note.innerHTML='\u201c'+esc(exact.name)+'\u201d is already here \u2014 adding will open it rather than make a second one.'; return; }
+  const near=ORGS.filter(o=>orgNameScore(nm,o.name)>=0.5).slice(0,3);
+  if(near.length){ note.style.color='#8a5a00'; note.innerHTML='Already here: '+near.map(o=>'<strong>'+esc(o.name)+'</strong>').join(', ')+'. Add this only if it is a different firm.'; return; }
+  note.style.color=''; note.innerHTML='';
+}
+async function orgAddSubmit(){
+  const nm=String((document.getElementById('org-add-name')||{}).value||'').trim();
+  if(!nm){ showStatus('org-add-status','Enter a name.','error'); return; }
+  // A name already on file is opened rather than duplicated. Two spellings of
+  // one firm is exactly what the merge control downstairs exists to undo.
+  const exact=ORGS.find(o=>o.key===orgKeyOf(nm));
+  if(exact){ orgAddClose(); openOrg(exact.key); return; }
+  const btn=document.getElementById('org-add-btn'); if(btn) btn.disabled=true;
+  showStatus('org-add-status','Adding\u2026','info');
+  try{
+    const cat=String((document.getElementById('org-add-cat')||{}).value||'');
+    await proxyCall('saveCompany',{name:nm, category:cat});
+    await loadOrgs();
+    orgAddClose();
+    // Straight into the address, since that is the reason to add one at all.
+    const made=ORGS.find(o=>o.key===orgKeyOf(nm));
+    if(made) openOrg(made.key);
+  }catch(e){ showStatus('org-add-status','Error: '+e.message,'error'); }
+  if(btn) btn.disabled=false;
+}
+// Files a name the dashboard already uses, so it has somewhere to keep an
+// address. Only ever creates - saveCompany leaves out fields alone, and a name
+// already on file is skipped outright rather than written over.
+async function orgEnsure(name, category){
+  const nm=String(name||'').trim(); if(!nm) return false;
+  if(PROJECT_ORGS[orgKeyOf(nm)]) return false;
+  try{
+    await proxyCall('saveCompany',{name:nm, category:category||''},{quiet:true});
+    return true;
+  }catch(e){ return false; }
 }
 function openOrg(key){
   const o=ORGS.find(x=>x.key===key); if(!o) return;
@@ -10066,6 +10179,14 @@ async function saveOrg(){
     Object.assign(o, d.company||{});
     showStatus('org-status','Saved.','success');
     renderOrgs(); renderOrgBadge();
+    // The change order generator may be the reason this address was being
+    // typed. Its checklist reads PROJECT_ORGS, which knows nothing of a save
+    // made from here, so it is refreshed and the panel redrawn underneath.
+    try{ await loadProjectOrgs(); }catch(e){}
+    try{
+      const bk=document.getElementById('cogen-backdrop');
+      if(bk && bk.classList.contains('open') && COGEN_IDX>=0) openCoGen(COGEN_IDX);
+    }catch(e){}
     setTimeout(closeOrg, 600);
   }catch(e){ showStatus('org-status','Error: '+e.message,'error'); }
   btn.disabled=false;
