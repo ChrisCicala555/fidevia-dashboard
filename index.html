@@ -1614,7 +1614,7 @@
 </div>
 
 <!-- ══ MODAL ══ -->
-<div class="modal-backdrop" id="modal-backdrop" onclick="closeModalOnBackdrop(event)">
+<div class="modal-backdrop" id="modal-backdrop" onclick="backdropClick(event,closeModal)">
   <div class="modal">
     <div class="modal-header">
       <h3 id="modal-title">Submit</h3>
@@ -1629,7 +1629,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="payaction-backdrop" onclick="if(event.target===this)closePayAction()">
+<div class="modal-backdrop" id="payaction-backdrop" onclick="backdropClick(event,closePayAction)">
   <div class="modal">
     <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
     <div class="modal-body">
@@ -1653,7 +1653,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="person-backdrop" onclick="if(event.target===this)closePerson()">
+<div class="modal-backdrop" id="person-backdrop" onclick="backdropClick(event,closePerson)">
   <div class="modal" style="max-width:620px;">
     <div class="modal-header slim"><button class="modal-close" onclick="closePerson()">✕</button></div>
     <div class="modal-body">
@@ -1687,7 +1687,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="delete-backdrop" onclick="if(event.target===this)closeDeleteModal()">
+<div class="modal-backdrop" id="delete-backdrop" onclick="backdropClick(event,closeDeleteModal)">
   <div class="modal">
     <div class="modal-header"><h3>Delete Project</h3><button class="modal-close" onclick="closeDeleteModal()">✕</button></div>
     <div class="modal-body">
@@ -1714,7 +1714,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="dgen-backdrop" onclick="if(event.target===this)closeDailyGen()">
+<div class="modal-backdrop" id="dgen-backdrop" onclick="backdropClick(event,closeDailyGen)">
   <div class="modal" style="max-width:900px;">
     <div class="modal-header"><h3>Generate Daily Report</h3><button class="modal-close" onclick="closeDailyGen()">✕</button></div>
     <div class="modal-body">
@@ -1770,7 +1770,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="sched-backdrop" onclick="if(event.target===this)closeSchedUpload()">
+<div class="modal-backdrop" id="sched-backdrop" onclick="backdropClick(event,closeSchedUpload)">
   <div class="modal">
     <div class="modal-header"><h3 id="sched-up-title">Upload Schedule</h3><button class="modal-close" onclick="closeSchedUpload()">&#10005;</button></div>
     <div class="modal-body">
@@ -1794,7 +1794,7 @@
     </div>
   </div>
 </div>
-<div class="modal-backdrop" id="wfov-backdrop" onclick="if(event.target===this)closeWfOverride()">
+<div class="modal-backdrop" id="wfov-backdrop" onclick="backdropClick(event,closeWfOverride)">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header"><h3>Override a review step</h3><button class="modal-close" onclick="closeWfOverride()">&#10005;</button></div>
     <div class="modal-body">
@@ -1817,7 +1817,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="reply-backdrop" onclick="if(event.target===this)closeReply()">
+<div class="modal-backdrop" id="reply-backdrop" onclick="backdropClick(event,closeReply)">
   <div class="modal">
     <div class="modal-header"><h3 id="reply-title">Reply / New Version</h3><button class="modal-close" onclick="closeReply()">✕</button></div>
     <div class="modal-body">
@@ -1854,7 +1854,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="feedback-backdrop" onclick="if(event.target===this)closeFeedback()">
+<div class="modal-backdrop" id="feedback-backdrop" onclick="backdropClick(event,closeFeedback)">
   <div class="modal">
     <div class="modal-header">
       <h3>Report a Bug / Feedback</h3>
@@ -1871,7 +1871,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="contractors-backdrop" onclick="if(event.target===this)closeContractors()">
+<div class="modal-backdrop" id="contractors-backdrop" onclick="backdropClick(event,closeContractors)">
   <div class="modal">
     <div class="modal-header">
       <h3>Manage Contractors</h3>
@@ -1890,7 +1890,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="newco-backdrop" onclick="if(event.target===this)closeNewCo()">
+<div class="modal-backdrop" id="newco-backdrop" onclick="backdropClick(event,closeNewCo)">
   <div class="modal" style="max-width:720px;">
     <div class="modal-header"><h3>Issue a Change Order</h3><button class="modal-close" onclick="closeNewCo()">&times;</button></div>
     <div class="modal-body">
@@ -1936,7 +1936,7 @@
     </div>
   </div>
 </div>
-<div class="modal-backdrop" id="cogen-backdrop" onclick="if(event.target===this)closeCoGen()">
+<div class="modal-backdrop" id="cogen-backdrop" onclick="backdropClick(event,closeCoGen)">
   <div class="modal" style="max-width:620px;">
     <div class="modal-header">
       <h3 id="cogen-title">Generate Change Order</h3>
@@ -2005,7 +2005,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="org-backdrop" onclick="if(event.target===this)closeOrg()">
+<div class="modal-backdrop" id="org-backdrop" onclick="backdropClick(event,closeOrg)">
   <div class="modal" style="max-width:540px;">
     <div class="modal-header">
       <h3 id="org-title">Organization</h3>
@@ -2053,7 +2053,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="billing-backdrop" onclick="if(event.target===this)closeBilling()">
+<div class="modal-backdrop" id="billing-backdrop" onclick="backdropClick(event,closeBilling)">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header">
       <h3>Billing &amp; Response Periods</h3>
@@ -2085,7 +2085,7 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="schedule-backdrop" onclick="if(event.target===this)closeSchedule()">
+<div class="modal-backdrop" id="schedule-backdrop" onclick="backdropClick(event,closeSchedule)">
   <div class="modal">
     <div class="modal-header">
       <h3>Edit Schedule</h3>
@@ -2114,7 +2114,7 @@
   <div id="pv-thumbs" style="display:flex;gap:6px;padding:12px 20px;overflow-x:auto;justify-content:center;"></div>
 </div>
 
-<div class="modal-backdrop" id="account-backdrop" onclick="if(event.target===this)closeAccount()">
+<div class="modal-backdrop" id="account-backdrop" onclick="backdropClick(event,closeAccount)">
   <div class="modal">
     <div class="modal-header">
       <h3>My Account</h3>
@@ -5060,7 +5060,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 18:10';
+const BUILD_STAMP='2026-09-13 19:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7868,7 +7868,36 @@ function openModal(type){
 }
 
 function closeModal(){ document.getElementById('modal-backdrop').classList.remove('open'); currentModal=null; }
-function closeModalOnBackdrop(e){ if(e.target===document.getElementById('modal-backdrop')) closeModal(); }
+// Clicking the dark area behind a dialog closes it. That is right, and it was
+// also throwing away half-filled forms.
+//
+// A click's target is the nearest common ancestor of where the button went
+// down and where it came up. Write a line in a field, drag across it to select
+// the text, and let go a few pixels past the edge of the dialog: mousedown was
+// in the input, mouseup was on the backdrop, and the common ancestor is the
+// backdrop. `event.target===this` was true, so the dialog closed and took what
+// had been typed with it. Selecting text to retype it is precisely when this
+// happens, which is why it kept catching Christopher out.
+//
+// So the press has to have STARTED on the backdrop as well as ended there.
+// Captured, so a handler inside the dialog calling stopPropagation cannot hide
+// the press from us and leave a stale one behind.
+let BACKDROP_DOWN=null;
+document.addEventListener('mousedown', function(e){
+  // Every press, not only the ones on a backdrop: what matters is that the
+  // last press was on THIS backdrop, and recording only backdrop presses would
+  // leave the previous one standing to authorise a later drag.
+  BACKDROP_DOWN=e.target;
+}, true);
+function backdropClick(e, close){
+  // Landed on the dialog itself, not the dark area.
+  if(e.target!==e.currentTarget) return;
+  // Ended on the backdrop but began somewhere else: a drag, not a click.
+  if(BACKDROP_DOWN!==e.currentTarget) return;
+  BACKDROP_DOWN=null;
+  if(typeof close==='function') close();
+}
+function closeModalOnBackdrop(e){ backdropClick(e, closeModal); }
 function openFeedback(){ const m=document.getElementById('fb-message'); if(m) m.value=''; const s=document.getElementById('fb-status'); if(s){ s.textContent=''; s.className='status-msg'; } document.getElementById('feedback-backdrop').classList.add('open'); }
 function closeFeedback(){ document.getElementById('feedback-backdrop').classList.remove('open'); }
 let CONTACT_DIR=[];
