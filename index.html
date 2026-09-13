@@ -1199,6 +1199,18 @@
           <table><thead><tr><th>Role</th><th>Contractor</th><th>Contract</th><th title="Allowance remaining of the original allowance">Allowance Left</th><th title="Approved change orders that increase the contract, excluding anything funded from the allowance">Approved COs</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th>% Complete</th><th>CO %</th></tr></thead>
           <tbody id="tbody-financials"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
         </div>
+        <div class="panel" id="fin-allow-panel" style="display:none;margin-top:18px;">
+          <div class="panel-header">Allowances<span class="src" id="fin-allow-note"></span></div>
+          <table><thead><tr>
+            <th>Allowance</th>
+            <th title="What the contract set the allowance at">Original</th>
+            <th title="Written down by executed deduct change orders tied to this allowance">Adjusted</th>
+            <th title="Drawn by executed change orders funded from this allowance">Drawn</th>
+            <th title="What is left to draw against">Remaining</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="tbody-allowances"></tbody></table>
+        </div>
       </div>
 
       <!-- SCHEDULE -->
@@ -4921,7 +4933,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 10:10';
+const BUILD_STAMP='2026-09-13 11:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6053,6 +6065,112 @@ function renderDocsTable(key, tbodyId){
 function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
 
 // ── FINANCIAL SUMMARY (by contractor; driven by config + latest pay app) ──
+// ── ALLOWANCE SUMMARY ──
+//
+// The by-contractor table has one allowance column, and a contract carrying
+// four of them cannot be read from one cell - it said "$42,000 of $50,000" with
+// the rest on hover. An allowance is money the owner has already committed and
+// is waiting to hear the fate of, so it deserves stating outright: what the
+// contract set, what deducts have written off, what has been drawn, what is
+// left, and which change orders did it.
+
+// Every executed change order that names this allowance, as the reconciliation
+// record: what it took out, or what it wrote off.
+function allowanceActivity(name, id){
+  const norm=String(name||'').trim().toLowerCase();
+  const want=String(id||'').trim().toUpperCase();
+  return (allData.co||[]).filter(r=>coIsExecuted(r)
+      && String(r['Company']||'').trim().toLowerCase()===norm
+      && coAllowanceAmountFor(r, want)>0)
+    .map(r=>{
+      const share=coAllowanceAmountFor(r, want);
+      const deduct=coApprovedAmount(r)<0;
+      // The same capping the running totals apply, so a line here and the
+      // figure above it can never disagree.
+      const total=coSplitsTotal(r);
+      const scale=deduct
+        ? (total>Math.abs(coApprovedAmount(r)) ? Math.abs(coApprovedAmount(r))/total : 1)
+        : (total>0 ? Math.min(1, coAllowanceDraw(r)/total) : 0);
+      return { co:String(r['CO #']||'').trim(), desc:String(r['Description']||'').trim(),
+               amount:share*scale, kind:deduct?'written off':'drawn' };
+    }).filter(x=>x.amount>0);
+}
+// One allowance's whole story, as the panel states it.
+function allowanceSummaryFor(name){
+  return allowancesFor(name).map(a=>{
+    const used=allowanceUsedById(name, a.id);
+    return { id:a.id, label:a.name, original:a.original, reduced:a.reduced,
+             current:a.amount, used, left:a.amount-used,
+             activity:allowanceActivity(name, a.id) };
+  });
+}
+// What to call the state of one, in the words somebody would use out loud.
+function allowanceState(a){
+  if(a.left<0) return {text:'Overdrawn by '+fmtMoney(Math.abs(a.left)), tone:'bad'};
+  if(!a.current && a.reduced) return {text:'Closed out', tone:'ok'};
+  if(!a.used) return {text:'Untouched', tone:'muted'};
+  if(a.left===0) return {text:'Fully drawn', tone:'ok'};
+  return {text:Math.round((a.used/a.current)*100)+'% drawn', tone:'muted'};
+}
+function renderAllowances(){
+  const tb=document.getElementById('tbody-allowances');
+  const panel=document.getElementById('fin-allow-panel');
+  if(!tb||!panel) return;
+  const cfg=(currentProject&&currentProject.config)||{};
+  let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  // The same scoping the table above uses: a contractor sees their own
+  // contract and nobody else's.
+  if(viewingAsExternal() && isContractorView()){
+    const mine=companyScope().toLowerCase();
+    contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
+  }
+  const withAllow=contractors.map(c=>({c, list:allowanceSummaryFor(c.name)})).filter(x=>x.list.length);
+  // No allowances is not an empty table, it is a panel that should not be here.
+  if(!withAllow.length){ panel.style.display='none'; tb.innerHTML=''; return; }
+  panel.style.display='';
+  const money=v=>fmtMoney(v);
+  const TONE={bad:'var(--danger)', ok:'var(--olive-700)', muted:'var(--muted)'};
+  let rows='', tOrig=0, tCut=0, tUsed=0, tLeft=0, nAll=0;
+  withAllow.forEach(({c,list})=>{
+    // Banded by contract, because an allowance belongs to one and the numbers
+    // are meaningless pooled across several.
+    if(withAllow.length>1 || contractors.length>1)
+      rows+='<tr class="cd-band"><td colspan="6"><span class="cdb-key" style="font-size:15px;">'+esc(c.name)
+        +'</span><span class="cdb-n">'+list.length+'</span></td></tr>';
+    list.forEach(a=>{
+      nAll++; tOrig+=a.original; tCut+=a.reduced; tUsed+=a.used; tLeft+=a.left;
+      const st=allowanceState(a);
+      const act=a.activity.length
+        ? '<div class="cell-sub">'+a.activity.map(x=>
+            esc(x.co||'CO')+' '+money(x.amount)+' '+esc(x.kind)
+            +(x.desc?(' \u2014 '+esc(x.desc.length>60?x.desc.slice(0,57)+'\u2026':x.desc)):'')
+          ).join('<br>')+'</div>'
+        : '';
+      rows+='<tr>'
+        +'<td><strong>Allowance '+esc(a.id)+'</strong>'+(a.label?' \u2014 '+esc(a.label):'')+act+'</td>'
+        +'<td>'+money(a.original)+'</td>'
+        // A write-down is stated as the negative it is, and against what is
+        // left of the allowance, so the 60k-reduced-to-50k reconciliation
+        // Christopher described reads off the row without arithmetic.
+        +'<td>'+(a.reduced
+            ? '<span style="color:var(--danger);">'+fmtSigned(String(-a.reduced))+'</span>'
+              +'<div class="cell-sub">now '+money(a.current)+'</div>'
+            : '<span style="color:var(--muted);">\u2014</span>')+'</td>'
+        +'<td>'+(a.used?money(a.used):'<span style="color:var(--muted);">\u2014</span>')+'</td>'
+        +'<td'+(a.left<0?' style="color:var(--danger);font-weight:600;"':'')+'>'+money(a.left)+'</td>'
+        +'<td style="color:'+TONE[st.tone]+';'+(st.tone==='bad'?'font-weight:600;':'')+'">'+esc(st.text)+'</td>'
+        +'</tr>';
+    });
+  });
+  if(nAll>1) rows+='<tr class="total-row" style="font-weight:700;background:var(--khaki-100);">'
+    +'<td>Total</td><td>'+money(tOrig)+'</td>'
+    +'<td>'+(tCut?fmtSigned(String(-tCut)):'\u2014')+'</td>'
+    +'<td>'+money(tUsed)+'</td><td>'+money(tLeft)+'</td><td></td></tr>';
+  tb.innerHTML=rows;
+  const note=document.getElementById('fin-allow-note');
+  if(note) note.textContent=nAll+' allowance'+(nAll===1?'':'s')
+    +(tCut?(' \u00b7 '+fmtMoney(tCut)+' written off'):'');
+}
 function renderFinancials(){
   const tb=document.getElementById('tbody-financials'); if(!tb) return;
   const cfg=(currentProject&&currentProject.config)||{};
@@ -6131,6 +6249,7 @@ function renderFinancials(){
       ? (fmtSigned(String(tPending))+' approved, not yet in a change order')
       : '';
     kp.innerHTML=card('Revised Contract',fmtMoney(tR),pendSub)+card('Billed to Date',fmtMoney(tB))+card('Remaining',fmtMoney(tRem))+card('% Billed',(tR>0?(tB/tR*100).toFixed(1):'0')+'%'); }
+  try{ renderAllowances(); }catch(e){}
 }
 
 // ── MANAGE CONTRACTORS (admin) ──
