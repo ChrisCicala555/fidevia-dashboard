@@ -1915,6 +1915,7 @@
 
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:18px 0 8px;">Signed document</div>
       <div class="field"><input type="file" id="nc-file" accept="application/pdf,image/*" onchange="newCoFileChanged()"><p class="file-hint" id="nc-file-hint">Leave this empty and the change order document is drawn for you. Upload one only if it was written outside the dashboard.</p></div>
+      <div id="nc-blocked" style="display:none;margin-top:14px;padding:12px 14px;border:1px solid #e2c98a;background:#fdf6e3;border-radius:8px;font-size:13px;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn-primary" id="nc-go" onclick="submitNewCo()">Record &amp; Generate</button>
@@ -4920,7 +4921,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 09:15';
+const BUILD_STAMP='2026-09-13 10:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9246,6 +9247,8 @@ function openNewCo(){
   const f=document.getElementById('nc-file'); if(f) f.value='';
   const st=document.getElementById('nc-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   newCoCompanyChanged();
+  { const b=document.getElementById('nc-blocked'); if(b){ b.style.display='none'; b.innerHTML=''; } }
+  try{ newCoReadiness(); }catch(e){}
   document.getElementById('newco-backdrop').classList.add('open');
 }
 function closeNewCo(){ document.getElementById('newco-backdrop').classList.remove('open'); }
@@ -9283,6 +9286,9 @@ function newCoCompanyChanged(){
         +' style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;"'
         +' title="Amount agreed. Defaults to what was proposed."></div></div>'; }).join('');
   newCoTotals();
+  // The contractor is half of what the document has to name, so changing the
+  // contract can block or unblock it.
+  try{ newCoReadiness(); }catch(e){}
 }
 function newCoSet(){
   return [...document.querySelectorAll('.nc-roll:checked')].map(el=>{
@@ -9292,6 +9298,34 @@ function newCoSet(){
     const proposed=payNum(inp&&inp.dataset.proposed);
     return row ? { i, row, amount: inp?payNum(inp.value):proposed, proposed } : null;
   }).filter(Boolean);
+}
+// Whether pressing the button would end in a document. Uploading one means
+// none is drawn, so the parties' addresses are nobody's business here; leaving
+// the file empty means the dashboard draws it, and then they are.
+function newCoWillDraw(){
+  const f=document.getElementById('nc-file');
+  return !(f && f.files && f.files.length);
+}
+// Says up front that the document cannot be drawn, rather than letting the
+// press succeed at recording, email everyone that a change order was issued,
+// and only then open a generator that refuses.
+function newCoReadiness(){
+  const box=document.getElementById('nc-blocked');
+  const go=document.getElementById('nc-go');
+  if(!box) return {ready:true, missing:[]};
+  const co=newCoCompany();
+  if(!co || !newCoWillDraw()){ box.style.display='none'; box.innerHTML=''; if(go) go.disabled=false; return {ready:true, missing:[]}; }
+  const rd=coDocumentReadiness(co);
+  if(rd.ready){ box.style.display='none'; box.innerHTML=''; if(go) go.disabled=false; return rd; }
+  box.style.display='';
+  box.innerHTML='<strong>The document cannot be drawn yet.</strong> A change order names both parties '
+    +'in full, so each needs a street address, a city, a state and a ZIP code on its organization record.'
+    +coReadinessHTML(co)
+    +'<div style="margin-top:10px;">Fix this, or upload a change order written elsewhere and it will be '
+    +'recorded without drawing one. <a href="#" onclick="closeNewCo();openContactDir().then(()=>cdTab(\'orgs\'));return false;">'
+    +'Open the organization records</a>.</div>';
+  if(go) go.disabled=true;
+  return rd;
 }
 // The button says which of the two things pressing it will do, because the
 // answer changes depending on whether a document has been chosen.
@@ -9304,6 +9338,9 @@ function newCoFileChanged(){
   if(hint) hint.textContent = has
     ? 'The executed change order, uploaded to Box against this record. Nothing will be drawn.'
     : 'Leave this empty and the change order document is drawn for you. Upload one only if it was written outside the dashboard.';
+  // Choosing a file is the way out of a blocked address, so the panel has to
+  // answer to it as well as to the contract.
+  try{ newCoReadiness(); }catch(e){}
 }
 // Ticking a proposal fills the description from it, because the change order
 // is describing that work and retyping it is both a waste and a chance to
@@ -9400,6 +9437,18 @@ async function submitNewCo(){
     const _tot=allowSplits.reduce((sum,x)=>sum+x.amount,0);
     if(gross && _tot > Math.abs(gross))
       return say('The allowance lines come to more than the change order is worth.','error');
+  }
+  // Last: pressing this used to record the change order, email everybody that
+  // one had been issued, and only then open a generator that refused for want
+  // of an address. The record and the notification are not undoable; the fix
+  // is to refuse before either happens.
+  if(newCoWillDraw()){
+    const rd=coDocumentReadiness(co);
+    if(!rd.ready){
+      newCoReadiness();
+      return say('Cannot draw the document yet \u2014 '+rd.missing.join('; ')
+        +'. Complete the organization records, or upload a change order written elsewhere.','error');
+    }
   }
   const btn=document.getElementById('nc-go'); btn.disabled=true;
   try{

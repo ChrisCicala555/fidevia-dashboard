@@ -25,6 +25,17 @@ const boot = () => {
     currentProject.config.orgs={'Summit Builders':{category:'Contractor',city:'Ithaca',
       address1:'1 Main St',state:'NY',zip:'14850'}};
     allData.co=[];
+    // A project that could actually issue a change order: both parties named
+    // and with a complete address. Record & Generate now refuses without them,
+    // which is the point of tools-test-cogate.mjs — this file is about the
+    // functions running at all, so it gives them a project that gets that far.
+    currentProject.config.owner='Ithaca Housing Project';
+    PROJECT_ORGS={
+      'summit builders':{key:'summit builders',name:'Summit Builders',
+        line1:'1 Main St',city:'Ithaca',state:'NY',zip:'14850',complete:true},
+      'ithaca housing project':{key:'ithaca housing project',name:'Ithaca Housing Project',
+        line1:'953 Danby Road',city:'Ithaca',state:'NY',zip:'14850',complete:true}
+    };
     // Everything that would reach Box or Auth0, answered locally.
     CALLS=[];
     findFile=async()=>({id:'log'});
