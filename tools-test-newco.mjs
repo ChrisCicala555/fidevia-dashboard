@@ -77,8 +77,12 @@ ok(/class="nc-roll-amt"[^>]*data-proposed/.test(html) || /nc-roll-amt/.test(html
 {
   const cc = html.split('function newCoCompanyChanged')[1].split('function newCoSet')[0];
   ok(!/!coIsApproved\(x\)/.test(cc), 'an approved proposal can be covered here too');
-  ok(/!String\(x\['Signed File Name'\]\|\|''\)\.trim\(\)/.test(cc),
-     'one already papered is not offered');
+  // This used to assert the filter's text, and asserted the wrong rule: a
+  // proposal was excluded once it had a Signed File Name, which on a PCO is set
+  // by generating the proposal document. Both pickers now share one function,
+  // and what it decides is tested by running it in tools-test-rolleligible.mjs.
+  ok(/coRollCandidatesFor\(co\)/.test(cc), 'and the picker asks the shared eligibility list');
+  ok(!/Signed File Name/.test(cc), 'rather than keeping its own copy of the rule');
 }
 // button placement and audience
 ok(/<div style="display:flex;gap:8px;">\s*<button class="btn-add" onclick="openModal\('co'\)">\+ New PCO<\/button>/.test(html),

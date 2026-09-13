@@ -4933,7 +4933,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 11:20';
+const BUILD_STAMP='2026-09-13 12:35';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9384,14 +9384,23 @@ function newCoCompanyChanged(){
   }
   const box=document.getElementById('nc-roll-list');
   const none=document.getElementById('nc-roll-none');
-  const cands=co ? (allData.co||[]).map((x,i)=>({x,i})).filter(({x})=>
-        String(rowCompany(x)||'').trim().toLowerCase()===co.toLowerCase()
-        && !wfIsStopped(x) && !isArchived(x)
-        && !String(x['Rolled Into']||'').trim()
-        && !String(x['Signed File Name']||'').trim())
-    : [];
+  const cands=coRollCandidatesFor(co);
   if(!box) return;
-  if(!cands.length){ box.style.display='none'; if(none) none.style.display=co?'block':'none'; newCoTotals(); return; }
+  if(!cands.length){
+    box.style.display='none';
+    if(none){
+      none.style.display=co?'block':'none';
+      // An empty picker that says "none" when there are four on the contract
+      // is how somebody concludes the dashboard has lost them.
+      const gone=coRollExcluded(co);
+      none.innerHTML=gone.length
+        ? 'No open PCOs on this contract \u2014 the change order will stand on its own. '
+          +esc(gone.length===1?'The one on file ':'The '+gone.length+' on file ')
+          +'cannot be covered: '+gone.map(e=>esc(e.num||'a proposal')+' '+esc(e.reason)).join('; ')+'.'
+        : 'No open PCOs on this contract. The change order will stand on its own.';
+    }
+    newCoTotals(); return;
+  }
   box.style.display=''; if(none) none.style.display='none';
   box.innerHTML=cands.map(({x,i})=>{
     const proposed=coApprovedAmount(x)||payNum(x['Cost Impact']);
@@ -9644,21 +9653,58 @@ async function submitNewCo(){
 //
 // Eligible: same contract, not already approved, not already rolled into
 // another change order, and not the one being generated.
+// Whether one row is still a loose proposal, available to be rolled up.
+//
+// Approved ones are the point. A proposal that has been agreed and not yet
+// papered is exactly what a change order rolls up; excluding them left the
+// picker empty on every project where the agreeing had already been done.
+//
+// It also used to be excluded once it had a Signed File Name, which reads as
+// "this already has its own document". But on a proposal that field is set by
+// GENERATING the proposal document - the ordinary first step, and the thing
+// you send out to get it agreed. So raising a PCO, issuing its document and
+// then trying to roll it into a change order found nothing to roll, which is
+// what Christopher hit. The question actually being asked is whether the row
+// has become a change order in its own right, and a CO number is what says so.
+function coRollEligible(x){
+  return !!x
+    && !coIsExecuted(x)
+    && !wfIsStopped(x)
+    && !isArchived(x)
+    && !String(x['Rolled Into']||'').trim();
+}
+// One list, two dialogs. They were written separately, drifted into the same
+// wrong test, and would have drifted again.
+function coRollCandidatesFor(company, skipIdx){
+  const co=String(company||'').trim().toLowerCase();
+  if(!co) return [];
+  const skip=(skipIdx===undefined||skipIdx===null)?-1:skipIdx;
+  return (allData.co||[]).map((x,i)=>({x,i}))
+    .filter(({x,i})=> i!==skip
+      && String(rowCompany(x)||'').trim().toLowerCase()===co
+      && coRollEligible(x));
+}
+// Why a proposal on this contract is not being offered, so an empty picker can
+// account for itself instead of reading as "there are none".
+function coRollExcluded(company, skipIdx){
+  const co=String(company||'').trim().toLowerCase();
+  if(!co) return [];
+  const skip=(skipIdx===undefined||skipIdx===null)?-1:skipIdx;
+  const why=x=>{
+    if(coIsExecuted(x)) return 'is a change order already';
+    if(String(x['Rolled Into']||'').trim()) return 'is covered by '+String(x['Rolled Into']).trim();
+    if(isArchived(x)) return 'is archived';
+    if(wfIsStopped(x)) return 'was decided against';
+    return '';
+  };
+  return (allData.co||[]).map((x,i)=>({x,i}))
+    .filter(({x,i})=> i!==skip && String(rowCompany(x)||'').trim().toLowerCase()===co && !coRollEligible(x))
+    .map(({x})=>({ num:String(x['PCO #']||x['CO #']||'').trim(), reason:why(x) }))
+    .filter(e=>e.reason);
+}
 function coRollCandidates(idx){
   const r=(allData.co||[])[idx]; if(!r) return [];
-  const co=String(rowCompany(r)||'').trim().toLowerCase();
-  return (allData.co||[]).map((x,i)=>({x,i}))
-    .filter(({x,i})=>i!==idx
-      && String(rowCompany(x)||'').trim().toLowerCase()===co
-      // Approved ones are the point. A proposal that has been agreed and not
-      // yet papered is exactly what a change order rolls up; excluding them
-      // left the picker empty on every project where the agreeing had already
-      // been done.
-      && !wfIsStopped(x)
-      && !isArchived(x)
-      && !String(x['Rolled Into']||'').trim()
-      // Already has its own change order document, so it is not loose.
-      && !String(x['Signed File Name']||'').trim());
+  return coRollCandidatesFor(rowCompany(r), idx);
 }
 // A change order can touch several allowances — a closeout settling three at
 // once, or work funded partly from two — so the one picker became a list. Both

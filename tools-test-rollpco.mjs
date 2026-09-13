@@ -9,16 +9,24 @@ ok(/>\+ New PCO</.test(html), 'the button says PCO, which is what contractors ra
 ok(/co:\{title:'New PCO'/.test(html), 'and so does the form, matching the button that opens it');
 
 // candidates
-const cc = html.split('function coRollCandidates')[1].split('function coGenRollList')[0];
-ok(/i!==idx/.test(cc), 'the one being generated is not offered to itself');
+// The filter moved into coRollCandidatesFor, shared with the New CO dialog,
+// after both copies drifted into the same wrong test. These assertions used to
+// read the filter's text and so asserted the wrong rule for as long as it was
+// wrong; what it decides is now tested by running it, in
+// tools-test-rolleligible.mjs.
+const cc = html.split('function coRollCandidatesFor')[1].split('\nfunction coRollExcluded')[0];
+ok(/i!==skip/.test(cc), 'the one being generated is not offered to itself');
 ok(/rowCompany\(x\)[^=]*===co/.test(cc), 'only the same contract');
 // Approved proposals are the main case: agreed, not yet papered.
 ok(!/!coIsApproved\(x\)/.test(cc), 'an approved proposal is still eligible');
-ok(/!String\(x\['Signed File Name'\]\|\|''\)\.trim\(\)/.test(cc),
-   'but one that already has its own change order document is not');
-ok(/!wfIsStopped\(x\)/.test(cc), 'nothing decided against');
-ok(/!isArchived\(x\)/.test(cc), 'nothing archived');
-ok(/!String\(x\['Rolled Into'\]\|\|''\)\.trim\(\)/.test(cc), 'and nothing already rolled into another');
+ok(!/Signed File Name/.test(cc),
+   'and a proposal whose own document has been generated is still eligible — that is the normal sequence');
+// The per-row rules sit in coRollEligible, which is where both pickers get them.
+const el = html.split('function coRollEligible')[1].split('\n}')[0];
+ok(/!wfIsStopped\(x\)/.test(el), 'nothing decided against');
+ok(/!isArchived\(x\)/.test(el), 'nothing archived');
+ok(/!String\(x\['Rolled Into'\]\|\|''\)\.trim\(\)/.test(el), 'and nothing already rolled into another');
+ok(/!coIsExecuted\(x\)/.test(el), 'and nothing that is already a change order in its own right');
 
 // the maths
 const cm = html.split('function coContractMathFor')[1].split('function orgAddressLines')[0];
