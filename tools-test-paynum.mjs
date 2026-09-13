@@ -16,6 +16,9 @@ fs.writeFileSync('.pn.tmp.mjs', [
   grab('function rowCompany'),
   grab('function nextItemNumber(key, comp)'), grab('function nextItemNumberByCompany'),
   grab('function tradeCodeFor'), grab('function contractorRec'),
+  // Numbering now also consults the numbers retired by deletion, so the run
+  // does not restart when a record is removed.
+  grab('function numKeyFor'), grab('function retiredNumbers'), grab('function retiredHigh'),
   "const FIDEVIA_EMAIL=/@fidevia\\.com$/i; const DESIGN_ROLES=['architect','engineer'];",
   "const PROJECT_ROLES={};",
   "export { nextItemNumber, rowCompany };"
@@ -28,6 +31,18 @@ const ok=(n,c)=>{ c?pass++:(fail++,console.log('  FAIL: '+n)); };
 console.log('First application');
 seed('pay_apps',[]);
 ok('starts at 001', nextItemNumber('pay_apps','Summit Builders')==='PA-001_Summit Builders');
+
+console.log('A deleted application does not give its number back');
+{
+  const { currentProject } = await import('./.pn.tmp.mjs');
+  seed('pay_apps',[]);
+  currentProject.config.retiredNumbers={'pay_apps:summit builders':4};
+  ok('the run resumes above the retired number',
+     nextItemNumber('pay_apps','Summit Builders')==='PA-005_Summit Builders');
+  ok('and another contractor is untouched',
+     nextItemNumber('pay_apps','Comfort Systems')==='PA-001_Comfort Systems');
+  currentProject.config.retiredNumbers={};
+}
 
 console.log('Sequence is per contractor');
 seed('pay_apps',[

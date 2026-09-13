@@ -4078,6 +4078,89 @@ function tradeCodeFor(company){
   });
   return granted ? 'AE' : 'CM';
 }
+// ── RETIRED NUMBERS ──
+//
+// The next number was worked out from the rows currently on the log, so
+// deleting PCO-GC-001 handed the number straight back and the next proposal
+// was PCO-GC-001 again. Christopher hit this the honest way, by deleting and
+// re-adding while testing: "this is like the third PCO-GC-001 we've had".
+//
+// Two rows with one number is not cosmetic. rowIndexById refuses a duplicate
+// rather than guess, which is what stopped a review stepping through; the
+// item's folder in Box is named after the number, so two records share one
+// folder; and a change order that says it covers PCO-GC-001 no longer names
+// one thing. Outside the dashboard it is worse - a number that has been issued
+// has been seen by the architect and the owner, and reissuing it means two
+// different documents in circulation under one reference.
+//
+// So a deleted number is retired rather than freed. Construction numbering
+// does not go backwards.
+function numKeyFor(key, comp){
+  return key==='pay_apps' ? (key+':'+String(comp||'').trim().toLowerCase())
+                          : (key+':'+tradeCodeFor(comp));
+}
+function retiredNumbers(){
+  const c=(currentProject&&currentProject.config)||{};
+  return (c.retiredNumbers && typeof c.retiredNumbers==='object') ? c.retiredNumbers : {};
+}
+function retiredHigh(key, comp){
+  const v=retiredNumbers()[numKeyFor(key, comp)];
+  const n=parseInt(v,10);
+  return isNaN(n) ? 0 : n;
+}
+// The trailing digits of an item number, whatever shape it is in.
+function itemNumberValue(v){
+  const t=String(v||'').trim();
+  let m=t.match(/^[A-Za-z]+-[A-Z]{2,5}-(\d+)\s*$/i)
+     || t.match(/-(\d+)_/)
+     || t.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
+  if(!m) return 0;
+  const n=parseInt(m[1],10);
+  return isNaN(n) ? 0 : n;
+}
+// Called when a record is deleted, so its number is not handed out again.
+// Saved on the project because the log is the only other memory and the row
+// is precisely what is being taken out of it.
+async function retireItemNumber(key, row){
+  if(!row || !currentProject || !currentProject.config) return false;
+  const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+  // These two exits are belt and braces: an unnumbered module and an unnumbered
+  // row both score zero below, and zero never beats a mark. Kept because that
+  // is a coincidence of `>=` rather than a rule — change it to `>` and a blank
+  // number would start saving the project for nothing. Mutation cannot tell
+  // the difference today, which is the point of saying so here.
+  if(!idField) return false;
+  const raw=String(row[idField]||'').trim() || (key==='co' ? String(row['PCO #']||'').trim() : '');
+  const n=itemNumberValue(raw);
+  if(!n) return false;
+  const comp=(key==='pay_apps') ? (row['Contractor']||rowCompany(row)) : rowCompany(row);
+  const k=numKeyFor(key, comp);
+  const c=currentProject.config;
+  const map=Object.assign({}, retiredNumbers());
+  if((parseInt(map[k],10)||0) >= n) return false;
+  map[k]=n;
+  const before=c.retiredNumbers;
+  c.retiredNumbers=map;
+  try{ await writeProjectConfig(currentProject.folderId, c); return true; }
+  catch(e){ c.retiredNumbers=before; return false; }
+}
+// Numbers appearing more than once on a log. Duplicates predate the retirement
+// rule and it cannot remove them, so they are shown rather than left to be
+// discovered as a review that will not advance.
+function duplicateItemNumbers(key){
+  const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+  if(!idField) return [];
+  const seen={};
+  (allData[key]||[]).forEach(r=>{
+    const v=(String(r[idField]||'').trim() || (key==='co' ? String(r['PCO #']||'').trim() : ''));
+    if(!v) return;
+    const k=v.toLowerCase();
+    seen[k]=(seen[k]||0)+1;
+  });
+  return Object.keys(seen).filter(k=>seen[k]>1)
+    .map(k=>({ num:k, count:seen[k] }))
+    .sort((a,b)=>a.num.localeCompare(b.num));
+}
 function nextItemNumber(key, comp){
   const label={rfi:'RFI',co:'CO',sub:'SUB',pay_apps:'PA'}[key];
   const idField={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
@@ -4101,6 +4184,8 @@ function nextItemNumber(key, comp){
     let o=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*)?(\d+)\s*$/i);
     if(o){ const n=parseInt(o[1],10); if(n>max) max=n; }
   });
+  // A number that has been issued and then deleted is not available again.
+  const gone=retiredHigh(key, comp); if(gone>max) max=gone;
   return label+'-'+code+'-'+String(max+1).padStart(3,'0');
 }
 function nextItemNumberByCompany(label, idField, comp){
@@ -4111,6 +4196,7 @@ function nextItemNumberByCompany(label, idField, comp){
     let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
     if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
   });
+  const gone=retiredHigh('pay_apps', comp); if(gone>max) max=gone;
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
@@ -4314,6 +4400,11 @@ async function deleteRow(key,i,reason,alsoRevoke){
     await proxyCall('adminRevoke',{email:String(removed['Email']).trim().toLowerCase(), projectId:currentProject.folderId});
     PROJECT_ACCESS.delete(String(removed['Email']).trim().toLowerCase());
   }
+  // Remembered before the row goes, since the row is where the number lives.
+  // A failure here must not stop the delete: the worst case is one number
+  // reused, which is what happened before and is visible on the log.
+  let _retiredNum=false;
+  try{ _retiredNum=await retireItemNumber(key, removed); }catch(e){}
   const existing=await findFile(fid,mod.log);
   const rows=(allData[key]||[]).slice(); rows.splice(i,1);
   const _unrolled = key==='co' ? coUnrollCovered(rows, removed) : [];
@@ -4551,13 +4642,25 @@ function fileCell(r){
 }
 // "Showing 1 to 5 of 5 submittals" — makes a long log legible and an empty
 // filter obviously empty rather than looking broken.
+const COUNT_KEY={RFI:'rfi','change order':'co',submittal:'sub','payment application':'pay_apps'};
 function countFooter(shown, total, noun){
   const el=document.getElementById(noun.replace(/\s+/g,'')+'-count');
   if(!el) return;
   const plural = noun + (total===1 ? '' : 's');
-  el.textContent = !total ? ''
+  const base = !total ? ''
     : (shown ? 'Showing 1 to '+shown+' of '+total+' '+plural
-             : 'Showing 0 of '+total+' '+plural+' — the rest are archived');
+             : 'Showing 0 of '+total+' '+plural+' \u2014 the rest are archived');
+  // Two records under one number is the sort of thing that is only noticed
+  // when a review will not advance. Said here, where the count already is.
+  const dup=total ? duplicateItemNumbers(COUNT_KEY[noun]||'') : [];
+  // One assignment, always innerHTML. Writing textContent and then sometimes
+  // innerHTML leaves whichever was not written last behind.
+  el.innerHTML = esc(base) + (dup.length
+    ? ' <span style="color:var(--danger);font-weight:600;" title="Two records cannot share a number: '
+      +'reviews and change orders address an item by it, and both share one folder in Box. '
+      +'Renumber or delete one.">\u00b7 '
+      +esc(dup.map(d=>d.count+' records share '+d.num.toUpperCase()).join('; '))+'</span>'
+    : '');
 }
 function emptyRow(c){ return '<tr class="empty-row"><td colspan="'+c+'">No records yet — use the button above to add one.</td></tr>'; }
 
@@ -4933,7 +5036,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 14:45';
+const BUILD_STAMP='2026-09-13 16:00';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
