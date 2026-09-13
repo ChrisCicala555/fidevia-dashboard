@@ -91,6 +91,125 @@ console.log('What still must not be offered');
      'nothing on the contract says just that, with no list of reasons');
 }
 
+console.log('A rejected proposal, and the way back');
+{
+  // What Christopher actually hit, after the Signed File Name fix: PCO-GC-001
+  // had been decided against during the override testing, and "was decided
+  // against" was a dead end — renegotiating a rejected proposal and then
+  // issuing the change order is ordinary work.
+  const P=boot([CO({'PCO #':'PCO-GC-001','Status':'Rejected','Workflow Status':'Rejected'})]);
+  P.run(`document.getElementById('nc-company').value='Summit Builders'; newCoCompanyChanged();`);
+  const msg=P.run(`document.getElementById('nc-roll-none').innerHTML`);
+  ok(/PCO-GC-001 was decided against/.test(msg), 'the reason is named');
+  ok(/coReopenProposal\(0\)/.test(msg), 'with a way to put it back, pointed at the right row');
+
+  // Reopening, with Box answered locally.
+  P.run(`CALLS=[]; findFile=async()=>({id:'log'}); boxGetText=async()=>'';
+         boxUploadText=async()=>{ CALLS.push('save'); return {}; };
+         auditLog=async(a,k,r,d)=>{ AUDIT=a+'|'+d; }; resolveMe=async()=>{}; renderAll=()=>{};
+         confirm=()=>true; AUDIT='';`);
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`allData.co[0]['Workflow Status']`)!=='Rejected', 'the rejection is lifted');
+  ok(P.run(`wfIsStopped(allData.co[0])`)===false, 'so the row is no longer stopped');
+  ok(P.run(`allData.co[0]['Status']`)==='Open', 'and the status says open rather than rejected');
+  ok(P.run(`CALLS`).join()==='save', 'the log is written once');
+  ok(/Reopened proposal\|PCO-GC-001/.test(P.run(`AUDIT`)), 'and the audit log records it by number');
+  ok(P.run(`coRollCandidatesFor('Summit Builders').map(e=>e.x['PCO #'])`).join()==='PCO-GC-001',
+     'after which it is offered — which was the whole point');
+  // Without redrawing by hand: the dialog is open and must not need closing
+  // and reopening to show what just changed under it.
+  ok(/PCO-GC-001/.test(P.run(`document.getElementById('nc-roll-list').innerHTML`)),
+     'and the open picker has already refilled itself');
+  ok(P.run(`document.getElementById('nc-roll-list').style.display`)!=='none', 'and is showing');
+}
+{
+  // Nothing to reopen is not an error, it is a no-op — and must not write.
+  const P=boot([CO({'PCO #':'PCO-001'})]);
+  P.run(`CALLS=[]; findFile=async()=>{ CALLS.push('find'); return {id:'log'}; };
+         boxUploadText=async()=>{ CALLS.push('save'); return {}; };
+         resolveMe=async()=>{}; renderAll=()=>{}; confirm=()=>true;`);
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`CALLS`).length===0, 'reopening a proposal that was never closed writes nothing');
+  ok(P.run(`allData.co[0]['Status']`)!=='Open', 'and does not rewrite its status');
+  await P.run(`coReopenProposal(99)`);
+  ok(P.run(`CALLS`).length===0, 'nor does a row index that is not there');
+}
+{
+  // Only Fidevia, and only a decision. The other three reasons are facts.
+  const P=boot([
+    CO({'PCO #':'PCO-001','Workflow Status':'Rejected'}),
+    CO({'PCO #':'PCO-002','CO #':'CO-009'}),
+    CO({'PCO #':'PCO-003','Rolled Into':'CO-003'}),
+    CO({'PCO #':'PCO-004','Archived':'Yes'})
+  ]);
+  const flags=P.run(`coRollExcluded('Summit Builders').map(e=>e.num+':'+(e.reopenable?'y':'n'))`);
+  ok(flags.join()==='PCO-001:y,PCO-002:n,PCO-003:n,PCO-004:n',
+     'only the rejection is offered as reversible — got '+flags.join(','));
+  P.run(`document.getElementById('nc-company').value='Summit Builders'; newCoCompanyChanged();`);
+  const four=P.run(`document.getElementById('nc-roll-none').innerHTML`);
+  ok((four.match(/coReopenProposal\(/g)||[]).length===1,
+     'so exactly one of the four reasons carries a link');
+  ok(/coReopenProposal\(0\)/.test(four), 'pointed at the rejected row');
+
+  P.run(`EXTERNAL=true; VIEW_AS='contractor'; document.getElementById('nc-company').value='Summit Builders'; newCoCompanyChanged();`);
+  ok(!/coReopenProposal/.test(P.run(`document.getElementById('nc-roll-none').innerHTML`)),
+     'a contractor is not offered the link');
+  P.run(`EXTERNAL=false; VIEW_AS=''; IS_ADMIN=false; document.getElementById('nc-company').value='Summit Builders'; newCoCompanyChanged();`);
+  ok(!/coReopenProposal/.test(P.run(`document.getElementById('nc-roll-none').innerHTML`)),
+     'nor is a non-admin');
+  // And the handler refuses even if the link is reached another way.
+  P.run(`ALERTED=''; alert=(m)=>{ ALERTED=m; }; confirm=()=>true;`);
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`allData.co[0]['Workflow Status']`)==='Rejected', 'the row is untouched by a caller who may not');
+  ok(/Only Fidevia/.test(P.run(`ALERTED`)), 'and is told why');
+  // Fidevia previewing the contractor's view is looking at somebody else's
+  // screen, and must not be able to act from it.
+  // viewingAsExternal reads the body class, which is what the preview toggle
+  // sets — not VIEW_AS. Setting the wrong one made this pass for the wrong
+  // reason: the call went through and failed on the unstubbed upload instead.
+  P.run(`IS_ADMIN=true; EXTERNAL=false; document.body.classList.add('external-mode'); ALERTED='';`);
+  ok(P.run(`viewingAsExternal()`)===true, 'the preview really is on');
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`allData.co[0]['Workflow Status']`)==='Rejected',
+     'and Fidevia previewing as a contractor cannot reopen from inside that preview');
+  ok(/Only Fidevia/.test(P.run(`ALERTED`)), 'being told the same thing the contractor would be');
+  P.run(`document.body.classList.remove('external-mode');`);
+}
+{
+  // A failed write must not leave the screen claiming a state Box never took.
+  const P=boot([CO({'PCO #':'PCO-001','Status':'Rejected','Workflow Status':'Rejected'})]);
+  P.run(`findFile=async()=>({id:'log'}); boxGetText=async()=>'';
+         boxUploadText=async()=>{ throw new Error('Box said no'); };
+         resolveMe=async()=>{}; renderAll=()=>{}; confirm=()=>true; ALERTED=''; alert=m=>{ALERTED=m;};`);
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`allData.co[0]['Workflow Status']`)==='Rejected', 'the rejection is put back when the save fails');
+  ok(P.run(`allData.co[0]['Status']`)==='Rejected', 'status and all');
+  ok(/Box said no/.test(P.run(`ALERTED`)), 'and the failure is reported rather than swallowed');
+}
+{
+  const P=boot([CO({'PCO #':'PCO-001','Status':'Rejected','Workflow Status':'Rejected'})]);
+  P.run(`confirm=()=>false; findFile=async()=>{ CALLED=true; }; CALLED=false; resolveMe=async()=>{};`);
+  await P.run(`coReopenProposal(0)`);
+  ok(P.run(`allData.co[0]['Workflow Status']`)==='Rejected', 'declining the confirmation changes nothing');
+  ok(P.run(`CALLED`)===false, 'and touches Box not at all');
+}
+
+{
+  // The link has to carry the row's own index, not the first one on the list.
+  const P=boot([
+    CO({'PCO #':'PCO-001','CO #':'CO-009'}),
+    CO({'PCO #':'PCO-002','Archived':'Yes','Workflow Status':'Rejected'}),
+    CO({'PCO #':'PCO-003','Workflow Status':'Rejected'})
+  ]);
+  const ex=P.run(`coRollExcluded('Summit Builders').map(e=>e.num+':'+e.i+':'+(e.reopenable?'y':'n'))`);
+  ok(ex.join()==='PCO-001:0:n,PCO-002:1:n,PCO-003:2:y',
+     'an archived proposal stays out even when it was also rejected, since reopening would not unarchive it — got '+ex.join(','));
+  P.run(`document.getElementById('nc-company').value='Summit Builders'; newCoCompanyChanged();`);
+  const msg=P.run(`document.getElementById('nc-roll-none').innerHTML`);
+  ok(/coReopenProposal\(2\)/.test(msg), 'and the link names that row, not the first');
+  ok(!/coReopenProposal\(0\)/.test(msg) && !/coReopenProposal\(1\)/.test(msg), 'and only that row');
+}
+
 console.log('A proposal recorded under a name that is not the contract');
 {
   // The report came back a second time after the Signed File Name fix, which

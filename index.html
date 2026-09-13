@@ -4933,7 +4933,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-13 13:30';
+const BUILD_STAMP='2026-09-13 14:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9395,9 +9395,16 @@ function newCoCompanyChanged(){
       const gone=coRollExcluded(co);
       const away=coRollElsewhere(co);
       let msg='No open PCOs on this contract. The change order will stand on its own.';
+      // A rejected proposal gets a way back, because renegotiating one and then
+      // issuing the change order is ordinary work, and the reason alone is a
+      // dead end.
+      const canFix=IS_ADMIN && !viewingAsExternal();
       if(gone.length) msg='No open PCOs on this contract \u2014 the change order will stand on its own. '
           +esc(gone.length===1?'The one on file ':'The '+gone.length+' on file ')
-          +'cannot be covered: '+gone.map(e=>esc(e.num||'a proposal')+' '+esc(e.reason)).join('; ')+'.';
+          +'cannot be covered: '+gone.map(e=>esc(e.num||'a proposal')+' '+esc(e.reason)
+              +((canFix && e.reopenable)
+                  ? ' <a href="#" onclick="coReopenProposal('+e.i+');return false;">Reopen it</a>'
+                  : '')).join('; ')+'.';
       if(away.length){
         // Named rather than counted: the name written on the row is the whole
         // diagnosis, and comparing it to the contract is the fix.
@@ -9712,8 +9719,47 @@ function coRollExcluded(company, skipIdx){
   };
   return (allData.co||[]).map((x,i)=>({x,i}))
     .filter(({x,i})=> i!==skip && String(rowCompany(x)||'').trim().toLowerCase()===co && !coRollEligible(x))
-    .map(({x})=>({ num:String(x['PCO #']||x['CO #']||'').trim(), reason:why(x) }))
+    .map(({x,i})=>({ i, num:String(x['PCO #']||x['CO #']||'').trim(), reason:why(x),
+                     // The only one of the four that is a decision somebody
+                     // can take back. Archiving is undone in the log, a CO
+                     // number and a cover are facts.
+                     reopenable: !coIsExecuted(x) && !String(x['Rolled Into']||'').trim()
+                                 && !isArchived(x) && wfIsStopped(x) }))
     .filter(e=>e.reason);
+}
+// A proposal decided against, put back. Renegotiating a rejected PCO and
+// issuing the change order is ordinary, and "was decided against" with no way
+// forward is a dead end the log cannot resolve either.
+//
+// Reopening goes back to the step it was parked on, not to the start: the
+// signatures already collected were not undone by the rejection.
+async function coReopenProposal(i){
+  if(!IS_ADMIN || viewingAsExternal()){ alert('Only Fidevia can reopen a proposal.'); return; }
+  const rows=allData.co||[], r=rows[i];
+  // No separate check that the row exists: wfIsStopped answers false for a
+  // missing one, so an index that is not there returns here anyway. A second
+  // guard would read as though it caught something.
+  if(!wfIsStopped(r)) return;
+  const num=String(r['PCO #']||r['CO #']||'this proposal').trim();
+  if(!confirm('Reopen '+num+'?\n\nIt was decided against. Reopening returns it to the review step it '
+    +'was left on and makes it available to be covered by a change order again.')) return;
+  const before={s:r['Status'], w:r['Workflow Status'], d:r['Workflow Done']};
+  try{
+    await resolveMe();
+    r['Status']='Open';
+    wfApplyDecision('co', r, 'Open', ME_NAME||ME_EMAIL||'');
+    const fid=currentProject.folders.co;
+    const existing=await findFile(fid, MODULES.co.log);
+    await boxUploadText(MODULES.co.log, toCSV(MODULES.co.headers, rows), fid, existing?existing.id:null);
+    try{ auditLog('Reopened proposal','co',r,num+' \u2014 was decided against'); }catch(e){}
+    renderAll();
+    newCoCompanyChanged();
+  }catch(e){
+    // Back as it was, so the screen is not showing a state that never saved.
+    r['Status']=before.s; r['Workflow Status']=before.w; r['Workflow Done']=before.d;
+    renderAll(); newCoCompanyChanged();
+    alert('Could not reopen '+num+': '+(e.message||e));
+  }
 }
 // Proposals that would be offered but for the company recorded on them.
 //
