@@ -4654,9 +4654,17 @@ async function deleteRow(key,i,reason,alsoRevoke){
   let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
   // The reason belongs in the audit log first — that is the durable record.
   // What went where, so a deletion can be traced back to the files afterwards.
+  // Three outcomes, and the third used to be silent — a record whose item
+  // folder was never created (nothing was ever uploaded against it) produced no
+  // note at all, so the log could not say whether anything had been moved. The
+  // bin is only made when there is something to put in it, which is right, but
+  // it means an absent Deleted folder has to be explainable from the log rather
+  // than from Box.
   const where=(retired && retired.moved && retired.moved.length)
     ? (' [moved to '+retired.bin+': '+retired.moved.join(', ')+']')
-    : (retired && retired.nothing ? ' [no documents attached]' : '');
+    : (retired && retired.nothing
+        ? ' [no documents attached]'
+        : ' [nothing found to move \u2014 no documents were ever filed against it]');
   auditLog('Deleted', key, removed, why+where
     +(_unrolled.length?(' [reopened '+_unrolled.join(', ')+', which it had covered]'):''));
   try{
@@ -5317,7 +5325,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 21:20';
+const BUILD_STAMP='2026-09-16 22:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
