@@ -54,6 +54,34 @@ console.log('A deleted one comes back');
      'an RFI number is still retired on delete');
 }
 
+console.log('A mark left over from the old rule does not hold it back');
+{
+  // The bug Christopher saw: PA-004 on a log holding none. Stopping the writing
+  // of retirement marks was not enough — the ones written earlier, under the
+  // rule that retired pay app numbers, were still being read.
+  const P=boot([], []);
+  P.run(`currentProject.config.retiredNumbers={'pay_apps:summit builders':3};`);
+  ok(P.run(`nextItemNumber('pay_apps','Summit Builders')`)==='PA-001_Summit Builders',
+     'an empty log gives 001 even where a stale mark says three were issued');
+  ok(await P.run(`payNextNumber('Summit Builders','PAFID')`)==='PA-001_Summit Builders',
+     'and so does the number actually handed out');
+}
+{
+  const P=boot([], [{'App #':'PA-002_Summit Builders','Contractor':'Summit Builders','Company':'Summit Builders'}]);
+  P.run(`currentProject.config.retiredNumbers={'pay_apps:summit builders':9};`);
+  ok(P.run(`nextItemNumber('pay_apps','Summit Builders')`)==='PA-003_Summit Builders',
+     'the log decides, not the mark — 003 rather than 010');
+}
+{
+  // Every other module still honours its marks, which is the whole point of
+  // them: an RFI number has been seen outside under that number.
+  const P=boot([], []);
+  P.run(`currentProject.config.retiredNumbers={'rfi:GC':4}; allData.rfi=[];
+         currentProject.config.contractors=[{name:'Summit Builders',role:'GC',active:true}];`);
+  ok(P.run(`nextItemNumber('rfi','Summit Builders')`)==='RFI-GC-005',
+     'a retired RFI number is still not reissued');
+}
+
 console.log('Unless Box is still holding it');
 {
   // A delete that failed halfway leaves the folder in the module root. Handing

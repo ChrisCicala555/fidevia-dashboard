@@ -4440,7 +4440,17 @@ function nextItemNumberByCompany(label, idField, comp){
     let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
     if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
   });
-  const gone=retiredHigh('pay_apps', comp); if(gone>max) max=gone;
+  // No retired mark is read here. Pay app numbers are reused after a delete, so
+  // consulting the marks would defeat that — and marks written before that
+  // decision are still sitting on projects where somebody deleted an
+  // application, which is what made the next one PA-004 on a log holding none.
+  // Stopping the writing was not enough; the reading had to stop too.
+  //
+  // What guards the reuse is payNumberFloor, which asks Box what it still
+  // holds. That is a live answer, not a mark left behind by an older rule.
+  if(!NUMBER_REUSED_AFTER_DELETE.pay_apps){
+    const gone=retiredHigh('pay_apps', comp); if(gone>max) max=gone;
+  }
   return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
@@ -5336,7 +5346,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 11:40';
+const BUILD_STAMP='2026-09-17 12:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;

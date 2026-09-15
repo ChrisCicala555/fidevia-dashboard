@@ -22,6 +22,9 @@ fs.writeFileSync('.pn.tmp.mjs', [
   // Numbering now also consults the numbers retired by deletion, so the run
   // does not restart when a record is removed.
   grab('function numKeyFor'), grab('function retiredNumbers'), grab('function retiredHigh'),
+  // Pay applications reuse their numbers after a delete, so the numbering does
+  // not read retirement marks for them. The flag that says so travels with it.
+  "const NUMBER_REUSED_AFTER_DELETE={pay_apps:true};",
   "const FIDEVIA_EMAIL=/@fidevia\\.com$/i; const DESIGN_ROLES=['architect','engineer'];",
   "const PROJECT_ROLES={};",
   "export { nextItemNumber, rowCompany };"
@@ -35,13 +38,17 @@ console.log('First application');
 seed('pay_apps',[]);
 ok('starts at 001', nextItemNumber('pay_apps','Summit Builders')==='PA-001_Summit Builders');
 
-console.log('A deleted application does not give its number back');
+console.log('A deleted application gives its number back');
 {
+  // Reversed on Christopher's call: an owner reads App 1, 2, 3 as a continuous
+  // run, and a pay app number is internal to one contract rather than a
+  // reference somebody outside has already seen. What guards the reuse is a
+  // look at Box, not a mark — see tools-test-paynumfolder.mjs.
   const { currentProject } = await import('./.pn.tmp.mjs');
   seed('pay_apps',[]);
   currentProject.config.retiredNumbers={'pay_apps:summit builders':4};
-  ok('the run resumes above the retired number',
-     nextItemNumber('pay_apps','Summit Builders')==='PA-005_Summit Builders');
+  ok('a mark from the old rule does not hold the run back',
+     nextItemNumber('pay_apps','Summit Builders')==='PA-001_Summit Builders');
   ok('and another contractor is untouched',
      nextItemNumber('pay_apps','Comfort Systems')==='PA-001_Comfort Systems');
   currentProject.config.retiredNumbers={};
