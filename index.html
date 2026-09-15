@@ -1714,7 +1714,8 @@
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Details from the contractor's document</div>
         <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="pa-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="pa-contr" list="contr-list-pa" placeholder="Select or type"><datalist id="contr-list-pa"></datalist></div></div>
         <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
-        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0"></div></div>
+        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payCoNote()"></div></div>
+        <div id="pa-cos-note"></div>
         <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="45000"></div></div>
         <p class="file-hint" style="margin:2px 0 0;">Open the uploaded file above to read these off the contractor's application.</p>
       </div>
@@ -5346,7 +5347,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 14:05';
+const BUILD_STAMP='2026-09-15 23:41';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12335,6 +12336,80 @@ function coContractImpactFor(name){
     .reduce((s,r)=>s+coContractImpact(r),0);
 }
 
+// ── DOES THE APPLICATION AGREE WITH THE CHANGE ORDER LOG? ──
+//
+// "Approved Change Orders" on a payment application is typed off the paper
+// G702, and the dashboard already knows the answer: it has every executed
+// change order for that contract. Two numbers for one fact, and nothing
+// comparing them, is how an application gets paid on a contract sum the log
+// does not recognise.
+//
+// Compared as at the END of the application's period, not as at today. A change
+// order executed in October is not missing from a September application — it
+// had not happened yet — and flagging it would train everybody to ignore the
+// flag.
+function monthEnd(iso){
+  const d=parseLocalDate(iso); if(!d) return null;
+  return new Date(d.getFullYear(), d.getMonth()+1, 0);
+}
+// The net effect on one contract of every change order executed by a date.
+// Net in the same sense the Financial Summary means it: a deduct reduces it,
+// and anything funded from an allowance counts nothing, because that money was
+// inside the contract already.
+function coNetAsOf(name, asOf){
+  const norm=String(name||'').trim().toLowerCase();
+  const cut=asOf ? (asOf instanceof Date ? asOf : monthEnd(asOf)) : null;
+  return (allData.co||[])
+    .filter(r=>coIsExecuted(r) && String(r['Company']||'').trim().toLowerCase()===norm)
+    .filter(r=>{
+      if(!cut) return true;
+      // No approval date on the row means it cannot be placed in time. Counted,
+      // rather than silently dropped, so the figure never quietly understates.
+      const d=parseLocalDate(r['Date Approved']||r['Date Submitted']);
+      return !d || d<=cut;
+    })
+    .reduce((sum,r)=>sum+coContractImpact(r),0);
+}
+// What the application says against what the log says, and by how much.
+function payCoCheck(row){
+  const co=String((row&&(row['Contractor']||row['Company']))||'').trim();
+  if(!co) return null;
+  const typed=payNum((row&&row['Approved Change Orders'])||0);
+  const expected=coNetAsOf(co, (row&&row['Period'])||'');
+  const diff=typed-expected;
+  // Rounded to the penny before comparing: two figures that differ by a
+  // hundredth are the same figure written twice, and a flag on that is noise.
+  return { typed, expected, diff, agrees: Math.abs(diff)<0.005 };
+}
+// The same comparison, against what is in the dialog rather than what is saved,
+// so it answers while the figure is being typed rather than after it is filed.
+function payCoNote(){
+  const el=document.getElementById('pa-cos-note'); if(!el) return;
+  const ctx=(typeof PAY_CTX!=='undefined' && PAY_CTX) ? PAY_CTX : null;
+  const saved=ctx ? ((allData.pay_apps||[])[ctx.idx]||{}) : {};
+  const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
+  el.innerHTML=payCoCheckHTML({
+    'Contractor': g('pa-contr') || saved['Contractor'] || saved['Company'] || '',
+    'Period':     g('pa-period') || saved['Period'] || '',
+    'Approved Change Orders': g('pa-cos')
+  });
+}
+function payCoCheckHTML(row, opts){
+  const c=payCoCheck(row);
+  if(!c || c.agrees) return '';
+  const over=c.diff>0;
+  const words=(over?'more than':'less than')+' the change order log';
+  const detail=fmtMoney(c.typed)+' on the application, '+fmtMoney(c.expected)+' executed to date';
+  if(opts && opts.short)
+    return '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">'
+      +esc(fmtSigned(String(c.diff))+' vs change orders')+'</div>';
+  return '<p class="file-hint" style="margin:4px 0 0;color:#8a5a00;font-weight:600;">'
+    +esc('This is '+fmtMoney(Math.abs(c.diff))+' '+words+' \u2014 '+detail+'.')
+    +' '+esc(over
+        ? 'Either a change order has not been recorded here, or the application is claiming one that was not executed.'
+        : 'Either a change order was executed after this period, or the application has not picked it up yet.')
+    +'</p>';
+}
 // ── BILLING CYCLE ──────────────────────────────────────────────────────────
 // The spec fixes three days: the contractor's pencil copy, the formal
 // application, and the owner's payment. The first two fall in the billing
@@ -12730,7 +12805,10 @@ function renderPayApps(){
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
           :(payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'');
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
-          + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '');
+          + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '')
+          // Disagreeing with the change order log is worth seeing from the log
+          // itself, not only inside the review dialog somebody may not open.
+          + payCoCheckHTML(r, {short:true});
         return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
       }).join('');
       body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="pay-act">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
@@ -12757,7 +12835,11 @@ function openPayAction(idx){
     set('pa-due',r['Due Date']); set('pa-contract',r['Contract Amount']);
     set('pa-cos',r['Approved Change Orders']); set('pa-prev',r['Previously Paid']); set('pa-req',r['Requested Amount']);
     const ci=document.getElementById('pa-contr');
-    if(ci) ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('pa-contract'); if(m&&cf&&!cf.value) cf.value=m.contract||''; };
+    if(ci) ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('pa-contract'); if(m&&cf&&!cf.value) cf.value=m.contract||''; payCoNote(); };
+    // The comparison depends on the contract and the period as much as on the
+    // figure, so it is redone whenever any of the three moves.
+    { const pd=document.getElementById('pa-period'); if(pd) pd.onchange=payCoNote; }
+    try{ payCoNote(); }catch(e){}
   }
   document.getElementById('pa-action').selectedIndex=0;
   document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';
