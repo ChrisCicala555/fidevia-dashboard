@@ -156,6 +156,11 @@
   .att-card.clear{border-left-color:var(--olive-700);}
   .att-head{display:flex;align-items:center;gap:8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--olive-900);margin-bottom:8px;}
   .att-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--khaki-100);font-size:14px;cursor:pointer;}
+  .att-item .att-what{flex:1;min-width:0;}
+  .att-due{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;font-weight:600;}
+  .att-due.late{color:var(--danger);}
+  .att-due.soon{color:#8a5a00;}
+  @media (max-width:620px){ .att-item{flex-wrap:wrap;} .att-due{margin-left:0;width:100%;} }
   .att-item:first-of-type{border-top:none;}
   .att-item:hover{background:var(--cream);}
   .att-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--danger-bg);color:var(--danger);white-space:nowrap;}
@@ -5172,7 +5177,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 13:20';
+const BUILD_STAMP='2026-09-15 15:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5593,6 +5598,11 @@ function rfiDueDays(personName){
 // team included. Build the date from its parts so it means the day it says.
 function parseLocalDate(v){
   if(v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  // new Date(null) is the epoch, not NaN — so a null date parsed as 1 January
+  // 1970 and every caller treated it as real. An empty string already fell
+  // through to null; a null did not, which is the shape a missing column takes
+  // when the row came from JSON rather than a CSV.
+  if(v===null || v===undefined || String(v).trim()==='') return null;
   const m=String(v||'').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(m) return new Date(+m[1], +m[2]-1, +m[3]);
   const d=new Date(v);
@@ -7431,6 +7441,27 @@ function attentionCompany(){
   return String(ME_COMPANY||'Fidevia').trim();
 }
 
+// The date an item is owed by, said on the line that says it is owed.
+//
+// Everything on this panel is a thing somebody has to do, and until now the
+// list gave no way to tell what is due tomorrow from what is due next month.
+// The order of the list is about how the item qualified, not about urgency, so
+// the date has to be on the line rather than implied by its position.
+//
+// Change orders carry no due date and are left blank rather than given a
+// borrowed one.
+function attDueHTML(due){
+  const d=parseLocalDate(due); if(!d) return '';
+  const today=new Date(); today.setHours(0,0,0,0);
+  const days=Math.round((d-today)/86400000);
+  let cls='', txt;
+  if(days<0){ cls='late'; txt=(days===-1?'1 day':(-days)+' days')+' overdue'; }
+  else if(days===0){ cls='soon'; txt='Due today'; }
+  else if(days===1){ cls='soon'; txt='Due tomorrow'; }
+  else if(days<=7){ cls='soon'; txt='Due in '+days+' days'; }
+  else txt='Due '+fmtDMY(due);
+  return '<span class="att-due '+cls+'" title="Due '+esc(fmtDMY(due))+'">'+esc(txt)+'</span>';
+}
 function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   const el=document.getElementById('attention-panel'); if(!el) return;
   // The Owner has no queue — they cannot action anything.
@@ -7483,7 +7514,11 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
         const mineOwn=personally||(who&&nameMatches(who));
         // A step that came back is not a review. Asking the contractor for
         // "your review" of their own drawing is asking the wrong thing.
-        items.push({label:(r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
+        // rowIdOf, not the bare column: a change order's number lives in PCO #
+        // until it is executed, so reading CO # alone left these lines opening
+        // with a dash and no way to tell which proposal was meant.
+        items.push({label:(rowIdOf(key,r)||r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
+                    due:r['Due Date']||'',
                     badge: sentBack ? (mineOwn?'Revise and resubmit':'Sent back to '+(who||'your team'))
                                     : (mineOwn?'Your review':'With '+(who||'your team')),
                     cls:'wf', sec});
@@ -7506,14 +7541,14 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     if(!notDoneStatus(r['Status'])) return;
     if(chainElsewhere('rfi',r)) return;
     if(!firm || firm.trim().toLowerCase()!==myCo) return;
-    items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''),
+    items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), due:r['Due Date']||'',
       badge:'Assigned to '+firm, cls:'wf', sec:'rfis'}); });
   (subs||[]).forEach(r=>{
     const firm=assignedFirm(r['Reviewer']);
     if(!notDoneStatus(r['Status'])) return;
     if(chainElsewhere('sub',r)) return;
     if(!firm || firm.trim().toLowerCase()!==myCo) return;
-    items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''),
+    items.push({label:(r['Submittal #']||'')+' — '+(r['Description']||''), due:r['Due Date']||'',
       badge:'Assigned to '+firm, cls:'wf', sec:'submittals'}); });
 
   // Overdue: ours if it is with us, or if we raised it.
@@ -7521,7 +7556,7 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     const withUs=(assignedFirm(r['Assigned To']).trim().toLowerCase()===myCo);
     const raisedByUs=coMatches(r['Company'])||coMatches(coFromLabel(r['Submitted By']));
     if(!myCo || withUs || raisedByUs){
-      items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), badge:'Overdue', cls:'', sec:'rfis'});
+      items.push({label:(r['RFI #']||'')+' — '+(r['Subject']||''), due:r['Due Date']||'', badge:'Overdue', cls:'', sec:'rfis'});
     }
   });
 
@@ -7563,7 +7598,7 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   }
 
   // Pay applications awaiting Fidevia's review
-  if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), badge:'Awaiting review', cls:'wf', sec:'payapps'}));
+  if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), due:r['Due Date']||'', badge:'Awaiting review', cls:'wf', sec:'payapps'}));
 
   // One item, one line. The key used to include the badge, so a submittal that
   // qualified twice — the workflow step is with our firm, and the item is
@@ -7579,6 +7614,8 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     const prev=byItem.get(k);
     if(!prev){ byItem.set(k, i); return; }
     if(i.cls==='' && prev.cls!==''){ prev.badge=i.badge; prev.cls=''; }
+    // The line that won may have come from a rule that did not carry the date.
+    if(!prev.due && i.due) prev.due=i.due;
   });
   const list=[...byItem.values()];
   el.style.display='';
@@ -7593,7 +7630,10 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
     return;
   }
   el.innerHTML='<div class="att-card"><div class="att-head">Needs '+esc(coLabel||'your')+' attention <span style="background:var(--danger);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">'+list.length+'</span></div>'
-    +list.slice(0,8).map(i=>'<div class="att-item" onclick="navTo(\''+i.sec+'\')"><span class="att-badge '+i.cls+'">'+esc(i.badge)+'</span><span>'+esc(i.label)+'</span></div>').join('')
+    +list.slice(0,8).map(i=>'<div class="att-item" onclick="navTo(\''+i.sec+'\')">'
+        +'<span class="att-badge '+i.cls+'">'+esc(i.badge)+'</span>'
+        +'<span class="att-what">'+esc(i.label)+'</span>'
+        +attDueHTML(i.due)+'</div>').join('')
     +(list.length>8?'<div style="font-size:12px;color:var(--muted);padding-top:8px;">+'+(list.length-8)+' more</div>':'')
     +'</div>';
 }
