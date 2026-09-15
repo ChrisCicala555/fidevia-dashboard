@@ -16,11 +16,19 @@ const set=(ms, sched, extra)=>b.run(`
   currentProject.config.milestones=${JSON.stringify(ms)};
   allData.rfi=[];allData.co=[];allData.sub=[];allData.pay_apps=[];
   MY_SCHEDULE=${JSON.stringify(sched)}; ${extra||''} renderAll();`);
-const NOT_YET=[{name:'Notice to Proceed',contract:'2026-09-14'},{name:'Mobilize / Start Onsite',contract:'2026-09-21'},{name:'Substantial Completion',contract:'2026-12-31'}];
-const STARTED=[{name:'Notice to Proceed',contract:'2026-06-01'},{name:'Mobilize / Start Onsite',contract:'2026-06-15'},{name:'Substantial Completion',contract:'2026-12-31'}];
+// Dated relative to today, not written out. These were fixed dates and the
+// file went red on 15 September 2026 because "not yet started" had quietly
+// become "started last week" — the test expired rather than the code breaking.
+const D=(days)=>{ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
+const MONTH=(back)=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-back);
+  return { label:d.toLocaleString('en-US',{month:'long'})+' '+d.getFullYear(),
+           iso:d.toISOString().slice(0,10) }; };
+const THIS_MONTH=MONTH(0), TWO_BACK=MONTH(2);
+const NOT_YET=[{name:'Notice to Proceed',contract:D(7)},{name:'Mobilize / Start Onsite',contract:D(14)},{name:'Substantial Completion',contract:D(200)}];
+const STARTED=[{name:'Notice to Proceed',contract:D(-105)},{name:'Mobilize / Start Onsite',contract:D(-90)},{name:'Substantial Completion',contract:D(200)}];
 const NEVER={state:'never',due:{enabled:false,day:25}};
-const STALE={state:'stale',periodLabel:'July 2026',date:'2026-07-19',due:{enabled:false,day:25}};
-const CURRENT={state:'current',periodLabel:'September 2026',date:'2026-09-02',due:{enabled:true,day:25}};
+const STALE={state:'stale',periodLabel:TWO_BACK.label,date:TWO_BACK.iso,due:{enabled:false,day:25}};
+const CURRENT={state:'current',periodLabel:THIS_MONTH.label,date:THIS_MONTH.iso,due:{enabled:true,day:25}};
 
 console.log('When it is owed');
 set(NOT_YET, NEVER);
@@ -31,8 +39,9 @@ ok(/Monthly schedule — none submitted yet/.test(att()), 'once it has started, 
 set(STARTED, STALE);
 {
   const out=att();
-  ok(/no September 2026 programme/.test(out), 'and the month being asked for is named ('+out.match(/Monthly schedule[^<]*/)+')');
-  ok(/last covers July 2026/.test(out), 'alongside what is actually on file');
+  ok(new RegExp('no '+THIS_MONTH.label+' programme').test(out),
+     'and the month being asked for is named ('+out.match(/Monthly schedule[^<]*/)+')');
+  ok(new RegExp('last covers '+TWO_BACK.label).test(out), 'alongside what is actually on file');
 }
 set(STARTED, CURRENT);
 ok(!/Monthly schedule/.test(att()), 'a contract that has posted this month is not chased');
@@ -42,10 +51,10 @@ ok(!/Monthly schedule/.test(att()),
 
 console.log('The date it turns on');
 b.run(`currentProject.config.milestones=${JSON.stringify(STARTED)}`);
-ok(b.run("scheduleObligationStart().toISOString().slice(0,10)")==='2026-06-01',
+ok(b.run("scheduleObligationStart().toISOString().slice(0,10)")===D(-105),
    'the earlier of Notice to Proceed and Mobilize — a programme is owed from the first of them');
-b.run(`currentProject.config.milestones=[{name:'Mobilize / Start Onsite',contract:'2026-06-15'}]`);
-ok(b.run("scheduleObligationStart().toISOString().slice(0,10)")==='2026-06-15',
+b.run(`currentProject.config.milestones=[{name:'Mobilize / Start Onsite',contract:'${D(-90)}'}]`);
+ok(b.run("scheduleObligationStart().toISOString().slice(0,10)")===D(-90),
    'either one alone will do');
 b.run(`currentProject.config.milestones=[]`);
 ok(b.run("scheduleObligationStart()")===null, 'and neither means no answer, rather than a default');

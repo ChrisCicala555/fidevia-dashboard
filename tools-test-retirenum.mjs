@@ -33,22 +33,24 @@ const R=(o)=>Object.assign({'PCO #':'','CO #':'','Company':'Summit Builders','De
 
 console.log('The number does not come back');
 {
+  // Proposals and change orders are separate registers now, so this exercises
+  // the proposal one — the register these fixtures were always about.
   const P=boot([R({'PCO #':'PCO-GC-001'}),R({'PCO #':'PCO-GC-002'})]);
-  ok(P.run(`nextItemNumber('co','Summit Builders')`)==='CO-GC-003', 'three on the log, next is 003');
+  ok(P.run(`nextItemNumber('co','Summit Builders','pco')`)==='PCO-GC-003', 'two on the log, next is 003');
 
   // Delete 002 the way the dashboard does: retire, then drop the row.
   ok(await P.run(`retireItemNumber('co', allData.co[1])`)===true, 'deleting it retires the number');
   P.run(`currentProject.config=SAVED; allData.co=[allData.co[0]];`);
-  ok(P.run(`currentProject.config.retiredNumbers['co:GC']`)===2, 'recorded against that trade run');
-  ok(P.run(`nextItemNumber('co','Summit Builders')`)==='CO-GC-003',
+  ok(P.run(`currentProject.config.retiredNumbers['pco:GC']`)===2, 'recorded against that trade run');
+  ok(P.run(`nextItemNumber('co','Summit Builders','pco')`)==='PCO-GC-003',
      'and the next proposal is still 003, not the 002 just freed');
 
   // Delete the other one too. Nothing left on the log at all.
   await P.run(`retireItemNumber('co', allData.co[0])`);
   P.run(`currentProject.config=SAVED; allData.co=[];`);
-  ok(P.run(`currentProject.config.retiredNumbers['co:GC']`)===2,
+  ok(P.run(`currentProject.config.retiredNumbers['pco:GC']`)===2,
      'retiring a lower number does not walk the mark backwards');
-  ok(P.run(`nextItemNumber('co','Summit Builders')`)==='CO-GC-003',
+  ok(P.run(`nextItemNumber('co','Summit Builders','pco')`)==='PCO-GC-003',
      'an emptied log still does not reissue — which is the whole point');
 }
 
@@ -57,9 +59,9 @@ console.log('Whose number it was');
   const P=boot([R({'PCO #':'PCO-MC-004','Company':'Delaney Mechanical'})]);
   await P.run(`retireItemNumber('co', allData.co[0])`);
   P.run(`currentProject.config=SAVED; allData.co=[];`);
-  ok(P.run(`currentProject.config.retiredNumbers['co:MC']`)===4, 'kept against the trade it belonged to');
-  ok(P.run(`nextItemNumber('co','Delaney Mechanical')`)==='CO-MC-005', "so that trade's run continues");
-  ok(P.run(`nextItemNumber('co','Summit Builders')`)==='CO-GC-001',
+  ok(P.run(`currentProject.config.retiredNumbers['pco:MC']`)===4, 'kept against the trade it belonged to');
+  ok(P.run(`nextItemNumber('co','Delaney Mechanical','pco')`)==='PCO-MC-005', "so that trade's run continues");
+  ok(P.run(`nextItemNumber('co','Summit Builders','pco')`)==='PCO-GC-001',
      'and another trade is untouched — its run never had a 004');
 }
 {
@@ -67,7 +69,7 @@ console.log('Whose number it was');
   // the other.
   const P=boot([], {'co:GC':7});
   P.run(`allData.rfi=[];`);
-  ok(P.run(`nextItemNumber('co','Summit Builders')`)==='CO-GC-008', 'the change order run picks up the mark');
+  ok(P.run(`nextItemNumber('co','Summit Builders','co')`)==='CO-GC-008', 'the change order run picks up the mark');
   ok(P.run(`nextItemNumber('rfi','Summit Builders')`)==='RFI-GC-001', 'the RFI run does not');
 }
 {
@@ -92,7 +94,7 @@ console.log('What is not a number');
   ok(await P.run(`retireItemNumber('co', null)`)===false, 'nor a row that is not there');
   ok(P.run(`SAVED`)===null, 'still no write');
   // Already at or above the mark: nothing to record.
-  P.run(`currentProject.config.retiredNumbers={'co:GC':5};`);
+  P.run(`currentProject.config.retiredNumbers={'pco:GC':5};`);
   ok(await P.run(`retireItemNumber('co', allData.co[1])`)===false, 'deleting below the mark changes nothing');
   ok(P.run(`SAVED`)===null, 'and writes nothing');
 }
@@ -141,7 +143,7 @@ console.log('Wiring');
   ok(/try\{ _retiredNum=await retireItemNumber/.test(body),
      'and a failure there does not stop the delete — one reused number beats a record that will not go');
 }
-ok(/const gone=retiredHigh\(key, comp\); if\(gone>max\) max=gone;/.test(html),
+ok(/const gone=retiredHigh\(key, comp, run\); if\(gone>max\) max=gone;/.test(html),
    'and the next number takes the retired mark into account');
 ok(/const gone=retiredHigh\('pay_apps', comp\); if\(gone>max\) max=gone;/.test(html),
    'on the per-contractor run too');

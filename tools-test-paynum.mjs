@@ -14,7 +14,10 @@ fs.writeFileSync('.pn.tmp.mjs', [
   "export function setContractors(cs){ currentProject.config.contractors=cs; }",
   "export function seed(k,rows){ allData[k]=rows; }",
   grab('function rowCompany'),
-  grab('function nextItemNumber(key, comp)'), grab('function nextItemNumberByCompany'),
+  grab('function nextItemNumber(key, comp, run)'), grab('function nextItemNumberByCompany'),
+  // Proposals and change orders became two registers; the label/column lookup
+  // moved out into its own function.
+  grab('function numRunFields'),
   grab('function tradeCodeFor'), grab('function contractorRec'),
   // Numbering now also consults the numbers retired by deletion, so the run
   // does not restart when a record is removed.

@@ -11,8 +11,10 @@ ok(/design\) return 'AE'/.test(tc) || /\? 'AE'/.test(tc), 'the design team carry
 ok(/r==='OTHER'\) \? TRADE_OTHER/.test(tc), "the 'Other' label is not used verbatim in a number");
 ok(/const TRADE_OTHER='OC'/.test(html), 'it maps to OC');
 
-const ni = html.split('function nextItemNumber(key, comp)')[1].split('function nextItemNumberByCompany')[0];
-ok(/sub:'SUB'/.test(ni), 'submittals are SUB');
+const ni = html.split('function nextItemNumber(key, comp, run)')[1].split('function nextItemNumberByCompany')[0];
+// Labels moved into numRunFields when change orders and proposals became two
+// registers rather than one run.
+ok(/sub:'SUB'/.test(html.split('function numRunFields')[1].split('\n}')[0]), 'submittals are SUB');
 ok(/label\+'-'\+code\+'-'\+String\(max\+1\)\.padStart\(3,'0'\)/.test(ni), 'the format is LABEL-CODE-NNN');
 ok(!/'_'\+\(comp/.test(ni), 'the company suffix is gone from new numbers');
 ok(/if\(key==='pay_apps'\) return nextItemNumberByCompany/.test(ni),

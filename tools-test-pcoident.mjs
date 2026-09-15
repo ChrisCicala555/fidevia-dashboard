@@ -32,17 +32,25 @@ ok(R(`rowIdOf('sub',{'Submittal #':'','PCO #':'PCO-GC-001'})`)==='',
    'and no other module borrows the PCO column');
 
 console.log('Numbering a run of proposals');
+// The bug this file was written for: a log full of proposals scanned as empty
+// and every new one was handed 001. That is still the point — but the fix at
+// the time counted PCO and CO numbers together, so the first change order
+// executed came out CO-GC-002. They are two registers, and each has to count
+// its own column without being restarted by it. tools-test-corun.mjs covers
+// the split; this covers the original bug inside the proposal register.
 R(`allData.co=[]; currentProject.config.contractors=[{name:'Summit Builders',role:'GC',active:true}]`);
-const nextCo = () => R(`nextItemNumber('co','Summit Builders')`);
-ok(nextCo()==='CO-GC-001', 'the first is 001');
+const nextPco = () => R(`nextItemNumber('co','Summit Builders','pco')`);
+ok(nextPco()==='PCO-GC-001', 'the first is 001');
 R(`allData.co=[{'PCO #':'PCO-GC-001','CO #':'','Company':'Summit Builders'}]`);
-ok(nextCo()==='CO-GC-002', 'with one proposal on the log the next is 002, not 001 again');
+ok(nextPco()==='PCO-GC-002', 'with one proposal on the log the next is 002, not 001 again');
 R(`allData.co=[{'PCO #':'PCO-GC-001','CO #':'','Company':'Summit Builders'},
                {'PCO #':'PCO-GC-002','CO #':'','Company':'Summit Builders'}]`);
-ok(nextCo()==='CO-GC-003', 'and it keeps counting');
+ok(nextPco()==='PCO-GC-003', 'and it keeps counting');
 R(`allData.co=[{'PCO #':'PCO-GC-001','CO #':'CO-GC-001','Company':'Summit Builders'},
                {'PCO #':'PCO-GC-002','CO #':'','Company':'Summit Builders'}]`);
-ok(nextCo()==='CO-GC-003', 'an executed one and a proposal share the run rather than each starting their own');
+ok(nextPco()==='PCO-GC-003', 'a row that has been executed still holds its place in the proposal run');
+ok(R(`nextItemNumber('co','Summit Builders','co')`)==='CO-GC-002',
+   'while the change order register counts only change orders');
 
 console.log('Finding the row again');
 const rows = `[{'PCO #':'PCO-GC-001','CO #':'','Description':'Wall'},
