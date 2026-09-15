@@ -5224,7 +5224,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 14:20';
+const BUILD_STAMP='2026-09-16 15:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7699,13 +7699,33 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
 // only shows what is still live.
 function isArchived(r){ return String((r&&r['Archived'])||'').trim().toLowerCase()==='yes'; }
 // Complete means the review chain finished, or the status says it is closed.
+// Whether a proposal or change order has nothing left to happen to it.
+//
+// An APPROVED PCO is not finished. It has been agreed and now has to be written
+// into a formal change order — the paperwork the agreement exists to produce.
+// Archiving it there takes it out of the log precisely while somebody still
+// owes work on it, which is the one state that must stay in front of them.
+//
+// Settled means: it became a change order in its own right, it was covered by
+// one, or it was decided against and there is nothing to issue.
+function coSettled(r){
+  if(!r) return false;
+  if(String(r['Rolled Into']||'').trim()) return true;
+  if(wfIsStopped(r)) return true;
+  const st=String(r['Status']||'').toLowerCase();
+  if(st.indexOf('reject')>=0 || st.indexOf('den')>=0) return true;
+  return coIsExecuted(r);
+}
 function isItemComplete(key,r){
   if(!r) return false;
+  // Asked before the workflow, deliberately. A proposal whose review chain has
+  // finished reads as Complete, and that is exactly the approved-but-unpapered
+  // state — the chain being done is what produced the thing still to do.
+  if(key==='co') return coSettled(r);
   if(wfIsDone(r)) return true;
   const st=String(r['Status']||'').toLowerCase();
   if(key==='rfi') return st.indexOf('closed')>=0;
   if(key==='sub') return st.indexOf('approv')>=0 || st.indexOf('closed')>=0;
-  if(key==='co')  return st.indexOf('approv')>=0 || st.indexOf('reject')>=0 || st.indexOf('den')>=0;
   return false;
 }
 function canArchive(key,r){ return IS_ADMIN && !viewingAsExternal() && isItemComplete(key,r) && !isArchived(r); }
