@@ -728,7 +728,17 @@
   <div style="margin-top:18px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c9c6b4">Loading…</div>
 </div>
 <div id="screen-profile" class="screen" style="align-items:center;justify-content:center;min-height:100vh;background:var(--olive-900);">
-  <div class="login-card" style="max-width:480px;width:95%;padding:36px 40px;text-align:left;">
+  <div class="login-card" id="prof-unreachable" style="display:none;max-width:480px;width:95%;padding:36px 40px;text-align:center;">
+    <img src="https://static.wixstatic.com/media/0c9dfb_270a6b974c8e4889b4d2a82c532a4a1e~mv2.png/v1/fill/w_257,h_160,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Fidevia%20w_branch.png" alt="Fidevia" style="width:140px;height:auto;">
+    <h2 style="color:#3a3a3a;font-size:21px;margin:14px 0 8px;font-weight:700;">Couldn&rsquo;t reach your account</h2>
+    <p style="color:#666;font-size:14.5px;margin:0 0 6px;line-height:1.5;">
+      Your profile is on file &mdash; the dashboard just could not read it. This usually clears in a moment.</p>
+    <p style="color:#999;font-size:13px;margin:0 0 20px;">
+      You are signed in as <strong id="prof-un-email"></strong>. Do not create a second account: it would replace the one you have.</p>
+    <button onclick="location.reload()" style="width:100%;padding:12px;background:var(--olive-700);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">Try Again</button>
+    <p style="margin:14px 0 0;"><a href="#" onclick="doLogout();return false;" style="color:#888;font-size:13px;">Sign out</a></p>
+  </div>
+  <div class="login-card" id="prof-form-card" style="max-width:480px;width:95%;padding:36px 40px;text-align:left;">
     <div style="text-align:center;margin-bottom:24px;">
       <img src="https://static.wixstatic.com/media/0c9dfb_270a6b974c8e4889b4d2a82c532a4a1e~mv2.png/v1/fill/w_257,h_160,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Fidevia%20w_branch.png" alt="Fidevia" style="width:140px;height:auto;">
       <h2 style="color:#3a3a3a;font-size:21px;margin:12px 0 4px;font-weight:700;">Complete Your Profile</h2>
@@ -2195,8 +2205,46 @@ async function proxyCall(op, body, opts){
     }
     throw new Error(d.error||'Email not verified.');
   }
+  // 404 and 405 with no JSON body did not come from the function — the request
+  // never reached it. That is what a deploy swapping in looks like from the
+  // browser, so it is retried rather than reported, and reported plainly if it
+  // does not clear.
+  for(let i=0; r && (r.status===404||r.status===405) && !(d&&d.error) && i<3; i++){
+    await new Promise(s=>setTimeout(s, 600*Math.pow(2,i)));
+    try{ ({r,d}=await attempt(false)); }catch(e){ break; }
+  }
+  if(r && (r.status===404||r.status===405) && !(d&&d.error))
+    throw new Error('The dashboard could not reach its server. If a new version '
+      +'is being published this clears in a minute — try again.');
   if(!r.ok) throw new Error(d.error || ('Proxy error '+r.status));
   return d;
+}
+// Whether this person has a profile, distinguished from whether we could ask.
+//
+// The caller used to do this inline, and a failed request was indistinguishable
+// from "no profile yet" — so a transient fault put an existing user in front of
+// the sign-up form, and saving it would overwrite the profile they already had.
+// Returns {ok:false} when the question could not be put, never a guess.
+//
+// A 404 or 405 with no JSON body is the platform rather than the function: the
+// request never arrived, which is what a deploy swapping in looks like. Worth
+// retrying, as is a 5xx.
+async function fetchProfile(tries){
+  const n=tries||3;
+  let last=0;
+  for(let i=0;i<n;i++){
+    if(i) await new Promise(s=>setTimeout(s, 500*Math.pow(2,i-1)));
+    try{
+      const tok = await auth0Client.getTokenSilently(i?{cacheMode:'off'}:undefined);
+      const r = await fetch('/api/profile',{ headers:{'Authorization':'Bearer '+tok} });
+      last=r.status;
+      if(r.ok){
+        let d={}; try{ d=await r.json(); }catch(e){ continue; }
+        return {ok:true, profile:(d&&d.profile)||null};
+      }
+    }catch(e){ last=0; }
+  }
+  return {ok:false, status:last};
 }
 function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(file); }); }
 
@@ -5094,7 +5142,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 10:30';
+const BUILD_STAMP='2026-09-15 12:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8501,7 +8549,7 @@ async function openAccount(){
   const st=document.getElementById('acct-status'); if(st){ st.textContent=''; st.className='status-msg'; }
   let email='',prof=null;
   try{ const u=await auth0Client.getUser(); email=u.email||''; }catch(e){}
-  try{ const tok=await auth0Client.getTokenSilently(); const r=await fetch('/api/profile',{headers:{'Authorization':'Bearer '+tok}}); if(r.ok){ const d=await r.json(); prof=d.profile; } }catch(e){}
+  try{ const look=await fetchProfile(2); if(look.ok) prof=look.profile; }catch(e){}
   if(!prof){ try{ const u=await auth0Client.getUser(); prof=JSON.parse(localStorage.getItem('fidevia_profile_'+u.sub)||'null'); }catch(e){} }
   prof=prof||{};
   const row=(l,v)=>'<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--khaki-100);"><span style="color:var(--muted);font-size:14px;">'+l+'</span><span style="font-weight:600;font-size:15px;text-align:right;">'+esc(v||'—')+'</span></div>';
@@ -11312,12 +11360,25 @@ async function saveProfile(){
     // correct someone's name or company in the directory and that person's own
     // browser would keep showing the old one indefinitely. The local copy is
     // now a fallback for when the request fails, not the source of truth.
-    try{
-      const tok = await auth0Client.getTokenSilently();
-      const r = await fetch('/api/profile',{ headers:{'Authorization':'Bearer '+tok} });
-      if(r.ok){ const d=await r.json(); if(d.profile){ localProf=d.profile; localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(d.profile)); } }
-    }catch(e){}
+    const look = await fetchProfile();
+    if(look.ok && look.profile){
+      localProf=look.profile;
+      try{ localStorage.setItem('fidevia_profile_'+user.sub, JSON.stringify(look.profile)); }catch(e){}
+    }
+    // A lookup that failed is not an answer. It used to fall through to the
+    // form below, so somebody who already had a profile was asked to create
+    // their account again — and saving it would have written over the one they
+    // had. On the browser they always use, a cached copy hid this; on a new
+    // one there is nothing to hide it with, which is exactly where it showed up.
+    if(!look.ok && !(localProf && localProf.onboarded) && !meta.onboarded){
+      const em=document.getElementById('prof-un-email'); if(em) em.textContent=user.email||'';
+      const f=document.getElementById('prof-form-card'); if(f) f.style.display='none';
+      const u=document.getElementById('prof-unreachable'); if(u) u.style.display='';
+      showScreen('screen-profile'); return;
+    }
     if(!meta.onboarded && !(localProf&&localProf.onboarded)){
+      { const f=document.getElementById('prof-form-card'); if(f) f.style.display=''; }
+      { const u=document.getElementById('prof-unreachable'); if(u) u.style.display='none'; }
       // If Fidevia added this person to the directory before they signed up,
       // the server has just handed that record back under their real account.
       // Prefer it over Auth0's guess at the name, and carry the company and

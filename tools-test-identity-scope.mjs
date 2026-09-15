@@ -35,8 +35,12 @@ ok('it runs after the grant is read',
 console.log('The profile cache refreshes');
 // It was only fetched when nothing was stored, so once written it never changed.
 ok('the server is always consulted', !/if\(!localProf\)\{\s*try\{\s*const tok/.test(src));
-ok('the fetch is unconditional', /\/\/ Always ask the server[\s\S]{0,600}await fetch\('\/api\/profile'/.test(src));
-ok('the local copy is still a fallback on failure', /catch\(e\)\{\}\s*\n\s*if\(!meta\.onboarded/.test(src));
+// The inline fetch became fetchProfile, which retries and can report that the
+// question could not be put at all — a failure used to read as "no profile"
+// and put an existing user in front of the sign-up form.
+ok('the fetch is unconditional', /\/\/ Always ask the server[\s\S]{0,600}await fetchProfile\(\)/.test(src));
+ok('the local copy is still a fallback on failure',
+   /!look\.ok && !\(localProf && localProf\.onboarded\)/.test(src));
 
 console.log('A company change offers to move the grants');
 const off=grab('async function cdOfferGrantUpdate');
