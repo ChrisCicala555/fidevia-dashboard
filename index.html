@@ -5325,7 +5325,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 22:10';
+const BUILD_STAMP='2026-09-16 23:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8160,6 +8160,9 @@ const FORMS = {
         <button type="button" class="seg-opt" data-v="Final" role="radio" aria-checked="false" onclick="segPick(this)">Final copy</button>
       </div>
       <p class="file-hint" style="margin-top:6px;" id="f-copytype-note"></p></div>
+    <div class="field"><label>Billing Period *</label>
+      <select autocomplete="off" id="f-pa-period" onchange="payPeriodNote()"></select>
+      <p class="file-hint" style="margin-top:6px;" id="f-pa-period-note"></p></div>
     <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
@@ -8309,6 +8312,7 @@ function openModal(type){
     // Pencil first: it is the earlier half of the billing cycle and the one a
     // contractor files most months.
     try{ segSet('f-copytype','Pencil'); }catch(e){}
+    try{ payFillPeriods(); }catch(e){}
   }
   if(type==='cdaily_ext'||type==='payapp_ext'){
     const lbl=document.getElementById('f-ext-co-label');
@@ -9126,7 +9130,8 @@ async function submitForm(){
       // contributes nothing to the financials until it is reviewed.
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
       const _copy = segValue('f-copytype')==='Final' ? 'Final' : 'Pencil';
-      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':'','Due Date':payUploadDue(),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
+      const _period = String((document.getElementById('f-pa-period')||{}).value||'') || payCurrentPeriod();
+      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -12306,10 +12311,13 @@ function payIsOutstanding(r){
 // rule the bar uses, so the two cannot say different things.
 // Recorded at upload so the log column is right from the start, rather than
 // only being derived at display time.
-function payUploadDue(){
+function payUploadDue(period){
   try{
     if(!billingCycle().configured) return '';
-    const d=billingDatesFor(new Date());
+    // The period the contractor chose, where they have chosen one. Falling back
+    // to today was only ever a guess, and the wrong one for anybody billing late.
+    const base=(period && parseLocalDate(period)) || new Date();
+    const d=billingDatesFor(base);
     return (d&&d.formal)?isoDay(d.formal):'';
   }catch(e){ return ''; }
 }
@@ -12392,6 +12400,67 @@ async function submitPayFinal(){
     showStatus('payfinal-status','Could not submit it: '+(e.message||e),'error');
   }
   if(btn) btn.disabled=false;
+}
+// ── WHICH MONTH IS BEING BILLED ──
+//
+// The contractor knows which period their application covers; the dashboard was
+// asking Fidevia to work it out afterwards from the date it arrived. That is a
+// guess, and it is wrong every time somebody bills late — an application filed
+// on 2 October for September read as October, taking the wrong due date with it.
+//
+// So they pick it, and the field opens on the period they are almost certainly
+// billing: the current month, rolling to the next once this month's formal
+// application date has passed, which is the rule the billing bar already uses.
+function payCurrentPeriod(){
+  const now=new Date(); now.setHours(0,0,0,0);
+  let d=billingDatesFor(now);
+  if(d && d.formal && now > d.formal){
+    const nx=new Date(now.getFullYear(), now.getMonth()+1, 1);
+    return monthStart(nx);
+  }
+  return monthStart(now);
+}
+function payPeriodLabel(iso){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})/);
+  return m ? schedPeriodLabel(m[1]+'-'+m[2]) : '';
+}
+// A short run of months around the one they are on, rather than a free date
+// field: a pay application belongs to a month, and typing one invites a day.
+function payPeriodChoices(){
+  const cur=payCurrentPeriod();
+  const [y,mo]=cur.split('-').map(Number);
+  const out=[];
+  for(let i=-5;i<=1;i++){
+    const d=new Date(y, mo-1+i, 1);
+    out.push(monthStart(d));
+  }
+  return out;
+}
+function payFillPeriods(){
+  const sel=document.getElementById('f-pa-period'); if(!sel) return;
+  const cur=payCurrentPeriod();
+  sel.innerHTML=payPeriodChoices().map(iso=>
+    '<option value="'+esc(iso)+'"'+(iso===cur?' selected':'')+'>'+esc(payPeriodLabel(iso))+'</option>').join('');
+  sel.value=cur;
+  payPeriodNote();
+}
+// The deadline that follows from the choice, so a late application says so at
+// the moment it is filed rather than in a chase a fortnight later.
+function payPeriodNote(){
+  const el=document.getElementById('f-pa-period-note'); if(!el) return;
+  const iso=String((document.getElementById('f-pa-period')||{}).value||'');
+  const d=iso?billingDatesFor(parseLocalDate(iso)):null;
+  if(!d || !d.formal || !billingCycle().configured){
+    el.textContent='The month this application covers.';
+    el.style.color='';
+    return;
+  }
+  const due=parseLocalDate(isoDay(d.formal));
+  const today=parseLocalDate(etToday());
+  const late=due && today && today>due;
+  el.style.color = late ? 'var(--danger)' : '';
+  el.textContent = 'Formal application for '+payPeriodLabel(iso)+' was due '+fmtDMY(isoDay(d.formal))
+    +(late ? ' \u2014 this one is late.' : '.');
 }
 function payIsPencil(r){ return String((r&&r['Copy Type'])||'').trim().toLowerCase()==='pencil'; }
 // A contractor turns their own pencil into the final application. The same row

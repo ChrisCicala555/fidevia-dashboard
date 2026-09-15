@@ -68,11 +68,20 @@ console.log('And the column is filled at upload');
   // pencil/final choice went in, so a slice measured from that string moved.
   const u=html.slice(html.indexOf("} else if(currentModal==='payapp_ext'){"),
                      html.indexOf("} else if(currentModal==='cdaily'){"));
-  ok(/'Due Date':payUploadDue\(\)/.test(u),
+  // The contractor now picks the period, so the deadline follows their choice
+  // rather than the day the file happened to arrive — which was wrong for
+  // anybody billing late.
+  ok(/'Due Date':payUploadDue\(_period\)/.test(u),
      'an upload records the deadline rather than a blank, so the log column is right from the start');
-  const f=html.slice(html.indexOf('function payUploadDue()'));
-  ok(/billingDatesFor\(new Date\(\)\)/.test(f.slice(0,300)), 'from the billing cycle');
-  ok(/catch\(e\)\{ return ''; \}/.test(f.slice(0,300)),
+  const f=html.slice(html.indexOf('function payUploadDue(period)'));
+  ok(/billingDatesFor\(base\)/.test(f.slice(0,400)), 'from the billing cycle');
+  ok(/\(period && parseLocalDate\(period\)\) \|\| new Date\(\)/.test(f.slice(0,400)),
+     'for the period chosen, falling back to today only when none was');
+  // Sliced from the function rather than a fixed number of characters: the
+  // body grew when the period was added and a 300-character window stopped
+  // reaching the end of it.
+  const body=f.slice(0, f.indexOf('\n}')+2);
+  ok(/catch\(e\)\{ return ''; \}/.test(body),
      'and a project with no cycle configured records nothing rather than failing the upload');
 }
 
