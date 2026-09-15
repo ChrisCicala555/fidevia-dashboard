@@ -1269,7 +1269,7 @@
       <div class="section" id="section-rfis">
         <div class="page-title-row">
           <h2>RFI Log</h2>
-          <button class="btn-add" onclick="openModal('rfi')">+ New RFI</button>
+          <button class="btn-add" onclick="openModal('rfi')">+ New RFI</button><span id="arch-all-rfi"></span>
         </div>
         <div class="panel">
           <div class="panel-header"><span>All RFIs</span><span class="src">Box · 01 - RFIs</span></div>
@@ -1286,7 +1286,7 @@
           <h2>Change Order Log</h2>
           <div style="display:flex;gap:8px;">
             <button class="btn-add" onclick="openModal('co')">+ New PCO</button>
-            <button class="btn-add ae-ok hide-contractor" onclick="openNewCo()">+ New CO</button>
+            <button class="btn-add ae-ok hide-contractor" onclick="openNewCo()">+ New CO</button><span id="arch-all-co"></span>
           </div>
         </div>
         <div class="panel">
@@ -1301,7 +1301,7 @@
       <div class="section" id="section-submittals">
         <div class="page-title-row">
           <h2>Submittals Log</h2>
-          <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button>
+          <button class="btn-add" onclick="openModal('submittal')">+ New Submittal</button><span id="arch-all-sub"></span>
         </div>
         <div class="panel">
           <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">All Submittals<select id="sub-spec-filter" onchange="setSpecFilter(this.value)" style="font-family:inherit;font-size:12.5px;font-weight:600;color:var(--olive-900);padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--white);max-width:340px;"><option value="">All spec sections</option></select></span><span class="src">Box · 03 - Submittals</span></div>
@@ -4913,15 +4913,30 @@ function renderRFIs(){
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
   countFooter(live.length, all.length, 'RFI');
+  { const b=document.getElementById('arch-all-rfi'); if(b) b.innerHTML=archiveAllBtnHTML('rfi'); }
   // The closed-RFI note used to list every response beneath the table. That
   // information now sits inside each RFI's own expandable thread.
   const note=document.getElementById('note-rfis'); if(note){ note.innerHTML=''; note.style.display='none'; }
 }
 
 function renderCOs(){
-  const rows=allData.co||[], tb=document.getElementById('tbody-cos');
-  if(!rows.length){tb.innerHTML=emptyRow(9);countFooter(0,0,'change order');return;}
-  tb.innerHTML=withIdxSorted(rows,'Date Submitted').map(({r,idx})=>{ const i=idx;
+  const all=allData.co||[], tb=document.getElementById('tbody-cos');
+  // Change orders could be archived and had nowhere to go: the row stayed in
+  // the live log, so the button appeared to do nothing. They now split the same
+  // way RFIs and submittals do.
+  const {live,past}=splitByArchived(all,'Date Submitted');
+  renderPastPanel('co','section-cos','Past Change Orders', past, 10,
+    ({r,idx})=>'<tr><td style="width:150px;">'+esc(rowIdOf('co',r)||'')+'</td>'
+      +'<td>'+esc(r['Description']||'')+'</td>'
+      +'<td style="width:150px;">'+esc(rowCompany(r))+'</td>'
+      +'<td style="width:110px;">'+esc(fmtDMY(r['Date Approved']||r['Date Submitted']))+'</td>'
+      +'<td style="width:110px;">'+fmtMoney(coApprovedAmount(r))+'</td>'
+      +'<td style="width:110px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:90px;">'+fileCell(r)+'</td>'
+      +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
+      +'<td class="admin-col" style="width:90px;">'+archiveBtn('co',idx,r)+'</td></tr>');
+  if(!live.length){tb.innerHTML=emptyRow(9);countFooter(0,all.length,'change order');return;}
+  tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
     // A change order carries a PCO number while pending and gains a CO number
     // once executed, so show both when they exist.
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
@@ -4929,7 +4944,8 @@ function renderCOs(){
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':''))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+coGenBtn(i,r)+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
-  countFooter(rows.length, rows.length, 'change order');
+  countFooter(live.length, all.length, 'change order');
+  { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
 }
 
 // ── Filtering the submittal log by spec section ────────────────────────────
@@ -5020,6 +5036,7 @@ function renderSubmittals(){
     return main+verThreadRows('sub',r,i,10);
   }).join('');
   countFooter(shown.length, all.length, 'submittal');
+  { const b=document.getElementById('arch-all-sub'); if(b) b.innerHTML=archiveAllBtnHTML('sub'); }
 }
 
 function renderDailyLogs(){
@@ -5189,7 +5206,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 18:50';
+const BUILD_STAMP='2026-09-15 20:15';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7747,6 +7764,59 @@ async function setArchived(key, idx, on){
     renderAll();
   }catch(e){ alert('Could not update: '+e.message); }
 }
+// ── ARCHIVING EVERYTHING THAT IS SETTLED ──
+//
+// Archiving was one row at a time. On a job that has run a year that is a
+// hundred presses, so nobody does it, and the live log carries every RFI ever
+// answered. The rule for what may go is unchanged — isItemComplete — this just
+// applies it to all of them at once, in a single write rather than one per row.
+const ONE_LABEL={rfi:'RFI',co:'change order',sub:'submittal'};
+function archivableIdx(key){
+  return (allData[key]||[]).map((r,i)=>({r,i})).filter(({r})=>canArchive(key,r)).map(({i})=>i);
+}
+// The button only appears when there is something to do, and says how much.
+function archiveAllBtnHTML(key){
+  // No permission check of its own: canArchive already refuses everyone but
+  // Fidevia, so the count is zero for anybody else and the button does not
+  // appear. A second copy of the rule here could only drift from the first.
+  const n=archivableIdx(key).length;
+  if(!n) return '';
+  return '<button class="btn-secondary" style="margin-left:8px;" title="Move the settled '
+    +esc(MODULE_LABEL[key]||key)+' into the Past panel below the log. Nothing is deleted, and any of them can be restored."'
+    +' onclick="withBusy(event,\'Archiving\u2026\',()=>archiveResolved(\''+key+'\'))">Archive '+n+' Settled</button>';
+}
+async function archiveResolved(key){
+  if(!IS_ADMIN || viewingAsExternal()){ alert('Only Fidevia can archive.'); return; }
+  const mod=MODULES[key], fid=currentProject && currentProject.folders[key];
+  if(!mod || !fid) return;
+  const label=(MODULE_LABEL[key]||key);
+  try{
+    // Re-read rather than trusting the page: somebody else may have closed one
+    // since this was drawn, and archiving by position against a stale copy is
+    // how the wrong record gets moved.
+    const existing=await findFile(fid, mod.log);
+    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    const before=allData[key];
+    allData[key]=rows;
+    const idx=archivableIdx(key);
+    if(!idx.length){ allData[key]=before; alert('Nothing is settled yet, so there is nothing to archive.'); return; }
+    // MODULE_LABEL is already plural, so one of something needs its own word.
+    const nums=idx.map(i=>rowIdOf(key, rows[i]) || rowItemNumber(rows[i]) || '?');
+    if(!confirm('Archive '+idx.length+' settled '+(idx.length===1?ONE_LABEL[key]||'item':label.toLowerCase())+'?\n\n'
+      +nums.slice(0,12).join(', ')+(nums.length>12?(' and '+(nums.length-12)+' more'):'')
+      +'\n\nThey move to the Past panel below the log. Nothing is deleted, and any of them can be restored.')){
+      allData[key]=before; return;
+    }
+    await resolveMe();
+    const by=ME_NAME||ME_EMAIL||'', on=etToday();
+    idx.forEach(i=>{ rows[i]['Archived']='Yes'; rows[i]['Archived By']=by; rows[i]['Archived Date']=on; });
+    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    allData[key]=rows;
+    try{ auditLog('Archived '+idx.length+' settled '+(idx.length===1?ONE_LABEL[key]||'item':label.toLowerCase()), key, {},
+      nums.join(', ').slice(0,400)); }catch(e){}
+    renderAll();
+  }catch(e){ alert('Could not archive: '+(e.message||e)); }
+}
 // Collapsible "Past ..." panel appended beneath a module's section.
 function renderPastPanel(key, secId, title, rows, colCount, rowHtml){
   const sec=document.getElementById(secId); if(!sec) return;
@@ -7761,8 +7831,35 @@ function renderPastPanel(key, secId, title, rows, colCount, rowHtml){
     sec.appendChild(panel);
   }
   panel.style.display='';
-  const cnt=document.getElementById('past-count-'+key); if(cnt) cnt.textContent='· '+rows.length+' archived';
-  const tb=document.getElementById('past-tbody-'+key); if(tb) tb.innerHTML=rows.map(rowHtml).join('');
+  const cnt=document.getElementById('past-count-'+key); if(cnt) cnt.textContent='\u00b7 '+rows.length+' archived';
+  const tb=document.getElementById('past-tbody-'+key);
+  if(tb) tb.innerHTML=pastByCompany(rows, colCount, rowHtml);
+}
+// Archived items, banded by the firm they belong to.
+//
+// A flat list of everything ever settled is a list nobody reads. Looking
+// something up in it is nearly always "what did we close out with this
+// contractor" — so that is the grouping, with the firms in alphabetical order
+// and anything with no company on it gathered at the end rather than dropped.
+//
+// One firm on the project means the banding says nothing, so it is not drawn.
+function pastByCompany(rows, colCount, rowHtml){
+  const groups=new Map();
+  rows.forEach(entry=>{
+    const r=(entry && entry.r) ? entry.r : entry;
+    const co=String(rowCompany(r)||'').trim();
+    const k=co.toLowerCase();
+    if(!groups.has(k)) groups.set(k, {name:co, rows:[]});
+    groups.get(k).rows.push(entry);
+  });
+  if(groups.size<2) return rows.map(rowHtml).join('');
+  const named=[...groups.values()].filter(g=>g.name).sort((a,b)=>a.name.localeCompare(b.name));
+  const unnamed=[...groups.values()].filter(g=>!g.name);
+  return named.concat(unnamed).map(g=>
+    '<tr class="cd-band"><td colspan="'+colCount+'">'
+      +'<span class="cdb-key" style="font-size:14px;">'+esc(g.name||'No company recorded')+'</span>'
+      +'<span class="cdb-n">'+g.rows.length+'</span></td></tr>'
+    +g.rows.map(rowHtml).join('')).join('');
 }
 function togglePast(key){
   const b=document.getElementById('past-body-'+key); if(!b) return;
