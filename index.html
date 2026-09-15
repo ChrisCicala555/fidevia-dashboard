@@ -155,6 +155,18 @@
   .att-card{background:var(--white);border:1px solid var(--border);border-left:4px solid var(--danger);border-radius:8px;padding:14px 18px;}
   .att-card.clear{border-left-color:var(--olive-700);}
   .att-head{display:flex;align-items:center;gap:8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--olive-900);margin-bottom:8px;}
+  /* Submitted text, as it was typed. Runs of spaces and blank lines between
+     bullets are how somebody laid their answer out; HTML throws both away
+     unless told not to. overflow-wrap keeps a pasted URL from widening the
+     table instead of wrapping. */
+  .lt{white-space:pre-wrap;overflow-wrap:anywhere;}
+  .lt-clip{max-height:12.5em;overflow:hidden;position:relative;}
+  .lt-clip::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2.4em;pointer-events:none;
+    background:linear-gradient(to bottom, rgba(255,255,255,0), var(--lt-bg,#f7f5ef));}
+  .lt-clip.lt-open{max-height:none;}
+  .lt-clip.lt-open::after{display:none;}
+  .lt-more{background:none;border:none;padding:2px 0;margin-top:2px;font:inherit;font-size:12.5px;
+    font-weight:700;color:var(--olive-700);cursor:pointer;text-decoration:underline;}
   .att-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--khaki-100);font-size:14px;cursor:pointer;}
   .att-item .att-what{flex:1;min-width:0;}
   .att-due{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;font-weight:600;}
@@ -5177,7 +5189,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 17:40';
+const BUILD_STAMP='2026-09-15 18:50';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13851,6 +13863,41 @@ async function backfillVersionAuthors(opts){
   return written;
 }
 
+// ── SUBMITTED TEXT, AS IT WAS WRITTEN ──
+//
+// Somebody typed an answer with bullets and a blank line between them, and the
+// dashboard ran it together into one paragraph. HTML collapses every run of
+// whitespace and drops newlines entirely, so the layout of what was written was
+// thrown away at the point of display — the record kept it, nobody could see it.
+//
+// Nothing is truncated. A long answer is the useful kind, and cutting it off at
+// a character count loses the part somebody took the trouble to write. Instead
+// a tall one is clipped to a readable height with a control to open it, so a
+// log of twenty items is still skimmable and no word is lost.
+let LT_SEQ=0;
+function longTextHTML(text, opts){
+  opts=opts||{};
+  const t=String(text==null?'':text).replace(/\r\n?/g,'\n');
+  if(!t.trim()) return '';
+  // Lines as typed, plus a rough allowance for ones that will wrap, since the
+  // browser knows the width and we do not.
+  const wrapAt=opts.wrapAt||110;
+  const rows=t.split('\n').reduce((a,l)=>a+Math.max(1, Math.ceil(l.length/wrapAt)), 0);
+  const style='class="lt'+(rows>(opts.lines||10)?' lt-clip':'')+'"'
+    +(opts.style?' style="'+opts.style+'"':'');
+  const body='<div id="lt'+(++LT_SEQ)+'" '+style+'>'+esc(t)+'</div>';
+  if(rows<=(opts.lines||10)) return body;
+  return body+'<button type="button" class="lt-more" onclick="ltToggle(event,\'lt'+LT_SEQ+'\')">Show more</button>';
+}
+function ltToggle(e, id){
+  // The thread row underneath listens for clicks; opening a note must not also
+  // fold the item away.
+  if(e){ e.preventDefault(); e.stopPropagation(); }
+  const el=document.getElementById(id); if(!el) return;
+  const open=el.classList.toggle('lt-open');
+  const btn=e&&e.currentTarget;
+  if(btn) btn.textContent = open ? 'Show less' : 'Show more';
+}
 function verThreadRows(key,r,i,colspan){
   const vs=_versions(r).slice().reverse();
   const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;">'
@@ -13864,7 +13911,8 @@ function verThreadRows(key,r,i,colspan){
         ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
     +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'
         +dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')
-    +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;">&ldquo;'+esc(v.note)+'&rdquo;</div>':'')
+    +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;--lt-bg:var(--khaki-50,#f7f5ef);">'
+        +longTextHTML(v.note)+'</div>':'')
     +'</div>';
   // When the chain is sitting on this reader, replying and approving are one
   // act, not two. Splitting them let somebody write their review and leave the
@@ -13923,7 +13971,7 @@ function verThreadRows(key,r,i,colspan){
     ? '<div style="margin-top:10px;padding:9px 12px;background:var(--white);border-left:3px solid var(--olive-700);border-radius:0 5px 5px 0;">'
       +'<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:3px;">Response on file'
       +(r['Date Closed']?' &middot; '+esc(fmtDMY(r['Date Closed'])):'')+'</div>'
-      +'<div style="font-size:14px;color:var(--ink);">&ldquo;'+esc(resp)+'&rdquo;</div></div>'
+      +'<div style="font-size:14px;color:var(--ink);--lt-bg:var(--white);">'+longTextHTML(resp)+'</div></div>'
     : '';
   return '<tr class="thread-detail" id="td-'+key+'-'+i+'" style="display:none;"><td colspan="'+colspan+'" style="background:var(--khaki-50,#f7f5ef);padding:12px 20px 14px;">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Version history</div>'
