@@ -5221,7 +5221,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 13:10';
+const BUILD_STAMP='2026-09-16 13:35';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7832,7 +7832,7 @@ function archiveAllBtnHTML(key){
   if(!n) return '';
   return '<button class="btn-secondary" title="Move the settled '
     +esc(MODULE_LABEL[key]||key)+' into the Past panel below the log. Nothing is deleted, and any of them can be restored."'
-    +' onclick="withBusy(event,\'Archiving\u2026\',()=>archiveResolved(\''+key+'\'))">Archive '+n+' Settled</button>';
+    +' onclick="withBusy(event,\'Archiving\u2026\',()=>archiveResolved(\''+key+'\'))">Archive ('+n+')</button>';
 }
 async function archiveResolved(key){
   if(!IS_ADMIN || viewingAsExternal()){ alert('Only Fidevia can archive.'); return; }

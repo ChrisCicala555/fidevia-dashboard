@@ -39,7 +39,7 @@ console.log('Which are settled');
                 R({'RFI #':'R4','Status':'Closed','Company':'Delaney Mechanical'})]);
   ok(P.run(`archivableIdx('rfi')`).join()==='0,3',
      'the closed ones that are not already archived — got '+P.run(`archivableIdx('rfi')`).join());
-  ok(P.run(`archiveAllBtnHTML('rfi')`).indexOf('Archive 2 Settled')>=0, 'and the button says how many');
+  ok(P.run(`archiveAllBtnHTML('rfi')`).indexOf('>Archive (2)<')>=0, 'and the button says how many');
   ok(/Nothing is deleted/.test(P.run(`archiveAllBtnHTML('rfi')`)), 'and that nothing is lost by pressing it');
 }
 {
