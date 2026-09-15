@@ -2140,6 +2140,36 @@
 </div>
 
 <script>
+// ── THE OLD ADDRESS ──
+//
+// This file was served from GitHub Pages before the dashboard had a back end,
+// and that copy is still there and still loads. It cannot work: everything
+// under /api/ is a Netlify Function, and GitHub Pages serves static files
+// only, so every call returns 404 or 405 with no body.
+//
+// That is not a visible failure. The page renders, Auth0 signs you in, and
+// then the profile lookup fails — which is how Christopher was asked to create
+// an account he already had, and why the picker could not load. Nothing on the
+// screen said he was at the wrong address.
+//
+// Sent on before anything boots, keeping the path and anything after it, so a
+// bookmark nobody remembers making stops being a way to reach a broken copy.
+(function(){
+  try{
+    if(!/\.github\.io$/i.test(location.hostname)) return;
+    const to='https://dashboard.fidevia.com/'
+      +location.search.replace(/^\?$/,'')+location.hash;
+    document.documentElement.innerHTML='<body style="margin:0;display:flex;align-items:center;'
+      +'justify-content:center;min-height:100vh;background:#3E441F;color:#F6F5EF;'
+      +'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;text-align:center;">'
+      +'<div style="padding:24px;"><p style="font-size:17px;font-weight:600;margin:0 0 8px;">'
+      +'This is the old address for the dashboard.</p>'
+      +'<p style="font-size:14px;opacity:.8;margin:0 0 18px;">Taking you to dashboard.fidevia.com\u2026</p>'
+      +'<a href="'+to+'" style="color:#F6F5EF;font-size:14px;">Go there now</a></div></body>';
+    location.replace(to);
+  }catch(e){}
+})();
+
 // ── CONFIG ──
 const REDIRECT_URI  = window.location.origin + window.location.pathname.replace(/\/index\.html$/, '/').replace(/([^/])$/, '$1/');
 const ROOT_NAME    = 'Construction Dashboard';
@@ -5142,7 +5172,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 12:15';
+const BUILD_STAMP='2026-09-15 13:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
