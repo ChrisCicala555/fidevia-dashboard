@@ -141,6 +141,23 @@ console.log('Change orders now have somewhere to go');
   ok(/archiveBtn\('co',idx,r\)/.test(c), 'with a restore control on each archived row');
 }
 
+console.log('Where the button appears, and that it stays there');
+{
+  // The title row is space-between, so it spreads however many children it is
+  // given. Dropping the Archive button in beside + New RFI made three, and the
+  // two buttons flew to opposite ends with New RFI stranded in the middle.
+  ok(/\.pt-actions\{display:inline-flex/.test(html),
+     'the controls at the end of a title row are grouped');
+  const titleRows=[...html.matchAll(/<div class="page-title-row"[^>]*>([\s\S]*?)\n\s*<\/div>/g)].map(m=>m[1]);
+  titleRows.forEach(row=>{
+    if(row.indexOf('arch-all-')<0) return;
+    // Count top-level children: a wrapper, or an existing flex group, but never
+    // a loose button and a loose span side by side.
+    const loose = /<\/button><span id="arch-all-/.test(row) && row.indexOf('pt-actions')<0
+                  && !/display:flex/.test(row);
+    ok(!loose, 'and no title row leaves the Archive button as a bare third child');
+  });
+}
 console.log('Where the button appears');
 for(const [key,sec] of [['rfi','section-rfis'],['co','section-cos'],['sub','section-submittals']]){
   const i=html.indexOf('id="'+sec+'"');
