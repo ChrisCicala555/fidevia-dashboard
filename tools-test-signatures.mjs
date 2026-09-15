@@ -136,13 +136,23 @@ console.log('Default chains match how Fidevia runs them');
 const T=src.slice(src.indexOf('const WF_TEMPLATES'), src.indexOf('const WF_DEFAULTS'));
 ok('RFIs go straight to design review',  /rfi:\[\s*\{name:'Architect \/ Engineer Review'/.test(T));
 ok('submittals do the same',             /sub:\[\s*\{name:'Architect \/ Engineer Review'/.test(T));
-ok('pay apps record amounts first',      /payapp:\[\s*\{name:'Fidevia Records Amounts'/.test(T));
+// A pencil copy and a final application are separate chains now: the pencil is
+// worked through, the final is signed. Nobody signs a draft.
+ok('pay app pencils record amounts first', /payapp_pencil:\[\s*\{name:'Fidevia Records Amounts'/.test(T));
+ok('and are never asked to sign',
+   !/payapp_pencil:\[[\s\S]*?\]/.exec(T)[0].match(/Signature/));
+ok('while the final chain is the signing',  /payapp_final:\[\s*\{name:'Fidevia Signature'/.test(T));
 ok('pay app review is either-or',        /\{name:'Architect Review', person:'', parallel:true\}/.test(T));
 // The comment above the template mentions pencil copies, so check the step
 // names rather than the whole block.
 ok('no pencil copy step', !(T.match(/\{name:'[^']*'/g)||[]).some(n=>/pencil/i.test(n)));
 ok('change orders review before signing',/co:\[\s*\{name:'Fidevia Review'/.test(T));
-ok('the contractor signs first',         T.indexOf('Contractor Signature') < T.indexOf('Fidevia Signature'));
+// Scoped to the change order chain: 'Fidevia Signature' also appears in the
+// pay app final chain, which is declared earlier in the file.
+{
+  const co=/co:\[[\s\S]*?\n  \]/.exec(T)[0];
+  ok('the contractor signs first', co.indexOf('Contractor Signature') < co.indexOf('Fidevia Signature'));
+}
 ok('architect and Fidevia sign together',/\{name:'Architect Signature', person:'', parallel:true, requireAll:true\}/.test(T));
 ok('the owner signs last',               T.indexOf('Owner Signature') > T.indexOf('Architect Signature'));
 

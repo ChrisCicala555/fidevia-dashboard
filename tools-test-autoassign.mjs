@@ -6,7 +6,9 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 ok(/function itemAssignedFirms/.test(html), 'the reviewing firms are derived');
 const ia = html.split('function itemAssignedFirms')[1].split('// The firm an item sits with')[0];
-ok(/wfStepsFor\(key, submittingCompany\|\|''\)/.test(ia),
+// The row travels with it now: a payment application has a pencil chain and a
+// final chain, and which applies is a property of the row rather than the module.
+ok(/wfStepsFor\(key, submittingCompany\|\|'', row\)/.test(ia),
    'from the chain for the submitting company, so a contractor override applies');
 ok(/wfGroupAt\(steps,0\)/.test(ia), 'taking the first review group');
 ok(/!out\.some\(x=>x\.toLowerCase\(\)===firm\.toLowerCase\(\)\)/.test(ia), 'de-duplicated');

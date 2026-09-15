@@ -3664,7 +3664,13 @@ function wizGatherContractors(){
     return { role, name, contract, active:true };
   }).filter(Boolean);
 }
-const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],['payapp','Payment Applications']];
+const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],
+  // A pencil copy and the final application are not the same thing to review.
+  // The pencil is worked through — amounts read off, figures argued, markup
+  // returned. The final is signed. Running one chain over both put signature
+  // steps on a draft, which is a signature on a number nobody has agreed.
+  ['payapp_pencil','Payment Applications — Pencil Copy'],
+  ['payapp_final','Payment Applications — Final Copy']];
 // The chains a new project starts with, as Fidevia runs them. A step marked
 // parallel runs alongside the one above it and any member can move the item on;
 // requireAll means every member must act, which is what a signature needs.
@@ -3675,13 +3681,18 @@ const WF_TEMPLATES={
   sub:[
     {name:'Architect / Engineer Review', person:''}
   ],
-  // Pencil copies are handled by the billing cycle, not the workflow: the
-  // contractor uploads the finalised application.
-  payapp:[
+  // Working the draft out: the amounts are read off the document, Fidevia and
+  // the architect argue the figures. Nobody signs a pencil copy.
+  payapp_pencil:[
     {name:'Fidevia Records Amounts', person:''},
     {name:'Fidevia Review', person:''},
-    {name:'Architect Review', person:'', parallel:true},
-    {name:'Signed', person:''}
+    {name:'Architect Review', person:'', parallel:true}
+  ],
+  // The application being paid on. By this point the figures are agreed, so
+  // this is the signing.
+  payapp_final:[
+    {name:'Fidevia Signature', person:'', requireAll:true},
+    {name:'Architect Signature', person:'', parallel:true, requireAll:true}
   ],
   co:[
     {name:'Fidevia Review', person:''},
@@ -3725,8 +3736,14 @@ function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+
 function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
   const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
-  el.innerHTML=dl+WF_TYPES.map(([k,label])=>wfBlock(prefix,k,label,
-    (workflows&&workflows[k]) || (WF_TEMPLATES[k]||[]).map(x=>Object.assign({},x)))).join('');
+  el.innerHTML=dl+WF_TYPES.map(([k,label])=>{
+    // A pay app chain configured before the split is shown already cut in two,
+    // so what is on screen is what the project is running — not a pair of
+    // defaults that would overwrite it on the next save.
+    const live=wfFromConfig(workflows||{}, k);
+    return wfBlock(prefix,k,label,
+      live.length ? live : (WF_TEMPLATES[k]||[]).map(x=>Object.assign({},x)));
+  }).join('');
   el.querySelectorAll('.wf-person').forEach(inp=>wfUpdateCo(inp));
 }
 function wfGather(prefix){
@@ -3747,6 +3764,8 @@ function wfScopeOptions(){
   const sel=document.getElementById('wf-scope'); if(!sel) return;
   sel.innerHTML='<option value="">Default (all companies)</option>'+cts.map(c=>{
     const has=wfHasOverride(c.name,'rfi')||wfHasOverride(c.name,'co')||wfHasOverride(c.name,'sub')||wfHasOverride(c.name,'pay_apps');
+    // pay_apps resolves to whichever chain a row is on, so an override on
+    // either half counts as this contractor having one.
     return '<option value="'+esc(c.name)+'"'+(WF_SCOPE===c.name?' selected':'')+'>'+esc(c.name)+(has?' — custom':'')+'</option>';
   }).join('');
 }
@@ -5298,7 +5317,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 19:40';
+const BUILD_STAMP='2026-09-16 21:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5635,8 +5654,8 @@ function firmOptions(sel){
 // A group can name more than one firm, an architect and an engineer notified
 // together being the ordinary case. All of them are told; the row records the
 // first, because a log column has room for one.
-function itemAssignedFirms(key, submittingCompany){
-  const steps=wfStepsFor(key, submittingCompany||'');
+function itemAssignedFirms(key, submittingCompany, row){
+  const steps=wfStepsFor(key, submittingCompany||'', row);
   if(!steps.length) return [];
   const [a,b]=wfGroupAt(steps,0);
   const out=[];
@@ -8938,7 +8957,12 @@ async function submitForm(){
     const key=keyMap[currentModal];
     let _wfNextLabel='';
     try{
-      const _s=wfStepsFor(key, (EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'')));
+      // A payment application's chain depends on which copy it is, and the
+      // form knows: a pencil must not be told the signature step is next.
+      const _wfRow = (key==='pay_apps')
+        ? {'Copy Type': (currentModal==='payapp_ext' ? (segValue('f-copytype')||'Pencil') : 'Final')}
+        : null;
+      const _s=wfStepsFor(key, (EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'')), _wfRow);
       if(_s.length){ const [a,b]=wfGroupAt(_s,0);
         _wfNextLabel=_s.slice(a,b+1).map(s=>{ const co=wfCompanyOf(s.person); return (s.person||s.name)+(co?' ('+co+')':'')+(s.name&&s.person?' — '+s.name:''); }).join(', ');
       }
@@ -9118,7 +9142,7 @@ async function submitForm(){
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     let _wfFirst=[];
-    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfStepsFor(key, rowCompany(newRow)); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Workflow Step')){ const _st=wfStepsFor(key, rowCompany(newRow), newRow); newRow['Workflow Step']='0'; newRow['Workflow Status']=_st.length?'In Review':''; if(_st.length){ const [a,b]=wfGroupAt(_st,0); _st.slice(a,b+1).forEach(s=>{ const c=(allData.contacts||[]).find(x=>(x['Name']||'').trim()===(s.person||'').trim()); if(c&&c['Email']) _wfFirst.push({email:c['Email'],name:s.person,step:s.name}); }); } } }catch(e){}
     prog.textContent='Updating log in Box…';
     const headers=MODULES[key].headers;
     // One row per file. The first is the row built above; the rest are copies
@@ -13383,7 +13407,46 @@ function wfShowAC(inp){
 document.addEventListener('click',function(e){ if(!e.target.closest('.wf-row')) wfCloseAC(); });
 function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value, wfInWizard(inp))||''; }
 // Project default chains.
-function wfSteps(key){ const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{}; return cfg[WF_KEYMAP[key]||key]||[]; }
+// Which configured chain a row runs. Every module has one; a payment
+// application has two, and which of them applies is a property of the row
+// rather than of the module.
+function wfCfgKey(key, row){
+  if(key!=='pay_apps') return WF_KEYMAP[key]||key;
+  return payIsPencil(row) ? 'payapp_pencil' : 'payapp_final';
+}
+// Chains configured before the split are all under 'payapp', built to carry an
+// application from arrival through to signature. Rather than lose that, or
+// guess that it belongs wholly to one side, it is cut where the signing starts:
+// everything before the first signature step is the pencil chain, everything
+// from there on is the final one. That is what Christopher had built by hand.
+//
+// A migration that happens on read, not on write: a project keeps working
+// before anybody opens Settings, and opening Settings shows the same two chains
+// it is already running rather than a pair of defaults.
+function wfIsSignatureStep(st){
+  return /signature|^signed\b|\bsign\b/i.test(String((st&&st.name)||''));
+}
+function wfSplitLegacyPayapp(arr, want){
+  const steps=Array.isArray(arr)?arr:[];
+  if(!steps.length) return [];
+  let cut=steps.findIndex(wfIsSignatureStep);
+  // No signing step named at all: the whole thing is review, so it is the
+  // pencil chain and the final one is left to be built.
+  if(cut<0) cut=steps.length;
+  return want==='payapp_pencil' ? steps.slice(0,cut) : steps.slice(cut);
+}
+function wfFromConfig(set, cfgKey){
+  const arr=set && set[cfgKey];
+  if(Array.isArray(arr) && arr.length) return arr;
+  if(cfgKey==='payapp_pencil' || cfgKey==='payapp_final'){
+    return wfSplitLegacyPayapp(set && set.payapp, cfgKey);
+  }
+  return [];
+}
+function wfSteps(key, row){
+  const cfg=(currentProject&&currentProject.config&&currentProject.config.workflows)||{};
+  return wfFromConfig(cfg, wfCfgKey(key, row));
+}
 // Per-contractor overrides live alongside the defaults, so projects without any
 // override behave exactly as before and need no migration.
 function wfOverrides(){ return (currentProject&&currentProject.config&&currentProject.config.workflowsByCompany)||{}; }
@@ -13394,17 +13457,19 @@ function wfCompanyKey(company){
 function wfHasOverride(company,key){
   const ck=wfCompanyKey(company); if(!ck) return false;
   const set=wfOverrides()[ck]||{};
-  const arr=set[WF_KEYMAP[key]||key];
-  return Array.isArray(arr) && arr.length>0;
+  // A payment application has two chains, so either one counts.
+  const keys = key==='pay_apps' ? ['payapp_pencil','payapp_final','payapp'] : [WF_KEYMAP[key]||key];
+  return keys.some(k=>Array.isArray(set[k]) && set[k].length>0);
 }
 // The chain that governs one item: its submitting company's override, else default.
-function wfStepsFor(key, company){
+function wfStepsFor(key, company, row){
   const ck=wfCompanyKey(company);
   if(ck){
-    const arr=(wfOverrides()[ck]||{})[WF_KEYMAP[key]||key];
-    if(Array.isArray(arr) && arr.length) return arr;
+    const set=wfOverrides()[ck]||{};
+    const arr=wfFromConfig(set, wfCfgKey(key, row));
+    if(arr.length) return arr;
   }
-  return wfSteps(key);
+  return wfSteps(key, row);
 }
 // A reviewer can send an item on to somebody the project workflow never named
 // — another engineer, or back to the contractor — as part of finishing their
@@ -13489,7 +13554,7 @@ function wfReturnSource(row, steps, retIdx){
   return retIdx>0 ? retIdx-1 : -1;
 }
 function wfEffectiveSteps(key, row){
-  const base=wfStepsFor(key, rowCompany(row));
+  const base=wfStepsFor(key, rowCompany(row), row);
   const moved=wfReassigned(row);
   const extra=wfExtraSteps(row);
   const withMoves=base.map((st,i)=>{
