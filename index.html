@@ -544,6 +544,16 @@
      gap rather than sliding the rest along. The widths are fixed rather than
      auto because each cell is its own grid: auto columns would size to that
      row's own content and no two rows would line up. */
+  /* The pay app action column carries a contractor's own Submit Final button as
+     well as Fidevia's review, so it cannot be admin-only the way the other logs
+     are. What appears in it is decided per row instead. */
+  .pay-act{white-space:nowrap; text-align:right;}
+  .seg{display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--white);}
+  .seg-opt{appearance:none; border:none; background:none; cursor:pointer; padding:8px 16px;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13.5px; font-weight:600;
+    color:var(--muted); border-right:1px solid var(--border);}
+  .seg-opt:last-child{border-right:none;}
+  .seg-opt.on{background:var(--olive-700); color:#fff;}
   .row-acts{display:grid; gap:6px; justify-content:center; align-items:center;}
   .row-acts .ra-slot{display:flex; justify-content:flex-end; min-width:0;}
   .row-acts .row-act{margin:0; width:100%;}
@@ -1677,6 +1687,25 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="payfinal-backdrop" onclick="backdropClick(event,closePayFinal)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header"><h3 id="payfinal-title">Submit Final</h3>
+      <button class="modal-close" onclick="closePayFinal()">&#10005;</button></div>
+    <div class="modal-body">
+      <p class="file-hint" style="margin:0 0 14px;">This replaces the pencil copy as the current document on
+        this application. The pencil and anything filed against it stay in the history, and the owner can see
+        the application from here.</p>
+      <div class="field"><label>Final Application File *</label>
+        <input autocomplete="off" type="file" id="payfinal-file">
+        <p class="file-hint">The signed final application PDF.</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="payfinal-btn" onclick="submitPayFinal()">Submit Final</button>
+      <button class="btn-secondary" onclick="closePayFinal()">Cancel</button>
+      <span class="status-msg" id="payfinal-status" style="margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="payaction-backdrop" onclick="backdropClick(event,closePayAction)">
   <div class="modal">
     <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
@@ -2313,6 +2342,40 @@ async function fetchProfile(tries){
     }catch(e){ last=0; }
   }
   return {ok:false, status:last};
+}
+// ── SEGMENTED CHOICE ──
+// Two options, where a dropdown of two reads as a question with a hidden answer.
+function segPick(btn){
+  const wrap=btn && btn.closest('.seg'); if(!wrap) return;
+  wrap.querySelectorAll('.seg-opt').forEach(b=>{
+    const on=(b===btn);
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on?'true':'false');
+  });
+  try{ if(wrap.id==='f-copytype') copyTypeNote(); }catch(e){}
+}
+function segValue(id){
+  const wrap=document.getElementById(id); if(!wrap) return '';
+  const on=wrap.querySelector('.seg-opt.on');
+  return on ? String(on.getAttribute('data-v')||'') : '';
+}
+function segSet(id, v){
+  const wrap=document.getElementById(id); if(!wrap) return;
+  const want=String(v||'').trim().toLowerCase();
+  let hit=null;
+  wrap.querySelectorAll('.seg-opt').forEach(b=>{
+    if(String(b.getAttribute('data-v')||'').trim().toLowerCase()===want) hit=b;
+  });
+  segPick(hit || wrap.querySelector('.seg-opt'));
+}
+// What each choice means, said where it is being made rather than in a guide
+// nobody opens. The owner line is the part worth knowing: it is the reason the
+// distinction exists at all.
+function copyTypeNote(){
+  const el=document.getElementById('f-copytype-note'); if(!el) return;
+  el.textContent = segValue('f-copytype')==='Pencil'
+    ? 'A draft for Fidevia and the architect to work through with you. The owner does not see it.'
+    : 'The application you are asking to be paid on. The owner sees it from here.';
 }
 function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(file); }); }
 
@@ -5235,7 +5298,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 18:15';
+const BUILD_STAMP='2026-09-16 19:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8064,6 +8127,12 @@ const FORMS = {
     <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">PDF or photos. Choose several to file a batch \u2014 each becomes its own row.</p></div>`},
   payapp_ext:{title:'Upload Payment Application',html:`
     <p class="file-hint" style="margin:0 0 14px;">Upload your pay application. Fidevia records it against <strong id="f-ext-co-label"></strong>, enters the amounts from your document, then reviews and signs.</p>
+    <div class="field"><label>Which is this?</label>
+      <div class="seg" id="f-copytype" role="radiogroup" aria-label="Copy type">
+        <button type="button" class="seg-opt on" data-v="Pencil" role="radio" aria-checked="true" onclick="segPick(this)">Pencil copy</button>
+        <button type="button" class="seg-opt" data-v="Final" role="radio" aria-checked="false" onclick="segPick(this)">Final copy</button>
+      </div>
+      <p class="file-hint" style="margin-top:6px;" id="f-copytype-note"></p></div>
     <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Company *</label><input autocomplete="off" id="f-company" list="cd-contr-list" placeholder="Company"><datalist id="cd-contr-list"></datalist></div></div>
@@ -8209,6 +8278,11 @@ function openModal(type){
       ci.onchange=renum;
       renum();
     } }
+  if(type==='payapp_ext'){
+    // Pencil first: it is the earlier half of the billing cycle and the one a
+    // contractor files most months.
+    try{ segSet('f-copytype','Pencil'); }catch(e){}
+  }
   if(type==='cdaily_ext'||type==='payapp_ext'){
     const lbl=document.getElementById('f-ext-co-label');
     if(lbl) lbl.textContent=viewingAsCompany()||'your company';
@@ -9019,7 +9093,8 @@ async function submitForm(){
       // Amounts stay blank until Fidevia reads them off the PDF, so this row
       // contributes nothing to the financials until it is reviewed.
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
-      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':payUploadDue(),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
+      const _copy = segValue('f-copytype')==='Final' ? 'Final' : 'Pencil';
+      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':'','Due Date':payUploadDue(),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -12232,6 +12307,79 @@ function payDueDate(r){
   if(at > d.formal) d=billingDatesFor(new Date(at.getFullYear(), at.getMonth()+1, 1));
   return (d && d.formal) ? isoDay(d.formal) : '';
 }
+// Promoting a pencil to the final application. The file arrives as a new
+// version on the same row, so the thread reads as one application that went
+// from draft to formal rather than two records nobody can line up.
+let PAYFINAL_IDX=-1;
+function openPayFinal(idx){
+  const r=(allData.pay_apps||[])[idx];
+  if(!r || !payMayPromote(r)){ alert('That is not a pencil copy of yours to submit.'); return; }
+  PAYFINAL_IDX=idx;
+  const t=document.getElementById('payfinal-title');
+  if(t) t.textContent='Submit Final — '+(r['App #']||r['Attachment Name']||'application');
+  const f=document.getElementById('payfinal-file'); if(f) f.value='';
+  showStatus('payfinal-status','','info');
+  const b=document.getElementById('payfinal-btn'); if(b) b.disabled=false;
+  document.getElementById('payfinal-backdrop').classList.add('open');
+}
+function closePayFinal(){ document.getElementById('payfinal-backdrop').classList.remove('open'); }
+async function submitPayFinal(){
+  const idx=PAYFINAL_IDX, rows=allData.pay_apps||[], r=rows[idx];
+  if(!r || !payMayPromote(r)){ closePayFinal(); return; }
+  const f=document.getElementById('payfinal-file');
+  if(!f || !f.files || !f.files[0]){ showStatus('payfinal-status','Choose your final application file.','error'); return; }
+  const btn=document.getElementById('payfinal-btn'); if(btn) btn.disabled=true;
+  const before=JSON.stringify({c:r['Copy Type'], s:r['Status'], a:r['Attachment File ID'],
+                               n:r['Attachment Name'], v:r['Version History']});
+  try{
+    showStatus('payfinal-status','Uploading\u2026','info');
+    const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
+    const up=await boxUploadBinary(f.files[0], await itemFolderId('pay_apps', fid, r['App #']||''));
+    const ent=up.entries?up.entries[0]:up;
+    await resolveMe();
+    const who=viewingAsCompany()||ME_NAME||ME_EMAIL||'';
+    let vs=_versions(r);
+    vs.push({v:vs.length+1, fileId:ent.id||'', fileName:f.files[0].name, status:'Final',
+             date:etToday(), by:who, co:who, note:'Final application submitted.'});
+    r['Version History']=JSON.stringify(vs);
+    r['Copy Type']='Final';
+    r['Attachment File ID']=ent.id||'';
+    r['Attachment Name']=f.files[0].name;
+    r['Status']='Uploaded — awaiting Fidevia';
+    const existing=await findFile(fid, mod.log);
+    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    try{ auditLog('Final application submitted','pay_apps',r, String(r['App #']||'')); }catch(e){}
+    showStatus('payfinal-status','Submitted.','success');
+    renderAll();
+    setTimeout(closePayFinal, 800);
+  }catch(e){
+    const b=JSON.parse(before);
+    r['Copy Type']=b.c; r['Status']=b.s; r['Attachment File ID']=b.a;
+    r['Attachment Name']=b.n; r['Version History']=b.v;
+    renderAll();
+    showStatus('payfinal-status','Could not submit it: '+(e.message||e),'error');
+  }
+  if(btn) btn.disabled=false;
+}
+function payIsPencil(r){ return String((r&&r['Copy Type'])||'').trim().toLowerCase()==='pencil'; }
+// A contractor turns their own pencil into the final application. The same row
+// carries both, so the markup the architect put on the pencil stays attached to
+// the thing being paid on, and one period keeps one application number.
+//
+// Only their own, only while it is still a pencil, and only from the outside —
+// Fidevia issuing the contractor's final application on their behalf would be
+// signing their name to a figure.
+function payMayPromote(r){
+  if(!r || !payIsPencil(r)) return false;
+  // Belt and braces: viewingAsCompany() is empty for Fidevia reading as itself,
+  // so the company check below already refuses. Kept because "only from the
+  // outside" is the rule, and it should not depend on a property of another
+  // function to hold.
+  if(!viewingAsExternal()) return false;
+  const mine=String(viewingAsCompany()||'').trim().toLowerCase();
+  const theirs=String(r['Contractor']||r['Company']||'').trim().toLowerCase();
+  return !!mine && mine===theirs;
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -12291,11 +12439,13 @@ function renderPayApps(){
         const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>'
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
         const needs=payNeedsDetails(r);
-        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx):'';
-        const appCell=String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>';
-        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="admin-col">'+act+'</td></tr>';
+        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
+          :(payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'');
+        const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
+          + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '');
+        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
       }).join('');
-      body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="admin-col">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
+      body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="pay-act">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
     }
     return '<div class="pay-group">'+head+body+'</div>';
   }).join('');

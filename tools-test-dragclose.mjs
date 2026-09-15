@@ -92,8 +92,16 @@ console.log('One dialog cannot close another');
 console.log('Every dialog goes through it');
 ok(!/onclick="if\(event\.target===this\)close/.test(html),
    'no backdrop still uses the bare target test');
-ok((html.match(/onclick="backdropClick\(event,/g)||[]).length===16,
-   'all sixteen are on the shared guard — got '+(html.match(/onclick="backdropClick\(event,/g)||[]).length);
+// Counted rather than written out: dialogs get added, and a number in a test is
+// a thing to update rather than a thing that checks anything. What matters is
+// that every dismissible backdrop goes through the guard, which the sweep below
+// asserts directly.
+{
+  const guarded=(html.match(/onclick="backdropClick\(event,/g)||[]).length;
+  const backdrops=(html.match(/<div class="modal-backdrop"/g)||[]).length;
+  ok(guarded===backdrops-1,
+     'every backdrop but the session one is on the shared guard — '+guarded+' of '+backdrops);
+}
 {
   const bd=[...html.matchAll(/<div class="modal-backdrop"[^>]*id="([^"]+)"([^>]*)>/g)]
     .filter(m=>!/backdropClick/.test(m[2])).map(m=>m[1]);

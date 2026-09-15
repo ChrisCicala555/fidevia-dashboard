@@ -64,7 +64,10 @@ console.log('It reaches the panel');
 
 console.log('And the column is filled at upload');
 {
-  const u=html.slice(html.indexOf("'Status':'Uploaded")-1200, html.indexOf("'Status':'Uploaded")+40);
+  // Anchored on the call itself. The status beside it became a ternary when the
+  // pencil/final choice went in, so a slice measured from that string moved.
+  const u=html.slice(html.indexOf("} else if(currentModal==='payapp_ext'){"),
+                     html.indexOf("} else if(currentModal==='cdaily'){"));
   ok(/'Due Date':payUploadDue\(\)/.test(u),
      'an upload records the deadline rather than a blank, so the log column is right from the start');
   const f=html.slice(html.indexOf('function payUploadDue()'));
