@@ -537,6 +537,9 @@
   /* Actual dates and how far off them the job is are Fidevia's reading of
      progress. A contractor sees the dates they are held to. */
   body.role-contractor .sched-actual{display:none;}
+  /* Who last revised the milestones, and when, is Fidevia's record of its own
+     bookkeeping. A contractor needs the dates, not their provenance. */
+  body.role-contractor #sched-updated{display:none !important;}
   /* Row actions sit in fixed slots, so a row that cannot offer one leaves the
      gap rather than sliding the rest along. The widths are fixed rather than
      auto because each cell is its own grid: auto columns would size to that
@@ -5232,7 +5235,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 16:40';
+const BUILD_STAMP='2026-09-16 17:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;

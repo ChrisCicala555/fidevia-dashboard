@@ -51,6 +51,23 @@ console.log('Who it is hidden from');
      'and a Custom grant is scoped like a contractor, so it is covered by the same class');
 }
 
+console.log('And nor is the provenance line');
+{
+  ok(/body\.role-contractor #sched-updated\{display:none !important;\}/.test(html),
+     'the "updated as of ... by ..." line is hidden from the contractor view');
+  ok(/!important/.test((html.match(/body\.role-contractor #sched-updated\{[^}]*\}/)||[''])[0]),
+     'with !important, because the render sets display inline on that element');
+  // It is still built, so every other role keeps it.
+  P.run(`currentProject.config.milestonesUpdatedAt='2026-09-10';
+         currentProject.config.milestonesUpdatedBy='Christopher Cicala';
+         currentProject.config.onsiteCM='Christopher Cicala';
+         currentProject.config.milestones=[{name:'Notice to Proceed', contract:'2026-09-14'}];
+         renderSchedule();`);
+  const up=P.run(`document.getElementById('sched-updated').textContent`);
+  ok(/Updated as of/.test(up) && /Christopher Cicala/.test(up),
+     'the line is still written, so Fidevia and the design team keep it — got '+up);
+}
+
 console.log('Nothing else moved');
 {
   ok(/colspan="4"/.test(body)===false || /No milestones set/.test(body)===false,
