@@ -531,6 +531,13 @@
   /* Compact, evenly sized actions for table rows. Both buttons stay quiet until
      hovered, so a long log is not a column of red. */
   td.admin-col{white-space:nowrap; text-align:right; vertical-align:middle;}
+  /* Row actions sit in fixed slots, so a row that cannot offer one leaves the
+     gap rather than sliding the rest along. The widths are fixed rather than
+     auto because each cell is its own grid: auto columns would size to that
+     row's own content and no two rows would line up. */
+  .row-acts{display:grid; gap:6px; justify-content:end; align-items:center;}
+  .row-acts .ra-slot{display:flex; justify-content:flex-end; min-width:0;}
+  .row-acts .row-act{margin:0; width:100%;}
   .row-act{display:inline-flex; align-items:center; justify-content:center;
     height:26px; padding:0 11px; margin:0 0 0 6px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600;
@@ -4914,7 +4921,7 @@ function renderRFIs(){
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
-      +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('rfi',i,r)+delBtn('rfi',i)+'</td></tr>';
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+rowActions('rfi',i,r)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
   }).join('');
   countFooter(live.length, all.length, 'RFI');
@@ -4947,7 +4954,7 @@ function renderCOs(){
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':''))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+coGenBtn(i,r)+archiveBtn('co',i,r)+delBtn('co',i)+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':''))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
   countFooter(live.length, all.length, 'change order');
   { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
@@ -5037,7 +5044,7 @@ function renderSubmittals(){
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
       +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
-      +'<td class="admin-col" onclick="event.stopPropagation()">'+archiveBtn('sub',i,r)+delBtn('sub',i)+'</td></tr>';
+      +'<td class="admin-col" onclick="event.stopPropagation()">'+rowActions('sub',i,r)+'</td></tr>';
     return main+verThreadRows('sub',r,i,10);
   }).join('');
   countFooter(shown.length, all.length, 'submittal');
@@ -5211,7 +5218,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 09:20';
+const BUILD_STAMP='2026-09-16 10:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7746,6 +7753,37 @@ function coGenBtn(i,r){
       ? 'Generate the executed change order document'
       : 'Generate the proposed change order to send out for pricing and signature')
     +'" onclick="event.stopPropagation();openCoGen('+i+')">'+(done?'Regenerate':label)+'</button>';
+}
+// ── ROW ACTIONS, IN FIXED SLOTS ──
+//
+// The actions were written inline, so a row that could not offer one simply had
+// one fewer button and everything after it slid left. Reading down the column
+// there was no line to follow: Delete sat under Archive under Generate,
+// depending on what each row happened to allow.
+//
+// Each action now has a slot of its own, the same width on every row, and an
+// absent one leaves it empty. Slots are sized for the longest label they can
+// hold — "Generate PCO", "Regenerate", "Restore" — because a grid inside a
+// table cell can only line up with its neighbours if every cell declares the
+// same columns.
+const RA_SLOT={gen:'112px', archive:'78px', del:'70px'};
+function actionCell(slots){
+  // Nothing on offer at all — a reader with no admin rights — renders nothing
+  // rather than an empty grid holding three blank slots open.
+  if(!slots.some(x=>x && String(x.html||'').trim())) return '';
+  return '<div class="row-acts" style="grid-template-columns:'
+    +slots.map(x=>x?x.w:'').filter(Boolean).join(' ')+';">'
+    +slots.filter(Boolean).map(x=>'<span class="ra-slot">'+(x.html||'')+'</span>').join('')
+    +'</div>';
+}
+// The slots a module always declares, so every row in that table agrees.
+function rowActions(key, i, r, opts){
+  opts=opts||{};
+  const out=[];
+  if(opts.gen!==undefined) out.push({w:RA_SLOT.gen, html:opts.gen});
+  out.push({w:RA_SLOT.archive, html:archiveBtn(key,i,r)});
+  out.push({w:RA_SLOT.del, html:delBtn(key,i)});
+  return actionCell(out);
 }
 function archiveBtn(key,i,r){
   if(isArchived(r)) return IS_ADMIN && !viewingAsExternal()

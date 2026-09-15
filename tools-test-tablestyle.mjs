@@ -69,7 +69,9 @@ ok('and the total they are drawn from',     /countFooter\(shown\.length, all\.le
 ok('empty logs still report',       (src.match(/countFooter\(0,/g)||[]).length>=3);
 ok('including a filter that matches nothing',
    /No submittals under that spec section[\s\S]{0,200}countFooter\(0, all\.length/.test(src));
-ok('actions stayed inline',         src.includes("archiveBtn('sub',i,r)+delBtn('sub',i)"));
+// The actions moved into fixed slots so a row missing one leaves the gap
+// rather than sliding the rest along; they are no longer concatenated inline.
+ok('actions sit in the shared slot grid', src.includes("rowActions('sub',i,r)"));
 
 fs.rmSync('.ts.tmp.mjs',{force:true});
 console.log(`\n${pass} passed, ${fail} failed`);
