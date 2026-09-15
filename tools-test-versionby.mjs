@@ -61,7 +61,11 @@ ok('a firm equal to the name is not repeated',
    /toLowerCase\(\)!==String\(v\.by\|\|''\)\.trim\(\)\.toLowerCase\(\)/.test(rowfn));
 
 console.log('Replies record both');
-const sub=src.slice(src.indexOf('let by=\'\', co=\'\';'), src.indexOf('row[\'Version History\']=JSON.stringify(vs);'));
+// Anchored forwards from the reply itself. The end marker is a line that also
+// appears in removeVersionFile, which is earlier in the file, so searching for
+// it from the start now lands before this block begins.
+const _subStart=src.indexOf('let by=\'\', co=\'\';');
+const sub=src.slice(_subStart, src.indexOf('row[\'Version History\']=JSON.stringify(vs);', _subStart));
 ok('the person comes from the profile', /resolveMe\(\)/.test(sub));
 ok('the firm is captured too',          /co=me\.company/.test(sub));
 ok('there is a fallback if that fails', /catch\(e\)\{[\s\S]*getUser\(\)/.test(sub));

@@ -5221,7 +5221,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 11:30';
+const BUILD_STAMP='2026-09-16 13:10';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9748,6 +9748,9 @@ async function generateChangeOrder(){
       let vs=_versions(r);
       vs.push({v:vs.length+1, fileId:ent.id||'', fileName:fname, status:r['Status']||'',
                date:etToday(), by:ME_NAME||ME_EMAIL||'', co:ME_COMPANY||'Fidevia',
+               // Marked as a generated document, so a later one can supersede
+               // it without the thread having to guess from the wording.
+               gen:true,
                note: picked.rev>1 ? ('Change order document regenerated \u2014 revision '+picked.rev+'.')
                                   : 'Change order document generated.'});
       r['Version History']=JSON.stringify(vs);
@@ -14092,9 +14095,83 @@ function ltToggle(e, id){
   const btn=e&&e.currentTarget;
   if(btn) btn.textContent = open ? 'Show less' : 'Show more';
 }
+// ── SUPERSEDED DOCUMENTS ──
+//
+// Generating a change order again keeps the earlier document, deliberately: it
+// may already be out for signature and deleting it would take away the thing
+// somebody is holding. But it sat in the thread looking exactly like the
+// current one, so the folder held two change orders for one record with nothing
+// saying which was live.
+//
+// Every generated document but the newest is now marked superseded, and Fidevia
+// can move one to the module's Deleted folder in Box — the same place a deleted
+// record's documents go, so it is out of the way without ceasing to exist.
+function verIsGenerated(v){
+  if(!v || !v.fileId) return false;
+  if(v.gen) return true;
+  // Rows generated before the flag existed are recognised by what was written
+  // against them at the time.
+  return /change order document (re)?generated/i.test(String(v.note||''));
+}
+// The newest generated document on a row: the one that is current.
+function verCurrentGen(vs){
+  let cur=null;
+  (vs||[]).forEach(v=>{ if(verIsGenerated(v) && (!cur || (v.v||0)>(cur.v||0))) cur=v; });
+  return cur;
+}
+function verSuperseded(vs, v){
+  if(!verIsGenerated(v)) return null;
+  const cur=verCurrentGen(vs);
+  // Compared by version number rather than by object identity. The thread
+  // happens to pass the same object it read, but a caller handing in a copy —
+  // a test, or anything that has been through JSON — would otherwise be told
+  // the current document was superseded by itself.
+  return (cur && String(cur.v)!==String(v.v)) ? cur : null;
+}
+function verWasRemoved(v){ return !!(v && v.removed); }
+// Moving a superseded document out. Never the current one: that is the change
+// order, and taking it away leaves the record pointing at nothing.
+async function removeVersionFile(key, idx, vNum){
+  if(!IS_ADMIN || viewingAsExternal()){ alert('Only Fidevia can remove a document.'); return; }
+  const rows=allData[key]||[], row=rows[idx]; if(!row) return;
+  const vs=_versions(row);
+  const v=vs.find(x=>String(x.v)===String(vNum));
+  if(!v || !v.fileId || verWasRemoved(v)) return;
+  if(!verSuperseded(vs, v)){ alert('That is the current document for this change order, so it cannot be removed.'); return; }
+  if(!confirm('Remove '+(v.fileName||('version '+v.v))+'?\n\n'
+    +'It moves to the Deleted folder in Box, out of the change order folder, and stays there. '
+    +'The entry below remains, marked removed.')) return;
+  const before=row['Version History'];
+  try{
+    await resolveMe();
+    const res=await proxyCall('retireItem',{ module:key,
+      moduleFolderId:currentProject.folders[key], fileIds:[String(v.fileId)] });
+    if(!res || !res.moved || !res.moved.length) throw new Error('Box did not move the file.');
+    // The id is kept rather than thrown away — the file still exists, in the
+    // bin, and somebody may need to find it.
+    v.removed={ by:(ME_NAME||ME_EMAIL||''), at:etToday(), bin:res.bin||'', fileId:String(v.fileId) };
+    v.fileId='';
+    row['Version History']=JSON.stringify(vs);
+    const mod=MODULES[key], fid=currentProject.folders[key];
+    const existing=await findFile(fid, mod.log);
+    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    try{ auditLog('Removed superseded document', key, row,
+      (v.fileName||('v'+v.v))+' \u2014 moved to '+(res.bin||'the deleted folder')); }catch(e){}
+    renderAll();
+  }catch(e){
+    row['Version History']=before;
+    renderAll();
+    alert('Could not remove it: '+(e.message||e));
+  }
+}
 function verThreadRows(key,r,i,colspan){
-  const vs=_versions(r).slice().reverse();
-  const line=v=>'<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;">'
+  const _all=_versions(r);
+  const vs=_all.slice().reverse();
+  const line=v=>{
+  const _sup=verSuperseded(_all, v);
+  const _gone=verWasRemoved(v);
+  return '<div style="padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:14px;'
+    +(_sup?'opacity:.72;':'')+'">'
     +'<strong>v'+esc(v.v)+'</strong>'
     +(v.status?' &middot; <span class="ver-status">'+esc(v.status)+'</span>':'')
     +(v.date?' &middot; '+esc(v.date):'')
@@ -14103,11 +14180,23 @@ function verThreadRows(key,r,i,colspan){
     // and differ, show the firm alongside; where they match, say it once.
     +(v.co && String(v.co).trim().toLowerCase()!==String(v.by||'').trim().toLowerCase()
         ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
-    +(v.fileId?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'
+    +(v.fileId?' &middot; <a class="attach-link"'+(_sup?' style="text-decoration:line-through;"':'')
+        +' href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'
         +dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')
+    // Superseded, removed, or the live one — said on the line rather than left
+    // to be worked out from the dates.
+    +(_sup && !_gone ? ' <span style="font-size:11.5px;font-weight:700;color:#8a5a00;">Superseded by v'+esc(_sup.v)+'</span>' : '')
+    +(_gone ? ' <span style="font-size:11.5px;font-weight:700;color:var(--muted);">Removed'
+        +(v.removed.by?(' by '+esc(v.removed.by)):'')+(v.removed.at?(' \u00b7 '+esc(fmtDMY(v.removed.at))):'')
+        +(v.removed.bin?(' \u00b7 now in '+esc(v.removed.bin)):'')+'</span>' : '')
+    // !_gone is belt and braces: clearing fileId on removal already stops
+    // verIsGenerated recognising it, so _sup is null by then. Kept because that
+    // is a consequence of clearing the id rather than a rule.
+    +((_sup && !_gone && IS_ADMIN && !viewingAsExternal())
+        ? ' <button class="lt-more" style="margin-left:6px;" onclick="event.stopPropagation();removeVersionFile(\''+key+'\','+i+','+esc(JSON.stringify(v.v))+')">Remove</button>' : '')
     +(v.note?'<div style="color:var(--muted);margin-top:2px;font-style:italic;--lt-bg:var(--khaki-50,#f7f5ef);">'
         +longTextHTML(v.note)+'</div>':'')
-    +'</div>';
+    +'</div>'; };
   // When the chain is sitting on this reader, replying and approving are one
   // act, not two. Splitting them let somebody write their review and leave the
   // item parked on themselves — which is what a reviewer saw as two buttons
