@@ -534,6 +534,9 @@
   /* The heading sits over the block of buttons rather than over the right edge
      of the column, since the buttons are centred under it. */
   th.admin-col{text-align:center;}
+  /* Actual dates and how far off them the job is are Fidevia's reading of
+     progress. A contractor sees the dates they are held to. */
+  body.role-contractor .sched-actual{display:none;}
   /* Row actions sit in fixed slots, so a row that cannot offer one leaves the
      gap rather than sliding the rest along. The widths are fixed rather than
      auto because each cell is its own grid: auto columns would size to that
@@ -1264,7 +1267,7 @@
         <div class="stat-grid" id="sched-kpis"></div>
         <div class="panel">
           <div class="panel-header">Contract Milestones</div>
-          <table><thead><tr><th>Milestone</th><th>Actual Date</th><th>Contract Date</th><th>Deviation</th></tr></thead>
+          <table><thead><tr><th>Milestone</th><th class="sched-actual">Actual Date</th><th>Contract Date</th><th class="sched-actual">Deviation</th></tr></thead>
           <tbody id="tbody-schedule"><tr class="loading-row"><td colspan="4">Loading…</td></tr></tbody></table>
           <div id="sched-updated" style="padding:11px 18px;border-top:1px solid #F1F0E8;font-size:12.5px;color:var(--muted);"></div>
         </div>
@@ -5221,7 +5224,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 13:35';
+const BUILD_STAMP='2026-09-16 14:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7263,7 +7266,15 @@ function renderSchedule(){
   const tb=document.getElementById('tbody-schedule'); if(!tb) return;
   const ms=(currentProject&&currentProject.config&&currentProject.config.milestones)||[];
   const dev=(actual,contract)=>{ const a=new Date(actual),b=new Date(contract); if(isNaN(a)||isNaN(b)) return '—'; const dd=Math.round((a-b)/86400000); return dd===0?'On schedule':(dd>0?('+'+dd+' days'):(dd+' days')); };
-  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td><td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td><td>'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('') : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
+  // A contractor sees the dates they are held to, not how the job is tracking
+  // against them. Actual and Deviation are Fidevia's reading of progress and
+  // belong to the people reviewing it; put in front of one trade they invite a
+  // conversation about slippage the row does not have the context for.
+  tb.innerHTML = ms.length ? ms.map(m=>'<tr><td>'+esc(m.name)+'</td>'
+      +'<td class="sched-actual">'+esc(m.baseline?fmtDMY(m.baseline):'—')+'</td>'
+      +'<td>'+esc(m.contract?fmtDMY(m.contract):'—')+'</td>'
+      +'<td class="sched-actual">'+esc(dev(m.baseline,m.contract))+'</td></tr>').join('')
+    : '<tr class="empty-row"><td colspan="4">No milestones set'+(IS_ADMIN?' — use “Edit Schedule” above.':'.')+'</td></tr>';
   // Who last touched these dates, and when. A milestone table with no
   // provenance invites the question at every meeting, and the answer used to
   // live only in the Box file's revision history.
