@@ -87,8 +87,15 @@ console.log('On the panel itself');
 }
 
 console.log('Wiring');
-ok((html.match(/due:r\['Due Date'\]\|\|''/g)||[]).length===5,
-   'every rule that has a due date to give passes it — got '+(html.match(/due:r\['Due Date'\]\|\|''/g)||[]).length);
+// Payment applications went through payDueDate when it turned out an uploaded
+// one carries no date of its own; the rest still read their own column.
+{
+  const own=(html.match(/due:r\['Due Date'\]\|\|''/g)||[]).length;
+  const derived=(html.match(/due:payDueDate\(r\)/g)||[]).length;
+  const both=(html.match(/due:\(key==='pay_apps'\) \? payDueDate\(r\) : \(r\['Due Date'\]\|\|''\)/g)||[]).length;
+  ok(own+derived+both===5,
+     'every rule that has a due date to give passes one — got '+own+' plain, '+derived+' derived, '+both+' either');
+}
 {
   const d=html.slice(html.indexOf('const byItem=new Map();'));
   ok(/if\(!prev\.due && i\.due\) prev\.due=i\.due;/.test(d.slice(0,600)),

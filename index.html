@@ -5211,7 +5211,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 21:00';
+const BUILD_STAMP='2026-09-16 09:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7552,7 +7552,9 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
         // until it is executed, so reading CO # alone left these lines opening
         // with a dash and no way to tell which proposal was meant.
         items.push({label:(rowIdOf(key,r)||r[idf]||'')+' — '+(r['Subject']||r['Description']||r['Contractor']||''),
-                    due:r['Due Date']||'',
+                    // A payment application uploaded without a period still
+                    // has a deadline; every other module keeps its own column.
+                    due:(key==='pay_apps') ? payDueDate(r) : (r['Due Date']||''),
                     badge: sentBack ? (mineOwn?'Revise and resubmit':'Sent back to '+(who||'your team'))
                                     : (mineOwn?'Your review':'With '+(who||'your team')),
                     cls:'wf', sec});
@@ -7632,7 +7634,7 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
   }
 
   // Pay applications awaiting Fidevia's review
-  if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), due:r['Due Date']||'', badge:'Awaiting review', cls:'wf', sec:'payapps'}));
+  if(IS_ADMIN && !viewingAsExternal()) (openP||[]).forEach(r=>items.push({label:(r['App #']||'')+' — '+(r['Contractor']||''), due:payDueDate(r), badge:'Awaiting review', cls:'wf', sec:'payapps'}));
 
   // One item, one line. The key used to include the badge, so a submittal that
   // qualified twice — the workflow step is with our firm, and the item is
@@ -8933,7 +8935,7 @@ async function submitForm(){
       // Amounts stay blank until Fidevia reads them off the PDF, so this row
       // contributes nothing to the financials until it is reviewed.
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
-      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':'','Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
+      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Period From':'','Period To':'','Period':'','Due Date':payUploadDue(),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':'Uploaded — awaiting Fidevia','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Uploaded',date:etToday(),by:_comp,note:'Uploaded by contractor'}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -12094,6 +12096,54 @@ function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf
 function payIsOutstanding(r){
   const st=String((r&&r['Status'])||'').toLowerCase();
   return st.indexOf('submit')>=0 || st.indexOf('pending')>=0 || st.indexOf('uploaded')>=0 || st.indexOf('awaiting')>=0;
+}
+// When a payment application is owed by.
+//
+// The form Fidevia fills in defaults this from the billing cycle. The path a
+// contractor uploads through wrote a blank, because an uploaded pencil copy
+// arrives with no period attached — so the one item on the attention panel
+// that genuinely had a deadline showed nothing, and Fidevia's own review had no
+// clock on it until somebody opened the row and typed a period in.
+//
+// The deadline does not depend on the period being recorded. It is the formal
+// application date for the cycle the application arrived in, which the project
+// already configures and the billing bar already shows to everybody. Rolled to
+// the next cycle when it arrived after this one's date had passed — the same
+// rule the bar uses, so the two cannot say different things.
+// Recorded at upload so the log column is right from the start, rather than
+// only being derived at display time.
+function payUploadDue(){
+  try{
+    if(!billingCycle().configured) return '';
+    const d=billingDatesFor(new Date());
+    return (d&&d.formal)?isoDay(d.formal):'';
+  }catch(e){ return ''; }
+}
+function payArrivedOn(r){
+  const p=String((r&&r['Period'])||'').trim();
+  if(p && parseLocalDate(p)) return parseLocalDate(p);
+  try{
+    const vs=_versions(r);
+    if(vs.length && vs[0].date && parseLocalDate(vs[0].date)) return parseLocalDate(vs[0].date);
+  }catch(e){}
+  return parseLocalDate(etToday()) || new Date();
+}
+function payDueDate(r){
+  const own=String((r&&r['Due Date'])||'').trim();
+  if(own) return own;
+  // Only where the project has actually set a billing cycle. billingCycle()
+  // falls back to 20th and 25th so the rest of the screen has something to
+  // draw, but a deadline nobody chose is exactly the kind of invented date
+  // Christopher declined for change orders.
+  if(!billingCycle().configured) return '';
+  const at=payArrivedOn(r);
+  let d=billingDatesFor(at);
+  // Unreachable today: payArrivedOn always hands back a Date, so billingDatesFor
+  // always answers. Kept because that is a property of payArrivedOn rather than
+  // a rule, and the failure without it would be a NaN date on somebody's panel.
+  if(!d || !d.formal) return '';
+  if(at > d.formal) d=billingDatesFor(new Date(at.getFullYear(), at.getMonth()+1, 1));
+  return (d && d.formal) ? isoDay(d.formal) : '';
 }
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
