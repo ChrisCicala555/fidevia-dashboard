@@ -24,7 +24,7 @@ console.log('Every row declares the same columns');
 {
   const openPco=cells(CO(),0);
   const doneCo =cells(CO({'CO #':'CO-GC-001','Status':'Approved'}),1);
-  ok(cols(openPco)==='112px 78px 70px', 'a proposal declares three slots — got '+cols(openPco));
+  ok(cols(openPco)==='78px 112px 70px', 'a proposal declares three slots — got '+cols(openPco));
   ok(cols(doneCo)===cols(openPco), 'and an executed change order declares exactly the same');
   ok(slots(openPco).length===3 && slots(doneCo).length===3, 'three slots on both rows');
 }
@@ -33,15 +33,15 @@ console.log('An action it cannot offer leaves its slot empty');
 {
   const openPco=cells(CO(),0);
   const s=slots(openPco);
-  ok(label(s[0])==='Generate PCO', 'the generate slot holds the generate button');
-  ok(s[1].trim()==='', 'a proposal cannot be archived, so that slot is empty rather than absent');
-  ok(label(s[2])==='Delete', 'and Delete stays in the third slot instead of sliding into the second');
+  ok(s[0].trim()==='', 'a proposal cannot be archived, so the leftmost slot is empty rather than absent');
+  ok(label(s[1])==='Generate PCO', 'the generate slot holds the generate button');
+  ok(label(s[2])==='Delete', 'and Delete stays on the right instead of sliding left');
 }
 {
   const doneCo=cells(CO({'CO #':'CO-GC-001','Status':'Approved'}),1);
   const s=slots(doneCo);
-  ok(label(s[0]).indexOf('Generate')===0, 'a settled one offers Generate in the same slot');
-  ok(/Archive/.test(s[1]), 'Archive in the second');
+  ok(/Archive/.test(s[0]), 'a settled one fills the leftmost slot with Archive, where Christopher wants it');
+  ok(label(s[1]).indexOf('Generate')===0, 'Generate in the second');
   ok(label(s[2])==='Delete', 'Delete in the third — the same column on both rows');
 }
 {
@@ -58,9 +58,9 @@ console.log('An action it cannot offer leaves its slot empty');
   const stopped=CO({'CO #':'CO-GC-009','Status':'Rejected','Workflow Status':'Rejected'});
   ok(P.run(`coGenBtn(2,${JSON.stringify(stopped)})`)==='', 'the fixture really does offer no Generate');
   const cell=cells(stopped,2);
-  ok(cols(cell)==='112px 78px 70px', 'it still declares three columns — got '+cols(cell));
+  ok(cols(cell)==='78px 112px 70px', 'it still declares three columns — got '+cols(cell));
   ok(slots(cell).length===3, 'and renders three slots');
-  ok(slots(cell)[0].trim()==='', 'the first of which is empty');
+  ok(slots(cell)[1].trim()==='', 'the generate slot of which is empty');
   ok(label(slots(cell)[2])==='Delete', 'leaving Delete under Delete');
 }
 
@@ -72,6 +72,7 @@ console.log('Other logs line up too, with their own slot count');
   ok(cols(open)===cols(closed), 'and every RFI row declares the same two');
   ok(slots(open)[0].trim()==='' && label(slots(open)[1])==='Delete',
      'an open RFI leaves the archive slot empty and keeps Delete where it was');
+  ok(/Archive/.test(slots(closed)[0]), 'and Archive is the leftmost action throughout');
   ok(/Archive/.test(slots(closed)[0]), 'a closed one fills it');
 }
 {
@@ -87,11 +88,20 @@ console.log('Nothing to offer draws nothing');
   P.run(`IS_ADMIN=true;`);
 }
 
+console.log('Archive first, Delete last');
+{
+  const s=slots(cells(CO({'CO #':'CO-GC-001','Status':'Approved'}),1));
+  ok(/Archive/.test(s[0]), 'Archive is the first slot');
+  ok(label(s[s.length-1])==='Delete', 'and Delete the last, furthest from the one pressed most often');
+}
+ok(/th\.admin-col\{text-align:center;\}/.test(html),
+   'the Actions heading is centred over the buttons rather than over the right edge of the column');
+
 console.log('The CSS that makes the slots line up');
 {
   const css=html.slice(html.indexOf('.row-acts{'), html.indexOf('.row-acts .row-act{')+120);
   ok(/display:grid/.test(css), 'the cell is a grid');
-  ok(/justify-content:end/.test(css), 'pushed to the right of the column');
+  ok(/justify-content:center/.test(css), 'centred in the column, under a centred heading');
   ok(/\.row-acts \.row-act\{margin:0/.test(css),
      'and the inline margin between buttons is dropped, since the gap now spaces them');
 }

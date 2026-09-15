@@ -531,11 +531,14 @@
   /* Compact, evenly sized actions for table rows. Both buttons stay quiet until
      hovered, so a long log is not a column of red. */
   td.admin-col{white-space:nowrap; text-align:right; vertical-align:middle;}
+  /* The heading sits over the block of buttons rather than over the right edge
+     of the column, since the buttons are centred under it. */
+  th.admin-col{text-align:center;}
   /* Row actions sit in fixed slots, so a row that cannot offer one leaves the
      gap rather than sliding the rest along. The widths are fixed rather than
      auto because each cell is its own grid: auto columns would size to that
      row's own content and no two rows would line up. */
-  .row-acts{display:grid; gap:6px; justify-content:end; align-items:center;}
+  .row-acts{display:grid; gap:6px; justify-content:center; align-items:center;}
   .row-acts .ra-slot{display:flex; justify-content:flex-end; min-width:0;}
   .row-acts .row-act{margin:0; width:100%;}
   .row-act{display:inline-flex; align-items:center; justify-content:center;
@@ -5218,7 +5221,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 10:45';
+const BUILD_STAMP='2026-09-16 11:30';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7777,11 +7780,12 @@ function actionCell(slots){
     +'</div>';
 }
 // The slots a module always declares, so every row in that table agrees.
+// Archive leftmost, then whatever the module generates, then Delete on the
+// right — the destructive one furthest from the one pressed most often.
 function rowActions(key, i, r, opts){
   opts=opts||{};
-  const out=[];
+  const out=[{w:RA_SLOT.archive, html:archiveBtn(key,i,r)}];
   if(opts.gen!==undefined) out.push({w:RA_SLOT.gen, html:opts.gen});
-  out.push({w:RA_SLOT.archive, html:archiveBtn(key,i,r)});
   out.push({w:RA_SLOT.del, html:delBtn(key,i)});
   return actionCell(out);
 }
