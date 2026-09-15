@@ -5325,7 +5325,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 23:15';
+const BUILD_STAMP='2026-09-17 09:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8161,7 +8161,10 @@ const FORMS = {
       </div>
       <p class="file-hint" style="margin-top:6px;" id="f-copytype-note"></p></div>
     <div class="field"><label>Billing Period *</label>
-      <select autocomplete="off" id="f-pa-period" onchange="payPeriodNote()"></select>
+      <div style="display:flex;gap:10px;">
+        <select autocomplete="off" id="f-pa-month" style="flex:2;" onchange="payPeriodNote()"></select>
+        <select autocomplete="off" id="f-pa-year" style="flex:1;" onchange="payPeriodNote()"></select>
+      </div>
       <p class="file-hint" style="margin-top:6px;" id="f-pa-period-note"></p></div>
     <div class="field"><label>Payment Application File *</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The signed pay application PDF.</p></div>`},
   cdaily:{title:'Add Daily Report',html:`
@@ -9130,7 +9133,7 @@ async function submitForm(){
       // contributes nothing to the financials until it is reviewed.
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
       const _copy = segValue('f-copytype')==='Final' ? 'Final' : 'Pencil';
-      const _period = String((document.getElementById('f-pa-period')||{}).value||'') || payCurrentPeriod();
+      const _period = payPeriodValue() || payCurrentPeriod();
       newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
@@ -12424,31 +12427,65 @@ function payPeriodLabel(iso){
   const m=String(iso||'').match(/^(\d{4})-(\d{2})/);
   return m ? schedPeriodLabel(m[1]+'-'+m[2]) : '';
 }
-// A short run of months around the one they are on, rather than a free date
-// field: a pay application belongs to a month, and typing one invites a day.
-function payPeriodChoices(){
-  const cur=payCurrentPeriod();
-  const [y,mo]=cur.split('-').map(Number);
+// Month and year, rather than a run of months around today.
+//
+// A fixed window is a bet that nobody needs a month outside it — and a job that
+// has run two years, or a contractor catching up on a period from last spring,
+// is exactly the case where the month wanted is the one not offered. Every
+// month is reachable this way, and nothing has to be guessed about how far back
+// somebody might be billing.
+//
+// Still not a date field: an application belongs to a month, and a date field
+// asks for a day it does not have.
+const PAY_MONTHS=['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+// Wide enough for any project that could plausibly be billing. Anchored on the
+// year we are in and stretched to cover whatever the milestones say, so a job
+// running to 2031 can still record a period in 2031.
+function payYearChoices(){
+  const now=new Date().getFullYear();
+  let lo=now-2, hi=now+2;
+  try{
+    ((currentProject&&currentProject.config&&currentProject.config.milestones)||[]).forEach(m=>{
+      [m.contract, m.baseline].forEach(v=>{
+        const d=parseLocalDate(v); if(!d) return;
+        const y=d.getFullYear();
+        if(y-1<lo) lo=y-1;
+        if(y+1>hi) hi=y+1;
+      });
+    });
+  }catch(e){}
   const out=[];
-  for(let i=-5;i<=1;i++){
-    const d=new Date(y, mo-1+i, 1);
-    out.push(monthStart(d));
-  }
+  for(let y=lo;y<=hi;y++) out.push(y);
   return out;
 }
+// The two controls read as one value.
+function payPeriodValue(){
+  const m=parseInt((document.getElementById('f-pa-month')||{}).value,10);
+  const y=parseInt((document.getElementById('f-pa-year')||{}).value,10);
+  if(!(m>=1&&m<=12) || !(y>1900)) return '';
+  return y+'-'+String(m).padStart(2,'0')+'-01';
+}
 function payFillPeriods(){
-  const sel=document.getElementById('f-pa-period'); if(!sel) return;
+  const ms=document.getElementById('f-pa-month'), ys=document.getElementById('f-pa-year');
+  if(!ms||!ys) return;
   const cur=payCurrentPeriod();
-  sel.innerHTML=payPeriodChoices().map(iso=>
-    '<option value="'+esc(iso)+'"'+(iso===cur?' selected':'')+'>'+esc(payPeriodLabel(iso))+'</option>').join('');
-  sel.value=cur;
+  const [cy,cm]=cur.split('-').map(Number);
+  ms.innerHTML=PAY_MONTHS.map((nm,i)=>
+    '<option value="'+(i+1)+'"'+((i+1)===cm?' selected':'')+'>'+esc(nm)+'</option>').join('');
+  // No need to force the current year in: the range starts at this year either
+  // side and milestones only ever widen it, so it cannot be pushed out.
+  const years=payYearChoices();
+  ys.innerHTML=years.map(y=>
+    '<option value="'+y+'"'+(y===cy?' selected':'')+'>'+y+'</option>').join('');
+  ms.value=String(cm); ys.value=String(cy);
   payPeriodNote();
 }
 // The deadline that follows from the choice, so a late application says so at
 // the moment it is filed rather than in a chase a fortnight later.
 function payPeriodNote(){
   const el=document.getElementById('f-pa-period-note'); if(!el) return;
-  const iso=String((document.getElementById('f-pa-period')||{}).value||'');
+  const iso=payPeriodValue();
   const d=iso?billingDatesFor(parseLocalDate(iso)):null;
   if(!d || !d.formal || !billingCycle().configured){
     el.textContent='The month this application covers.';
