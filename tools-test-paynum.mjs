@@ -94,7 +94,11 @@ ok('pay apps are in the pre-numbered set', /\['rfi','co','sub','pay_apps'\]\.inc
 ok('the number follows the contractor chosen on the form', /key==='pay_apps' && !EXTERNAL\) _pc = v\('f-contr'\)/.test(src));
 ok('App # is no longer required',   !/App #, Contractor, and Requested Amount are required/.test(src));
 ok('a typed number still wins',     /'App #':\(v\('f-num'\)\|\|PRE_NUM\)/.test(src));
-ok('contractor uploads are numbered', /'App #':\(PRE_NUM\|\|nextItemNumber\('pay_apps',_comp\)\)/.test(src));
+// A pay app number can come round again after a delete, so Box is asked what it
+// still holds before one is issued — the log cannot see a folder left behind by
+// a delete that failed halfway.
+ok('contractor uploads are numbered', /const _panum = PRE_NUM \|\| \(await payNextNumber\(_comp/.test(src));
+ok('and the log is the last resort, not the first', /\|\| nextItemNumber\('pay_apps',_comp\);/.test(src));
 ok('the form renumbers when the contractor changes', /ci\.onchange=renum/.test(src));
 ok('a typed number is not overwritten', /num\.dataset\.touched/.test(src));
 

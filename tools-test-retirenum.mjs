@@ -73,16 +73,18 @@ console.log('Whose number it was');
   ok(P.run(`nextItemNumber('rfi','Summit Builders')`)==='RFI-GC-001', 'the RFI run does not');
 }
 {
-  // Pay applications number per contractor rather than per trade.
+  // Pay applications are the exception now: an owner reads App 1, 2, 3 as a
+  // continuous run, and they are internal to one contract rather than issued
+  // documents somebody outside has already seen. Deleting one frees its number,
+  // and Box is checked before it is handed out again — covered in
+  // tools-test-paynumfolder.mjs.
   const P=boot([]);
   P.run(`allData.pay_apps=[{'App #':'PA-003_Summit Builders','Contractor':'Summit Builders','Company':'Summit Builders'}];`);
-  await P.run(`retireItemNumber('pay_apps', allData.pay_apps[0])`);
-  P.run(`currentProject.config=SAVED; allData.pay_apps=[];`);
-  ok(P.run(`currentProject.config.retiredNumbers['pay_apps:summit builders']`)===3,
-     'kept under the contractor, not a trade code');
-  ok(P.run(`nextItemNumber('pay_apps','Summit Builders')`)==='PA-004_Summit Builders', 'and the run continues');
-  ok(P.run(`nextItemNumber('pay_apps','Delaney Mechanical')`)==='PA-001_Delaney Mechanical',
-     "while another contractor's billing starts where it always did");
+  ok(await P.run(`retireItemNumber('pay_apps', allData.pay_apps[0])`)===false,
+     'deleting a payment application retires nothing');
+  ok(P.run(`SAVED`)===null, 'and writes no mark');
+  ok(P.run(`nextItemNumber('pay_apps','Summit Builders')`)==='PA-004_Summit Builders',
+     'while the log still drives the number for the ones that remain');
 }
 
 console.log('What is not a number');

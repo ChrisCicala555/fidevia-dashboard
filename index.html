@@ -4327,7 +4327,18 @@ function itemNumberValue(v){
 // Called when a record is deleted, so its number is not handed out again.
 // Saved on the project because the log is the only other memory and the row
 // is precisely what is being taken out of it.
+// Payment applications are the exception, on Christopher's call: an owner or an
+// auditor reads App 1, 2, 3 as a continuous run, and a gap in it invites the
+// question of what happened to number four. They are also internal to one
+// contract rather than issued documents in circulation, so reusing a number
+// costs nothing — unlike an RFI or a change order, which somebody outside has
+// already seen under that number.
+//
+// Freeing the number is only safe if Box has actually let go of it, which is
+// what payNumberFloor checks before one is handed out.
+const NUMBER_REUSED_AFTER_DELETE={pay_apps:true};
 async function retireItemNumber(key, row){
+  if(NUMBER_REUSED_AFTER_DELETE[key]) return false;
   if(!row || !currentProject || !currentProject.config) return false;
   const comp=(key==='pay_apps') ? (row['Contractor']||rowCompany(row)) : rowCompany(row);
   // A change order row can hold a number in each register, and deleting it
@@ -5325,7 +5336,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 09:05';
+const BUILD_STAMP='2026-09-17 11:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9000,6 +9011,12 @@ async function submitForm(){
         // On the change order module this form raises a proposal, so the
         // number it reserves comes from the proposal register.
         PRE_NUM = nextItemNumber(key, _pc, key==='co' ? 'pco' : undefined) || '';
+        // A payment application number can come round again after a delete, so
+        // the log alone is not enough: Box is asked what it still holds before
+        // one is handed out.
+        if(key==='pay_apps'){
+          try{ PRE_NUM = await payNextNumber(_pc, currentProject.folders.pay_apps) || PRE_NUM; }catch(e){}
+        }
       }catch(e){}
     }
 
@@ -9030,6 +9047,16 @@ async function submitForm(){
       }
       const _num=(currentModal==='document')?v('f-name'):(PRE_NUM||v('f-num'));
       if(['rfi','co','sub','docs','gendocs'].includes(key) && _num){ prog.textContent='Preparing item folder…'; uploadFolderId=await itemFolderId(key, folderId, _num); }
+      // A payment application is filed the same way, and was not: its documents
+      // landed loose in the contractor's folder, so a pencil copy, the revision
+      // it came back as and the final application all sat side by side with
+      // nothing saying they were one application. Its folder goes UNDER the
+      // company folder rather than under the module, which is where the rest of
+      // that contractor's billing already lives.
+      if(key==='pay_apps' && _num && uploadFolderId){
+        prog.textContent='Preparing application folder\u2026';
+        uploadFolderId=await itemFolderId(key, uploadFolderId, _num);
+      }
       const _files=[...fi.files];
       const _many=BATCH_FORMS.includes(currentModal) && _files.length>1;
       const _list=_many?_files:[_files[0]];
@@ -9134,7 +9161,12 @@ async function submitForm(){
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
       const _copy = segValue('f-copytype')==='Final' ? 'Final' : 'Pencil';
       const _period = payPeriodValue() || payCurrentPeriod();
-      newRow={'App #':(PRE_NUM||nextItemNumber('pay_apps',_comp)),'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
+      // PRE_NUM already asked Box. Where it is missing — the reservation failed,
+      // or this path was reached another way — ask again rather than fall back
+      // to the log alone, which is the copy that cannot see a leftover folder.
+      const _panum = PRE_NUM || (await payNextNumber(_comp, currentProject.folders.pay_apps))
+                             || nextItemNumber('pay_apps',_comp);
+      newRow={'App #':_panum,'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -12377,7 +12409,7 @@ async function submitPayFinal(){
   try{
     showStatus('payfinal-status','Uploading\u2026','info');
     const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
-    const up=await boxUploadBinary(f.files[0], await itemFolderId('pay_apps', fid, r['App #']||''));
+    const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
     const ent=up.entries?up.entries[0]:up;
     await resolveMe();
     const who=viewingAsCompany()||ME_NAME||ME_EMAIL||'';
@@ -12498,6 +12530,81 @@ function payPeriodNote(){
   el.style.color = late ? 'var(--danger)' : '';
   el.textContent = 'Formal application for '+payPeriodLabel(iso)+' was due '+fmtDMY(isoDay(d.formal))
     +(late ? ' \u2014 this one is late.' : '.');
+}
+// One place that answers "where does this application's documents go", so the
+// three paths that file one cannot disagree: the contractor's upload, the final
+// they submit against the same row, and the signed copy Fidevia attaches.
+//
+// Company folder first, then the application's own folder inside it.
+async function payAppFolder(row){
+  const fid=currentProject && currentProject.folders && currentProject.folders.pay_apps;
+  if(!fid) return fid;
+  const co=String((row&&(row['Contractor']||row['Company']))||'').trim();
+  let parent=fid;
+  if(co){
+    try{
+      parent = EXTERNAL
+        ? (await proxyCall('ensureFolder',{parentId:fid, name:co})).id || fid
+        : await findOrCreateFolder(co, fid);
+    }catch(e){ parent=fid; }
+  }
+  const num=String((row&&row['App #'])||'').trim();
+  if(!num) return parent;
+  return await itemFolderId('pay_apps', parent, num);
+}
+// ── WHAT BOX STILL HOLDS ──
+//
+// A number freed by deleting a record is only free if the folder that carried
+// its documents has gone with it. Deleting moves that folder into the module's
+// Deleted bin, so ordinarily the root is clear — but a delete that failed
+// halfway, or a folder made by hand, would leave one behind, and handing the
+// number out again would file the new application into the old one's folder
+// alongside somebody else's documents.
+//
+// So before a number is issued, the module folder is read and anything already
+// standing there sets a floor under it. Asked of Box rather than of the log,
+// because the log is precisely what a deleted record is no longer in.
+async function numbersInBox(key, moduleFolderId){
+  if(!moduleFolderId) return [];
+  try{
+    const entries=await boxList(moduleFolderId);
+    const lab=ITEM_FOLDER_LABEL[key]||'';
+    const out=[];
+    (entries||[]).forEach(e=>{
+      if(!e || e.type!=='folder') return;
+      const nm=String(e.name||'');
+      // 'PA #PA-003_Summit Builders' — the number is whatever follows the hash.
+      const m=lab ? nm.match(new RegExp('^'+lab.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+' #(.+)$')) : null;
+      if(m) out.push(m[1].trim());
+    });
+    return out;
+  }catch(e){ return []; }
+}
+// The highest number Box is still holding for one contractor, as a floor the
+// next number must clear. Zero when Box is clear, which is the ordinary case
+// and the one that lets a deleted number come back.
+async function payNumberFloor(comp, moduleFolderId){
+  const mine=String(comp||'').trim().toLowerCase();
+  const names=await numbersInBox('pay_apps', moduleFolderId);
+  let max=0;
+  names.forEach(nm=>{
+    // Pay app folders carry the contractor, so another firm's numbering is not
+    // allowed to push this one along.
+    const who=String(nm.split('_').slice(1).join('_')||'').trim().toLowerCase();
+    if(mine && who && who!==mine) return;
+    const n=itemNumberValue(nm);
+    if(n>max) max=n;
+  });
+  return max;
+}
+// The number to issue, having asked Box what it still has.
+async function payNextNumber(comp, moduleFolderId){
+  const fromLog=nextItemNumber('pay_apps', comp);
+  const floor=await payNumberFloor(comp, moduleFolderId);
+  if(!floor) return fromLog;
+  const have=itemNumberValue(fromLog);
+  if(have>floor) return fromLog;
+  return 'PA-'+String(floor+1).padStart(3,'0')+'_'+String(comp||'').trim();
 }
 function payIsPencil(r){ return String((r&&r['Copy Type'])||'').trim().toLowerCase()==='pencil'; }
 // A contractor turns their own pencil into the final application. The same row
@@ -12635,7 +12742,7 @@ async function submitPayAction(){
     const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
-    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await itemFolderId('pay_apps',fid,row['App #']); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
+    if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await payAppFolder(row); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
     const status=action==='Approve and Sign'?'Approved & Signed':action==='Modify and Sign'?'Modified & Signed':'Denied';
     const appAmt=action==='Deny'?0:amount;
     let vh=[]; try{ vh=JSON.parse(row['Version History']||'[]'); }catch(e){}
