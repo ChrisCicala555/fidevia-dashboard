@@ -4525,6 +4525,14 @@ function coUnrollCovered(rows, removed){
     // Back to agreed and uncovered. The amount agreed at the time stays: the
     // negotiation happened, and only the paperwork has gone.
     x['Status']='Approved';
+    // And its review chain reopens. Rolling a proposal in closes the chain with
+    // a decision of 'rolled', which reads as decided-against — so a proposal
+    // released by deleting the change order that covered it was left stopped:
+    // no other change order could cover it, because coRollEligible refuses a
+    // stopped row, and coSettled counted it as finished and offered it up for
+    // archiving. The delete prompt promised it would be picked up by another
+    // change order, and nothing could.
+    try{ wfApplyDecision('co', x, 'Approved', ME_NAME||ME_EMAIL||''); }catch(e){}
     back.push(String(x['PCO #']||x['CO #']||''));
   });
   return back;
@@ -5224,7 +5232,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 15:30';
+const BUILD_STAMP='2026-09-16 16:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
