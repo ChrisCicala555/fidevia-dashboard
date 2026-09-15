@@ -649,6 +649,15 @@ function customMayRead(filename, modules){
 // the browser, so external users received internal-only rows (and their file IDs)
 // in the payload and simply did not see them rendered.
 const VISIBILITY_CSV = { 'Document Index.csv': 'Visible To', 'Documents.csv': 'Visible To' };
+// A pencil copy is a draft: the contractor and Fidevia work it out between
+// them, and the architect marks it up. The owner is the party being asked to
+// pay, and should not see a figure until it is the figure being asked for.
+//
+// Enforced here rather than in the browser, because the owner's grant lets them
+// read the whole payment applications log — hiding the rows on screen would
+// leave them in the payload.
+const PENCIL_HIDDEN_FROM = { 'Payment Applications.csv': ROLE_OWNER };
+function rowIsPencil(v) { return String(v || '').trim().toLowerCase() === 'pencil'; }
 function rowVisibleToExternal(v) {
   const t = String(v || '').toLowerCase();
   return t.includes('external') || t.includes('prime');
@@ -709,7 +718,8 @@ function filterCsvForCaller(filename, text, isAdmin, company, role, modules) {
 
   const priv = PRIVATE_CSV[filename];
   const vis = VISIBILITY_CSV[filename];
-  if (!priv && !vis) return text;
+  const hidePencil = PENCIL_HIDDEN_FROM[filename] === r0;
+  if (!priv && !vis && !hidePencil) return text;
   const parsed = parseCSVServer(text);
   let rows = parsed.rows;
 
@@ -720,6 +730,8 @@ function filterCsvForCaller(filename, text, isAdmin, company, role, modules) {
     rows = c ? rows.filter(x => String(x[priv] || '').trim().toLowerCase() === c) : [];
   }
   if (vis) rows = rows.filter(x => rowVisibleToExternal(x[vis]));
+  // Rows with no copy type at all predate the pencil cycle and are finals.
+  if (hidePencil) rows = rows.filter(x => !rowIsPencil(x['Copy Type']));
   return toCSVServer(parsed.headers, rows);
 }
 
