@@ -74,8 +74,14 @@ console.log('The rule');
   const _fn = html.split('function openReply')[1];
   const c = _fn.slice(0, _fn.indexOf('\nfunction '));
   ok(/const _mineNow = replyStepIsMine\(key, r\);/.test(c), 'whose step it is');
-  ok(/const _reviews = !EXTERNAL \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\);/.test(c),
-     'and whether the reader decides at all');
+  // _reviews split in two when a review stopped being a thing the role alone
+  // conferred: _reviewerKind is "on the review side at all", _reviews is "may
+  // review THIS item now". Both are asserted, because collapsing them again is
+  // exactly the bug this file exists for.
+  ok(/const _reviewerKind = !EXTERNAL \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\);/.test(c),
+     'whether the reader is on the review side at all');
+  ok(/const _reviews = !EXTERNAL \|\| \(DESIGN_ROLES\.includes\(viewingAsRole\(\)\) && replyMayReview\(key, r\)\);/.test(c),
+     'and whether this item is theirs to review right now');
   ok(/const _decides = \(_mineNow && _reviews\) \|\| \(IS_ADMIN && !viewingAsExternal\(\)\);/.test(c),
      'both required — dropping either one hands somebody a decision that is not theirs');
   // Both fields are halves of the same act, and one of them used to answer a

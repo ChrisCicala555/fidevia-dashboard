@@ -169,8 +169,13 @@ const seenBy = (email,co,role) => { b.run(`EXTERNAL=true;IS_ADMIN=false;ME_EMAIL
   ok(/Submit Revision/.test(colleague.row), 'and is offered the revision, not a reply');
   const architect = seenBy('a@x.test','Architect 2','architect');
   ok(!/Awaiting you/.test(architect.panel), 'the reviewer who sent it back does not own it');
-  ok(/Submit Review Step/.test(architect.row),
-     'and their button is unchanged — a reviewer still submits a review step');
+  // Christopher: once it has gone back, it is with the contractor, so the
+  // architect is not reviewing while they wait. They comment; they get the
+  // review back when it is resubmitted.
+  ok(!/Submit Review Step/.test(architect.row),
+     'and they are no longer offered a review step on an item they have sent away');
+  ok(/Add a Comment/.test(architect.row),
+     'they are offered a comment instead, which is what it is');
   const other = seenBy('someone@gorilla.test','Gorilla Construction','contractor');
   ok(!/Awaiting you/.test(other.panel), 'and another contractor on the job does not own it either');
 }

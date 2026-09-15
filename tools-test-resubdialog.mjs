@@ -68,10 +68,14 @@ console.log('An ordinary reply is still an ordinary reply');
 console.log('The rule');
 {
   const c = html.split('function openReply')[1].split('\n// Why this item is settled')[0];
-  ok(/const _reviews = !EXTERNAL \|\| DESIGN_ROLES\.includes\(viewingAsRole\(\)\);/.test(c),
+  // _reviews split in two when a review stopped being a thing the role alone
+  // conferred: _reviewerKind is "on the review side at all", _reviews is "may
+  // review THIS item now". Both are asserted, because collapsing them again is
+  // exactly the bug this file exists for.
+  ok(/const _reviews = !EXTERNAL \|\| \(DESIGN_ROLES\.includes\(viewingAsRole\(\)\) && replyMayReview\(key, r\)\);/.test(c),
      'who reviews decides whether the question is asked');
-  ok(/const _sendingBack = advance && !_reviews;/.test(c),
-     'and somebody advancing who does not review is sending a revision back');
+  ok(/const _sendingBack = advance && !_reviewerKind;/.test(c),
+     'and somebody advancing who is not on the review side at all is sending a revision back');
   ok(/nf\.style\.display = \(advance && _decides\) \? '' : 'none';/.test(c),
      'so the reviewer’s question is hidden from them');
   ok(/if\(act && !_decides\) act\.value='continue';/.test(c),

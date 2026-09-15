@@ -5177,7 +5177,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 15:05';
+const BUILD_STAMP='2026-09-15 17:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13882,8 +13882,12 @@ function verThreadRows(key,r,i,colspan){
   // action means different things to them. The contractor who filed the item is
   // sending a new version of their own document; the design team is recording a
   // review, whether or not the chain happens to name them; Fidevia is replying.
-  const _rvLabel = DESIGN_ROLES.includes(viewingAsRole()) ? 'Submit Review Step'
-    : (EXTERNAL ? 'Submit Updated Version' : 'Reply / New Version');
+  // Same rule as the dialog: the button may only offer a review to whoever the
+  // chain is actually sitting on. A design-team reader on somebody else's item
+  // is commenting, and the button should say so rather than tempt them.
+  const _rvLabel = (DESIGN_ROLES.includes(viewingAsRole()) && replyMayReview(key,r)) ? 'Submit Review Step'
+    : (EXTERNAL ? (DESIGN_ROLES.includes(viewingAsRole()) ? 'Add a Comment' : 'Submit Updated Version')
+                : 'Reply / New Version');
   // One action, not two that look alike and behave differently.
   //
   // There used to be a advancing button and a non-advancing one, chosen by
@@ -14034,10 +14038,37 @@ function openReply(key,i,advance){
   // contractor was told the decision was not theirs to record and then asked
   // which kind of review they were recording. Both fields belong to the same
   // act, so they now answer to the same condition.
-  const _reviews = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+  // Being on the design team is not the same as being the reviewer.
+  //
+  // This used to be the role alone, deliberately: "the design team is recording
+  // a review, whether or not the chain happens to name them". That is wrong, and
+  // Christopher found it by recording a review on an item that was never his.
+  // A review is an answer from the party the item was put to; anyone else
+  // offering one is a comment wearing a reviewer's clothes. It also read as an
+  // invitation — the button said Submit Review Step — while the server refused
+  // the advance, so the chain did not move and the thread gained an entry that
+  // looked like a decision.
+  //
+  // Now it is the chain that decides, for everybody: the step has to be theirs,
+  // by name or by firm. Fidevia is the exception, and records a stand-in
+  // approval through the ⋯ override, where a reason is required.
+  // Two different questions, and this was one variable answering both.
+  //
+  //   _reviewerKind — is this reader on the review side at all? Fidevia and the
+  //                   design team are; a contractor is not, and is filing a
+  //                   version rather than ruling on their own work.
+  //   _reviews      — may they record a review on THIS item, right now?
+  //
+  // The explanation under the status field needs the first: a design reader who
+  // may not decide should be told who it is with, not left with a bare comment
+  // box and no reason. The decision itself needs the second.
+  const _reviewerKind = !EXTERNAL || DESIGN_ROLES.includes(viewingAsRole());
+  const _reviews = !EXTERNAL || (DESIGN_ROLES.includes(viewingAsRole()) && replyMayReview(key, r));
   const _mineNow = replyStepIsMine(key, r);
   const _decides = (_mineNow && _reviews) || (IS_ADMIN && !viewingAsExternal());
-  const _sendingBack = advance && !_reviews;
+  // The submitting side, who are answering rather than reviewing. A design
+  // reader who simply may not review this item is neither.
+  const _sendingBack = advance && !_reviewerKind;
   document.getElementById('reply-title').textContent=
     (_sendingBack ? 'Submit Revision — ' : (advance ? 'Review — ' : 'Reply — '))
     +(r[REPLY_IDF[key]]||REPLY_LABEL[key]);
@@ -14110,9 +14141,12 @@ function openReply(key,i,advance){
     // submittal. Dropping the second half would have handed them Approve.
     if(sf) sf.style.display = _decides ? '' : 'none';
     if(hint){
-      hint.style.display = (_decides || !_reviews) ? 'none' : '';
-      const who=(_decides || !_reviews) ? '' : replyWaitingOn(key, r);
-      hint.textContent = (_decides || !_reviews) ? ''
+      // Shown to anyone on the review side who is not the one deciding — which
+      // now includes a design reader the chain never named, who would otherwise
+      // get a comment box with nothing to say why.
+      hint.style.display = (_decides || !_reviewerKind) ? 'none' : '';
+      const who=(_decides || !_reviewerKind) ? '' : replyWaitingOn(key, r);
+      hint.textContent = (_decides || !_reviewerKind) ? ''
         : (who ? 'This is with '+who+'. You can add a version or a note here; the decision is theirs to record.'
                : 'You can add a version or a note here. Recording a decision is for whoever the chain is on.');
     }
@@ -14135,6 +14169,42 @@ function replyStepIsMine(key, row){
     if(wfIsDone(row)||wfIsStopped(row)) return false;
     const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
     return wfMyStepsIn(steps,gs,ge).length>0;
+  }catch(e){ return false; }
+}
+// May this reader record a review on this item at all?
+//
+// It used to be the ROLE alone — "the design team is recording a review,
+// whether or not the chain happens to name them" — so an engineer could open a
+// review on an item their firm had nothing to do with. The server always
+// refused to advance it, but the button said Submit Review Step and the thread
+// gained an entry that read like a decision.
+//
+// Three cases, and only the first two say yes:
+//
+//   the chain is on them now              — plainly theirs
+//   they are named further down it        — recording now is not wasted; the
+//                                           review is kept and signs their step
+//                                           when the chain reaches it, which is
+//                                           why a later reviewer's press was
+//                                           allowed in the first place
+//   they are not on the chain at all      — a comment, not a review
+//
+// With one exception on top: while the item has gone BACK to the submitting
+// side, nobody on the review side is reviewing. It is not theirs to answer
+// until it is resubmitted, and offering a review there is how an architect
+// reviews a drawing that is being redrawn.
+//
+// Fidevia is outside all of this and records stand-in approvals through the
+// ⋯ override, where a reason is required.
+function replyMayReview(key, row){
+  try{
+    const steps=wfEffectiveSteps(key,row);
+    if(!steps.length) return true;                 // no chain: nothing to be off
+    if(wfIsDone(row)||wfIsStopped(row)) return false;
+    const [gs,ge]=wfGroupAt(steps, wfActiveIdx(row));
+    if(wfMyStepsIn(steps,gs,ge).length>0) return true;
+    if(steps.slice(gs,ge+1).some(st=>st&&st.returned)) return false;
+    return steps.some(wfStepIsMine);
   }catch(e){ return false; }
 }
 // Is the chain sitting on a step that was sent back? Only then is a version
