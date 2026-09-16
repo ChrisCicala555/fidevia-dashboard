@@ -2697,7 +2697,7 @@ const MODULES = {
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Copy Type','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Copy Type','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Change Orders Claimed','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -5380,7 +5380,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 15:34';
+const BUILD_STAMP='2026-09-16 16:00';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8209,7 +8209,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>App #</label><input autocomplete="off" id="f-num" placeholder="Auto once a contractor is chosen"><p class="file-hint" style="margin-top:3px;" id="f-num-hint"></p></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
     <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="Example Mechanical Inc."></div>
     <div class="field-row"><div class="field"><label>Period (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (MM/DD/YYYY) *</label><input autocomplete="off" type="date" id="f-due"></div></div>
-    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="1,000,000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
+    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="1,000,000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0" readonly class="fig-locked"><div id="f-co-pick"></div></div></div>
     <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="250,000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="50,000"></div></div>
     <div class="field"><label>Payment Application Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The pay application PDF, uploaded to Box. Remaining is calculated automatically. Fidevia will review and sign.</p></div>`},
     document:{title:'Upload Document',html:`
@@ -8375,8 +8375,13 @@ function openModal(type){
           : 'Next in sequence for '+co+'. Type over it to use a different number.';
       };
       if(num) num.onchange=()=>{ num.dataset.touched=num.value.trim()?'1':''; renum(); };
-      ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } renum(); };
-      ci.onchange=renum;
+      // Which change orders are on offer depends on the contractor and on the
+      // period, so the list follows both.
+      ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } renum(); coPickReset(); coPickRender(); };
+      ci.onchange=function(){ renum(); coPickReset(); coPickRender(); };
+      { const pf=document.getElementById('f-period');
+        if(pf) pf.onchange=function(){ coPickReset(); coPickRender(); }; }
+      coPickReset(); try{ coPickRender(); }catch(e){}
       renum();
     } }
   // The asterisk belongs to the reader, not to the form: the same field is
@@ -9224,9 +9229,17 @@ async function submitForm(){
       newRow={'Cost Code':v('f-code'),'Description':v('f-subject'),'Budget Amount':v('f-budget'),'Committed Costs':v('f-committed'),'Approved Change Orders':v('f-cos'),'Actual to Date':v('f-actual'),'Variance':(bud-act).toFixed(2)};
     } else if(currentModal==='payapp'){
       if(!v('f-contr')||!v('f-req')) throw new Error('Contractor and Requested Amount are required.');
-      const contract=parseFloat(v('f-contract'))||0, cosApp=parseFloat(v('f-cos-approved'))||0, prev=parseFloat(v('f-prev'))||0, req=parseFloat(v('f-req'))||0;
+      // parseFloat, on a field the money formatter has put commas into, reads
+      // "1,000,000" as 1. Every figure on this form goes through it, so the
+      // contract sum, the change orders and what was left on the contract were
+      // all wrong by three orders of magnitude the moment a figure passed 999.
+      const contract=payNum(v('f-contract')), cosApp=payNum(v('f-cos-approved')),
+            prev=payNum(v('f-prev')), req=payNum(v('f-req'));
       const remain=(contract+cosApp)-prev-req;
-      newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
+      // Which change orders that total is of. A list survives the question a
+      // total cannot answer: which one is missing.
+      const _claimed = CO_PICK.manual ? '' : coPickChosen().map(c=>c.num).filter(Boolean).join('; ');
+      newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Change Orders Claimed':_claimed,'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
     } else if(currentModal==='cdaily_ext'){
       if(!attachId) throw new Error('Please choose your daily report file.');
       const _comp=viewingAsCompany();
@@ -12393,7 +12406,10 @@ function monthEnd(iso){
 // Net in the same sense the Financial Summary means it: a deduct reduces it,
 // and anything funded from an allowance counts nothing, because that money was
 // inside the contract already.
-function coNetAsOf(name, asOf){
+// The change orders themselves, in the order they were executed. coNetAsOf is
+// the sum of exactly this list, so the total and the list it is meant to add up
+// to cannot disagree.
+function coClaimList(name, asOf){
   const norm=String(name||'').trim().toLowerCase();
   const cut=asOf ? (asOf instanceof Date ? asOf : monthEnd(asOf)) : null;
   return (allData.co||[])
@@ -12405,7 +12421,13 @@ function coNetAsOf(name, asOf){
       const d=parseLocalDate(r['Date Approved']||r['Date Submitted']);
       return !d || d<=cut;
     })
-    .reduce((sum,r)=>sum+coContractImpact(r),0);
+    .map(r=>({ num:String(r['CO #']||'').trim(),
+               desc:String(r['Description']||'').trim(),
+               date:String(r['Date Approved']||'').trim(),
+               amount:coContractImpact(r) }));
+}
+function coNetAsOf(name, asOf){
+  return coClaimList(name, asOf).reduce((sum,c)=>sum+c.amount,0);
 }
 // What the application says against what the log says, and by how much.
 function payCoCheck(row){
@@ -12417,6 +12439,18 @@ function payCoCheck(row){
   // Rounded to the penny before comparing: two figures that differ by a
   // hundredth are the same figure written twice, and a flag on that is noise.
   return { typed, expected, diff, agrees: Math.abs(diff)<0.005 };
+}
+// Executed against this contract by the end of the period, and not named on the
+// application. Empty when the application never said which ones it claims —
+// older rows, and figures entered by hand — because then nothing is known to be
+// missing rather than everything being.
+function payUnclaimed(row){
+  const said=String((row&&row['Change Orders Claimed'])||'').trim();
+  if(!said) return [];
+  const claimed=new Set(said.split(';').map(x=>x.trim()).filter(Boolean));
+  const co=String((row&&(row['Contractor']||row['Company']))||'').trim();
+  return coClaimList(co, (row&&row['Period'])||'')
+    .filter(c=>c.num && !claimed.has(c.num));
 }
 // The same comparison, against what is in the dialog rather than what is saved,
 // so it answers while the figure is being typed rather than after it is filed.
@@ -12440,11 +12474,17 @@ function payCoCheckHTML(row, opts){
   if(opts && opts.short)
     return '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">'
       +esc(fmtSigned(String(c.diff))+' vs change orders')+'</div>';
+  // Where the application said which change orders it claims, the gap can be
+  // named rather than described. A missing number is something to go and look
+  // at; a missing amount is only a puzzle.
+  const missing=payUnclaimed(row);
   return '<p class="file-hint" style="margin:4px 0 0;color:#8a5a00;font-weight:600;">'
     +esc('This is '+fmtMoney(Math.abs(c.diff))+' '+words+' \u2014 '+detail+'.')
-    +' '+esc(over
-        ? 'Either a change order has not been recorded here, or the application is claiming one that was not executed.'
-        : 'Either a change order was executed after this period, or the application has not picked it up yet.')
+    +' '+esc(missing.length
+        ? ('Not claimed on this application: '+missing.map(m=>m.num+' ('+fmtSigned(String(m.amount))+')').join(', ')+'.')
+        : (over
+          ? 'Either a change order has not been recorded here, or the application is claiming one that was not executed.'
+          : 'Either a change order was executed after this period, or the application has not picked it up yet.'))
     +'</p>';
 }
 // ── WHAT THE DASHBOARD ALREADY KNOWS ───────────────────────────────────────
@@ -12566,6 +12606,82 @@ function payFigureNotes(){
   payRecordNote('pa-prev-note', g('pa-prev'), k.prev,
     'Approved on earlier applications', '');
 }
+// ── PICKING THE CHANGE ORDERS AN APPLICATION CLAIMS ────────────────────────
+//
+// "Approved Change Orders" was a number somebody added up off the G702. The
+// dashboard holds the change orders it is the sum of, so this asks which ones
+// the application claims and adds them up itself. The answer is more than a
+// total: a list says which change order is missing when the figures disagree,
+// which a total never can.
+const CO_PICK={ off:new Set(), manual:false };
+function coPickReset(){ CO_PICK.off=new Set(); CO_PICK.manual=false; }
+function coPickRows(){ return coClaimList(v('f-contr'), v('f-period')); }
+function coPickChosen(){ return coPickRows().filter(c=>!CO_PICK.off.has(c.num)); }
+function coPickTotal(){ return coPickChosen().reduce((s,c)=>s+c.amount,0); }
+function coPickToggle(num){
+  if(CO_PICK.off.has(num)) CO_PICK.off.delete(num); else CO_PICK.off.add(num);
+  coPickRender();
+}
+function coPickManual(on){ CO_PICK.manual=!!on; coPickRender(); }
+function coPickAll(on){
+  const rows=coPickRows();
+  CO_PICK.off = on ? new Set() : new Set(rows.map(c=>c.num));
+  coPickRender();
+}
+function coPickRender(){
+  const box=document.getElementById('f-co-pick'); if(!box) return;
+  const fld=document.getElementById('f-cos-approved');
+  const co=v('f-contr').trim();
+  const hint=t=>'<p class="file-hint" style="margin:5px 0 0;">'+esc(t)+'</p>';
+  const link=(t,call)=>'<button type="button" class="fig-unlock" onclick="'+call+'">'+esc(t)+'</button>';
+  // Typed by hand: the dashboard steps back and the field is the answer.
+  if(CO_PICK.manual){
+    if(fld){ fld.removeAttribute('readonly'); fld.classList.remove('fig-locked'); }
+    box.innerHTML=hint('Entering the figure by hand.')+link('Pick from the change order log instead','coPickManual(false)');
+    return;
+  }
+  if(fld){ fld.setAttribute('readonly','readonly'); fld.classList.add('fig-locked'); }
+  if(!co){
+    if(fld) fld.value='';
+    box.innerHTML=hint('Choose a contractor to see their executed change orders.');
+    return;
+  }
+  const rows=coPickRows();
+  if(!rows.length){
+    if(fld) fld.value='';
+    box.innerHTML=hint('No executed change orders for '+co+' as at this period.')
+      +link('Enter a figure by hand','coPickManual(true)');
+    return;
+  }
+  const chosen=coPickChosen();
+  if(fld){ fld.value=String(coPickTotal()); try{ fmtMoneyInput(fld, true); }catch(e){} }
+  const items=rows.map(function(c){
+    const on=!CO_PICK.off.has(c.num);
+    return '<label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-top:1px solid var(--border);cursor:pointer;">'
+      +'<input type="checkbox" class="co-pick-box" data-num="'+esc(c.num)+'"'+(on?' checked':'')
+      +' onchange="coPickToggle('+esc(JSON.stringify(c.num))+')" style="margin-top:3px;">'
+      +'<span style="flex:1;font-size:13px;line-height:1.35;">'
+        +'<strong>'+esc(c.num||'(unnumbered)')+'</strong>'
+        +(c.desc?(' \u2014 '+esc(c.desc)):'')
+        +(c.date?('<span style="color:var(--muted);"> \u00b7 '+esc(fmtDMY(c.date))+'</span>'):'')
+      +'</span>'
+      +'<span style="font-weight:700;white-space:nowrap;">'+fmtSigned(String(c.amount))+'</span>'
+    +'</label>';
+  }).join('');
+  const all=chosen.length===rows.length;
+  box.innerHTML='<div style="margin-top:6px;border:1px solid var(--border);border-radius:8px;padding:2px 10px 8px;background:var(--white);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:11px;'
+      +'text-transform:uppercase;letter-spacing:.5px;color:var(--muted);">'
+      +'<span>Executed change orders</span>'
+      +link(all?'Clear all':'Select all','coPickAll('+(all?'false':'true')+')')
+    +'</div>'+items+'</div>'
+    +hint(chosen.length===rows.length
+      ? ('All '+rows.length+' executed change order'+(rows.length===1?'':'s')+', '+fmtMoney(coPickTotal())+'.')
+      : (chosen.length+' of '+rows.length+' \u2014 '+fmtMoney(coPickTotal())
+         +'. The rest are executed but not claimed here.'))
+    +link('Enter a figure by hand','coPickManual(true)');
+}
+
 // ── BILLING CYCLE ──────────────────────────────────────────────────────────
 // The spec fixes three days: the contractor's pencil copy, the formal
 // application, and the owner's payment. The first two fall in the billing

@@ -106,7 +106,8 @@ ok('a typed number still wins',     /'App #':\(v\('f-num'\)\|\|PRE_NUM\)/.test(s
 // a delete that failed halfway.
 ok('contractor uploads are numbered', /const _panum = PRE_NUM \|\| \(await payNextNumber\(_comp/.test(src));
 ok('and the log is the last resort, not the first', /\|\| nextItemNumber\('pay_apps',_comp\);/.test(src));
-ok('the form renumbers when the contractor changes', /ci\.onchange=renum/.test(src));
+ok('the form renumbers when the contractor changes',
+   /ci\.onchange=function\(\)\{ renum\(\);/.test(src));
 ok('a typed number is not overwritten', /num\.dataset\.touched/.test(src));
 
 fs.rmSync('.pn.tmp.mjs',{force:true});
