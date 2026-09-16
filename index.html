@@ -1735,7 +1735,9 @@
       <div id="pa-details" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#faf9f5;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Read off the contractor's application</div>
         <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="pa-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="pa-contr" list="contr-list-pa" placeholder="Select or type"><datalist id="contr-list-pa"></datalist></div></div>
-        <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
+        <div class="field-row"><div class="field"><label>Period Start</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Period End</label><input autocomplete="off" type="date" id="pa-period-to"></div></div>
+        <p class="file-hint" style="margin:2px 0 8px;" id="pa-period-note"></p>
+        <div class="field-row"><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due" readonly class="fig-locked"><div id="pa-due-note"></div></div><div class="field"></div></div>
         <div class="field-row"><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="50,000"></div><div class="field"></div></div>
         <p class="file-hint" style="margin:2px 0 8px;">Open the uploaded file above to read these off the contractor's application.</p>
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Already on record</div>
@@ -5403,7 +5405,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 23:34';
+const BUILD_STAMP='2026-09-16 23:48';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12616,6 +12618,42 @@ function payRecordNote(id, typed, known, source, missing){
   if(Math.abs(payNum(typed)-known)<0.005){ el.innerHTML=hint(source+'.'); return; }
   el.innerHTML=flag(source+' \u2014 it holds '+fmtMoney(known)+'.');
 }
+// The due date follows from the billing cycle the project set, so it is shown
+// rather than asked for. Where no cycle has been set there is no date to show:
+// billingCycle() falls back to a 20th and a 25th so the rest of the screen has
+// something to draw, and a deadline nobody chose is not one to hold anybody to.
+function payPeriodNotes(){
+  const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
+  const from=g('pa-period'), to=g('pa-period-to');
+  const span=document.getElementById('pa-period-note');
+  if(span){
+    const bad = from && to && parseLocalDate(to) && parseLocalDate(from)
+                && parseLocalDate(to) < parseLocalDate(from);
+    span.textContent = bad
+      ? 'The period ends before it starts.'
+      : (from && to ? ('This application covers '+fmtDMY(from)+' \u2013 '+fmtDMY(to)+'.')
+                    : 'The stretch of work this application covers.');
+    span.style.color = bad ? '#8a5a00' : '';
+    span.style.fontWeight = bad ? '600' : '';
+  }
+  const due=document.getElementById('pa-due');
+  const dn=document.getElementById('pa-due-note');
+  const cfg=billingCycle();
+  const val=payUploadDue(from);
+  if(due) due.value=val;
+  if(dn) dn.innerHTML='<p class="file-hint" style="margin:3px 0 0;'
+    +(cfg.configured?'':'color:#8a5a00;font-weight:600;')+'">'
+    +esc(cfg.configured
+      ? ('From the project\u2019s billing cycle \u2014 the formal application is due on the '
+         +ordinalDay(cfg.formalDay)+' of the month.')
+      : 'No billing cycle set for this project, so there is no due date to derive. Set one in project settings.')
+    +'</p>';
+}
+function ordinalDay(n){
+  const v=parseInt(n,10)||0, t=v%100;
+  const suf=(t>=11&&t<=13)?'th':({1:'st',2:'nd',3:'rd'}[v%10]||'th');
+  return v+suf;
+}
 function payFigureNotes(){
   const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
   const k=payKnownFigures(g('pa-contr'), g('pa-period'),
@@ -12875,6 +12913,30 @@ function payCurrentPeriod(){
     return monthStart(nx);
   }
   return monthStart(now);
+}
+// An application covers a stretch of work, not a day. The log has carried
+// Period From and Period To since it was written and nothing ever filled them:
+// one date was recorded and the other two columns stayed empty. Period is kept
+// as the month the application belongs to — everything that asks which month
+// keys on it — and the two ends say what it actually covers.
+function payPeriodRange(row){
+  const from=String((row&&row['Period From'])||'').trim();
+  const to=String((row&&row['Period To'])||'').trim();
+  const anchor=String((row&&row['Period'])||'').trim();
+  const base=parseLocalDate(from||anchor);
+  const end=monthEnd(from||anchor);
+  return { from: from || (base ? isoDay(new Date(base.getFullYear(), base.getMonth(), 1)) : ''),
+           to:   to   || (end  ? isoDay(end) : '') };
+}
+// How a period reads on the log: the two ends where they differ, one date where
+// the application covers a single day.
+function payPeriodSpan(row){
+  const r=payPeriodRange(row);
+  // No separate guard for a row with neither end: fmtDMY answers '' for an
+  // empty date, so the line below already returns nothing.
+  if(!r.from) return fmtDMY(r.to);
+  if(!r.to || r.to===r.from) return fmtDMY(r.from);
+  return fmtDMY(r.from)+' \u2013 '+fmtDMY(r.to);
 }
 function payPeriodLabel(iso){
   const m=String(iso||'').match(/^(\d{4})-(\d{2})/);
@@ -13259,7 +13321,7 @@ function renderPayApps(){
           // Disagreeing with the change order log is worth seeing from the log
           // itself, not only inside the review dialog somebody may not open.
           + payCoCheckHTML(r, {short:true});
-        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(fmtDMY(r['Period']||r['Period To']||''))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
+        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(payPeriodSpan(r))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
       }).join('');
       body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="pay-act">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
     }
@@ -13284,8 +13346,8 @@ function openPayAction(idx){
     // Every review opens on the record. A disagreement is recorded for one
     // application, not carried into the next one somebody opens.
     PAY_FIGS_LOCKED=true;
-    set('pa-num',r['App #']); set('pa-contr',r['Contractor']); set('pa-period',r['Period']);
-    set('pa-due',r['Due Date']);
+    set('pa-num',r['App #']); set('pa-contr',r['Contractor']);
+    { const rg=payPeriodRange(r); set('pa-period',rg.from); set('pa-period-to',rg.to); }
     ['pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id,i){
       setMoneyField(id, r[['Contract Amount','Approved Change Orders','Previously Paid','Requested Amount'][i]]);
     });
@@ -13294,8 +13356,10 @@ function openPayAction(idx){
     // Which figures are on record depends on the contractor and the period as
     // much as on what is typed, so both are re-derived whenever either moves.
     { const pd=document.getElementById('pa-period');
-      if(pd) pd.onchange=function(){ payPrefillKnown(); payFigureNotes(); }; }
-    try{ payLockApply(); payPrefillKnown(); payFigureNotes(); }catch(e){}
+      if(pd) pd.onchange=function(){ payPeriodNotes(); payPrefillKnown(); payFigureNotes(); };
+      const pt=document.getElementById('pa-period-to');
+      if(pt) pt.onchange=payPeriodNotes; }
+    try{ payLockApply(); payPeriodNotes(); payPrefillKnown(); payFigureNotes(); }catch(e){}
   }
   const pencil=payIsPencil(r);
   { const sel=document.getElementById('pa-action');
@@ -13376,7 +13440,16 @@ async function submitPayAction(){
       if(!g('pa-req')) throw new Error('Requested This Period is required.');
       row['App #']=g('pa-num'); row['Contractor']=g('pa-contr');
       if(!String(row['Company']||'').trim()) row['Company']=g('pa-contr');
-      row['Period']=g('pa-period'); row['Due Date']=g('pa-due');
+      const _pf=g('pa-period'), _pt=g('pa-period-to');
+      if(_pf && _pt && parseLocalDate(_pf) && parseLocalDate(_pt) && parseLocalDate(_pt)<parseLocalDate(_pf))
+        throw new Error('The period ends before it starts.');
+      row['Period From']=_pf; row['Period To']=_pt;
+      // Period stays the month the application belongs to, which is what every
+      // comparison against the change order log and the earlier applications
+      // keys on.
+      row['Period']=_pf || row['Period'] || '';
+      // Not typed: the billing cycle decides it.
+      row['Due Date']=payUploadDue(row['Period']);
       row['Contract Amount']=g('pa-contract'); row['Approved Change Orders']=g('pa-cos');
       row['Previously Paid']=g('pa-prev'); row['Requested Amount']=g('pa-req');
       const _c=payNum(g('pa-contract')), _co=payNum(g('pa-cos')), _pv=payNum(g('pa-prev')), _rq=payNum(g('pa-req'));

@@ -115,7 +115,7 @@ ok(/function payFigureNotes\(\)[\s\S]{0,900}?payCoNote\(\);/.test(html),
   ok(/saved\['Contractor'\]/.test(o),
      'falling back to the saved row for fields the dialog does not show');
 }
-ok(/pd\.onchange=function\(\)\{ payPrefillKnown\(\); payFigureNotes\(\); \};/.test(html),
+ok(/pd\.onchange=function\(\)\{ payPeriodNotes\(\); payPrefillKnown\(\); payFigureNotes\(\); \};/.test(html),
    'and it is redone when the period changes, since the comparison depends on it');
 
 console.log((bad?'FAIL':'ok  ')+' tools-test-pacocheck.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));

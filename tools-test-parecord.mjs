@@ -193,7 +193,7 @@ console.log('The dialog separates the two kinds of figure');
 }
 ok(/ci\.oninput=function\(\)\{ payPrefillKnown\(\); payFigureNotes\(\); \};/.test(html),
    'choosing the contractor pulls their figures through');
-ok(/try\{ payLockApply\(\); payPrefillKnown\(\); payFigureNotes\(\); \}catch\(e\)\{\}/.test(html),
+ok(/try\{ payLockApply\(\); payPeriodNotes\(\); payPrefillKnown\(\); payFigureNotes\(\); \}catch\(e\)\{\}/.test(html),
    'and so does opening the dialog, without a thrown lookup stopping the review');
 
 console.log('Read-only until somebody says the paper disagrees');
