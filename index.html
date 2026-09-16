@@ -1692,6 +1692,23 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="payrepl-backdrop" onclick="backdropClick(event,closePayReplace)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header"><h3 id="payrepl-title">Replace document</h3>
+      <button class="modal-close" onclick="closePayReplace()">&#10005;</button></div>
+    <div class="modal-body">
+      <p class="file-hint" style="margin:0 0 14px;" id="payrepl-note"></p>
+      <div class="field"><label>Corrected application *</label>
+        <input autocomplete="off" type="file" id="payrepl-file">
+        <p class="file-hint">The document you meant to file. What you sent before stays in the history.</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="payrepl-btn" onclick="submitPayReplace()">Replace document</button>
+      <button class="btn-secondary" onclick="closePayReplace()">Cancel</button>
+      <span id="payrepl-status" class="form-status"></span>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="payfinal-backdrop" onclick="backdropClick(event,closePayFinal)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header"><h3 id="payfinal-title">Submit Final</h3>
@@ -5358,7 +5375,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 14:04';
+const BUILD_STAMP='2026-09-16 14:36';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12877,6 +12894,106 @@ function payMayPromote(r){
   const theirs=String(r['Contractor']||r['Company']||'').trim().toLowerCase();
   return !!mine && mine===theirs;
 }
+// ── CORRECTING WHAT WAS FILED ──────────────────────────────────────────────
+//
+// A contractor who attaches the wrong month, or an application with a figure
+// they spot afterwards, had no way back: the row was filed and only Fidevia
+// could touch it. Everyone's answer was to file a second application, which
+// leaves two live rows for one billing period and a number that has to be
+// retired by hand.
+//
+// Replacing is safe only while nothing has been done with the document. Once
+// somebody has reviewed it, the thing they reviewed has to stay put — so the
+// test is not the status alone but every mark a review leaves.
+function payReviewStarted(r){
+  if(!r) return true;
+  if(String(r['Reviewed By']||'').trim() || String(r['Review Date']||'').trim()) return true;
+  if(String(r['Action']||'').trim()) return true;
+  // A signed copy means Fidevia has put their name to a document.
+  if(String(r['Signed File ID']||'').trim() || String(r['Signed File Name']||'').trim()) return true;
+  let done=[]; try{ done=JSON.parse(r['Workflow Done']||'[]'); }catch(e){}
+  if(done.length) return true;
+  // And anything that has left the waiting states has been ruled on, whatever
+  // else the row does or does not carry.
+  return !payIsOutstanding(r);
+}
+function payMayReplace(r){
+  if(!r || !viewingAsExternal()) return false;
+  if(isArchived(r)) return false;
+  const mine=String(viewingAsCompany()||'').trim().toLowerCase();
+  const theirs=String(r['Contractor']||r['Company']||'').trim().toLowerCase();
+  if(!mine || mine!==theirs) return false;
+  // Nothing filed is nothing to replace. That row needs Fidevia to record it,
+  // which is a different button.
+  if(!String(r['Attachment File ID']||'').trim()) return false;
+  return !payReviewStarted(r);
+}
+let PAYREPL_IDX=-1;
+function openPayReplace(idx){
+  const r=(allData.pay_apps||[])[idx];
+  if(!r || !payMayReplace(r)){ alert('That application has already been reviewed, so its document stays as filed.'); return; }
+  PAYREPL_IDX=idx;
+  const t=document.getElementById('payrepl-title');
+  if(t) t.textContent='Replace document \u2014 '+(r['App #']||r['Attachment Name']||'application');
+  const n=document.getElementById('payrepl-note');
+  if(n) n.textContent='Fidevia has not reviewed this yet, so you can put the right document on it. '
+    +'The application keeps its number and its period; only the document changes, and what you sent '
+    +'before stays in the history.';
+  const f=document.getElementById('payrepl-file'); if(f) f.value='';
+  showStatus('payrepl-status','','info');
+  const b=document.getElementById('payrepl-btn'); if(b) b.disabled=false;
+  document.getElementById('payrepl-backdrop').classList.add('open');
+}
+function closePayReplace(){ document.getElementById('payrepl-backdrop').classList.remove('open'); PAYREPL_IDX=-1; }
+async function submitPayReplace(){
+  const idx=PAYREPL_IDX, rows=allData.pay_apps||[], r=rows[idx];
+  // Re-checked at the moment of writing, not only when the dialog opened: a
+  // review may have been recorded while it sat open.
+  if(!r || !payMayReplace(r)){ closePayReplace(); renderAll(); return; }
+  const f=document.getElementById('payrepl-file');
+  if(!f || !f.files || !f.files[0]){ showStatus('payrepl-status','Choose the corrected document.','error'); return; }
+  const btn=document.getElementById('payrepl-btn'); if(btn) btn.disabled=true;
+  const before=JSON.stringify({a:r['Attachment File ID'], n:r['Attachment Name'], v:r['Version History']});
+  try{
+    showStatus('payrepl-status','Uploading\u2026','info');
+    const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
+    const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
+    const ent=up.entries?up.entries[0]:up;
+    await resolveMe();
+    const who=viewingAsCompany()||ME_NAME||ME_EMAIL||'';
+    const old=String(r['Attachment Name']||'').trim();
+    let vs=_versions(r);
+    vs.push({v:vs.length+1, fileId:ent.id||'', fileName:f.files[0].name,
+             status:String(r['Copy Type']||'')||'Replaced', date:etToday(), by:who, co:who,
+             note:'Replaced by the contractor before review'+(old?(' \u2014 was '+old):'')+'.'});
+    r['Version History']=JSON.stringify(vs);
+    r['Attachment File ID']=ent.id||'';
+    r['Attachment Name']=f.files[0].name;
+    // Status, Copy Type, period and number all stand. This is the same
+    // application, correctly documented — not a new one.
+    const existing=await findFile(fid, mod.log);
+    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    try{ auditLog('Document replaced before review','pay_apps',r, String(r['App #']||'')); }catch(e){}
+    // Fidevia may be part-way through reading the old one.
+    try{
+      notifyContacts('Notify - CO', '[Fidevia] Payment Application '+(r['App #']||'')+' \u2014 document replaced',
+        emailTemplate('Payment Application Document Replaced',
+          [['App #',r['App #']||''],['Contractor',r['Contractor']||''],
+           ['Period',fmtDMY(r['Period']||'')],['Replaced by',who||'\u2014'],
+           ['Previous document',old||'\u2014'],['New document',f.files[0].name]],
+          currentProject.name));
+    }catch(e){}
+    showStatus('payrepl-status','Replaced.','success');
+    renderAll();
+    setTimeout(closePayReplace, 800);
+  }catch(e){
+    const b=JSON.parse(before);
+    r['Attachment File ID']=b.a; r['Attachment Name']=b.n; r['Version History']=b.v;
+    renderAll();
+    showStatus('payrepl-status','Could not replace it: '+(e.message||e),'error');
+  }
+  if(btn) btn.disabled=false;
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -12937,7 +13054,8 @@ function renderPayApps(){
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
         const needs=payNeedsDetails(r);
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
-          :(payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'');
+          :((payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
+            +(payMayReplace(r)?'<button class="row-act" title="Fidevia has not reviewed this yet \u2014 put the right document on it" onclick="openPayReplace('+idx+')">Replace file</button>':''));
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
           + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '')
           // Disagreeing with the change order log is worth seeing from the log
