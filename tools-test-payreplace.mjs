@@ -87,6 +87,41 @@ console.log('What replacing does, and what it leaves alone');
   ok(/await payAppFolder\(r\)/.test(sub), 'and the new file lands in that application’s own folder');
 }
 
+console.log('Through the path a contractor is allowed to write on');
+{
+  const P2=bootPage(); P2.run(SEED);
+  P2.run(`
+    EXTERNAL=true; IS_ADMIN=false;
+    viewingAsExternal=function(){ return true; };
+    viewingAsCompany=function(){ return 'Summit Builders'; };
+    allData.pay_apps=[{'App #':'PA #01','Contractor':'Summit Builders','Company':'Summit Builders',
+      'Copy Type':'Final','Status':'Uploaded — awaiting Fidevia','Attachment File ID':'a',
+      'Attachment Name':'wrong-month.pdf','Version History':JSON.stringify([{v:1,fileId:'a',fileName:'wrong-month.pdf'}])}];
+    CALLS=[]; PATCH=null; KEY=''; PAYREPL_IDX=0;
+    document.getElementById('payrepl-file').files=[{name:'september.pdf'}];
+    boxUploadBinary=async()=>({entries:[{id:'b'}]}); payAppFolder=async()=>'99';
+    findFile=async()=>({id:'log'});
+    boxUploadText=async()=>{ CALLS.push('WHOLE FILE'); return {}; };
+    boxUpdateRow=async(k,row,patch)=>{ CALLS.push('save'); KEY=k; PATCH=patch; return {}; };
+    toCSV=()=>''; resolveMe=async()=>{}; renderAll=()=>{}; auditLog=()=>{ CALLS.push('audit'); };
+    notifyContacts=()=>{ CALLS.push('told'); }; emailTemplate=()=>''; showStatus=()=>{};
+  `);
+  await P2.run(`submitPayReplace()`);
+  const row=P2.run(`allData.pay_apps[0]`);
+  ok(row['Attachment File ID']==='b' && row['Attachment Name']==='september.pdf',
+     'the row points at the corrected document');
+  ok(JSON.parse(row['Version History']).length===2, 'and the wrong one stays in the history');
+  // Rewriting the whole log is Fidevia's alone: this ran as the contractor and
+  // came back "Access denied" after the file had already uploaded — the
+  // document in Box, the row never moved.
+  ok(!P2.run(`CALLS`).includes('WHOLE FILE'), 'not by rewriting the whole log, which a contractor may not do');
+  ok(P2.run(`KEY`)==='pay_apps' && P2.run(`CALLS`).join()==='save,audit,told', 'but by patching the one row');
+  ok(Object.keys(P2.run(`PATCH`)).sort().join()==='Attachment File ID,Attachment Name,Version History',
+     'sending only the three fields that changed');
+}
+ok(/if\(key==='pay_apps'\) match\['Contractor'\]=row\['Contractor'\]\|\|row\['Company'\]\|\|'';/.test(html),
+   'and naming the contractor as well as the number, since both companies have a PA #01');
+
 console.log('Where the contractor finds it');
 {
   ok(/payMayReplace\(r\)\?'<button class="row-act"[^']*openPayReplace\('\+idx\+'\)">Replace file<\/button>'/.test(html),

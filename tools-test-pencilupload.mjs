@@ -107,7 +107,10 @@ console.log('Promoting a pencil to the final');
     CALLS=[]; PAYFINAL_IDX=0;
     document.getElementById('payfinal-file').files=[{name:'final.pdf'}];
     boxUploadBinary=async()=>({entries:[{id:'b'}]}); itemFolderId=async()=>'99';
-    findFile=async()=>({id:'log'}); boxUploadText=async()=>{ CALLS.push('save'); return {}; };
+    findFile=async()=>({id:'log'});
+    boxUploadText=async()=>{ CALLS.push('WHOLE FILE'); return {}; };
+    boxUpdateRow=async(k,row,patch)=>{ CALLS.push('save'); PATCH=patch; KEY=k; ROW=row; return {}; };
+    PATCH=null; KEY=''; ROW=null;
     toCSV=()=>''; resolveMe=async()=>{}; renderAll=()=>{}; auditLog=()=>{ CALLS.push('audit'); };
     showStatus=()=>{};
   `);
@@ -122,6 +125,20 @@ console.log('Promoting a pencil to the final');
   ok(vs[1].status==='Final' && vs[1].fileId==='b', 'and the final recorded above it');
   ok(P.run(`CALLS`).join()==='save,audit', 'written once and recorded');
   ok(P.run(`allData.pay_apps[0]['App #']`)==='PA-001', 'the application keeps its number — one period, one number');
+  // Rewriting the whole log is Fidevia's alone. This runs as the contractor, so
+  // it went through uploadText and got a 403 after the file had already
+  // uploaded: the document in Box, the row never moved.
+  ok(!P.run(`CALLS`).includes('WHOLE FILE'), 'and not by rewriting the whole log, which a contractor may not do');
+  ok(P.run(`KEY`)==='pay_apps', 'the row is patched where it lives');
+  {
+    const patch=P.run(`PATCH`);
+    ok(patch['Copy Type']==='Final' && /awaiting Fidevia/.test(patch['Status']),
+       'the promotion is what is sent');
+    ok(patch['Attachment File ID']==='b' && !!patch['Version History'],
+       'with the new document and the history that keeps the pencil');
+    ok(Object.keys(patch).sort().join()==='Attachment File ID,Attachment Name,Copy Type,Status,Version History',
+       'and nothing else — the money on the row is not the claimant\u2019s to touch');
+  }
 }
 {
   // A failed upload must not leave the row claiming to be final.
@@ -134,7 +151,8 @@ console.log('Promoting a pencil to the final');
       'Attachment Name':'pencil.pdf','Version History':'[]'}];
     PAYFINAL_IDX=0; document.getElementById('payfinal-file').files=[{name:'final.pdf'}];
     boxUploadBinary=async()=>({entries:[{id:'b'}]}); itemFolderId=async()=>'99';
-    findFile=async()=>({id:'log'}); boxUploadText=async()=>{ throw new Error('Box said no'); };
+    findFile=async()=>({id:'log'}); boxUploadText=async()=>{ throw new Error('wrong path'); };
+    boxUpdateRow=async()=>{ throw new Error('Box said no'); };
     toCSV=()=>''; resolveMe=async()=>{}; renderAll=()=>{}; showStatus=(i,t,k)=>{ SAID=t; }; SAID='';
   `);
   await P.run(`submitPayFinal()`);

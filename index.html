@@ -2425,7 +2425,12 @@ async function boxUploadText(filename, content, parentId, existingId=null){
 async function boxUpdateRow(key, row, patch){
   const mod=MODULES[key], fid=currentProject.folders[key];
   const idField=REPLY_IDF[key]||({rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]);
-  await proxyCall('updateRow',{ folderId:fid, filename:mod.log, idField, idValue:row[idField], patch });
+  // Payment application numbers run per contractor, so two companies both have
+  // a PA #01. The number alone names two rows; the number and the contractor
+  // name one.
+  const match={}; match[idField]=row[idField]||'';
+  if(key==='pay_apps') match['Contractor']=row['Contractor']||row['Company']||'';
+  await proxyCall('updateRow',{ folderId:fid, filename:mod.log, idField, idValue:row[idField], match, patch });
 }
 
 // ── UPLOADS ──
@@ -5375,7 +5380,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 14:36';
+const BUILD_STAMP='2026-09-16 15:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12677,7 +12682,6 @@ async function submitPayFinal(){
                                n:r['Attachment Name'], v:r['Version History']});
   try{
     showStatus('payfinal-status','Uploading\u2026','info');
-    const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
     const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
     const ent=up.entries?up.entries[0]:up;
     await resolveMe();
@@ -12690,8 +12694,14 @@ async function submitPayFinal(){
     r['Attachment File ID']=ent.id||'';
     r['Attachment Name']=f.files[0].name;
     r['Status']='Uploaded — awaiting Fidevia';
-    const existing=await findFile(fid, mod.log);
-    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    // Rewriting the whole log is Fidevia's alone, and this runs as the
+    // contractor. Going through uploadText got a 403 after the file had already
+    // uploaded — the document in Box, the row never moved.
+    await boxUpdateRow('pay_apps', r, {
+      'Copy Type': r['Copy Type'], 'Status': r['Status'],
+      'Attachment File ID': r['Attachment File ID'], 'Attachment Name': r['Attachment Name'],
+      'Version History': r['Version History']
+    });
     try{ auditLog('Final application submitted','pay_apps',r, String(r['App #']||'')); }catch(e){}
     showStatus('payfinal-status','Submitted.','success');
     renderAll();
@@ -12956,7 +12966,6 @@ async function submitPayReplace(){
   const before=JSON.stringify({a:r['Attachment File ID'], n:r['Attachment Name'], v:r['Version History']});
   try{
     showStatus('payrepl-status','Uploading\u2026','info');
-    const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
     const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
     const ent=up.entries?up.entries[0]:up;
     await resolveMe();
@@ -12970,9 +12979,12 @@ async function submitPayReplace(){
     r['Attachment File ID']=ent.id||'';
     r['Attachment Name']=f.files[0].name;
     // Status, Copy Type, period and number all stand. This is the same
-    // application, correctly documented — not a new one.
-    const existing=await findFile(fid, mod.log);
-    await boxUploadText(mod.log, toCSV(mod.headers, rows), fid, existing?existing.id:null);
+    // application, correctly documented — not a new one. Only the three fields
+    // that changed are sent, through the path a contractor is allowed to use.
+    await boxUpdateRow('pay_apps', r, {
+      'Attachment File ID': r['Attachment File ID'], 'Attachment Name': r['Attachment Name'],
+      'Version History': r['Version History']
+    });
     try{ auditLog('Document replaced before review','pay_apps',r, String(r['App #']||'')); }catch(e){}
     // Fidevia may be part-way through reading the old one.
     try{

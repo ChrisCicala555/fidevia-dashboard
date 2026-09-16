@@ -570,6 +570,20 @@ async function docsAllows(H, t, grants, who, folderId){
 const reqKey = (projectId, email) => `${projectId}__${email}`;
 async function getGrants(email) { const g = await grantsStore().get(email, { type: 'json' }); return (g && g.projects) ? g.projects : []; }
 const PRIVATE_CSV = { 'Payment Applications.csv': 'Contractor', 'Contractor Daily Reports.csv': 'Company', 'Certified Payrolls.csv': 'Company' };
+const PAY_LOG = 'Payment Applications.csv';
+// The states a payment application sits in before anybody has ruled on it.
+const PAY_AWAITING = /awaiting|submitted|pending|uploaded/i;
+// Whether a review has touched this application. The page refuses to replace a
+// document once one has, and that refusal has to hold here too: a rule that
+// lives only in the page is a rule anybody willing to call the API does not
+// have.
+function payRowReviewed(row) {
+  if (!row) return true;
+  if (String(row['Reviewed By'] || '').trim() || String(row['Review Date'] || '').trim()) return true;
+  if (String(row['Action'] || '').trim()) return true;
+  if (String(row['Signed File ID'] || '').trim() || String(row['Signed File Name'] || '').trim()) return true;
+  return !PAY_AWAITING.test(String(row['Status'] || ''));
+}
 
 // ── PROJECT ROLES ──
 // Roles are per grant, not per account: the same person can be a contractor on
@@ -2156,8 +2170,16 @@ export default async (req) => {
       if (!await folderWritableBy(H, t, _grants, who, body.folderId)) return json({ error: 'Access denied' }, 403);
       const { folderId, filename, idField, idValue } = body;
       const patch = body.patch;
-      if (!folderId || !filename || !idField || !patch || typeof patch !== 'object') {
-        return json({ error: 'folderId, filename, idField, idValue and patch{} required' }, 400);
+      // A payment application number is unique to its contractor, not to the
+      // job: two companies both have a PA #01. Keying on the number alone found
+      // whichever came first in the file, so one contractor's correction landed
+      // on another's row — and was then refused for not being theirs. Callers
+      // may name several fields, and every one of them has to agree.
+      const match = (body.match && typeof body.match === 'object' && Object.keys(body.match).length)
+        ? body.match
+        : (idField ? { [idField]: idValue } : null);
+      if (!folderId || !filename || !match || !patch || typeof patch !== 'object') {
+        return json({ error: 'folderId, filename, a row to match and patch{} required' }, 400);
       }
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       const items = lr.ok ? ((await lr.json()).entries || []) : [];
@@ -2167,7 +2189,13 @@ export default async (req) => {
       if (!cr.ok) return json({ error: 'Could not read the log' }, 502);
       const parsed = parseCSVServer(await cr.text());
       const headers2 = parsed.headers, rows = parsed.rows;
-      const row = rows.find(r => String(r[idField] || '') === String(idValue || ''));
+      const hits = rows.filter(r => Object.keys(match)
+        .every(k => String(r[k] || '').trim() === String(match[k] == null ? '' : match[k]).trim()));
+      // More than one row answering to the same description is a log that has
+      // been through a numbering bug. Writing to whichever came first would be
+      // writing to the wrong record.
+      if (hits.length > 1) return json({ error: 'More than one row matches; reload and try again.' }, 409);
+      const row = hits[0];
       if (!row) return json({ error: 'item not found' }, 404);
 
       if (!who.isAdmin) {
@@ -2192,10 +2220,27 @@ export default async (req) => {
           // exactly the part of a review that changes who acts next.
           'Workflow Extra', 'Workflow Reassigned',
           'Response Summary', 'Date Closed', 'Reviewer', 'Assigned To']);
+        // Promoting a pencil copy to the final application is the contractor's
+        // own act, and Copy Type is the only field that records it.
+        if (filename === PAY_LOG) ALLOWED.add('Copy Type');
         for (const k of Object.keys(patch)) if (!ALLOWED.has(k)) return json({ error: 'Field not writable: ' + k }, 403);
         // The money on a payment application is decided by Fidevia, never by
         // the party being paid.
-        if (PRIVATE_CSV[filename] && ('Status' in patch)) return json({ error: 'Access denied' }, 403);
+        if (filename === PAY_LOG) {
+          // Nothing at all on an application somebody has already ruled on.
+          // This is the server's copy of the rule the Replace button follows.
+          if (payRowReviewed(row)) return json({ error: 'Access denied' }, 403);
+          // Only ever toward the final copy. Turning a final back into a pencil
+          // would take an application the owner can see and hide it again.
+          if ('Copy Type' in patch && String(patch['Copy Type'] || '').trim().toLowerCase() !== 'final')
+            return json({ error: 'Access denied' }, 403);
+          // And only a status that is still waiting on Fidevia. Approved,
+          // signed and denied are Fidevia's words, not the claimant's.
+          if ('Status' in patch && !PAY_AWAITING.test(String(patch['Status'] || '')))
+            return json({ error: 'Access denied' }, 403);
+        } else if (PRIVATE_CSV[filename] && ('Status' in patch)) {
+          return json({ error: 'Access denied' }, 403);
+        }
       }
       for (const k of Object.keys(patch)) {
         if (!headers2.includes(k)) headers2.push(k);
