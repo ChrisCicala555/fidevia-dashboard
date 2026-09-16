@@ -4128,10 +4128,31 @@ function fmtMoneyInput(el, allowNegative){
 // contract outweigh the adds. Stripping that minus would turn a credit into a
 // charge.
 const NEGATIVE_OK=['f-cost','nc-amount','pa-cos','f-cos-approved'];
+const MONEY_FIELDS=['f-cost','nc-amount','f-contract','f-cos-approved','f-prev','f-req',
+  'pa-amount','pa-contract','pa-cos','pa-prev','pa-req'];
+// Setting .value from code fires no input event, so the formatter attached below
+// never runs on it. Every figure a dialog filled in for you was left however the
+// code happened to write it: a raw 50000, or — where one field mirrors another
+// as it is typed — the half-formatted 5,0000 that the source field held for the
+// instant before its own formatter tidied it.
+function setMoneyField(id, val){
+  const el=document.getElementById(id); if(!el) return;
+  // No guard for null or undefined: the formatter below keeps only digits, and
+  // "null" has none. A check of its own here could only be a line no caller
+  // reaches.
+  el.value = String(val==null ? '' : val);
+  try{ fmtMoneyInput(el, NEGATIVE_OK.includes(id)); }catch(e){}
+  if(el.value==='-') el.value='';
+}
 function wireMoneyInputs(){
-  ['f-cost','nc-amount','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
-    const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
+  MONEY_FIELDS.forEach(function(id){
+    const el=document.getElementById(id); if(!el) return;
     const negOk=NEGATIVE_OK.includes(id);
+    // Tidy whatever is sitting there now, every time, not only the first time
+    // this field is wired — a dialog reopened on a different row has new
+    // contents and the same need.
+    if(String(el.value||'').trim()) fmtMoneyInput(el,negOk);
+    if(el._moneyWired) return; el._moneyWired=true;
     el.addEventListener('blur',function(){ fmtMoneyInput(el,negOk); if(el.value==='-') el.value=''; });
     el.addEventListener('input',function(){ const p=el.selectionStart, len=el.value.length; fmtMoneyInput(el,negOk); el.selectionStart=el.selectionEnd=Math.max(0,p+(el.value.length-len)); });
   });
@@ -5380,7 +5401,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 16:00';
+const BUILD_STAMP='2026-09-16 16:57';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8377,7 +8398,7 @@ function openModal(type){
       if(num) num.onchange=()=>{ num.dataset.touched=num.value.trim()?'1':''; renum(); };
       // Which change orders are on offer depends on the contractor and on the
       // period, so the list follows both.
-      ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ cf.value=m.contract||''; } renum(); coPickReset(); coPickRender(); };
+      ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('f-contract'); if(m&&cf&&!cf.value){ setMoneyField('f-contract', m.contract||''); } renum(); coPickReset(); coPickRender(); };
       ci.onchange=function(){ renum(); coPickReset(); coPickRender(); };
       { const pf=document.getElementById('f-period');
         if(pf) pf.onchange=function(){ coPickReset(); coPickRender(); }; }
@@ -13215,8 +13236,10 @@ function openPayAction(idx){
     // application, not carried into the next one somebody opens.
     PAY_FIGS_LOCKED=true;
     set('pa-num',r['App #']); set('pa-contr',r['Contractor']); set('pa-period',r['Period']);
-    set('pa-due',r['Due Date']); set('pa-contract',r['Contract Amount']);
-    set('pa-cos',r['Approved Change Orders']); set('pa-prev',r['Previously Paid']); set('pa-req',r['Requested Amount']);
+    set('pa-due',r['Due Date']);
+    ['pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id,i){
+      setMoneyField(id, r[['Contract Amount','Approved Change Orders','Previously Paid','Requested Amount'][i]]);
+    });
     const ci=document.getElementById('pa-contr');
     if(ci) ci.oninput=function(){ payPrefillKnown(); payFigureNotes(); };
     // Which figures are on record depends on the contractor and the period as
@@ -13226,8 +13249,14 @@ function openPayAction(idx){
     try{ payLockApply(); payPrefillKnown(); payFigureNotes(); }catch(e){}
   }
   document.getElementById('pa-action').selectedIndex=0;
-  document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';
-  if(needs){ const req=document.getElementById('pa-req'); if(req) req.oninput=function(){ const a=document.getElementById('pa-amount'); if(a&&!a.disabled) a.value=req.value; }; }
+  setMoneyField('pa-amount', payNum(r['Requested Amount'])||'');
+  // The approved amount follows what is being requested until somebody changes
+  // it. Copied as a number rather than as the text the other field is holding:
+  // mid-keystroke that text is "5,0000", and nothing was going to tidy it.
+  if(needs){ const req=document.getElementById('pa-req'); if(req) req.oninput=function(){
+    const a=document.getElementById('pa-amount');
+    if(a&&!a.disabled) setMoneyField('pa-amount', payNum(req.value)||'');
+  }; }
   document.getElementById('pa-file').value='';
   document.getElementById('pa-progress').style.display='none';
   document.getElementById('pa-submit-btn').disabled=false;
@@ -13235,7 +13264,7 @@ function openPayAction(idx){
   wireMoneyInputs();
   document.getElementById('payaction-backdrop').classList.add('open');
 }
-function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ amt.value='0'; amt.disabled=true; } else { amt.disabled=false; } }
+function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ setMoneyField('pa-amount','0'); amt.disabled=true; } else { amt.disabled=false; } }
 function closePayAction(){ document.getElementById('payaction-backdrop').classList.remove('open'); PAY_CTX=null; }
 async function submitPayAction(){
   if(!PAY_CTX) return; const {idx}=PAY_CTX;
