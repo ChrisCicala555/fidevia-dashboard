@@ -1711,13 +1711,15 @@
     <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
     <div class="modal-body">
       <div id="pa-details" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#faf9f5;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Details from the contractor's document</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Read off the contractor's application</div>
         <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="pa-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="pa-contr" list="contr-list-pa" placeholder="Select or type"><datalist id="contr-list-pa"></datalist></div></div>
         <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
-        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payCoNote()"></div></div>
-        <div id="pa-cos-note"></div>
-        <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="45000"></div></div>
-        <p class="file-hint" style="margin:2px 0 0;">Open the uploaded file above to read these off the contractor's application.</p>
+        <div class="field-row"><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="45000"></div><div class="field"></div></div>
+        <p class="file-hint" style="margin:2px 0 8px;">Open the uploaded file above to read these off the contractor's application.</p>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Already on record — check, don't retype</div>
+        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000" oninput="payFigureNotes()"><div id="pa-contract-note"></div></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payFigureNotes()"><div id="pa-cos-note"></div></div></div>
+        <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="200000" oninput="payFigureNotes()"><div id="pa-prev-note"></div></div><div class="field"></div></div>
+        <p class="file-hint" style="margin:2px 0 0;">These come from project settings, the change order log and earlier applications. Change one only if the paper application in hand says otherwise.</p>
       </div>
       <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
       <div class="field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
@@ -4094,7 +4096,10 @@ function fmtMoneyInput(el, allowNegative){
 }
 // Cost Impact is the only money field that may go below zero: a deduct returns
 // money to the owner. Everything else counts up.
-const NEGATIVE_OK=['f-cost','nc-amount'];
+// A net change order total can sit below zero too, once the deducts on a
+// contract outweigh the adds. Stripping that minus would turn a credit into a
+// charge.
+const NEGATIVE_OK=['f-cost','nc-amount','pa-cos','f-cos-approved'];
 function wireMoneyInputs(){
   ['f-cost','nc-amount','f-allow','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
     const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
@@ -5347,7 +5352,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-15 23:41';
+const BUILD_STAMP='2026-09-16 12:33';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12410,6 +12415,87 @@ function payCoCheckHTML(row, opts){
         : 'Either a change order was executed after this period, or the application has not picked it up yet.')
     +'</p>';
 }
+// ── WHAT THE DASHBOARD ALREADY KNOWS ───────────────────────────────────────
+// A G702 carries five figures. Three of them the dashboard already holds: the
+// contract came from project settings, the change orders from the change order
+// log, and previously paid from what has been approved on earlier applications.
+// Only the app number, the period and this period's request are new. Fidevia
+// should be checking the first three against the paper, not keying them in — a
+// figure typed a second time is a figure that can disagree with itself.
+function contractOnRecord(name){
+  const norm=s=>String(s||'').trim().toLowerCase();
+  const rec=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .find(c=>norm(c.name)===norm(name));
+  return rec ? payNum(rec.contract) : 0;
+}
+// Approved on this contractor's earlier applications. An application in the
+// same month is this period's own, not money already billed, so the cut is the
+// month before. Undated rows count, for the same reason they do in coNetAsOf:
+// the figure should never quietly understate what has already been drawn.
+function payPrevPaidFor(name, period, skipIdx){
+  const norm=s=>String(s||'').trim().toLowerCase();
+  const cut=period?monthEnd(period):null;
+  return (allData.pay_apps||[]).reduce(function(sum,p,i){
+    if(i===skipIdx) return sum;
+    if(norm(p['Contractor']||p['Company'])!==norm(name)) return sum;
+    if(cut){
+      const d=p['Period'] ? monthEnd(p['Period']) : null;
+      if(d && d>=cut) return sum;
+    }
+    return sum+payApproved(p);
+  },0);
+}
+function payKnownFigures(name, period, skipIdx){
+  const co=String(name||'').trim();
+  if(!co) return null;
+  return { contract: contractOnRecord(co),
+           cos:      coNetAsOf(co, period),
+           prev:     payPrevPaidFor(co, period, skipIdx) };
+}
+// Fills the three derived fields, but only where they are empty. A figure
+// already recorded — by an earlier review, or typed a moment ago off the paper
+// — is somebody's reading of the document and is not overwritten.
+function payPrefillKnown(){
+  const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
+  const k=payKnownFigures(g('pa-contr'), g('pa-period'),
+                          (typeof PAY_CTX!=='undefined' && PAY_CTX) ? PAY_CTX.idx : -1);
+  if(!k) return;
+  const put=(id,v)=>{ const el=document.getElementById(id);
+    if(!el || String(el.value||'').trim() || !v) return;
+    el.value=String(v);
+    // Straight through the same formatter the field uses when typed into, so a
+    // prefilled figure and a keyed one are not written two different ways.
+    try{ fmtMoneyInput(el, NEGATIVE_OK.includes(id)); }catch(e){}
+  };
+  put('pa-contract', k.contract);
+  put('pa-cos', k.cos);
+  put('pa-prev', k.prev);
+}
+// Where each prefilled figure came from, and — if it was changed — what the
+// record says instead. Said under the field rather than in a warning, because
+// a contractor's paper application disagreeing with the record is ordinary and
+// worth seeing, not an error to be blocked.
+function payRecordNote(id, typed, known, source, missing){
+  const el=document.getElementById(id); if(!el) return;
+  const hint=t=>'<p class="file-hint" style="margin:3px 0 0;">'+esc(t)+'</p>';
+  const flag=t=>'<p class="file-hint" style="margin:3px 0 0;color:#8a5a00;font-weight:600;">'+esc(t)+'</p>';
+  if(!known && missing){ el.innerHTML=hint(missing); return; }
+  if(Math.abs(payNum(typed)-known)<0.005){ el.innerHTML=hint(source+'.'); return; }
+  el.innerHTML=flag(source+' \u2014 it holds '+fmtMoney(known)+'.');
+}
+function payFigureNotes(){
+  const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
+  const k=payKnownFigures(g('pa-contr'), g('pa-period'),
+                          (typeof PAY_CTX!=='undefined' && PAY_CTX) ? PAY_CTX.idx : -1);
+  payCoNote();
+  const clear=id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; };
+  if(!k){ clear('pa-contract-note'); clear('pa-prev-note'); return; }
+  payRecordNote('pa-contract-note', g('pa-contract'), k.contract,
+    'From project settings',
+    'No contract amount recorded for this contractor in project settings \u2014 add it there and it will fill itself in each month.');
+  payRecordNote('pa-prev-note', g('pa-prev'), k.prev,
+    'Approved on earlier applications', '');
+}
 // ── BILLING CYCLE ──────────────────────────────────────────────────────────
 // The spec fixes three days: the contractor's pencil copy, the formal
 // application, and the owner's payment. The first two fall in the billing
@@ -12835,11 +12921,12 @@ function openPayAction(idx){
     set('pa-due',r['Due Date']); set('pa-contract',r['Contract Amount']);
     set('pa-cos',r['Approved Change Orders']); set('pa-prev',r['Previously Paid']); set('pa-req',r['Requested Amount']);
     const ci=document.getElementById('pa-contr');
-    if(ci) ci.oninput=function(){ const m=cts.find(c=>c.name===ci.value); const cf=document.getElementById('pa-contract'); if(m&&cf&&!cf.value) cf.value=m.contract||''; payCoNote(); };
-    // The comparison depends on the contract and the period as much as on the
-    // figure, so it is redone whenever any of the three moves.
-    { const pd=document.getElementById('pa-period'); if(pd) pd.onchange=payCoNote; }
-    try{ payCoNote(); }catch(e){}
+    if(ci) ci.oninput=function(){ payPrefillKnown(); payFigureNotes(); };
+    // Which figures are on record depends on the contractor and the period as
+    // much as on what is typed, so both are re-derived whenever either moves.
+    { const pd=document.getElementById('pa-period');
+      if(pd) pd.onchange=function(){ payPrefillKnown(); payFigureNotes(); }; }
+    try{ payPrefillKnown(); payFigureNotes(); }catch(e){}
   }
   document.getElementById('pa-action').selectedIndex=0;
   document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';

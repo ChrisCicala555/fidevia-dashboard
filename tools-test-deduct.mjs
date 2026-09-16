@@ -34,13 +34,16 @@ ok(R(`EL.value`)==='8,400', 'only a LEADING minus counts — one typed mid-numbe
 R(`EL.value='-1234.567'; fmtMoneyInput(EL, true)`);
 ok(R(`EL.value`)==='-1,234.56', 'and the two-decimal cap still applies');
 {
-  // Both places a change order's own value is entered: the proposal form and
-  // the dialog that issues one directly. What must NOT be here is anything
-  // that counts up — an allowance draw, a billed amount, a contract sum.
+  // Every field holding a change order's value: the proposal form, the dialog
+  // that issues one directly, and the two that carry a whole contract's net,
+  // which goes below zero once its deducts outweigh its adds. What must NOT be
+  // here is anything that counts up — an allowance draw, a billed amount, a
+  // contract sum.
   const negOk = JSON.parse(R(`JSON.stringify(NEGATIVE_OK)`));
-  ok(negOk.sort().join()==='f-cost,nc-amount',
-     'only the two fields holding a change order’s value may go below zero');
-  ok(!negOk.some(id=>/allow|prev|req|contract|pa-/.test(id)),
+  ok(negOk.slice().sort().join()==='f-cos-approved,f-cost,nc-amount,pa-cos',
+     'only the fields holding a change order’s value may go below zero');
+  ok(!negOk.some(id=>['f-allow','f-prev','f-req','f-contract',
+                      'pa-prev','pa-req','pa-contract','pa-amount'].includes(id)),
      'an allowance draw, a previous payment or a billed amount cannot — those count up');
 }
 {

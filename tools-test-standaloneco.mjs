@@ -46,7 +46,7 @@ ok(!/class="btn-secondary allow-del"/.test(html), 'the remove button no longer b
 
 console.log('A change order with no proposal behind it');
 ok(/id="nc-amount"/.test(html), 'there is somewhere to say what it is worth');
-ok(/NEGATIVE_OK=\['f-cost','nc-amount'\]/.test(html), 'and it takes a deduct as a negative');
+ok(/NEGATIVE_OK=\['f-cost','nc-amount',/.test(html), 'and it takes a deduct as a negative');
 {
   const sub = html.split('async function submitNewCo(){')[1].split('\n}')[0];
   ok(/const gross=set\.length \? set\.reduce\(\(s,e\)=>s\+e\.amount,0\)\s*\n?\s*: payNum\(\(document\.getElementById\('nc-amount'\)\|\|\{\}\)\.value\)/.test(sub),

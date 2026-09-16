@@ -104,7 +104,10 @@ console.log('Where it appears');
 }
 ok(/payCoCheckHTML\(r, \{short:true\}\)/.test(html), 'the pay app log runs the check on every row');
 ok(/id="pa-cos-note"/.test(html), 'and the review dialog has somewhere to explain it');
-ok(/oninput="payCoNote\(\)"/.test(html), 'answering as the figure is typed rather than after it is filed');
+ok(/id="pa-cos" [^>]*oninput="payFigureNotes\(\)"/.test(html),
+   'answering as the figure is typed rather than after it is filed');
+ok(/function payFigureNotes\(\)[\s\S]{0,900}?payCoNote\(\);/.test(html),
+   'through the shared note pass, so all three record checks answer together');
 {
   const o=html.slice(html.indexOf('function payCoNote()'), html.indexOf('function payCoCheckHTML'));
   ok(/g\('pa-contr'\)/.test(o) && /g\('pa-period'\)/.test(o) && /g\('pa-cos'\)/.test(o),
@@ -112,7 +115,7 @@ ok(/oninput="payCoNote\(\)"/.test(html), 'answering as the figure is typed rathe
   ok(/saved\['Contractor'\]/.test(o),
      'falling back to the saved row for fields the dialog does not show');
 }
-ok(/if\(pd\) pd\.onchange=payCoNote;/.test(html),
+ok(/pd\.onchange=function\(\)\{ payPrefillKnown\(\); payFigureNotes\(\); \};/.test(html),
    'and it is redone when the period changes, since the comparison depends on it');
 
 console.log((bad?'FAIL':'ok  ')+' tools-test-pacocheck.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
