@@ -20,17 +20,27 @@ export function makeDoc(knownIds){
     const e = {
       id, value:'', textContent:'', innerHTML:'', outerHTML:'', placeholder:'', title:'',
       type:'text', readOnly:false, disabled:false, selectedIndex:0, checked:false, files:[],
-      style:{}, dataset:{}, _classes:new Set(), options:[], children:[], childNodes:[],
+      style:{}, dataset:{}, _classes:new Set(), _attrs:{}, options:[], children:[], childNodes:[],
       classList:{ add:(...c)=>c.forEach(x=>e._classes.add(x)), remove:(...c)=>c.forEach(x=>e._classes.delete(x)),
                   toggle:(c)=>e._classes.has(c)?e._classes.delete(c):e._classes.add(c),
                   contains:(c)=>e._classes.has(c) },
       appendChild(){}, removeChild(){}, remove(){}, insertBefore(){}, insertAdjacentHTML(){},
-      addEventListener(){}, removeEventListener(){}, setAttribute(){}, getAttribute:()=>null,
-      removeAttribute(){}, hasAttribute:()=>false, focus(){}, blur(){}, click(){}, closest:()=>null,
+      addEventListener(){}, removeEventListener(){},
+      // Attributes used to be no-ops here, which meant a test could not tell a
+      // field that had been made read-only from one that had not.
+      setAttribute(n,v){ e._attrs[String(n)]=String(v); },
+      getAttribute(n){ const k=String(n); return k in e._attrs ? e._attrs[k] : null; },
+      removeAttribute(n){ delete e._attrs[String(n)]; },
+      hasAttribute(n){ return String(n) in e._attrs; },
+      focus(){}, blur(){}, click(){}, closest:()=>null,
       querySelector:()=>null, querySelectorAll:()=>[], scrollIntoView(){}, cloneNode:()=>mk(id),
       getBoundingClientRect:()=>({top:0,left:0,right:0,bottom:0,width:0,height:0}),
       getContext:()=>null, submit(){}, reset(){}, select(){}, setSelectionRange(){}
     };
+    Object.defineProperty(e,'className',{
+      get:()=>[...e._classes].join(' '),
+      set:(v)=>{ e._classes=new Set(String(v||'').split(/\s+/).filter(Boolean)); }
+    });
     Object.defineProperty(e,'parentElement',{get:()=>null});
     Object.defineProperty(e,'parentNode',{get:()=>null});
     Object.defineProperty(e,'firstChild',{get:()=>null});

@@ -25,6 +25,27 @@ console.log('The contract comes from project settings');
      'a contractor made inactive still has a contract — earlier applications against it must still price');
 }
 
+console.log('Project settings is where the contract lives');
+{
+  // It used to be the other way round: whatever the last application said won.
+  // Which meant a figure typed into one review quietly became the contract for
+  // the whole job, including on the owner's own financial summary.
+  P.run(`allData.pay_apps=[{'Contractor':'Summit Builders','Period':'2026-07-01',
+    'Contract Amount':'999999','Status':'Approved & Signed','Approved Amount':'0'}];`);
+  ok(P.run(`contractBaseFor('Summit Builders')`)===850000,
+     'an application restating the contract does not become the contract');
+  ok(P.run(`financialTotals().revised`)===850000, 'the financial summary agrees');
+  P.run(`renderOwnerFinancials();`);
+  const owner=String(P.run(`document.getElementById('tbody-owner-fin').innerHTML`));
+  ok(/\$850,000/.test(owner) && !/\$999,999/.test(owner),
+     'and so does the one the owner sees, which is the one that would have been believed');
+  P.run(`currentProject.config.contractors=[{name:'Summit Builders',contract:''}];`);
+  ok(P.run(`contractBaseFor('Summit Builders')`)===999999,
+     'but a project old enough never to have had one recorded still reads it off the application');
+  P.run(`currentProject.config.contractors=[{name:'Summit Builders',contract:'850000'},
+    {name:'Delaney Mechanical',contract:'0'},{name:'Old Trades',contract:'100000',active:false}];`);
+}
+
 console.log('Previously paid comes from earlier applications');
 const PA=(o)=>Object.assign({'Contractor':'Summit Builders','Period':'2026-07-01',
   'Status':'Approved & Signed','Approved Amount':'40000','Requested Amount':'40000'},o);
@@ -81,7 +102,7 @@ console.log('All three together');
      'with no contractor named there is nothing to look up');
 }
 
-console.log('Prefilled, and only where empty');
+console.log('Shown, not asked for');
 {
   P.run(`PAY_CTX={idx:-1};
     ['pa-contr','pa-period','pa-contract','pa-cos','pa-prev'].forEach(function(id){
@@ -96,12 +117,22 @@ console.log('Prefilled, and only where empty');
   ok(v('pa-cos')==='12,000', 'so do the change orders');
   ok(v('pa-prev')==='40,000', 'and previously paid');
 
+  // Locked, the fields are the record's answer and follow it. There is nothing
+  // to preserve, because nobody typed anything.
   put('pa-contract','900,000');
   P.run(`payPrefillKnown();`);
-  ok(v('pa-contract')==='900,000',
-     "a figure already there is somebody's reading of the paper and is not overwritten");
+  ok(v('pa-contract')==='850,000',
+     'a locked field goes back to what the record holds rather than keeping a stray value');
 
-  put('pa-cos',''); P.run(`allData.co=[{'CO #':'CO-GC-002','Company':'Summit Builders',
+  put('pa-contr','Nobody At All'); P.run(`payPrefillKnown();`);
+  ok(v('pa-contract')==='' && v('pa-prev')==='',
+     'and empties for a contractor with no record, rather than showing another one\u2019s contract');
+  put('pa-contract','850,000'); put('pa-contr',''); P.run(`payPrefillKnown();`);
+  ok(v('pa-contract')==='',
+     'and empties again before a contractor is chosen at all, when there is nothing yet to look up');
+  put('pa-contr','Summit Builders'); P.run(`payPrefillKnown();`);
+
+  P.run(`allData.co=[{'CO #':'CO-GC-002','Company':'Summit Builders',
     'Status':'Approved','Approved Amount':'-5000','Date Approved':'2026-07-10',
     'Allowance Splits':'','Rolled Into':''}]; payPrefillKnown();`);
   ok(v('pa-cos')==='-5,000',
@@ -148,13 +179,13 @@ console.log('The dialog separates the two kinds of figure');
 {
   const d=html.slice(html.indexOf('id="pa-details"'), html.indexOf('id="pa-action"'));
   ok(/Read off the contractor's application/.test(d), 'one heading for what has to be read off the paper');
-  ok(/Already on record — check, don't retype/.test(d), 'another for what the dashboard already holds');
+  ok(/Already on record/.test(d), 'another for what the dashboard already holds');
   ok(d.indexOf('id="pa-req"') < d.indexOf("Already on record"),
      'the request for the period sits with the figures that are genuinely new');
   ok(d.indexOf('id="pa-contract"') > d.indexOf("Already on record"),
      'and the contract sits below the line, with the derived ones');
-  ok(/Change one only if the paper application in hand says otherwise/.test(d),
-     'saying plainly when overriding is the right thing to do');
+  ok(/id="pa-lock-toggle"[^>]*onclick="payLockToggle\(\)"/.test(d),
+     'with one control for the case where the paper disagrees');
   ['pa-contract','pa-cos','pa-prev'].forEach(id=>{
     ok(new RegExp('id="'+id+'"[^>]*oninput="payFigureNotes\\(\\)"').test(d), id+' answers as it is edited');
     ok(new RegExp('id="'+id+'-note"').test(d), id+' has somewhere to answer');
@@ -162,8 +193,53 @@ console.log('The dialog separates the two kinds of figure');
 }
 ok(/ci\.oninput=function\(\)\{ payPrefillKnown\(\); payFigureNotes\(\); \};/.test(html),
    'choosing the contractor pulls their figures through');
-ok(/try\{ payPrefillKnown\(\); payFigureNotes\(\); \}catch\(e\)\{\}/.test(html),
+ok(/try\{ payLockApply\(\); payPrefillKnown\(\); payFigureNotes\(\); \}catch\(e\)\{\}/.test(html),
    'and so does opening the dialog, without a thrown lookup stopping the review');
+
+console.log('Read-only until somebody says the paper disagrees');
+{
+  const v=id=>P.run(`document.getElementById('${id}').value`);
+  const put=(id,val)=>P.run(`document.getElementById('${id}').value=${JSON.stringify(val)};`);
+  const ro=id=>P.run(`!!document.getElementById('${id}').getAttribute('readonly')`);
+  P.run(`['pa-lock-hint','pa-lock-toggle'].forEach(function(id){
+      var el=document.createElement('div'); el.id=id; document.body.appendChild(el);
+      document.getElementById=(function(p){ return function(x){ return x===id?el:p(x); }; })(document.getElementById);
+    }); PAY_FIGS_LOCKED=true; payLockApply();`);
+  put('pa-contr','Summit Builders'); put('pa-period','2026-08-01');
+  ok(ro('pa-contract') && ro('pa-cos') && ro('pa-prev'),
+     'all three are read-only to begin with — the dashboard owns them');
+  ok(P.run(`document.getElementById('pa-contract').className`).indexOf('fig-locked')>=0,
+     'and look it, rather than looking like an empty field somebody forgot');
+  ok(/nothing to key in/.test(String(P.run(`document.getElementById('pa-lock-hint').textContent`))),
+     'saying so plainly');
+  ok(/states different figures/.test(String(P.run(`document.getElementById('pa-lock-toggle').textContent`))),
+     'and offering the one reason to type into them');
+
+  P.run(`payLockToggle();`);
+  ok(!ro('pa-contract') && !ro('pa-cos') && !ro('pa-prev'), 'unlocking opens all three');
+  ok(/does not change project settings or the change order log/.test(
+       String(P.run(`document.getElementById('pa-lock-hint').textContent`))),
+     'and says what it does not do, since that is the worry');
+  ok(/Go back to the figures on record/.test(String(P.run(`document.getElementById('pa-lock-toggle').textContent`))),
+     'with a way back');
+
+  put('pa-contract','900,000'); P.run(`payPrefillKnown();`);
+  ok(v('pa-contract')==='900,000', 'unlocked, what was typed is left alone');
+  P.run(`payFigureNotes();`);
+  ok(/it holds \$850,000\./.test(String(P.run(`document.getElementById('pa-contract-note').innerHTML`))),
+     'and is flagged against the record');
+
+  P.run(`payLockToggle();`);
+  ok(ro('pa-contract') && v('pa-contract')==='850,000',
+     'going back to the record discards the disagreement, which is the point of going back');
+}
+ok(/PAY_FIGS_LOCKED=true;\s*\n\s*set\('pa-num'/.test(html),
+   'every review opens locked — a disagreement belongs to one application, not to the next one opened');
+{
+  const t=html.slice(html.indexOf('function payLockToggle()'), html.indexOf('function payPrefillKnown'));
+  ok(/if\(PAY_FIGS_LOCKED\) payPrefillKnown\(\);/.test(t), 'relocking restores the record');
+  ok(/payFigureNotes\(\);/.test(t), 'and either way the notes are redone');
+}
 
 console.log((bad?'FAIL':'ok  ')+' tools-test-parecord.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

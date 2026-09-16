@@ -512,6 +512,11 @@
   body.role-ae .nav-item.ae-readonly{display:block !important;}
   body.role-ae .nav-section-label.ae-admin-label{display:block !important;}
   body.role-ae .wf-edit,body.role-ae .btn-add:not(.ae-ok),body.role-owner .btn-add{display:none !important;}
+  /* A figure the dashboard owns, shown rather than asked for. Read-only until
+     somebody says the paper application disagrees. */
+  .fig-locked{background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;}
+  .fig-unlock{display:inline-block;margin-top:6px;font-size:12.5px;color:var(--olive-700);
+    text-decoration:underline;cursor:pointer;background:none;border:0;padding:0;font-family:inherit;}
   .readonly-banner{background:var(--khaki-100);border-left:4px solid var(--olive-700);padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;color:var(--olive-900);margin-bottom:14px;}
   #access-requests-banner{padding:0 32px;margin-top:16px;}
   .req-banner-item{background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px;color:var(--olive-900);}
@@ -1716,10 +1721,11 @@
         <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
         <div class="field-row"><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="50,000"></div><div class="field"></div></div>
         <p class="file-hint" style="margin:2px 0 8px;">Open the uploaded file above to read these off the contractor's application.</p>
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Already on record — check, don't retype</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Already on record</div>
         <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="1,000,000" oninput="payFigureNotes()"><div id="pa-contract-note"></div></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payFigureNotes()"><div id="pa-cos-note"></div></div></div>
         <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="250,000" oninput="payFigureNotes()"><div id="pa-prev-note"></div></div><div class="field"></div></div>
-        <p class="file-hint" style="margin:2px 0 0;">These come from project settings, the change order log and earlier applications. Change one only if the paper application in hand says otherwise.</p>
+        <p class="file-hint" style="margin:2px 0 0;" id="pa-lock-hint"></p>
+        <button type="button" class="fig-unlock" id="pa-lock-toggle" onclick="payLockToggle()"></button>
       </div>
       <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
       <div class="field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
@@ -5352,7 +5358,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 13:34';
+const BUILD_STAMP='2026-09-16 14:04';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7361,7 +7367,10 @@ function financialTotals(){
   let tR=0,tB=0;
   contractors.forEach(c=>{
     const pa=latestFor(c.name);
-    const contract=(pa&&num(pa['Contract Amount']))?num(pa['Contract Amount']):num(c.contract);
+    // Project settings holds the contract; an application only restates it. A
+    // figure recorded on an application because it differed from the record is
+    // that application's claim, and must not quietly become the contract.
+    const contract=num(c.contract) || (pa?num(pa['Contract Amount']):0);
     // Change orders funded from the allowance were already inside the contract.
     const co = coContractImpactFor(c.name) || (pa?num(pa['Approved Change Orders']):0);
     tR+=contract+co;
@@ -7494,7 +7503,7 @@ function renderOwnerFinancials(){
   contractors.forEach(c=>{
     const mine=pays.filter(p=>norm(p['Contractor'])===norm(c.name));
     const latest=mine.slice().sort((a,b)=>(Date.parse(b['Period']||'')||0)-(Date.parse(a['Period']||'')||0))[0];
-    const contract=(latest&&num(latest['Contract Amount']))?num(latest['Contract Amount']):num(c.contract);
+    const contract=num(c.contract) || (latest?num(latest['Contract Amount']):0);
     const co=latest?num(latest['Approved Change Orders']):0;
     const revised=contract+co;
     const billed=mine.reduce((s,p)=>s+payApproved(p),0);
@@ -12112,17 +12121,18 @@ function coIsExecuted(r){ return coIsApproved(r) && !!String((r&&r['CO #'])||'')
 // Agreed, but not yet papered. These are the ones that move the contract the
 // moment somebody writes the change order, and nothing before.
 function coIsPending(r){ return coIsApproved(r) && !coIsExecuted(r); }
-// The contract a company started with, before any change order. Pay
-// applications carry the figure once one has been raised; otherwise it is what
-// the contractor record says. renderFinancials works it out the same way, and
-// reads it from here so the two cannot drift.
+// The contract a company started with, before any change order. Project
+// settings is where that lives; a pay application only restates it, and is read
+// here only for a project old enough that the contract was never recorded in
+// settings at all. renderFinancials works it out the same way, and reads it
+// from here so the two cannot drift.
 function contractBaseFor(name){
   const cfg=(currentProject&&currentProject.config)||{};
   const rec=(cfg.contractors||[]).find(c=>String(c.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
   const pays=(allData.pay_apps||[]).filter(p=>String(p['Contractor']||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
   const pa=pays.length?pays[pays.length-1]:null;
   const fromPa=pa?payNum(pa['Contract Amount']):0;
-  return fromPa || payNum(rec&&rec.contract);
+  return payNum(rec&&rec.contract) || fromPa;
 }
 // What deleting this row does to the money, in a sentence. Answered before the
 // deletion rather than discovered after it.
@@ -12452,16 +12462,54 @@ function payKnownFigures(name, period, skipIdx){
            cos:      coNetAsOf(co, period),
            prev:     payPrevPaidFor(co, period, skipIdx) };
 }
-// Fills the three derived fields, but only where they are empty. A figure
-// already recorded — by an earlier review, or typed a moment ago off the paper
-// — is somebody's reading of the document and is not overwritten.
+// The three fields are the dashboard's own answer, not a question. They are
+// read-only until somebody says the paper application disagrees, because the
+// only reason to type into them is to record a discrepancy — and a discrepancy
+// worth recording is worth saying out loud rather than making by overtyping.
+const PAY_FIG_FIELDS=['pa-contract','pa-cos','pa-prev'];
+let PAY_FIGS_LOCKED=true;
+function payLockApply(){
+  PAY_FIG_FIELDS.forEach(function(id){
+    const el=document.getElementById(id); if(!el) return;
+    if(PAY_FIGS_LOCKED){ el.setAttribute('readonly','readonly'); el.classList.add('fig-locked'); }
+    else { el.removeAttribute('readonly'); el.classList.remove('fig-locked'); }
+  });
+  const hint=document.getElementById('pa-lock-hint');
+  if(hint) hint.textContent = PAY_FIGS_LOCKED
+    ? 'From project settings, the change order log and earlier applications. The dashboard keeps these; there is nothing to key in.'
+    : 'Recording what the paper application states. Anything that departs from the record is flagged above and saved on this application only \u2014 it does not change project settings or the change order log.';
+  const btn=document.getElementById('pa-lock-toggle');
+  if(btn) btn.textContent = PAY_FIGS_LOCKED
+    ? 'The application states different figures \u2014 record what it says'
+    : 'Go back to the figures on record';
+}
+function payLockToggle(){
+  PAY_FIGS_LOCKED=!PAY_FIGS_LOCKED;
+  payLockApply();
+  // Coming back to the record throws away the disagreement, which is the whole
+  // point of coming back to it.
+  if(PAY_FIGS_LOCKED) payPrefillKnown();
+  payFigureNotes();
+}
+// While locked the fields simply show what the record holds, and follow it when
+// the contractor or the period changes. Unlocked, what was typed is somebody's
+// reading of the paper document and is left alone.
 function payPrefillKnown(){
   const g=id=>{ const x=document.getElementById(id); return x?String(x.value||''):''; };
   const k=payKnownFigures(g('pa-contr'), g('pa-period'),
                           (typeof PAY_CTX!=='undefined' && PAY_CTX) ? PAY_CTX.idx : -1);
-  if(!k) return;
+  // With no contractor named there is no record to show. Locked, the fields
+  // empty rather than keep the last contractor's figures under a new name.
+  if(!k){
+    if(PAY_FIGS_LOCKED) PAY_FIG_FIELDS.forEach(function(id){
+      const el=document.getElementById(id); if(el) el.value=''; });
+    return;
+  }
   const put=(id,v)=>{ const el=document.getElementById(id);
-    if(!el || String(el.value||'').trim() || !v) return;
+    if(!el) return;
+    if(!PAY_FIGS_LOCKED && String(el.value||'').trim()) return;
+    if(!v && PAY_FIGS_LOCKED){ el.value=''; return; }
+    if(!v) return;
     el.value=String(v);
     // Straight through the same formatter the field uses when typed into, so a
     // prefilled figure and a keyed one are not written two different ways.
@@ -12917,6 +12965,9 @@ function openPayAction(idx){
     const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
     if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join('');
     const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.value=val||''; };
+    // Every review opens on the record. A disagreement is recorded for one
+    // application, not carried into the next one somebody opens.
+    PAY_FIGS_LOCKED=true;
     set('pa-num',r['App #']); set('pa-contr',r['Contractor']); set('pa-period',r['Period']);
     set('pa-due',r['Due Date']); set('pa-contract',r['Contract Amount']);
     set('pa-cos',r['Approved Change Orders']); set('pa-prev',r['Previously Paid']); set('pa-req',r['Requested Amount']);
@@ -12926,7 +12977,7 @@ function openPayAction(idx){
     // much as on what is typed, so both are re-derived whenever either moves.
     { const pd=document.getElementById('pa-period');
       if(pd) pd.onchange=function(){ payPrefillKnown(); payFigureNotes(); }; }
-    try{ payPrefillKnown(); payFigureNotes(); }catch(e){}
+    try{ payLockApply(); payPrefillKnown(); payFigureNotes(); }catch(e){}
   }
   document.getElementById('pa-action').selectedIndex=0;
   document.getElementById('pa-amount').value=payNum(r['Requested Amount'])||'';
