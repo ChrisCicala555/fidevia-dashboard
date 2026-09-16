@@ -72,7 +72,14 @@ console.log('What replacing does, and what it leaves alone');
   ok(/Choose the corrected document\./.test(sub), 'a replacement with no file is refused');
   ok(/r\['Attachment File ID'\]=ent\.id/.test(sub) && /r\['Attachment Name'\]=f\.files\[0\]\.name/.test(sub),
      'the row points at the new document');
-  ok(!/r\['Status'\]=/.test(sub), 'the status is untouched — it is still waiting on Fidevia');
+  // Only two writes to the status in the whole function: the one the review
+  // asked for, and putting it back when the save fails.
+  ok((sub.match(/r\['Status'\]=/g)||[]).length===2,
+     'the status is untouched, except where the review asked for a correction');
+  ok(/if\(_returned\)\{ r\['Status'\]=\(String\(r\['Copy Type'\]\|\|''\)\.trim\(\)\|\|'Uploaded'\)\+' \\u2014 awaiting Fidevia'/.test(sub),
+     'and then it goes back to awaiting Fidevia, rather than still reading "revise and resubmit"');
+  ok(/_patch\['Status'\]=r\['Status'\]/.test(sub), 'which is sent with the rest');
+  ok(/r\['Status'\]=b\.s;/.test(sub), 'and put back if the save fails');
   ok(!/r\['Copy Type'\]=/.test(sub), 'and so is pencil-or-final, the number and the period');
   ok(!/r\['App #'\]=/.test(sub) && !/r\['Period'\]=/.test(sub),
      'this is the same application correctly documented, not a new one');
@@ -124,8 +131,8 @@ ok(/if\(key==='pay_apps'\) match\['Contractor'\]=row\['Contractor'\]\|\|row\['Co
 
 console.log('Where the contractor finds it');
 {
-  ok(/payMayReplace\(r\)\?'<button class="row-act"[^']*openPayReplace\('\+idx\+'\)">Replace file<\/button>'/.test(html),
-     'a button on their own row');
+  ok(/payMayReplace\(r\)\?\('<button class="row-act"[\s\S]{0,260}openPayReplace\('\+idx\+'\)">'\+\(payWasReturned\(r\)\?'Submit revision':'Replace file'\)/.test(html),
+     'a button on their own row, which says Submit revision when that is what it is');
   const ext=html.split(":((payMayPromote(r)")[1].split(';')[0];
   ok(/Submit Final/.test(ext) && /Replace file/.test(ext),
      'alongside Submit Final, since a pencil copy can be both wrong and ready to finalise');

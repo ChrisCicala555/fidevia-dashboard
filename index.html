@@ -1744,9 +1744,11 @@
         <p class="file-hint" style="margin:2px 0 0;" id="pa-lock-hint"></p>
         <button type="button" class="fig-unlock" id="pa-lock-toggle" onclick="payLockToggle()"></button>
       </div>
-      <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
-      <div class="field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
-      <div class="field"><label>Upload signed payment application</label><input type="file" id="pa-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">The signed / marked-up PDF is saved as a new version — the contractor's original is kept.</p></div>
+      <p class="file-hint" style="margin:0 0 12px;" id="pa-kind-note"></p>
+      <div class="field"><label id="pa-action-label">Action</label><select id="pa-action" onchange="payActionChanged()"></select></div>
+      <div class="field" id="pa-amount-field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
+      <div class="field"><label id="pa-note-label">Comments</label><textarea id="pa-note" rows="3" autocomplete="off"></textarea><p class="file-hint" style="margin-top:4px;" id="pa-note-hint"></p></div>
+      <div class="field"><label id="pa-file-label">Upload signed payment application</label><input type="file" id="pa-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;" id="pa-file-hint">The signed / marked-up PDF is saved as a new version — the contractor's original is kept.</p></div>
     </div>
     <div class="modal-footer">
       <button class="btn-primary" id="pa-submit-btn" onclick="submitPayAction()">Submit</button>
@@ -5401,7 +5403,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 16:57';
+const BUILD_STAMP='2026-09-16 23:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12735,7 +12737,10 @@ function billingDatesFor(periodDate){
 }
 function fmtCycleDate(d){ return d ? fmtDMY(d.toISOString().slice(0,10)) : '—'; }
 
-function payApproved(r){ const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
+// Approving a pencil copy approves filing the formal application, not a
+// payment. Without this the fallback below read the requested figure off an
+// approved pencil and counted a draft as billed.
+function payApproved(r){ if(payIsPencil(r)) return 0; const s=(r['Status']||'').toLowerCase(); if(!(s.indexOf('approv')>=0||s.indexOf('signed')>=0)) return 0; const a=payNum(r['Approved Amount']); return a||payNum(r['Requested Amount']); }
 // Contractor-uploaded rows sit at 'Uploaded — awaiting Fidevia' until someone
 // records the numbers, so every pending count has to recognise that too.
 function payIsOutstanding(r){
@@ -13037,6 +13042,9 @@ function payMayPromote(r){
   // outside" is the rule, and it should not depend on a property of another
   // function to hold.
   if(!viewingAsExternal()) return false;
+  // A pencil that was sent back or refused is not one to build a formal
+  // application on. The corrected pencil comes first.
+  if(payWasReturned(r) || payWasRejected(r)) return false;
   const mine=String(viewingAsCompany()||'').trim().toLowerCase();
   const theirs=String(r['Contractor']||r['Company']||'').trim().toLowerCase();
   return !!mine && mine===theirs;
@@ -13073,7 +13081,9 @@ function payMayReplace(r){
   // Nothing filed is nothing to replace. That row needs Fidevia to record it,
   // which is a different button.
   if(!String(r['Attachment File ID']||'').trim()) return false;
-  return !payReviewStarted(r);
+  // A review that sent it back is asking for exactly this. Without it the
+  // contractor is told to revise and has no way to file the revision.
+  return !payReviewStarted(r) || payWasReturned(r);
 }
 let PAYREPL_IDX=-1;
 function openPayReplace(idx){
@@ -13081,11 +13091,15 @@ function openPayReplace(idx){
   if(!r || !payMayReplace(r)){ alert('That application has already been reviewed, so its document stays as filed.'); return; }
   PAYREPL_IDX=idx;
   const t=document.getElementById('payrepl-title');
-  if(t) t.textContent='Replace document \u2014 '+(r['App #']||r['Attachment Name']||'application');
+  if(t) t.textContent=(payWasReturned(r)?'Submit revision \u2014 ':'Replace document \u2014 ')
+    +(r['App #']||r['Attachment Name']||'application');
   const n=document.getElementById('payrepl-note');
-  if(n) n.textContent='Fidevia has not reviewed this yet, so you can put the right document on it. '
-    +'The application keeps its number and its period; only the document changes, and what you sent '
-    +'before stays in the history.';
+  if(n) n.textContent = payWasReturned(r)
+    ? 'This was sent back to be revised. Filing the corrected document puts it back with Fidevia. '
+      +'The application keeps its number and its period, and what you sent before stays in the history.'
+    : 'Fidevia has not reviewed this yet, so you can put the right document on it. '
+      +'The application keeps its number and its period; only the document changes, and what you sent '
+      +'before stays in the history.';
   const f=document.getElementById('payrepl-file'); if(f) f.value='';
   showStatus('payrepl-status','','info');
   const b=document.getElementById('payrepl-btn'); if(b) b.disabled=false;
@@ -13100,7 +13114,8 @@ async function submitPayReplace(){
   const f=document.getElementById('payrepl-file');
   if(!f || !f.files || !f.files[0]){ showStatus('payrepl-status','Choose the corrected document.','error'); return; }
   const btn=document.getElementById('payrepl-btn'); if(btn) btn.disabled=true;
-  const before=JSON.stringify({a:r['Attachment File ID'], n:r['Attachment Name'], v:r['Version History']});
+  const before=JSON.stringify({a:r['Attachment File ID'], n:r['Attachment Name'],
+                               v:r['Version History'], s:r['Status']});
   try{
     showStatus('payrepl-status','Uploading\u2026','info');
     const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
@@ -13108,20 +13123,26 @@ async function submitPayReplace(){
     await resolveMe();
     const who=viewingAsCompany()||ME_NAME||ME_EMAIL||'';
     const old=String(r['Attachment Name']||'').trim();
+    const _returned=payWasReturned(r);
     let vs=_versions(r);
     vs.push({v:vs.length+1, fileId:ent.id||'', fileName:f.files[0].name,
              status:String(r['Copy Type']||'')||'Replaced', date:etToday(), by:who, co:who,
-             note:'Replaced by the contractor before review'+(old?(' \u2014 was '+old):'')+'.'});
+             note:(_returned ? 'Revised and resubmitted by the contractor'
+                             : 'Replaced by the contractor before review')
+                  +(old?(' \u2014 was '+old):'')+'.'});
     r['Version History']=JSON.stringify(vs);
     r['Attachment File ID']=ent.id||'';
     r['Attachment Name']=f.files[0].name;
-    // Status, Copy Type, period and number all stand. This is the same
-    // application, correctly documented — not a new one. Only the three fields
-    // that changed are sent, through the path a contractor is allowed to use.
-    await boxUpdateRow('pay_apps', r, {
-      'Attachment File ID': r['Attachment File ID'], 'Attachment Name': r['Attachment Name'],
-      'Version History': r['Version History']
-    });
+    // The number, the period and pencil-or-final all stand. This is the same
+    // application, correctly documented — not a new one. The status moves only
+    // where the review asked for a correction: filing it puts the application
+    // back with Fidevia rather than leaving it reading "revise and resubmit".
+    const _patch={ 'Attachment File ID': r['Attachment File ID'],
+                   'Attachment Name': r['Attachment Name'],
+                   'Version History': r['Version History'] };
+    if(_returned){ r['Status']=(String(r['Copy Type']||'').trim()||'Uploaded')+' \u2014 awaiting Fidevia';
+                   _patch['Status']=r['Status']; }
+    await boxUpdateRow('pay_apps', r, _patch);
     try{ auditLog('Document replaced before review','pay_apps',r, String(r['App #']||'')); }catch(e){}
     // Fidevia may be part-way through reading the old one.
     try{
@@ -13137,12 +13158,40 @@ async function submitPayReplace(){
     setTimeout(closePayReplace, 800);
   }catch(e){
     const b=JSON.parse(before);
-    r['Attachment File ID']=b.a; r['Attachment Name']=b.n; r['Version History']=b.v;
+    r['Attachment File ID']=b.a; r['Attachment Name']=b.n; r['Version History']=b.v; r['Status']=b.s;
     renderAll();
     showStatus('payrepl-status','Could not replace it: '+(e.message||e),'error');
   }
   if(btn) btn.disabled=false;
 }
+// ── REVIEWING A PENCIL COPY ────────────────────────────────────────────────
+//
+// A pencil copy is a draft. Nobody signs one and no payment is approved off
+// one: the review says whether the contractor may go ahead and file the formal
+// application, and on what terms. Offering "Approve and Sign", an approved
+// payment amount and a place to upload the signed application was asking for a
+// decision that cannot be made yet about a document nobody signs.
+//
+// The outcomes are the submittal's, which is what this review actually is.
+const PAY_PENCIL_ACTIONS=[
+  ['Approved',            'Pencil approved \u2014 awaiting final'],
+  ['Approved as Noted',   'Pencil approved as noted \u2014 awaiting final'],
+  ['Revise and Resubmit', 'Revise and resubmit \u2014 awaiting contractor'],
+  ['Rejected',            'Pencil rejected']
+];
+const PAY_FINAL_ACTIONS=[
+  ['Approve and Sign', 'Approved & Signed'],
+  ['Modify and Sign',  'Modified & Signed'],
+  ['Deny',             'Denied']
+];
+function payActions(row){ return payIsPencil(row) ? PAY_PENCIL_ACTIONS : PAY_FINAL_ACTIONS; }
+function payStatusFor(row, action){
+  const hit=payActions(row).find(a=>a[0]===action);
+  return hit ? hit[1] : String(action||'');
+}
+// A review that asks for a corrected pencil copy, or refuses one outright.
+function payWasReturned(r){ return /revise|resubmit/i.test(String((r&&r['Status'])||'')); }
+function payWasRejected(r){ return /reject/i.test(String((r&&r['Status'])||'')); }
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -13204,7 +13253,7 @@ function renderPayApps(){
         const needs=payNeedsDetails(r);
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
           :((payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
-            +(payMayReplace(r)?'<button class="row-act" title="Fidevia has not reviewed this yet \u2014 put the right document on it" onclick="openPayReplace('+idx+')">Replace file</button>':''));
+            +(payMayReplace(r)?('<button class="row-act" title="'+(payWasReturned(r)?'This was sent back \u2014 file the corrected document':'Fidevia has not reviewed this yet \u2014 put the right document on it')+'" onclick="openPayReplace('+idx+')">'+(payWasReturned(r)?'Submit revision':'Replace file')+'</button>'):''));
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
           + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '')
           // Disagreeing with the change order log is worth seeing from the log
@@ -13248,7 +13297,28 @@ function openPayAction(idx){
       if(pd) pd.onchange=function(){ payPrefillKnown(); payFigureNotes(); }; }
     try{ payLockApply(); payPrefillKnown(); payFigureNotes(); }catch(e){}
   }
-  document.getElementById('pa-action').selectedIndex=0;
+  const pencil=payIsPencil(r);
+  { const sel=document.getElementById('pa-action');
+    sel.innerHTML=payActions(r).map(a=>'<option>'+esc(a[0])+'</option>').join('');
+    sel.selectedIndex=0; }
+  { const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+    set('pa-kind-note', pencil
+      ? 'This is a pencil copy. The review says whether the contractor may file the formal application, and on what terms \u2014 nothing is signed and no payment is approved here.'
+      : '');
+    set('pa-action-label', pencil ? 'Review outcome' : 'Action');
+    set('pa-note-label', pencil ? 'Comments' : 'Comments');
+    set('pa-note-hint', pencil
+      ? 'What the contractor has to change or carry into the final. Saved with the review and sent to them.'
+      : 'Saved with the review and sent to the contractor.');
+    set('pa-file-label', pencil ? 'Upload marked-up pencil copy' : 'Upload signed payment application');
+    set('pa-file-hint', pencil
+      ? 'Optional. Saved as a new version against the pencil copy \u2014 the contractor\u2019s original is kept.'
+      : 'The signed / marked-up PDF is saved as a new version \u2014 the contractor\u2019s original is kept.');
+    const af=document.getElementById('pa-amount-field');
+    // No payment is approved off a draft, so there is nothing to put here.
+    if(af) af.style.display = pencil ? 'none' : '';
+    const nt=document.getElementById('pa-note'); if(nt) nt.value='';
+  }
   setMoneyField('pa-amount', payNum(r['Requested Amount'])||'');
   // The approved amount follows what is being requested until somebody changes
   // it. Copied as a number rather than as the text the other field is holding:
@@ -13265,6 +13335,9 @@ function openPayAction(idx){
   document.getElementById('payaction-backdrop').classList.add('open');
 }
 function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ setMoneyField('pa-amount','0'); amt.disabled=true; } else { amt.disabled=false; } }
+// Approved as noted, or sent back, without saying what the notes are is a
+// review the contractor cannot act on.
+const PAY_NOTE_REQUIRED=/noted|revise|resubmit|reject|deny|denied/i;
 function closePayAction(){ document.getElementById('payaction-backdrop').classList.remove('open'); PAY_CTX=null; }
 async function submitPayAction(){
   if(!PAY_CTX) return; const {idx}=PAY_CTX;
@@ -13281,11 +13354,18 @@ async function submitPayAction(){
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
     if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await payAppFolder(row); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
-    const status=action==='Approve and Sign'?'Approved & Signed':action==='Modify and Sign'?'Modified & Signed':'Denied';
-    const appAmt=action==='Deny'?0:amount;
+    const pencil=payIsPencil(row);
+    const status=payStatusFor(row, action);
+    // A pencil copy approves nothing to be paid. Leaving the amount off the row
+    // matters: payApproved falls back to the requested figure when the status
+    // says approved and the amount is blank.
+    const appAmt = pencil ? 0 : (action==='Deny' ? 0 : amount);
+    const note=(function(){ const el=document.getElementById('pa-note'); return el?String(el.value||'').trim():''; })();
+    if(PAY_NOTE_REQUIRED.test(action) && !note)
+      throw new Error('Say what has to change \u2014 "'+action+'" without the notes is not something the contractor can act on.');
     let vh=[]; try{ vh=JSON.parse(row['Version History']||'[]'); }catch(e){}
     if(!vh.length){ vh=[{v:1,fileId:row['Attachment File ID']||'',fileName:row['Attachment Name']||'',status:row['Status']||'Submitted',date:row['Date']||row['Review Date']||'',by:row['Contractor']||'',note:'Submitted'}]; }
-    vh.push({v:vh.length+1,fileId:(sfid||row['Attachment File ID']||''),fileName:(sname||row['Attachment Name']||''),status:status,date:etToday(),by:by,note:action+' · '+fmtMoney(appAmt)});
+    vh.push({v:vh.length+1,fileId:(sfid||row['Attachment File ID']||''),fileName:(sname||row['Attachment Name']||''),status:status,date:etToday(),by:by,note:action+(pencil?'':(' · '+fmtMoney(appAmt)))+(note?(' — '+note):'')});
     row['Version History']=JSON.stringify(vh);
     // If Fidevia is recording the contractor's numbers, save them with the review.
     const detailBox=document.getElementById('pa-details');
@@ -13302,17 +13382,27 @@ async function submitPayAction(){
       const _c=payNum(g('pa-contract')), _co=payNum(g('pa-cos')), _pv=payNum(g('pa-prev')), _rq=payNum(g('pa-req'));
       row['Remaining on Contract']=((_c+_co)-_pv-_rq).toFixed(2);
     }
-    row['Status']=status; row['Action']=action; row['Approved Amount']=String(appAmt); row['Reviewed By']=by; row['Review Date']=etToday(); row['Signed File ID']=sfid; row['Signed File Name']=sname;
+    row['Status']=status; row['Action']=action;
+    row['Approved Amount']= pencil ? '' : String(appAmt);
+    row['Reviewed By']=by; row['Review Date']=etToday();
+    // A pencil copy is never signed, so a marked-up file is another version of
+    // the document rather than a signed counterpart of it.
+    if(pencil){ if(sfid){ row['Attachment File ID']=sfid; row['Attachment Name']=sname; } }
+    else { row['Signed File ID']=sfid; row['Signed File Name']=sname; }
     prog.textContent='Updating log…';
     await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
     allData.pay_apps=rows;
     try{
       const _contact=(allData.contacts||[]).find(c=>String(c['Company']||'').trim().toLowerCase()===String(row['Contractor']||'').trim().toLowerCase());
       const _extra=_contact&&_contact['Email']?[_contact['Email']]:[];
-      notifyContacts('Notify - CO', '[Fidevia] Payment Application '+(row['App #']||'')+' — '+status,
-        emailTemplate('Payment Application '+status, [['App #',row['App #']||''],['Contractor',row['Contractor']||''],['Action',action],['Approved Amount',fmtMoney(appAmt)],['Reviewed By',by||'—']], currentProject.name), {extraTo:_extra});
+      notifyContacts('Notify - CO', '[Fidevia] '+(pencil?'Pencil Copy ':'Payment Application ')+(row['App #']||'')+' — '+status,
+        emailTemplate((pencil?'Pencil Copy ':'Payment Application ')+status,
+          [['App #',row['App #']||''],['Contractor',row['Contractor']||''],['Outcome',action]]
+            .concat(pencil?[]:[['Approved Amount',fmtMoney(appAmt)]])
+            .concat([['Comments',note||'—'],['Reviewed By',by||'—']]),
+          currentProject.name), {extraTo:_extra});
     }catch(e){}
-    auditLog(action, 'pay_apps', row, status+' · '+fmtMoney(appAmt));
+    auditLog(action, 'pay_apps', row, status+(pencil?'':(' · '+fmtMoney(appAmt))));
     renderAll(); closePayAction();
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;

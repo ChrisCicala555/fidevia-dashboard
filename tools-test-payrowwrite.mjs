@@ -32,8 +32,15 @@ console.log('What a contractor may write on a payment application');
   ok(/if \(filename === PAY_LOG\) ALLOWED\.add\('Copy Type'\);/.test(ur),
      'Copy Type, because promoting a pencil copy is their own act');
   ok(/if \(filename === PAY_LOG\) \{/.test(ur), 'under a rule of its own');
-  ok(/if \(payRowReviewed\(row\)\) return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
+  ok(/if \(payRowReviewed\(row\) && !payRowReturned\(row\)\) return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
      'and nothing at all once somebody has ruled on it');
+  // Except the one ruling that asks for exactly this. The page relaxed the same
+  // way; a server that did not would tell a contractor to revise and then
+  // refuse the revision — the 403-after-upload this whole path was fixing.
+  ok(/function payRowReturned\(row\) \{\s*\n\s*return \/revise\|resubmit\/i\.test/.test(src),
+     'unless the ruling was revise and resubmit');
+  ok(/return !payReviewStarted\(r\) \|\| payWasReturned\(r\);/.test(html),
+     'which is the same relaxation the page makes, so the two cannot disagree');
   ok(/'Copy Type' in patch && String\(patch\['Copy Type'\] \|\| ''\)\.trim\(\)\.toLowerCase\(\) !== 'final'/.test(ur),
      'Copy Type may only move toward the final copy');
   ok(/'Status' in patch && !PAY_AWAITING\.test\(String\(patch\['Status'\] \|\| ''\)\)/.test(ur),
@@ -72,7 +79,7 @@ console.log('Neither pay app write goes through the whole-file path any more');
     const b=html.slice(html.indexOf('async function '+fn+'(){'));
     const body=b.slice(0, b.indexOf('\n}\n'));
     ok(!/boxUploadText\(/.test(body), fn+' does not rewrite the log');
-    ok(/await boxUpdateRow\('pay_apps', r, \{/.test(body), fn+' patches the row instead');
+    ok(/await boxUpdateRow\('pay_apps', r, (\{|_patch\))/.test(body), fn+' patches the row instead');
     ok(!/const mod=MODULES\.pay_apps, fid=/.test(body), fn+' no longer carries the handles it used for that');
   });
 }

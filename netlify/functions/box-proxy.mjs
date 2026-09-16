@@ -577,6 +577,12 @@ const PAY_AWAITING = /awaiting|submitted|pending|uploaded/i;
 // document once one has, and that refusal has to hold here too: a rule that
 // lives only in the page is a rule anybody willing to call the API does not
 // have.
+// A review that asked for a corrected pencil copy. The contractor has to be
+// able to file that correction, so this one reviewed state is not a lock — it
+// is an instruction to do the very thing the lock would prevent.
+function payRowReturned(row) {
+  return /revise|resubmit/i.test(String((row && row['Status']) || ''));
+}
 function payRowReviewed(row) {
   if (!row) return true;
   if (String(row['Reviewed By'] || '').trim() || String(row['Review Date'] || '').trim()) return true;
@@ -2227,9 +2233,10 @@ export default async (req) => {
         // The money on a payment application is decided by Fidevia, never by
         // the party being paid.
         if (filename === PAY_LOG) {
-          // Nothing at all on an application somebody has already ruled on.
-          // This is the server's copy of the rule the Replace button follows.
-          if (payRowReviewed(row)) return json({ error: 'Access denied' }, 403);
+          // Nothing at all on an application somebody has already ruled on,
+          // unless the ruling was "revise and resubmit". This is the server's
+          // copy of the rule the Replace button follows.
+          if (payRowReviewed(row) && !payRowReturned(row)) return json({ error: 'Access denied' }, 403);
           // Only ever toward the final copy. Turning a final back into a pencil
           // would take an application the owner can see and hide it again.
           if ('Copy Type' in patch && String(patch['Copy Type'] || '').trim().toLowerCase() !== 'final')
