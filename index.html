@@ -800,20 +800,20 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
         <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">First Name <span style="color:#c0392b;">*</span></label>
-        <input id="prof-first" type="text" placeholder="Jordan" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
+        <input id="prof-first" type="text" placeholder="Jane" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
       </div>
       <div>
         <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Last Name <span style="color:#c0392b;">*</span></label>
-        <input id="prof-last" type="text" placeholder="Reyes" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
+        <input id="prof-last" type="text" placeholder="Doe" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
       </div>
     </div>
     <div style="margin-bottom:12px;">
       <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Phone Number</label>
-      <input id="prof-phone" type="tel" onblur="this.value=fmtPhone(this.value)" placeholder="(717) 555-0100" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
+      <input id="prof-phone" type="tel" onblur="this.value=fmtPhone(this.value)" placeholder="(555) 555-0100" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
     </div>
     <div style="margin-bottom:12px;">
       <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Company</label>
-      <input id="prof-company" type="text" placeholder="Acme Construction LLC" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
+      <input id="prof-company" type="text" placeholder="Example Contracting LLC" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;box-sizing:border-box;">
     </div>
     <div style="margin-bottom:12px;">
       <label style="font-size:13px;color:#555;font-weight:600;display:block;margin-bottom:4px;">Role</label>
@@ -891,13 +891,13 @@
     <!-- STEP 1: BASICS -->
     <div class="wiz-step" data-step="1">
       <h3 style="font-size:16px;margin:0 0 12px;">Project Basics</h3>
-      <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Lebanon Intermediate School Additions"></div>
+      <div class="field"><label>Project Name *</label><input autocomplete="off" id="np-name" placeholder="e.g. Riverside Intermediate School Additions"></div>
       <div class="field-row"><div class="field"><label>Owner / Client</label>
-        <input autocomplete="off" id="np-owner" list="owner-orgs" placeholder="e.g. Lebanon School District" oninput="ownerMatchNote('np-owner','np-owner-note')">
+        <input autocomplete="off" id="np-owner" list="owner-orgs" placeholder="e.g. Riverside School District" oninput="ownerMatchNote('np-owner','np-owner-note')">
         <p class="file-hint" id="np-owner-note" style="margin-top:3px;"></p></div><div class="field"><label>Job / Project #</label><input autocomplete="off" id="np-jobnum" oninput="wizCheckJobNumber()" placeholder="e.g. 26-108"><div id="np-jobnum-note" style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4;"></div></div></div>
       <div class="field"><label>Street Address</label><input autocomplete="off" id="np-addr1" placeholder="123 Main Street"></div>
       <div class="field"><label>Address Line 2 (Suite, PO Box…)</label><input autocomplete="off" id="np-addr2" placeholder="Suite 200 / PO Box 45"></div>
-      <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Lancaster"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="17601"></div></div>
+      <div class="field-row"><div class="field"><label>City</label><input autocomplete="off" id="np-city" placeholder="Springfield"></div><div class="field"><label>State</label><input autocomplete="off" id="np-state" placeholder="PA"></div><div class="field"><label>ZIP</label><input autocomplete="off" id="np-zip" placeholder="12345"></div></div>
       <div class="field"><label>Onsite CM (Fidevia lead)</label><input autocomplete="off" id="np-cm" readonly onfocus="this.removeAttribute('readonly')" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="dirSuggest(this,'name',{fideviaOnly:true})" onkeydown="dirKey(event,this)" onblur="setTimeout(dirClose,120)" placeholder="Start typing a name"></div>
       <div class="field"><label>Scope / Description</label><textarea autocomplete="off" id="np-scope" placeholder="Brief scope of work…"></textarea></div>
       <div class="field"><label>Project Logo (optional)</label><input autocomplete="off" type="file" id="np-logo" accept="image/*"><p class="file-hint">Shown to the left of the project name. PNG or JPG.</p></div>
@@ -993,13 +993,13 @@
     <p class="form-desc">Tell us which project you need access to and a Fidevia administrator will review your
       request. Your name, company and email come with it, so we know who is asking.</p>
     <div class="field"><label>Project *</label>
-      <input id="req-project-name" type="text" autocomplete="off" placeholder="e.g. Ithaca Housing Complex"
+      <input id="req-project-name" type="text" autocomplete="off" placeholder="e.g. Riverside Housing Complex"
         oninput="document.getElementById('req-status').textContent='';">
       <p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;">
         The project name or job number, as you know it. It does not have to be exact.</p></div>
     <div class="field"><label>Anything else that helps us place you (optional)</label>
       <textarea id="req-project-note" rows="2" autocomplete="off"
-        placeholder="e.g. mechanical sub for Summit Builders, starting on site in October"></textarea></div>
+        placeholder="e.g. mechanical sub on this job, starting on site in October"></textarea></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="submitRequest()" id="btn-request">Request Access</button>
       <button class="btn-secondary" onclick="loadPicker()">Back</button>
@@ -1040,7 +1040,7 @@
       <div id="org-addform" style="display:none;background:var(--white);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
         <p class="form-desc" style="margin-top:0;">For a firm nobody on the dashboard works for yet — an owner, an architect, a consultant. The address is asked for next.</p>
         <div class="field-row">
-          <div class="field" style="flex:2;"><label>Organization name *</label><input id="org-add-name" autocomplete="off" placeholder="Ithaca Admin" onkeydown="if(event.key==='Enter'){event.preventDefault();orgAddSubmit();}" oninput="orgAddNote()"><p class="file-hint" style="margin-top:3px;" id="org-add-note"></p></div>
+          <div class="field" style="flex:2;"><label>Organization name *</label><input id="org-add-name" autocomplete="off" placeholder="Riverside School District" onkeydown="if(event.key==='Enter'){event.preventDefault();orgAddSubmit();}" oninput="orgAddNote()"><p class="file-hint" style="margin-top:3px;" id="org-add-note"></p></div>
           <div class="field" style="flex:1;"><label>Category</label>
             <select id="org-add-cat">
               <option value="">— Not categorised —</option>
@@ -1066,11 +1066,11 @@
       <p class="form-desc" style="margin:0 0 14px;max-width:620px;">For someone who does not have a dashboard account yet. They will show in the directory straight away and can be added to projects. When they sign up with this email their account picks these details up.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
         <label class="cd-addl">First name<input id="cdn-first" class="cd-inp" oninput="cdNameWarned=''" placeholder="Jane"></label>
-        <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" oninput="cdNameWarned=''" placeholder="Okafor"></label>
-        <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jokafor@example.com" oninput="cdInviteCheck()"></label>
-        <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Summit Builders"></label>
+        <label class="cd-addl">Last name<input id="cdn-last" class="cd-inp" oninput="cdNameWarned=''" placeholder="Doe"></label>
+        <label class="cd-addl">Email<input id="cdn-email" class="cd-inp" type="email" placeholder="jane.doe@example.com" oninput="cdInviteCheck()"></label>
+        <label class="cd-addl">Company<input id="cdn-company" class="cd-inp" placeholder="Example Contracting LLC"></label>
         <label class="cd-addl">Role<input id="cdn-role" class="cd-inp" placeholder="Project Engineer"></label>
-        <label class="cd-addl">Phone<input id="cdn-phone" class="cd-inp" onblur="this.value=fmtPhone(this.value)" placeholder="(717) 555-0100"></label>
+        <label class="cd-addl">Phone<input id="cdn-phone" class="cd-inp" onblur="this.value=fmtPhone(this.value)" placeholder="(555) 555-0100"></label>
       </div>
       <label class="cd-addl" style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-weight:400;">
         <input type="checkbox" id="cdn-invite" checked style="margin-top:3px;">
@@ -1534,7 +1534,7 @@
           <div class="panel" style="padding:20px;max-width:680px;">
             <div class="field-row">
               <div class="field" style="flex:2;"><label>Owner</label>
-                <input id="ps-owner" autocomplete="off" list="owner-orgs" placeholder="Lincoln School District" oninput="ownerMatchNote('ps-owner','ps-owner-note')">
+                <input id="ps-owner" autocomplete="off" list="owner-orgs" placeholder="Riverside School District" oninput="ownerMatchNote('ps-owner','ps-owner-note')">
                 <p class="file-hint" id="ps-owner-note" style="margin-top:3px;"></p></div>
               <div class="field" style="flex:1;"><label>Job number</label><input id="ps-jobnum" autocomplete="off"></div>
             </div>
@@ -1714,11 +1714,11 @@
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Read off the contractor's application</div>
         <div class="field-row"><div class="field"><label>App # *</label><input autocomplete="off" id="pa-num" placeholder="PA-001"></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="pa-contr" list="contr-list-pa" placeholder="Select or type"><datalist id="contr-list-pa"></datalist></div></div>
         <div class="field-row"><div class="field"><label>Period</label><input autocomplete="off" type="date" id="pa-period"></div><div class="field"><label>Due Date</label><input autocomplete="off" type="date" id="pa-due"></div></div>
-        <div class="field-row"><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="45000"></div><div class="field"></div></div>
+        <div class="field-row"><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="pa-req" placeholder="50,000"></div><div class="field"></div></div>
         <p class="file-hint" style="margin:2px 0 8px;">Open the uploaded file above to read these off the contractor's application.</p>
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px;">Already on record — check, don't retype</div>
-        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="850000" oninput="payFigureNotes()"><div id="pa-contract-note"></div></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payFigureNotes()"><div id="pa-cos-note"></div></div></div>
-        <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="200000" oninput="payFigureNotes()"><div id="pa-prev-note"></div></div><div class="field"></div></div>
+        <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="pa-contract" placeholder="1,000,000" oninput="payFigureNotes()"><div id="pa-contract-note"></div></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="pa-cos" placeholder="0" oninput="payFigureNotes()"><div id="pa-cos-note"></div></div></div>
+        <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="pa-prev" placeholder="250,000" oninput="payFigureNotes()"><div id="pa-prev-note"></div></div><div class="field"></div></div>
         <p class="file-hint" style="margin:2px 0 0;">These come from project settings, the change order log and earlier applications. Change one only if the paper application in hand says otherwise.</p>
       </div>
       <div class="field"><label>Action</label><select id="pa-action" onchange="payActionChanged()"><option>Approve and Sign</option><option>Modify and Sign</option><option>Deny</option></select></div>
@@ -1885,7 +1885,7 @@
       </div>
       <div class="field"><label>Why (required)</label>
         <textarea id="wfov-reason" rows="3" autocomplete="off"
-          placeholder="e.g. Confirmed by phone with Dana Rowe on 10 Sep; written confirmation to follow."></textarea>
+          placeholder="e.g. Confirmed by phone with the architect on 10 Sep; written confirmation to follow."></textarea>
         <p class="file-hint" style="font-size:12.5px;">This is recorded against the step, shown in the workflow, written to the audit log and sent with the notification. It is the only record of why somebody else&rsquo;s approval was entered by Fidevia, so it should say enough to stand on its own later.</p>
       </div>
       <p id="wfov-err" style="display:none;margin:0 0 10px;font-size:13px;color:var(--danger);"></p>
@@ -1986,8 +1986,8 @@
       <div class="field-row">
         <div class="field" style="flex:1;"><label>Date issued</label><input type="date" id="nc-date"></div>
         <div class="field" style="flex:1;"><label>Amount ($)</label>
-          <input id="nc-amount" autocomplete="off" placeholder="8400" oninput="newCoTotals()">
-          <p class="file-hint" id="nc-amount-hint" style="font-size:12.5px;">What this change order is worth. A deduct is a negative, e.g. -8400.</p>
+          <input id="nc-amount" autocomplete="off" placeholder="10,000" oninput="newCoTotals()">
+          <p class="file-hint" id="nc-amount-hint" style="font-size:12.5px;">What this change order is worth. A deduct is a negative, e.g. -10,000.</p>
         </div>
       </div>
 
@@ -2104,12 +2104,12 @@
         <p class="file-hint" id="og-cat-note" style="margin-top:4px;display:none;"></p></div>
       <p class="file-hint" style="margin:0 0 10px;padding:8px 10px;background:var(--cream);border:1px solid var(--border);border-radius:6px;">
         <strong>Street address, city, state and ZIP are required to generate a change order</strong> for this organization — the document names each party in full. Line 2 is optional.</p>
-      <div class="field"><label>Street address *</label><input id="og-line1" autocomplete="off" placeholder="124 West Church Street"></div>
-      <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="og-line2" autocomplete="off" placeholder="Suite 300"></div>
+      <div class="field"><label>Street address *</label><input id="og-line1" autocomplete="off" placeholder="123 Main Street"></div>
+      <div class="field"><label>Line 2 <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="og-line2" autocomplete="off" placeholder="Suite 200"></div>
       <div class="field-row">
-        <div class="field" style="flex:2;"><label>City *</label><input id="og-city" autocomplete="off" placeholder="Dillsburg"></div>
+        <div class="field" style="flex:2;"><label>City *</label><input id="og-city" autocomplete="off" placeholder="Springfield"></div>
         <div class="field" style="flex:1;"><label>State *</label><input id="og-state" autocomplete="off" placeholder="PA"></div>
-        <div class="field" style="flex:1;"><label>ZIP *</label><input id="og-zip" autocomplete="off" placeholder="17019"></div>
+        <div class="field" style="flex:1;"><label>ZIP *</label><input id="og-zip" autocomplete="off" placeholder="12345"></div>
       </div>
       <p class="file-hint" style="margin-top:2px;">Used on change orders and other formal documents, which name each party in full.</p>
 
@@ -3455,8 +3455,8 @@ function wizAddContractor(){
   div.className='wiz-contractor-row';
   div.style='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
   div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select autocomplete="off" class="cn-role">'+contractorRoleOptions('')+'</select></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Lobar"></div>'
-    +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:12px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="18799000"></div>'
+    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Example Contracting LLC"></div>'
+    +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:12px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="1,000,000"></div>'
     +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
   wrap.appendChild(div);
 }
@@ -3603,7 +3603,7 @@ function alwRow(prefix, co, idx, a){
     +'<div class="field" style="flex:2;margin:0;"><label style="font-size:11px;color:#888;">Name</label>'
       +'<input class="alw-name" autocomplete="off" value="'+esc((a&&a.name)||'')+'" placeholder="e.g. Door hardware"></div>'
     +'<div class="field" style="flex:1;margin:0;"><label style="font-size:11px;color:#888;">Amount ($)</label>'
-      +'<input class="alw-amt" autocomplete="off" value="'+esc((a&&a.amount)?String(a.amount):'')+'" placeholder="25000"></div>'
+      +'<input class="alw-amt" autocomplete="off" value="'+esc((a&&a.amount)?String(a.amount):'')+'" placeholder="10,000"></div>'
     +'<button type="button" class="btn-secondary" style="padding:9px 12px;" title="Remove"'
       +' onclick="alwRemove(this)">\u00d7</button>'
     +'</div>';
@@ -4101,7 +4101,7 @@ function fmtMoneyInput(el, allowNegative){
 // charge.
 const NEGATIVE_OK=['f-cost','nc-amount','pa-cos','f-cos-approved'];
 function wireMoneyInputs(){
-  ['f-cost','nc-amount','f-allow','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
+  ['f-cost','nc-amount','f-contract','f-cos-approved','f-prev','f-req','pa-amount','pa-contract','pa-cos','pa-prev','pa-req'].forEach(function(id){
     const el=document.getElementById(id); if(!el||el._moneyWired) return; el._moneyWired=true;
     const negOk=NEGATIVE_OK.includes(id);
     el.addEventListener('blur',function(){ fmtMoneyInput(el,negOk); if(el.value==='-') el.value=''; });
@@ -5352,7 +5352,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 12:33';
+const BUILD_STAMP='2026-09-16 13:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8142,7 +8142,7 @@ const FORMS = {
   co:{title:'New PCO',html:`
     <div class="field-row"><div class="field"><label>Submitted By</label><input autocomplete="off" id="f-by"></div><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Additional structural bracing per RFI-001"></div>
-    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="8400"><p class="file-hint" style="margin-top:3px;">Enter a deduct as a negative, e.g. -8400. A deduct reduces the contract. Which allowances it writes down, if any, is set on the change order.</p></div><div class="field"></div></div>
+    <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="10,000"><p class="file-hint" style="margin-top:3px;">Enter a deduct as a negative, e.g. -10,000. A deduct reduces the contract. Which allowances it writes down, if any, is set on the change order.</p></div><div class="field"></div></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="Type a number or a subject…" oninput="rfiShowAC(this)" onfocus="rfiShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-linked-note"></p></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-co"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'New Submittal',html:`
@@ -8153,7 +8153,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-reviewer" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p></div></div>
     <div class="field"><label>Submittal Document <span id="f-file-req-sub"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
-    <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="R. Alvarez (Super)"></div></div>
+    <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="J. Doe (Superintendent)"></div></div>
     <div class="field-row"><div class="field"><label>Weather</label><input autocomplete="off" id="f-weather" placeholder="Partly cloudy, 72°F"></div><div class="field"><label>Crew Count</label><input autocomplete="off" type="number" id="f-crew" placeholder="14"></div></div>
     <div class="field"><label>Work Performed *</label><textarea autocomplete="off" id="f-subject" placeholder="Concrete pour, north footing…"></textarea></div>
     <div class="field"><label>Delays / Issues</label><textarea autocomplete="off" id="f-delays" placeholder="Any delays, safety incidents…"></textarea></div>
@@ -8172,14 +8172,14 @@ const FORMS = {
     <div class="field"><label>Notify on Submittal?</label><select autocomplete="off" id="f-sub"><option>Yes</option><option>No</option></select></div>`},
   budget:{title:'Add Budget Line Item',html:`
     <div class="field-row"><div class="field"><label>Cost Code *</label><input autocomplete="off" id="f-code" placeholder="03-300"></div><div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Cast-in-Place Concrete"></div></div>
-    <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input autocomplete="off" id="f-budget" placeholder="185000"></div><div class="field"><label>Committed Costs ($)</label><input autocomplete="off" id="f-committed" placeholder="182500"></div></div>
-    <div class="field-row"><div class="field"><label>Approved COs ($)</label><input autocomplete="off" id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input autocomplete="off" id="f-actual" placeholder="140200"></div></div>`},
+    <div class="field-row"><div class="field"><label>Budget Amount ($)</label><input autocomplete="off" id="f-budget" placeholder="100,000"></div><div class="field"><label>Committed Costs ($)</label><input autocomplete="off" id="f-committed" placeholder="75,000"></div></div>
+    <div class="field-row"><div class="field"><label>Approved COs ($)</label><input autocomplete="off" id="f-cos" placeholder="0"></div><div class="field"><label>Actual to Date ($)</label><input autocomplete="off" id="f-actual" placeholder="50,000"></div></div>`},
   payapp:{title:'New Payment Application',html:`
     <div class="field-row"><div class="field"><label>App #</label><input autocomplete="off" id="f-num" placeholder="Auto once a contractor is chosen"><p class="file-hint" style="margin-top:3px;" id="f-num-hint"></p></div><div class="field"><label>Contractor *</label><input autocomplete="off" id="f-contr" list="contr-list" placeholder="Select or type"><datalist id="contr-list"></datalist></div></div>
-    <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="ABC Mechanical Inc."></div>
+    <div class="field"><label>Company</label><input autocomplete="off" id="f-company" placeholder="Example Mechanical Inc."></div>
     <div class="field-row"><div class="field"><label>Period (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (MM/DD/YYYY) *</label><input autocomplete="off" type="date" id="f-due"></div></div>
-    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="850000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
-    <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="200000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="45000"></div></div>
+    <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="1,000,000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="0"></div></div>
+    <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="250,000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="50,000"></div></div>
     <div class="field"><label>Payment Application Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The pay application PDF, uploaded to Box. Remaining is calculated automatically. Fidevia will review and sign.</p></div>`},
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="Architectural Drawings - Set A"></div>
@@ -10302,7 +10302,7 @@ function newCoTotals(){
         if(hint) hint.textContent='Set by the proposals covered below. Untick them all to enter a figure directly.';
       } else {
         el.readOnly=false; el.style.background=''; el.style.color='';
-        if(hint) hint.textContent='What this change order is worth. A deduct is a negative, e.g. -8400.';
+        if(hint) hint.textContent='What this change order is worth. A deduct is a negative, e.g. -10,000.';
       }
     } }
   const rows=allowRowsRead('nc');
