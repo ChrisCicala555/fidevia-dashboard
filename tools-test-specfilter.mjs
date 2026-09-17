@@ -1,6 +1,7 @@
 // The spec section list covers the standard, and the submittal log can be
 // narrowed to a division or a section.
 import fs from 'fs';
+import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
@@ -80,6 +81,29 @@ ok(/SUB_SPEC_FILTER=''/.test(html.split('function openProject')[1]||html),
    'the filter is cleared with the project');
 ok((html.match(/SUB_SPEC_FILTER='';/g)||[]).length>=3,
    'in every place the project context is torn down');
+
+console.log('A section number is one number')
+{
+  // "01 11 00" is three groups separated by spaces, so a narrow column broke it
+  // across three lines and indented the pieces \u2014 which reads as three numbers
+  // rather than one.
+  const t=html.split('function twoLine(')[1].split('\n}')[0];
+  ok(/opts&&opts\.nowrap/.test(t) && /white-space:nowrap/.test(t),
+     'the top line can be held whole');
+  ok(/: esc\(a\)/.test(t), 'and is not, unless asked \u2014 a long description should still wrap');
+  ok(/twoLine\(sp\.code, sp\.name, \{nowrap:true\}\)/.test(html),
+     'the spec cell asks for it');
+  ok(!/twoLine\(r\['Submittal #'\][^)]*nowrap/.test(html),
+     'while the cells that hold names and descriptions do not, since those are meant to wrap');
+  const P2=bootPage('index.html'); P2.run(SEED);
+  const cell=P2.run(`twoLine('01 11 00','Summary of Work',{nowrap:true})`);
+  ok(/<span style="white-space:nowrap;">01 11 00<\/span>/.test(cell),
+     'the code comes out unbreakable \u2014 '+cell);
+  ok(/class="cell-sub">Summary of Work/.test(cell),
+     'and the section name still sits under it, free to wrap as it likes');
+  ok(!/nowrap/.test(P2.run(`twoLine('01 11 00','Summary of Work')`)),
+     'an ordinary two-line cell is untouched');
+}
 
 console.log((bad?'FAIL':'ok  '),' tools-test-specfilter.mjs —',n,'assertions');
 process.exit(bad?1:0);

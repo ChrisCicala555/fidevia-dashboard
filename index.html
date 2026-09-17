@@ -5122,10 +5122,15 @@ function threadCell(key, i, inner){
     +'<span class="thread-arrow" id="arw-'+key+'-'+i+'">&#9656;</span>'
     +'<div class="thread-body">'+inner+'</div></div></td>';
 }
-function twoLine(primary, secondary){
+// opts.nowrap keeps the top line whole. A CSI section number is three groups
+// separated by spaces — "01 11 00" — so a narrow column broke it across three
+// lines and indented the pieces, which reads as three numbers rather than one.
+function twoLine(primary, secondary, opts){
   const a=String(primary==null?'':primary).trim();
   const b=String(secondary==null?'':secondary).trim();
-  const top=a?esc(a):'<span style="color:var(--muted);">\u2014</span>';
+  const top=a
+    ? ((opts&&opts.nowrap) ? '<span style="white-space:nowrap;">'+esc(a)+'</span>' : esc(a))
+    : '<span style="color:var(--muted);">\u2014</span>';
   return b && b.toLowerCase()!==a.toLowerCase()
     ? top+'<div class="cell-sub">'+esc(b)+'</div>'
     : top;
@@ -5548,7 +5553,7 @@ function renderSubmittals(){
     const sp=specParts(r['Spec Section']);
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'sub\','+i+'))">'
       +threadCell('sub', i, impFlag(r)+twoLine(r['Submittal #'], rowCompany(r)))
-      +'<td>'+twoLine(sp.code, sp.name)+'</td>'
+      +'<td>'+twoLine(sp.code, sp.name, {nowrap:true})+'</td>'
       +'<td>'+esc(r['Description'])+'</td>'
       +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
@@ -5775,7 +5780,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:53';
+const BUILD_STAMP='2026-09-17 19:57';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
