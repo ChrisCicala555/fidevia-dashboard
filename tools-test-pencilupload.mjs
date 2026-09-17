@@ -170,8 +170,9 @@ console.log('The log says which it is');
 {
   ok(/payIsPencil\(r\) \? '<div class="cell-sub"[^>]*>Pencil copy<\/div>/.test(html),
      'a pencil row is labelled on the log, under its number');
-  ok(/payMayPromote\(r\)\?'<button class="btn-approve" onclick="openPayFinal\('\+idx\+'\)">Submit Final/.test(html),
-     'and carries the contractor’s own Submit Final button');
+  ok(/payMayPromote\(r\)\?'<button class="btn-approve ext-ok" onclick="openPayFinal\('\+idx\+'\)">Submit Final/.test(html),
+     'and carries the contractor’s own Submit Final button — marked ext-ok, or the stylesheet hides it '
+     +'from the only person who presses it');
   ok(/<td class="pay-act">/.test(html) && /<th class="pay-act">Action<\/th>/.test(html),
      'in a column that is no longer admin-only, or the contractor would never see it');
 }

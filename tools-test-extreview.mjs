@@ -81,8 +81,8 @@ console.log('The step is theirs, so the button is');
   ok(may()===false, 'and a project with no chain configured grants nothing either');
   P.run(`wfEffectiveSteps=function(){ return [${JSON.stringify(FID)},${JSON.stringify(ARCH)}]; };`);
 }
-ok(/payMayReview\(r\)\?'<button class="btn-approve" onclick="openPayAction\('\+idx\+'\)">Review<\/button>'/.test(html),
-   'and the row carries a Review button for them');
+ok(/payMayReview\(r\)\?'<button class="btn-approve ext-ok" onclick="openPayAction\('\+idx\+'\)">Review<\/button>'/.test(html),
+   'and the row carries a Review button for them, marked ext-ok so it is not hidden from outside');
 
 {
   // The bug itself. viewingAsCompany is empty for a design role on purpose:

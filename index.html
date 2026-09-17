@@ -592,10 +592,16 @@
   .row-act.act-delete:hover{background:var(--danger-bg); color:var(--danger); border-color:#E8BFB9;}
   .ver-link{color:#2a6fb0;cursor:pointer;font-weight:600;text-decoration:underline;}
   .ver-link:hover{color:#1d5488;}
+  /* Approving and rejecting were Fidevia's alone when this was written, so the
+     class was hidden outright from anybody outside. A contractor submitting
+     their final application and an architect recording their review both press
+     a button that looks like this, and both were being rendered and then hidden
+     — in the DOM, never on the screen. ext-ok marks the ones that are theirs to
+     press. */
   body.is-external-user .viewer-toggle,
   body.is-external-user .btn-ver,
-  body.is-external-user .btn-approve,
-  body.is-external-user .btn-reject{display:none !important;}
+  body.is-external-user .btn-approve:not(.ext-ok),
+  body.is-external-user .btn-reject:not(.ext-ok){display:none !important;}
   body.external-mode .nav-budget,
   body.external-mode .nav-dailylogs{display:none;}
 
@@ -5493,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:32';
+const BUILD_STAMP='2026-09-17 03:46';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13823,8 +13829,8 @@ function renderPayApps(){
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
         const needs=payNeedsDetails(r);
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
-          :((payMayReview(r)?'<button class="btn-approve" onclick="openPayAction('+idx+')">Review</button>':'')
-            +(payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
+          :((payMayReview(r)?'<button class="btn-approve ext-ok" onclick="openPayAction('+idx+')">Review</button>':'')
+            +(payMayPromote(r)?'<button class="btn-approve ext-ok" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
             +(payMayReplace(r)?('<button class="row-act" title="'+(payWasReturned(r)?'This was sent back \u2014 file the corrected document':'Fidevia has not reviewed this yet \u2014 put the right document on it')+'" onclick="openPayReplace('+idx+')">'+(payWasReturned(r)?'Submit revision':'Replace file')+'</button>'):''));
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
           + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '')
