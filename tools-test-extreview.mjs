@@ -103,6 +103,29 @@ ok(/payMayReview\(r\)\?'<button class="btn-approve" onclick="openPayAction\('\+i
      'including the check that keeps a contractor out of reviewing');
 }
 
+console.log('When it says no, it says why');
+{
+  // Three things can line up and none of them did. Without this there is no
+  // button and no way to tell which of the three was wrong.
+  P.run(`LOGGED=''; console.debug=function(m){ LOGGED=String(m); };
+    ME_NAME='Clymer'; ME_EMAIL='clymerllc@gmail.com';
+    viewerFirm=function(){ return 'Clymer LLC'; };
+    allData.contacts=[{'Name':'Test Architect','Company':'Architect 2','Email':'arch@example.com'}];`);
+  ok(may()===false, 'a reader who matches none of the three does not get the button');
+  const line=String(P.run(`LOGGED`));
+  ok(/no match on PA #01/.test(line), 'and the console names the application');
+  ok(/email:"clymerllc@gmail\.com"/.test(line) && /firm:"clymer llc"/.test(line),
+     'what the reader arrived with');
+  ok(/"person":"Test Architect"/.test(line) && /"company":"Architect 2"/.test(line),
+     'and what the step asked for');
+  ok(/"firmOfPerson":"Architect 2"/.test(line),
+     'including the firm the contact sheet gives that person, which is the other way it could have matched');
+  P.run(`LOGGED=''; viewerFirm=function(){ return 'Architect 2'; };`);
+  ok(may()===true && String(P.run(`LOGGED`))==='',
+     'and a match says nothing at all \u2014 the trace is for the failure');
+  P.run(`ME_NAME='Test Architect'; ME_EMAIL='arch@example.com'; allData.contacts=[];`);
+}
+
 console.log('What they see, and what they do not');
 {
   const o=html.split('function openPayAction(idx){')[1].split('\nfunction payActionChanged')[0];

@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:24';
+const BUILD_STAMP='2026-09-17 03:32';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13644,7 +13644,19 @@ function payMayReview(row){
   const me=String(ME_EMAIL||'').trim().toLowerCase();
   const myName=String(ME_NAME||'').trim().toLowerCase();
   const myCo=String(viewerFirm()||'').trim().toLowerCase();
-  return steps.slice(gs,ge+1).some((st,i)=>{
+  // A step names a person and a firm; a reader arrives with an address, a name
+  // and a firm of their own. When none of the three lines up there is no button
+  // and no way to tell which of the three was wrong. Said in the console, where
+  // it costs nobody anything and answers the question in one look.
+  const _why=(hit)=>{ if(hit||!PAY_REVIEW_TRACE) return hit;
+    try{ console.debug('payMayReview: no match on '+(row&&row['App #'])+
+      ' \u2014 you are {email:'+JSON.stringify(me)+', name:'+JSON.stringify(myName)+
+      ', firm:'+JSON.stringify(myCo)+'}; the step is '+
+      JSON.stringify(steps.slice(gs,ge+1).map(st=>({step:st.name, person:st.person,
+        company:st.company, email:String(st.email||'').trim()||wfEmailOf(st.person),
+        firmOfPerson:firmOf(st.person)})))); }catch(e){}
+    return hit; };
+  return _why(steps.slice(gs,ge+1).some((st,i)=>{
     // A step this person has already answered is not theirs to answer again.
     if(done.includes(gs+i) || signed[String(gs+i)]) return false;
     const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
@@ -13658,8 +13670,11 @@ function payMayReview(row){
     // step.
     if(String(st.company||'').trim().toLowerCase()===myCo) return true;
     return String(firmOf(st.person)||'').trim().toLowerCase()===myCo;
-  });
+  }));
 }
+// Off for Fidevia, who has the tooltip, and on for everybody else, who has
+// nothing else to go on.
+let PAY_REVIEW_TRACE=true;
 // ── WHO IT IS WITH, NOW ────────────────────────────────────────────────────
 //
 // The status was written at the moment of a review and then left alone, so it
