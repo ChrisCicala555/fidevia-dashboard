@@ -37,8 +37,10 @@ console.log('What it says when more than one person is reading it');
      'and the row cannot say "Your Step" to somebody it is not with');
   ok(/_step\+\(_shared&&_with\?\(' — '\+_with\):''\)/.test(f),
      'it names who instead, so the architect can see it is not theirs yet');
-  ok(/const _with=_wfFirst\.map\(x=>x\.name\)\.filter\(Boolean\)\.join\(', '\);/.test(f),
-     'everybody in the first group, where it is a parallel one');
+  ok(/const _with=\[\.\.\.new Set\(_wfFirst\.map\(x=>firmOf\(x\.name\)\|\|x\.name\)\.filter\(Boolean\)\)\]\.join\(', '\);/.test(f),
+     'everybody in the first group, where it is a parallel one \u2014 and by their office, since a '
+     +'contractor told their application is with a name they have never heard of learns less than one '
+     +'told which firm has it');
 }
 
 console.log('What it still carries');

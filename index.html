@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:22';
+const BUILD_STAMP='2026-09-17 02:31';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9532,7 +9532,10 @@ async function submitForm(){
     // than for yours.
     try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
       const _step=_wfFirst[0].step||'Review';
-      const _with=_wfFirst.map(x=>x.name).filter(Boolean).join(', ');
+      // The firm, not the person: an email telling a contractor their
+      // application is with somebody they have never heard of tells them less
+      // than one naming the office.
+      const _with=[...new Set(_wfFirst.map(x=>firmOf(x.name)||x.name).filter(Boolean))].join(', ');
       const _thread = key==='pay_apps' ? payNotifyEmails(newRow) : [];
       const _seen=new Set(); const _to=_wfFirst.map(x=>x.email).concat(_thread)
         .filter(e=>{ const k=String(e||'').trim().toLowerCase();
@@ -13522,7 +13525,7 @@ function payAdvanceChain(row, by, outcome){
     if(!Array.isArray(done)) done=[];
     toSign.forEach(n=>{ if(!done.includes(n)) done.push(n); });
     const waiting=steps.slice(gs,ge+1)
-      .map((st,n)=>done.includes(gs+n)?null:(st.person||st.name||'')).filter(Boolean);
+      .map((st,n)=>done.includes(gs+n)?null:wfPartyLabel(st)).filter(Boolean);
     row['Workflow Done']=JSON.stringify(done);
     if(waiting.length){
       row['Workflow Status']='In Review';
@@ -13540,8 +13543,10 @@ function payAdvanceChain(row, by, outcome){
   row['Workflow Step']=String(next); row['Workflow Status']='In Review';
   const [ns,ne]=wfGroupAt(steps,next);
   const group=steps.slice(ns,ne+1);
+  const seen=new Set();
   return { complete:false, step:stepName,
-           names: group.map(st=>st.person||st.company||st.name||'').filter(Boolean),
+           names: group.map(wfPartyLabel).filter(x=>{ if(!x) return false;
+             const k=x.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; }),
            emails: group.map(st=>String(st.email||'').trim()||wfEmailOf(st.person)).filter(Boolean) };
 }
 // What the row says while the chain is still running. "Pencil approved" with
@@ -13584,6 +13589,20 @@ function payChainNoteHTML(row){
         +esc('This step is not yours. Recording it is entered as an override, in your name, against '
              +(now.map(st=>st.person).filter(Boolean).join(', ')||'the named reviewer')+'.')+'</div>'));
 }
+// A step belongs to a firm. The person against it is who Fidevia expects to
+// answer, but the obligation is the office's: the architect who reviews this
+// month may not be the one who reviews next month, and a status naming somebody
+// who has left reads as a dead end. So anything anybody outside Fidevia sees —
+// the log, the emails — says the firm. The person stays where it is a fact
+// rather than a label: the Take Action dialog, which is Fidevia deciding who to
+// chase, and the signed record, which is who actually answered.
+function wfPartyLabel(st){
+  if(!st) return '';
+  return String(st.company||'').trim()
+      || firmOf(st.person)
+      || String(st.person||'').trim()
+      || String(st.name||'').trim();
+}
 // ── WHO IT IS WITH, NOW ────────────────────────────────────────────────────
 //
 // The status was written at the moment of a review and then left alone, so it
@@ -13608,9 +13627,12 @@ function payWithNow(row){
   if(!Array.isArray(done)) done=[];
   // In an all-must-sign group the people who have already answered are not
   // still being waited on.
+  const seen=new Set();
   return steps.slice(gs,ge+1)
-    .map((st,i)=>done.includes(gs+i) ? '' : (st.person||st.company||st.name||''))
-    .filter(Boolean);
+    .map((st,i)=>done.includes(gs+i) ? '' : wfPartyLabel(st))
+    .filter(x=>{ if(!x) return false; const k=x.toLowerCase();
+      // Two people from one firm in one parallel group is one firm waiting.
+      if(seen.has(k)) return false; seen.add(k); return true; });
 }
 // What the log shows. The stored status wherever it records a decision; who it
 // is with wherever it was only ever a description of where it had got to.

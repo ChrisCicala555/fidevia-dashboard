@@ -13,6 +13,8 @@ const P=bootPage(); P.run(SEED);
 const chain=(js)=>P.run(`wfEffectiveSteps=function(){ return ${js}; };`);
 const FID={name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia'};
 const ARCH={name:'Architect Review', person:'Test Architect', company:'Architect 2'};
+// A step belongs to a firm. The person against it is who Fidevia expects to
+// answer; the obligation is the office's, and that is what the log says.
 const ROW=(o)=>Object.assign({'App #':'PA #01','Contractor':'Summit Builders','Company':'Summit Builders',
   'Copy Type':'Pencil','Status':'Pencil — awaiting Christopher Cicala, Test Architect',
   'Workflow Step':'1','Workflow Status':'In Review','Workflow Done':''}, o);
@@ -24,46 +26,70 @@ console.log('The chain says where it is, not a sentence written last week');
   // The case in front of us: three steps became two, and the stored status
   // still names both of the people the old chain pointed at.
   chain(`[${JSON.stringify(FID)},${JSON.stringify(ARCH)}]`);
-  ok(withNow().join()==='Test Architect', 'it is with the architect');
-  ok(label()==='Pencil — with Test Architect',
+  ok(withNow().join()==='Architect 2', 'it is with the architect\u2019s office');
+  ok(label()==='Pencil — with Architect 2',
      'and says so, rather than repeating a sentence about a chain that no longer exists');
-  ok(!/Christopher Cicala/.test(label()), 'Fidevia has done theirs and is not still being waited on');
+  ok(!/Fidevia/.test(label()), 'Fidevia has done theirs and is not still being waited on');
+  ok(!/Test Architect/.test(label()),
+     'and it names the office rather than the person, who may not be the one who answers next month');
 }
 {
   chain(`[${JSON.stringify(FID)},${JSON.stringify(ARCH)}]`);
-  ok(label({'Workflow Step':'0'})==='Pencil — with Christopher Cicala',
+  ok(label({'Workflow Step':'0'})==='Pencil — with Fidevia',
      'at the first step it is with Fidevia');
-  ok(label({'Copy Type':'Final','Workflow Step':'1'})==='With Test Architect',
+  ok(label({'Copy Type':'Final','Workflow Step':'1'})==='With Architect 2',
      'and a final application says it without the word pencil');
 }
 {
   // A step removed can leave the row pointing past the end of the chain.
   chain(`[${JSON.stringify(FID)}]`);
-  ok(label({'Workflow Step':'5'})==='Pencil — with Christopher Cicala',
+  ok(label({'Workflow Step':'5'})==='Pencil — with Fidevia',
      'a row left past the end of a shortened chain reads as the last step, not as nothing');
-  ok(label({'Workflow Step':'-3'})==='Pencil — with Christopher Cicala', 'and one left before the start');
+  ok(label({'Workflow Step':'-3'})==='Pencil — with Fidevia', 'and one left before the start');
 }
 {
   // Parallel: both at once, and whoever has answered drops off.
   chain(`[${JSON.stringify(FID)},${JSON.stringify(Object.assign({}, ARCH, {parallel:true}))}]`);
-  ok(label({'Workflow Step':'0'})==='Pencil — with Christopher Cicala, Test Architect',
+  ok(label({'Workflow Step':'0'})==='Pencil — with Fidevia, Architect 2',
      'a parallel group is with everybody in it');
-  ok(label({'Workflow Step':'0','Workflow Done':'[0]'})==='Pencil — with Test Architect',
+  ok(label({'Workflow Step':'0','Workflow Done':'[0]'})==='Pencil — with Architect 2',
      'until one of them answers, and then it is with the rest');
   ok(label({'Workflow Step':'0','Workflow Done':'not json'})
-       ==='Pencil — with Christopher Cicala, Test Architect',
+       ==='Pencil — with Fidevia, Architect 2',
      'and unreadable history does not drop anybody off it');
   ok(label({'Workflow Step':'0','Workflow Done':'{}'})
-       ==='Pencil — with Christopher Cicala, Test Architect',
+       ==='Pencil — with Fidevia, Architect 2',
      'nor history that reads as something other than a list');
 }
 {
   chain(`[{name:'Owner Review', person:'', company:'Riverside School District'}]`);
   ok(label({'Workflow Step':'0'})==='Pencil — with Riverside School District',
      'a step with a firm and no person names the firm');
+  chain(`[{name:'Lone Reviewer', person:'Someone Unlisted', company:''}]`);
+  ok(label({'Workflow Step':'0'})==='Pencil — with Someone Unlisted',
+     'somebody with no firm recorded anywhere is named themselves, rather than vanishing');
   chain(`[{name:'Third Party Review', person:'', company:''}]`);
   ok(label({'Workflow Step':'0'})==='Pencil — with Third Party Review',
      'and one with neither falls back to what the step is called');
+}
+
+{
+  // Two people from one office in one parallel group is one office waiting.
+  chain(`[{name:'Architect Review', person:'A', company:'Architect 2'},`
+       +`{name:'Second Reviewer', person:'B', company:'Architect 2', parallel:true}]`);
+  ok(label({'Workflow Step':'0'})==='Pencil — with Architect 2',
+     'a firm appearing twice in one group is said once');
+}
+{
+  // The firm can also be found from the contact sheet where the step omits it.
+  P.run(`allData.contacts=[{'Name':'Test Architect','Company':'Architect 2','Email':'a@x.com'}];`);
+  chain(`[{name:'Architect Review', person:'Test Architect', company:''}]`);
+  ok(label({'Workflow Step':'0'})==='Pencil — with Architect 2',
+     'a step that names only a person still reads as their office');
+  ok(P.run(`wfPartyLabel({person:'Test Architect', company:'Architect 2'})`)==='Architect 2',
+     'the step\u2019s own company wins where it has one');
+  ok(P.run(`wfPartyLabel({name:'Review'})`)==='Review', 'and the step name is the last resort');
+  ok(P.run(`wfPartyLabel(null)`)==='', 'with nothing at all answering nothing');
 }
 
 console.log('A decision is the row’s to state, not the chain’s');

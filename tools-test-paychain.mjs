@@ -36,7 +36,10 @@ console.log('One review is one step, not the whole chain');
   ok(a.res.complete===false, "Fidevia's review does not finish a two-step chain");
   ok(a.row['Workflow Step']==='1', 'the chain moves to the architect');
   ok(a.row['Workflow Status']==='In Review', 'and is still running');
-  ok(a.res.names.join()==='Test Architect', 'which is who it is with now');
+  // The office, not the person: the architect who reviews this month may not
+  // be the one who reviews next month, and a status naming somebody who has
+  // left reads as a dead end.
+  ok(a.res.names.join()==='Architect 2', 'which is whose it is now');
   ok(a.res.emails.join()==='arch@example.com', 'and where to write to');
   ok(a.res.step==='Fidevia Review', 'while naming the step that was just recorded');
   const signed=JSON.parse(a.row['Workflow Signed']||'{}');
@@ -75,7 +78,7 @@ console.log('A parallel group waits for everyone in it');
     {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}
   ]; };`);
   const a=advance(ROW(),'Christopher Cicala','Approved');
-  ok(a.res.complete===false && a.res.waiting && a.res.waiting.join()==='Test Engineer',
+  ok(a.res.complete===false && a.res.waiting && a.res.waiting.join()==='Engineer 1',
      'answering one half of a parallel group leaves it waiting on the other');
   ok(a.row['Workflow Step']==='0', 'and the chain does not move past a group nobody has finished');
   const signed=JSON.parse(a.row['Workflow Signed']||'{}');
@@ -87,8 +90,24 @@ console.log('A parallel group waits for everyone in it');
   const b=advance(a.row,'Test Engineer','Approved');
   P.run(`ME_NAME='Christopher Cicala'; ME_EMAIL='chris@fidevia.com';`);
   ok(b.res.complete===false && !b.res.waiting, 'the second answer finishes the group');
-  ok(b.row['Workflow Step']==='2' && b.res.names.join()==='Test Architect', 'and the chain moves on');
+  ok(b.row['Workflow Step']==='2' && b.res.names.join()==='Architect 2', 'and the chain moves on');
   ok(b.row['Workflow Done']==='[]', 'with the part-done record cleared for the next group');
+  P.run(`wfSteps=function(){ return [
+    {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+    {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
+}
+
+{
+  // Two people from one office reviewing together is one office being waited on.
+  P.run(`wfSteps=function(){ return [
+    {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+    {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'},
+    {name:'Second Architect', person:'Other Architect', company:'Architect 2', email:'arch2@example.com', parallel:true}
+  ]; };`);
+  const a=advance(ROW(),'Christopher Cicala','Approved');
+  ok(a.res.names.join()==='Architect 2', 'the office is named once, not once per person');
+  ok(a.res.emails.length===2,
+     'while both of them are written to \u2014 the label is one thing, the recipients another');
   P.run(`wfSteps=function(){ return [
     {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
     {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
