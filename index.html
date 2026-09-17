@@ -1507,7 +1507,7 @@
         </div>
         <p class="file-hint" style="margin:0 0 12px;">Each company sees only its own payrolls; Fidevia sees all.</p>
         <div class="panel">
-          <div class="panel-header">Certified Payrolls by Contractor</div>
+          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">Certified Payrolls by Contractor<span class="seg" id="pr-company"></span></span></div>
           <table><thead><tr><th>Week Ending</th><th>Company</th><th>Payroll #</th><th>Submitted By</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-payrolls"><tr class="loading-row"><td colspan="6">Loading…</td></tr></tbody></table>
         </div>
@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:51';
+const BUILD_STAMP='2026-09-17 22:56';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7024,9 +7024,41 @@ function renderContractorDaily(){
     return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
   });
 }
+// One firm at a time. A certified payroll is looked at to answer a question
+// about a single subcontractor — did Summit file for the week ending the 10th
+// — and one list in date order makes that a search through everybody else's
+// paperwork. Each prime also files its own, so on a job with four of them the
+// single list is four unrelated records interleaved by date.
+let PR_CO='', PR_FIRMS=[];
+// By position, not by name: passing the name through an onclick attribute
+// breaks on a firm like Cook's Service Company, and the apostrophe is in the
+// directory already.
+// -1 is the All tab, and there is no PR_FIRMS[-1].
+function setPrCompanyAt(i){ PR_CO = PR_FIRMS[i] || ''; renderPayrolls(); }
+function prCompanyChips(rows){
+  const el=document.getElementById('pr-company'); if(!el) return;
+  const by={};
+  rows.forEach(function(r){
+    const c=String(r['Company']||'').trim(); if(!c) return;
+    const k=coNorm(c); if(!by[k]) by[k]={name:c,n:0}; by[k].n++;
+  });
+  PR_FIRMS=Object.keys(by).map(k=>by[k].name).sort((a,b)=>a.localeCompare(b));
+  // A subcontractor sees only their own, so a strip of one tab is furniture.
+  if(PR_FIRMS.length<2){ el.innerHTML=''; return; }
+  const chip=(i,label,count,on)=>'<button type="button" class="seg-opt'+(on?' on':'')+'"'
+    +' onclick="setPrCompanyAt('+i+')">'+esc(label)
+    +' <span style="opacity:.6;font-weight:700;">'+count+'</span></button>';
+  el.innerHTML=chip(-1,'All',rows.length,!PR_CO)
+    +PR_FIRMS.map((nm,i)=>chip(i,nm,by[coNorm(nm)].n,coNorm(PR_CO)===coNorm(nm))).join('');
+}
 function renderPayrolls(){
   try{ ensureMonthFolders('payrolls'); }catch(e){}
-  const rows=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
+  const all=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
+  prCompanyChips(all);
+  // The firm being looked at filed nothing, or is no longer on the project.
+  // Left selected, the page would read as though nobody had filed anything.
+  if(PR_CO && !all.some(r=>coNorm(r['Company'])===coNorm(PR_CO))) PR_CO='';
+  const rows = PR_CO ? all.filter(r=>coNorm(r['Company'])===coNorm(PR_CO)) : all;
   if(!rows.length){tb.innerHTML=emptyRow(6);return;}
   tb.innerHTML=moSections('payrolls', withIdxSorted(rows,'Week Ending'), 'Week Ending', 'payroll', 6, ({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Week Ending']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Payroll #'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('payrolls',i)+'</td></tr>';
