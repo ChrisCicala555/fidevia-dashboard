@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:07';
+const BUILD_STAMP='2026-09-17 03:19';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -11947,6 +11947,17 @@ function viewingAsCompany(){
   return '';
 }
 
+// The firm the reader belongs to, which is not the same question as the company
+// their rows are scoped to. viewingAsCompany answers the second: it is empty for
+// an architect, deliberately, because a design reviewer is not filtered down to
+// one contractor. Asking it "which office am I?" got '' back and shut the
+// architect out of their own review step.
+function viewerFirm(){
+  if(EXTERNAL) return String((currentProject&&currentProject.userCompany)||'').trim();
+  if(document.body.classList.contains('external-mode')) return String(VIEWER_COMPANY||'').trim();
+  return '';
+}
+
 function viewerFilter(rows, field){
   if(EXTERNAL || !document.body.classList.contains('external-mode') || !VIEWER_COMPANY) return rows;
   return rows.filter(r=>String(r[field]||'').trim().toLowerCase()===VIEWER_COMPANY.trim().toLowerCase());
@@ -13612,7 +13623,7 @@ function payMayReview(row){
   if(!viewingAsExternal()) return IS_ADMIN;
   // A contractor is the party being paid. They file and they correct; they do
   // not rule on their own application.
-  if(payContractorOf({'Company':viewingAsCompany()})) return false;
+  if(payContractorOf({'Company':viewerFirm()})) return false;
   let steps=[];
   try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){ return false; }
   if(!steps.length || wfIsStopped(row) || wfIsDone(row)) return false;
@@ -13625,7 +13636,7 @@ function payMayReview(row){
   if(!Array.isArray(done)) done=[];
   const me=String(ME_EMAIL||'').trim().toLowerCase();
   const myName=String(ME_NAME||'').trim().toLowerCase();
-  const myCo=String(viewingAsCompany()||'').trim().toLowerCase();
+  const myCo=String(viewerFirm()||'').trim().toLowerCase();
   return steps.slice(gs,ge+1).some((st,i)=>{
     // A step this person has already answered is not theirs to answer again.
     if(done.includes(gs+i) || signed[String(gs+i)]) return false;

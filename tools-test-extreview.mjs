@@ -16,7 +16,8 @@ P.run(`
   EXTERNAL=true; IS_ADMIN=false;
   ME_NAME='Test Architect'; ME_EMAIL='arch@example.com';
   viewingAsExternal=function(){ return true; };
-  viewingAsCompany=function(){ return 'Architect 2'; };
+  viewingAsCompany=function(){ return ''; };
+  viewerFirm=function(){ return 'Architect 2'; };
   currentProject={name:'X',folders:{pay_apps:'9'},config:{contractors:[{name:'Summit Builders'}]}};
   wfEffectiveSteps=function(){ return [${JSON.stringify(FID)},${JSON.stringify(ARCH)}]; };
 `);
@@ -32,27 +33,27 @@ console.log('The step is theirs, so the button is');
   ok(may({'Workflow Step':'0'})===false, 'but not one that belongs to Fidevia');
   P.run(`ME_EMAIL='someone@else.com'; ME_NAME='Someone Else';`);
   ok(may()===true, 'a colleague at the named firm may, since the obligation is the office’s');
-  P.run(`viewingAsCompany=function(){ return 'Engineer 1'; };`);
+  P.run(`viewerFirm=function(){ return 'Engineer 1'; };`);
   ok(may()===false, 'somebody at another firm may not');
   // A step labelled "Architect 2" and a grant issued to the firm's real name
   // are the same office. Matching only what the step says shut the architect
   // out of their own step.
   P.run(`allData.contacts=[{'Name':'Test Architect','Company':'Clymer LLC','Email':'clymer@example.com'}];
-         viewingAsCompany=function(){ return 'Clymer LLC'; };
+         viewerFirm=function(){ return 'Clymer LLC'; };
          ME_NAME='Someone Else'; ME_EMAIL='someone@else.com';`);
   ok(may()===true,
      'the firm the contact sheet gives the person on the step counts as much as the label on it');
-  P.run(`allData.contacts=[]; viewingAsCompany=function(){ return 'Nobody Ltd'; };`);
+  P.run(`allData.contacts=[]; viewerFirm=function(){ return 'Nobody Ltd'; };`);
   ok(may()===false, 'and a firm that is neither still may not');
   // Only the label on the step matches: a different person, a different
   // address, and nothing on the contact sheet to resolve the name through.
-  P.run(`viewingAsCompany=function(){ return 'Architect 2'; };`);
+  P.run(`viewerFirm=function(){ return 'Architect 2'; };`);
   ok(may()===true, 'the label on the step is enough on its own');
   // Somebody with no firm recorded must not fall through a blank comparison
   // into every step whose person is not on the contact sheet.
-  P.run(`viewingAsCompany=function(){ return ''; };`);
+  P.run(`viewerFirm=function(){ return ''; };`);
   ok(may()===false, 'and a viewer with no firm at all matches nothing');
-  P.run(`viewingAsCompany=function(){ return 'Architect 2'; };
+  P.run(`viewerFirm=function(){ return 'Architect 2'; };
          ME_NAME='Test Architect'; ME_EMAIL='arch@example.com';`);
   P.run(`viewingAsCompany=function(){ return 'Architect 2'; };
          ME_EMAIL='arch@example.com'; ME_NAME='Test Architect';`);
@@ -69,9 +70,9 @@ console.log('The step is theirs, so the button is');
 }
 {
   // The party being paid does not rule on their own application.
-  P.run(`viewingAsCompany=function(){ return 'Summit Builders'; };`);
+  P.run(`viewerFirm=function(){ return 'Summit Builders'; };`);
   ok(may()===false, 'a contractor never reviews, whatever the chain says');
-  P.run(`viewingAsCompany=function(){ return 'Architect 2'; };`);
+  P.run(`viewerFirm=function(){ return 'Architect 2'; };`);
 }
 {
   P.run(`wfEffectiveSteps=function(){ throw new Error('no config'); };`);
@@ -82,6 +83,25 @@ console.log('The step is theirs, so the button is');
 }
 ok(/payMayReview\(r\)\?'<button class="btn-approve" onclick="openPayAction\('\+idx\+'\)">Review<\/button>'/.test(html),
    'and the row carries a Review button for them');
+
+{
+  // The bug itself. viewingAsCompany is empty for a design role on purpose:
+  // an architect reviews every contractor, so their rows are scoped to none.
+  // Asking it "which office am I?" got '' back and shut them out of their own
+  // step. viewerFirm answers the question that was actually being asked.
+  const v=html.split('function viewerFirm(){')[1].split('\n}')[0];
+  ok(/if\(EXTERNAL\) return String\(\(currentProject&&currentProject\.userCompany\)\|\|''\)\.trim\(\);/.test(v),
+     'a real external reader is their own firm, whatever their role');
+  ok(/external-mode'\)\) return String\(VIEWER_COMPANY\|\|''\)\.trim\(\);/.test(v),
+     'and Fidevia previewing as somebody is that somebody');
+  ok(/return '';/.test(v), 'while Fidevia reading as itself belongs to no outside firm');
+  const r=html.split('function payMayReview(row){')[1].split('\n}')[0];
+  ok(/const myCo=String\(viewerFirm\(\)\|\|''\)\.trim\(\)\.toLowerCase\(\);/.test(r),
+     'and the review test asks viewerFirm, not the row-scoping one');
+  ok(!/viewingAsCompany/.test(r), 'nowhere in it asks the scoping question');
+  ok(/payContractorOf\(\{'Company':viewerFirm\(\)\}\)/.test(r),
+     'including the check that keeps a contractor out of reviewing');
+}
 
 console.log('What they see, and what they do not');
 {
