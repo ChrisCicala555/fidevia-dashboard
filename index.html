@@ -187,17 +187,29 @@
   .btn-switch-project:hover{background:rgba(255,255,255,0.15);}
   .btn-switch-project + .btn-switch-project{margin-top:8px;}
   .btn-switch-project:disabled{opacity:.55; cursor:default;}
-  .main{flex:1; display:flex; flex-direction:column;}
+  /* min-width:0 is the whole fix. A flex child defaults to min-width:auto, so
+     .main refused to shrink below the intrinsic width of its widest content:
+     the topbar, whose viewer toggle, account chip and Sign Out are all nowrap.
+     Narrow the window and the page overflowed sideways instead, carrying the
+     right-hand cluster off the screen — never hidden, just parked somewhere
+     nobody scrolls to. Now the column shrinks, the title takes the squeeze with
+     its ellipsis, and the tables scroll inside their own panels. */
+  .main{flex:1; min-width:0; display:flex; flex-direction:column;}
   .topbar{background:var(--white); border-bottom:2px solid var(--khaki-300); padding:14px 20px; display:flex; align-items:center; gap:16px; min-height:64px; position:relative; z-index:400;}
   .tb-titlegroup{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:12px;}
   .tb-titlegroup h1{font-family:'Times New Roman',Times,serif; font-size:24px; color:var(--olive-900); margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
-  .tb-right{flex:0 0 auto; display:flex; align-items:center; gap:12px;}
+  .tb-right{flex:0 1 auto; min-width:0; display:flex; align-items:center; gap:12px;}
   .tb-actions{display:flex; align-items:center; gap:12px;}
   .picker-actions{display:flex; align-items:center; gap:10px;}
   .tb-menu-btn,.picker-menu-btn{display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-size:20px; line-height:1; cursor:pointer; color:var(--olive-900);}
   .account-chip{display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:3px 13px 3px 4px;
     border:1px solid var(--border); border-radius:22px; background:var(--white);
-    font-size:13px; color:var(--ink); max-width:260px; white-space:nowrap; transition:border-color .15s,background .15s;}
+    font-size:13px; color:var(--ink); max-width:260px; min-width:0; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; transition:border-color .15s,background .15s;}
+  /* The address is the part that can give way. Sign Out and the viewer toggle
+     are controls; an email is a label, and half of one still identifies you. */
+  .tb-actions{min-width:0;}
+  .account-chip span,.account-chip .chip-email{overflow:hidden; text-overflow:ellipsis; min-width:0;}
   .account-chip:hover{background:var(--cream); border-color:var(--khaki-300);}
   .account-chip span.ac-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .ac-avatar{flex:0 0 auto; width:26px; height:26px; border-radius:50%; display:inline-flex;
@@ -5780,7 +5792,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:57';
+const BUILD_STAMP='2026-09-17 19:59';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
