@@ -164,6 +164,30 @@ console.log('A decision is the row’s to state, not the chain’s');
      'and so is a finished one');
 }
 
+console.log('The pill can be asked what the row actually holds');
+{
+  P.run(`IS_ADMIN=true; viewingAsExternal=function(){ return false; };`);
+  chain(`[${JSON.stringify(FID)},${JSON.stringify(Object.assign({}, ARCH, {parallel:true}))}]`);
+  const t=P.run(`payStatusTitle(${JSON.stringify(ROW({'Workflow Step':'1','Workflow Done':'','Workflow Signed':''}))})`);
+  ok(/Workflow Step 1 \u2192 index 1/.test(t) || /Workflow Step 1 → index 1/.test(t),
+     'it says what the column holds and what that resolved to');
+  ok(/group 0\u20131 of 2/.test(t) || /group 0–1 of 2/.test(t), 'which group that puts it in');
+  ok(/Done \(blank\)/.test(t) && /Signed \(blank\)/.test(t),
+     'and says blank rather than leaving an empty gap where a record should be');
+  ok(/steps: 0=Fidevia, 1=Architect 2/.test(t), 'with the chain as it stands, by office');
+  const b=P.run(`payStatusTitle(${JSON.stringify(ROW({'Workflow Step':''}))})`);
+  ok(/Workflow Step \(blank\)/.test(b), 'a blank step column says so \u2014 it is the difference between 0 and nothing');
+  P.run(`wfEffectiveSteps=function(){ throw new Error('x'); };`);
+  ok(/of 0/.test(String(P.run(`payStatusTitle(${JSON.stringify(ROW())})`))),
+     'and a chain that cannot be read reports no steps rather than throwing into the log');
+  chain(`[${JSON.stringify(FID)},${JSON.stringify(ARCH)}]`);
+  P.run(`IS_ADMIN=false;`);
+  ok(P.run(`payStatusTitle(${JSON.stringify(ROW())})`)==='',
+     'nobody outside Fidevia is shown the plumbing');
+  P.run(`IS_ADMIN=true;`);
+}
+ok(/title="'\+esc\(payStatusTitle\(r\)\)\+'"/.test(html), 'and it hangs off the pill, escaped');
+
 console.log('And the log uses it');
 {
   ok(/const s=payStatusLabel\(r\);/.test(html), 'every row is labelled from the chain as it stands');

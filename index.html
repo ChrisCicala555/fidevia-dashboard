@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:52';
+const BUILD_STAMP='2026-09-17 02:59';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13679,6 +13679,22 @@ function payWithNow(row){
       // Two people from one firm in one parallel group is one firm waiting.
       if(seen.has(k)) return false; seen.add(k); return true; });
 }
+// The workflow columns as they actually are, for Fidevia to read off the pill.
+// Twice now a status has been wrong and twice I reasoned about which record
+// must be missing instead of looking. The row can say.
+function payStatusTitle(row){
+  if(!IS_ADMIN || viewingAsExternal()) return '';
+  let steps=[]; try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){}
+  const raw=String((row&&row['Workflow Step'])||'');
+  const cur=steps.length ? Math.min(Math.max(wfActiveIdx(row),0), steps.length-1) : -1;
+  let gs=-1, ge=-1; if(steps.length){ const g=wfGroupAt(steps,cur); gs=g[0]; ge=g[1]; }
+  return 'Workflow Step '+(raw===''?'(blank)':raw)+' \u2192 index '+cur
+    +' \u00b7 group '+gs+'\u2013'+ge+' of '+steps.length
+    +' \u00b7 Status '+(String((row&&row['Workflow Status'])||'')||'(blank)')
+    +' \u00b7 Done '+(String((row&&row['Workflow Done'])||'')||'(blank)')
+    +' \u00b7 Signed '+(String((row&&row['Workflow Signed'])||'')||'(blank)')
+    +' \u00b7 steps: '+steps.map((st,i)=>i+'='+(wfPartyLabel(st)||'?')).join(', ');
+}
 // What the log shows. The stored status wherever it records a decision; who it
 // is with wherever it was only ever a description of where it had got to.
 // A status that says something happened stands. One that only says where the
@@ -13761,7 +13777,7 @@ function renderPayApps(){
           // Disagreeing with the change order log is worth seeing from the log
           // itself, not only inside the review dialog somebody may not open.
           + payCoCheckHTML(r, {short:true});
-        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(payPeriodSpan(r))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
+        return '<tr><td>'+impFlag(r)+appCell+'</td><td>'+esc(payPeriodSpan(r))+'</td><td>'+esc(fmtDMY(r['Due Date']||''))+'</td><td>'+fmtMoney(r['Requested Amount']||'')+'</td><td>'+(payApproved(r)?fmtMoney(r['Approved Amount']):'—')+'</td><td><span class="pill" title="'+esc(payStatusTitle(r))+'" style="background:'+payStatusColor(s)+'">'+esc(s)+'</span></td><td>'+doc+signed+'</td><td class="pay-act">'+act+'</td></tr>';
       }).join('');
       body='<div id="pg-body-'+gi+'" style="display:none;"><table class="pay-sub"><thead><tr><th>App #</th><th>Period</th><th>Due</th><th>Requested</th><th>Approved</th><th>Status</th><th>Docs</th><th class="pay-act">Action</th></tr></thead><tbody>'+trs+'</tbody></table></div>';
     }
