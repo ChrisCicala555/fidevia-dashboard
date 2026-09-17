@@ -57,8 +57,9 @@ console.log('What the dialog shows');
   ok(/if\(af\) af\.style\.display = \(pencil \|\| _ext\) \? 'none' : '';/.test(o),
      'the approved payment amount is not shown at all on a pencil \u2014 there is no payment to approve \u2014 '
      +'nor to a reviewer from outside, for whom the money was never theirs to set');
-  ok(/set\('pa-file-label', pencil \? 'Upload marked-up pencil copy' : 'Upload signed payment application'\)/.test(o),
-     'and the upload asks for a marked-up copy rather than a signed one');
+  ok(/set\('pa-file-label', pencil \? 'Upload marked-up pencil copy' : 'Upload signed payment application \*'\)/.test(o),
+     'and the upload asks for a marked-up copy rather than a signed one \u2014 and does not star it, '
+     +'since a draft review stands on its own without a file');
   ok(/nothing is signed and no payment is approved here/.test(o), 'saying so in a line above the choices');
   ok(/set\('pa-action-label', pencil \? 'Review outcome' : 'Action'\)/.test(o), 'and calls it a review');
   ok(/id="pa-amount-field"/.test(html) && /id="pa-file-label"/.test(html) && /id="pa-kind-note"/.test(html),

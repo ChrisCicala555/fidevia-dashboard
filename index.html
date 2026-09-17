@@ -5499,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:17';
+const BUILD_STAMP='2026-09-17 04:22';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13916,10 +13916,10 @@ function openPayAction(idx){
     set('pa-note-hint', pencil
       ? 'What the contractor has to change or carry into the final. Saved with the review and sent to them.'
       : 'Saved with the review and sent to the contractor.');
-    set('pa-file-label', pencil ? 'Upload marked-up pencil copy' : 'Upload signed payment application');
+    set('pa-file-label', pencil ? 'Upload marked-up pencil copy' : 'Upload signed payment application *');
     set('pa-file-hint', pencil
       ? 'Optional. Saved as a new version against the pencil copy \u2014 the contractor\u2019s original is kept.'
-      : 'The signed / marked-up PDF is saved as a new version \u2014 the contractor\u2019s original is kept.');
+      : 'Required to sign. Saved as a new version \u2014 the contractor\u2019s original is kept.');
     const af=document.getElementById('pa-amount-field');
     // No payment is approved off a draft, so there is nothing to put here —
     // and the amount is Fidevia's in any case, never a reviewer's.
@@ -13942,6 +13942,7 @@ function openPayAction(idx){
   document.getElementById('payaction-backdrop').classList.add('open');
 }
 const PAY_MODIFY=/modif/i;
+const PAY_SIGNS=/sign/i;
 // What is being approved is the amount asked for. Typing over it is what
 // "Modify and Sign" says out loud, so that is the only action that opens the
 // field: approved as filed and paid at some other figure is a disagreement
@@ -13990,6 +13991,14 @@ async function submitPayAction(){
     else { existing=await findFile(fid,mod.log); rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[]; }
     const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
     if(_ext && !payMayReview(row)) throw new Error('This step is not yours to record.');
+    // A signature nobody can produce is not a signature. Without this the row
+    // read "Approved & Signed" while the only paper on it was the contractor’s
+    // unsigned original — and at the architect’s step, the paper already there
+    // carries somebody else’s signature, not theirs. Each signer attaches their
+    // own. A denial signs nothing and needs none; nor does a pencil copy, whose
+    // outcomes say nothing about signing, which is what keeps drafts out of here.
+    if(PAY_SIGNS.test(action) && !(fileInput.files&&fileInput.files[0]))
+      throw new Error('Attach the signed application \u2014 “'+action+'” is a signature, and the row has to point at the paper.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
     if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await payAppFolder(row); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }

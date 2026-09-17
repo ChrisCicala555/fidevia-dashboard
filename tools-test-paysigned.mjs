@@ -93,15 +93,45 @@ console.log('Then the architect signs, from outside');
      'and the earlier one is still reachable through the history');
 }
 
-console.log('Signing without a file is a signature all the same');
+console.log('A signature nobody can produce is not a signature')
 {
   const P=bootPage(); P.run(SEED);
+  // The row already carries Fidevia's signed copy. That is not the architect's
+  // signature, so it does not stand in for one.
   P.run(`allData.pay_apps=[${JSON.stringify(ROW({'Signed File ID':'signed-by-fidevia',
-    'Signed File Name':'earlier.pdf','Workflow Step':'1','Status':'Awaiting Architect 2'}))}]`);
+    'Signed File Name':'PA-001 signed by Fidevia.pdf','Workflow Step':'1','Status':'Awaiting Architect 2'}))}]`);
   const r=await sign(P,{ext:true, who:'Test Architect', file:null});
-  ok(!r.up.some(u=>u.name), 'nothing is uploaded when nothing was chosen');
-  ok(r.patch && r.patch['Signed File ID']==='signed-by-fidevia',
-     'and what was already on the row survives, rather than being patched to empty');
+  ok(/^Error/.test(r.err), 'signing with nothing attached is refused');
+  ok(/Attach the signed application/.test(r.err), 'and says what is missing \u2014 '+r.err);
+  ok(!r.calls.includes('patch') && !r.calls.includes('WHOLE FILE'),
+     'nothing is saved, so the row does not read Approved & Signed over unsigned paper');
+  ok(r.row['Status']==='Awaiting Architect 2', 'and the application is still theirs to sign');
+}
+
+console.log('A denial signs nothing, so it needs no paper');
+{
+  const P=bootPage(); P.run(SEED);
+  P.run(`allData.pay_apps=[${JSON.stringify(ROW())}]`);
+  const r=await sign(P,{ext:false, who:'Christopher Cicala', file:null, action:'Deny'});
+  ok(!/^Error/.test(r.err), 'a denial goes through without one \u2014 '+r.err);
+  ok(r.calls.includes('WHOLE FILE'), 'and is saved');
+}
+
+console.log('And the form says so before you get there')
+{
+  const o=html.split('function openPayAction(idx){')[1].split('\nconst PAY_MODIFY')[0];
+  ok(/'Upload signed payment application \*'/.test(o),
+     'the formal application asks for the file with a star, like every other required field');
+  ok(/pencil \? 'Upload marked-up pencil copy'/.test(o),
+     'while a pencil copy still asks for a mark-up, which is optional');
+  ok(/Required to sign\./.test(o), 'and the hint under it says as much');
+  ok(/PAY_SIGNS=\/sign\/i;/.test(html),
+     'what counts as signing is the word in the action, so a new signing outcome is covered by default');
+  // And what keeps a draft out of the rule is that none of its outcomes is a
+  // signature — not a second test of the copy type next to the first one.
+  const P=bootPage(); P.run(SEED);
+  ok(!P.run(`payActions({'Copy Type':'Pencil'}).map(function(a){return a[0];})`).some(a=>/sign/i.test(a)),
+     'a pencil copy offers no outcome that signs, so no mark-up is ever demanded');
 }
 
 console.log('A marked-up pencil copy is a version, not a signature');
