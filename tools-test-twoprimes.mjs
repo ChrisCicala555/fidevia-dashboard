@@ -89,6 +89,21 @@ console.log('A row that names no trade is held back, not guessed');
      'and it is not quietly added to either contract meanwhile');
 }
 
+console.log('And the contact directory says which primes a firm holds')
+{
+  // Read off the contracts, not recorded against anybody: a contact belongs to
+  // a company, and a company holds whatever it holds. Two codes beside a name
+  // is the thing worth seeing — that firm files two applications a month.
+  const d=html.split('function renderContacts')[1]||html;
+  const band=d.slice(d.indexOf('const trades=tradesForCompany(c);'), d.indexOf('groups[c].forEach'));
+  ok(/const trades=tradesForCompany\(c\);/.test(band), 'the company heading asks what that firm holds');
+  ok(/trades\.length\?/.test(band), 'and says nothing at all for a company holding no contract \u2014 '
+     +'the architect, the owner, the engineers');
+  ok(/trades\.join\(' \\u00b7 '\)/.test(band), 'listing every one of them, not just the first');
+  ok(!/Trade|Role/.test(band.replace(/tradesForCompany/g,'')),
+     'and nothing is written against the person, who needs no designation of their own');
+}
+
 console.log('Wired to the real render, not a copy');
 {
   const f=html.split('function renderFinancials')[1].split('\n}')[0];

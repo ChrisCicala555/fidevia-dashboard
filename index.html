@@ -5543,7 +5543,14 @@ function renderContacts(){
   let html='';
   if(pa && IS_ADMIN){ html+='<tr><td colspan="13" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
   companies.forEach(c=>{
-    html+='<tr class="cd-band"><td colspan="13"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
+    // Which of the primes this firm holds, beside its name. Read off the
+    // contracts rather than recorded against anybody: a contact belongs to a
+    // company, and a company holds whatever it holds. Two of them here is the
+    // thing worth seeing — it says this firm files two applications a month.
+    const trades=tradesForCompany(c);
+    html+='<tr class="cd-band"><td colspan="13"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span>'
+      +(trades.length?'<span style="margin-left:9px;font-size:12px;font-weight:700;color:var(--olive-700);letter-spacing:.4px;">'+esc(trades.join(' \u00b7 '))+'</span>':'')
+      +'<span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
         +editCell(i,'Company',r['Company'],110)+roleCell(r,i)
@@ -5657,7 +5664,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 11:50';
+const BUILD_STAMP='2026-09-17 12:13';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
