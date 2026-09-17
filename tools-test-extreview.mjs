@@ -163,7 +163,7 @@ console.log('And the server agrees');
      'a design role on a payment application is a reviewer');
   ok(/if \(payReviewer\) \{ ALLOWED\.add\('Reviewed By'\); ALLOWED\.add\('Review Date'\); ALLOWED\.add\('Action'\); \}/.test(ur),
      'who may write the outcome of a review');
-  ok(/if \(!payReviewer && payRowReviewed\(row\)/.test(ur),
+  ok(/if \(!payReviewer && !promoting && payRowReviewed\(row\)/.test(ur),
      'and is not turned away by the marks Fidevia’s own review left — which is every review after the first');
   ok(/if \(!payReviewer && 'Status' in patch && !PAY_AWAITING/.test(ur),
      'they may record an approval, where the contractor may not');

@@ -598,6 +598,14 @@ const PAY_AWAITING = /awaiting|submitted|pending|uploaded/i;
 function payRowReturned(row) {
   return /revise|resubmit/i.test(String((row && row['Status']) || ''));
 }
+// An approved pencil copy. The contractor's next move is to file the formal
+// application against it, and that move writes to a row every review has
+// touched — which is precisely what the lock below refuses.
+function payRowApprovedPencil(row) {
+  if (!row) return false;
+  if (String(row['Copy Type'] || '').trim().toLowerCase() !== 'pencil') return false;
+  return /approv/i.test(String(row['Status'] || ''));
+}
 function payRowReviewed(row) {
   if (!row) return true;
   if (String(row['Reviewed By'] || '').trim() || String(row['Review Date'] || '').trim()) return true;
@@ -2258,11 +2266,20 @@ export default async (req) => {
           // unless the ruling was "revise and resubmit". This is the server's
           // copy of the rule the Replace button follows.
           //
-          // A reviewer is the exception, and has to be: Fidevia reviewing first
-          // leaves exactly the marks this test looks for, so without it the
-          // architect's own step would be refused because somebody else had
-          // already taken theirs. The contractor stays held to it.
-          if (!payReviewer && payRowReviewed(row) && !payRowReturned(row))
+          // Two exceptions, and both have to be here.
+          //
+          // A reviewer: Fidevia reviewing first leaves exactly the marks this
+          // test looks for, so without it the architect's own step would be
+          // refused because somebody else had already taken theirs.
+          //
+          // And the contractor promoting an approved pencil copy to the formal
+          // application. That is the whole point of approving a pencil copy,
+          // and it writes to a row every review has touched. Narrow: the row
+          // has to be an approved pencil, and the patch has to be the
+          // promotion itself.
+          const promoting = payRowApprovedPencil(row)
+            && String(patch['Copy Type'] || '').trim().toLowerCase() === 'final';
+          if (!payReviewer && !promoting && payRowReviewed(row) && !payRowReturned(row))
             return json({ error: 'Access denied' }, 403);
           // Only ever toward the final copy. Turning a final back into a pencil
           // would take an application the owner can see and hide it again.

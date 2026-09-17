@@ -6,6 +6,7 @@
 // These are the server rules that make the narrow path safe, since the page's
 // own checks are a courtesy to whoever is using the page.
 import fs from 'fs';
+import vm from 'vm';
 const src=fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
 const html=fs.readFileSync('index.html','utf8');
 const ur=src.slice(src.indexOf("if (op === 'updateRow')"), src.indexOf("if (op === 'appendRow')"));
@@ -32,8 +33,34 @@ console.log('What a contractor may write on a payment application');
   ok(/if \(filename === PAY_LOG\) ALLOWED\.add\('Copy Type'\);/.test(ur),
      'Copy Type, because promoting a pencil copy is their own act');
   ok(/if \(filename === PAY_LOG\) \{/.test(ur), 'under a rule of its own');
-  ok(/if \(!payReviewer && payRowReviewed\(row\) && !payRowReturned\(row\)\)\s*\n\s*return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
+  ok(/if \(!payReviewer && !promoting && payRowReviewed\(row\) && !payRowReturned\(row\)\)\s*\n\s*return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
      'and nothing at all once somebody has ruled on it');
+  // Except the contractor filing the formal application against a pencil copy
+  // that was approved for exactly that. Every review has touched that row.
+  ok(/const promoting = payRowApprovedPencil\(row\)\s*\n\s*&& String\(patch\['Copy Type'\] \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'final';/.test(ur),
+     'unless they are promoting an approved pencil copy, which is the point of approving one');
+  ok(/String\(row\['Copy Type'\] \|\| ''\)\.trim\(\)\.toLowerCase\(\) !== 'pencil'\) return false;/.test(src),
+     'and that is only ever a pencil copy');
+  ok(/return \/approv\/i\.test\(String\(row\['Status'\] \|\| ''\)\);/.test(src),
+     'that has been approved');
+  // Run the real thing, because reading the lines one at a time cannot tell a
+  // function that answers from one that returns at the top.
+  {
+    const ctx={}; vm.createContext(ctx);
+    vm.runInContext(src.slice(src.indexOf('function payRowApprovedPencil('),
+                              src.indexOf('function payRowReviewed(')), ctx);
+    const P=(o)=>ctx.payRowApprovedPencil(o);
+    ok(P({'Copy Type':'Pencil','Status':'Pencil approved \u2014 awaiting final'})===true,
+       'an approved pencil copy is one');
+    ok(P({'Copy Type':'Pencil','Status':'Pencil approved as noted \u2014 awaiting final'})===true,
+       'approved as noted counts');
+    ok(P({'Copy Type':'Pencil','Status':'Pencil \u2014 awaiting Fidevia'})===false,
+       'one still under review is not');
+    ok(P({'Copy Type':'Pencil','Status':'Pencil rejected'})===false, 'nor a refused one');
+    ok(P({'Copy Type':'Final','Status':'Approved & Signed'})===false,
+       'and a final application is not a pencil copy waiting to become one');
+    ok(P(null)===false && P({})===false, 'with nothing, or nothing useful, the answer is no');
+  }
   // Except the one ruling that asks for exactly this. The page relaxed the same
   // way; a server that did not would tell a contractor to revise and then
   // refuse the revision — the 403-after-upload this whole path was fixing.
