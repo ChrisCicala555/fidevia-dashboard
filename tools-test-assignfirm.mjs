@@ -24,9 +24,11 @@ ok(/Nothing is rewritten — the old\s*\n\/\/ value keeps working/.test(html) ||
 
 // the form
 // The field no longer asks — the workflow decides and this reports it.
-ok(/id="f-assigned" readonly/.test(html), 'the field reports rather than asks');
+ok(/<input type="hidden" id="f-assigned">/.test(html),
+   'the workflow\u2019s answer is carried, not offered \u2014 hidden, since a box nobody can type into is a '
+   +'sentence and is now written as one');
 ok(/fillAssignedFirm\('rfi','f-assigned'\)/.test(html), 'and is filled from the chain');
-ok(/Set by the workflow, from who reviews first/.test(html), 'it says where the answer came from');
+ok(/Next in the workflow: <strong>/.test(html), 'and the sentence says who is next');
 
 // due date from the workflow
 ok(/function rfiDueDaysFromWorkflow/.test(html), 'the turnaround comes from the chain');

@@ -5766,7 +5766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 18:34';
+const BUILD_STAMP='2026-09-17 18:39';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6080,16 +6080,17 @@ function fillAssignedFirm(key, fieldId){
   el.value = firms.length ? firms[0] : '';
   el.dataset.firms = JSON.stringify(firms);
   if(!note) return;
+  // The workflow's own answer, said rather than shown in a box nobody can type
+  // into. What the box is for is the submitter's addition to it.
   if(!firms.length){
-    el.placeholder='Nobody set on the first review step';
-    note.textContent='The '+(key==='rfi'?'RFI':'submittal')+' workflow does not name a reviewer, so this will not reach anyone. Set one in Settings → Workflows.';
+    note.textContent='The '+(key==='rfi'?'RFI':'submittal')+' workflow does not name a reviewer, so this '
+      +'will reach nobody on its own. Set one in Settings → Workflows, or name somebody above.';
     note.style.color='var(--danger)';
     return;
   }
   note.style.color='var(--muted)';
-  note.textContent = firms.length>1
-    ? 'Set by the workflow. Also goes to '+firms.slice(1).join(' and ')+'.'
-    : 'Set by the workflow, from who reviews first.';
+  note.innerHTML='Next in the workflow: <strong>'+esc(firms[0])+'</strong>'
+    +(firms.length>1 ? ', alongside '+esc(firms.slice(1).join(' and ')) : '')+'.';
 }
 // Whoever the submitter wants kept in the loop, beyond the people the workflow
 // and the notify flags already reach. A consultant's reviewer, an owner's rep,
@@ -8742,8 +8743,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-assigned" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p></div></div>
-    <div class="field-row"><div class="field"><label>Copy in (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm\u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;">Kept on the item, so replies reach them too. A firm copies in everyone there.</p></div><div class="field"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p><p class="file-hint" style="margin-top:2px;">Kept on the RFI, so replies reach them too. A firm adds everyone there.</p><input type="hidden" id="f-assigned"></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-rfi"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'New PCO',html:`
@@ -8757,8 +8757,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-reviewer" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p></div></div>
-    <div class="field-row"><div class="field"><label>Copy in (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm\u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;">Kept on the item, so replies reach them too. A firm copies in everyone there.</p></div><div class="field"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p><p class="file-hint" style="margin-top:2px;">Kept on the submittal, so replies reach them too. A firm adds everyone there.</p><input type="hidden" id="f-reviewer"></div></div>
     <div class="field"><label>Submittal Document <span id="f-file-req-sub"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="J. Doe (Superintendent)"></div></div>

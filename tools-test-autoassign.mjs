@@ -16,18 +16,21 @@ ok(/architect/i.test(ia) && /engineer/i.test(ia),
    'a step with nobody assigned still resolves by the discipline it names');
 
 // no longer a choice
-ok(/id="f-assigned" readonly/.test(html), 'the RFI field is read-only');
-ok(/id="f-reviewer" readonly/.test(html), 'and so is the submittal one');
+ok(/<input type="hidden" id="f-assigned">/.test(html), 'the RFI chain is reported, not asked');
+ok(/<input type="hidden" id="f-reviewer">/.test(html), 'and so is the submittal one');
 ok(!/id="f-assigned"><\/select>/.test(html) && !/id="f-reviewer"><\/select>/.test(html),
    'neither is a picker any more');
-ok(/<label>Goes to<\/label>/.test(html), 'the label says what it is rather than asking');
+ok(!/<label>Goes to<\/label>/.test(html),
+   'and Goes to is gone: the box on the form is the submitter\u2019s own addition, labelled Additional '
+   +'Review, with who is next said beneath it');
 {
   const fa = html.split('function fillAssignedFirm')[1].split('function firmOptions')[0];
   ok(/EXTERNAL \? \(\(currentProject&&currentProject\.userCompany\)/.test(fa),
      'the submitting company is the viewer’s own when external');
-  ok(/Also goes to '\+firms\.slice\(1\)\.join\(' and '\)/.test(fa),
-     'more than one firm shows the first and names the rest');
-  ok(/does not name a reviewer, so this will not reach anyone/.test(fa),
+  ok(/, alongside '\+esc\(firms\.slice\(1\)\.join\(' and '\)\)/.test(fa),
+     'more than one firm names the first and who is alongside them');
+  ok(/does not name a reviewer, so this '\s*\n?\s*\+'will reach nobody on its own/.test(fa)
+     || /will reach nobody on its own/.test(fa),
      'an empty chain is called out before the item is raised');
   ok(/Set in Settings|Settings → Workflows/.test(fa), 'and says where to fix it');
 }

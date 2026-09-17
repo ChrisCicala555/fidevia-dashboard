@@ -4,7 +4,8 @@ const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
-ok(/id="f-reviewer" readonly/.test(html), 'the submittal field reports rather than asks');
+ok(/<input type="hidden" id="f-reviewer">/.test(html),
+   'the submittal chain is reported, not asked \u2014 carried hidden, said in words beneath the box');
 ok(/fillAssignedFirm\('sub','f-reviewer'\)/.test(html), 'filled from the submittal chain');
 ok(/notifyFirms\(itemAssignedFirms\('sub', _sc\), 'Notify - Submittal'\)/.test(html),
    'every firm on the first review step is notified');

@@ -45,13 +45,24 @@ console.log('On both forms, the same way');
   const sub=html.split("submittal:{title:'New Submittal'")[1].split("payapp:{title:'New Payment Application'")[0];
   [['RFI',rfi],['submittal',sub]].forEach(([what,form])=>{
     ok(/id="f-cc"/.test(form), 'the '+what+' form has a Copy in field');
-    ok(/Copy in \(optional\)/.test(form), 'labelled as optional on the '+what+', since most items need none');
+    ok(/Additional Review \(optional\)/.test(form),
+       'called Additional Review on the '+what+' \u2014 which is what it is: the submitter adding to the '
+       +'chain, not replacing it');
     ok(/oninput="wfShowAC\(this\)"/.test(form),
        'and offers the firms on the job as you type, on the '+what+' — the same picker the workflow uses');
     ok(/replies reach them too/.test(form), 'saying it outlasts the submission, on the '+what);
+    ok(/<input type="hidden" id="f-(assigned|reviewer)">/.test(form),
+       'and the workflow\u2019s own answer is still carried on the '+what+', hidden rather than shown in '
+       +'a box nobody could type into \u2014 it reaches the row either way');
   });
-  ok(/id="f-assigned" readonly/.test(rfi) && /id="f-reviewer" readonly/.test(sub),
-     'while Goes to stays readonly on both — that is the workflow’s answer, not the submitter’s');
+  ok(!/Goes to/.test(rfi) && !/Goes to/.test(sub),
+     'and the readonly Goes to box is gone from both \u2014 a field nobody can type into is a sentence, '
+     +'so it is written as one');
+  const f=html.split('function fillAssignedFirm')[1].split('// Whoever the submitter')[0];
+  ok(/Next in the workflow: <strong>/.test(f), 'said underneath the box: who is next');
+  ok(/, alongside '\+esc\(firms\.slice\(1\)/.test(f), 'and who is alongside them, when a step is parallel');
+  ok(/will reach nobody on its own/.test(f) && /name somebody above/.test(f),
+     'while a workflow naming nobody says so, and points at the box that can rescue it');
 }
 
 console.log('Held on the row, not just on the first email');
