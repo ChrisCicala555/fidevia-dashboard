@@ -6,11 +6,17 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 const wt = html.split('function wrapTables')[1].split('function fmtMoneyInput')[0];
 ok(/classList\.contains\('tscroll'\)/.test(wt), 'the wrapper is only added once');
-ok(/const cols=t\.querySelectorAll\('thead th'\)\.length/.test(wt), 'the column count drives the floor');
-ok(/cols>=7 \? \(cols\*116\)\+'px' : ''/.test(wt), 'wide tables get a minimum width, narrow ones do not');
+ok(/const ths=\[\.\.\.t\.querySelectorAll\('thead th'\)\]/.test(wt), 'the headings drive the floor');
+ok(/if\(ths\.length>=7\)\{/.test(wt), 'wide tables get a minimum width, narrow ones do not');
+// A flat 116px per column was the wrong shape: generous for a date, absurd for
+// a description, which came down the page one word at a time while Review Due
+// sat half empty beside it.
+ok(/const w=colFloor\(th\.textContent\|\|''\)/.test(wt),
+   'and each column is given the room what it holds needs, rather than one figure for all of them');
+ok(/t\.style\.minWidth=total\+'px'/.test(wt), 'the table floor being their sum');
 ok(/nothing ever overflowed it/.test(wt), 'the reason the wrapper alone was not enough is recorded');
 ok(/t\.style\.minWidth/.test(wt), 'the floor is applied to the table, not the wrapper');
-ok(wt.indexOf('if(!(t.parentElement') < wt.indexOf('const cols='),
+ok(wt.indexOf('if(!(t.parentElement') < wt.indexOf('const ths='),
    'the width is set on every pass, including tables already wrapped');
 
 ok(/\.tscroll\{overflow-x:auto; overflow-y:hidden;/.test(html), 'the wrapper scrolls horizontally only');

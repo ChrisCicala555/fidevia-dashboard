@@ -4278,6 +4278,23 @@ async function loadModule(key){
   allData[key]=(parseCSV(await boxGetText(file.id))).rows;
 }
 
+// How narrow a column may get before it stops being readable. Prose needs
+// room; a date is eight characters and never more. Matched on the heading,
+// because that is what says what the column holds.
+const COL_FLOOR=[
+  [/description|subject|scope|summary|notes?|comment/i, 300],
+  [/submitted by|assigned to|reviewer|contractor|company|submitter|recorded by/i, 150],
+  [/spec section|pco|co #|rfi #|submittal #|app #|payroll/i, 140],
+  [/file|document|attachment/i, 170],
+  [/status/i, 130],
+  [/date|due|submitted on|week ending|period/i, 110],
+  [/actions?/i, 120]
+];
+function colFloor(heading){
+  const h=String(heading||'').trim();
+  for(const [re,w] of COL_FLOOR) if(re.test(h)) return w;
+  return 116;
+}
 function wrapTables(){
   document.querySelectorAll('.panel > table, #payapp-groups table').forEach(function(t){
     if(!(t.parentElement && t.parentElement.classList.contains('tscroll'))){
@@ -4291,8 +4308,22 @@ function wrapTables(){
     // A floor per column lets a wide table exceed the wrapper and scroll, while
     // a narrow one still fills the space rather than being forced to scroll for
     // no reason.
-    const cols=t.querySelectorAll('thead th').length;
-    t.style.minWidth = cols>=7 ? (cols*116)+'px' : '';
+    // A flat floor per column is the wrong shape: 116px is generous for a date
+    // and absurd for a description, which came down the page one word at a
+    // time while Review Due sat half empty beside it. Each column gets a floor
+    // that suits what it holds, and the table's own floor is their sum.
+    const ths=[...t.querySelectorAll('thead th')];
+    if(ths.length>=7){
+      let total=0;
+      ths.forEach(function(th){
+        const w=colFloor(th.textContent||'');
+        th.style.minWidth=w+'px'; total+=w;
+      });
+      t.style.minWidth=total+'px';
+    } else {
+      ths.forEach(function(th){ th.style.minWidth=''; });
+      t.style.minWidth='';
+    }
   });
 }
 function fmtMoneyInput(el, allowNegative){
@@ -5764,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 20:12';
+const BUILD_STAMP='2026-09-17 20:18';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
