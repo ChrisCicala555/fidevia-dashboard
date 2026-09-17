@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 01:56';
+const BUILD_STAMP='2026-09-17 02:22';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13584,6 +13584,48 @@ function payChainNoteHTML(row){
         +esc('This step is not yours. Recording it is entered as an override, in your name, against '
              +(now.map(st=>st.person).filter(Boolean).join(', ')||'the named reviewer')+'.')+'</div>'));
 }
+// ── WHO IT IS WITH, NOW ────────────────────────────────────────────────────
+//
+// The status was written at the moment of a review and then left alone, so it
+// named whoever the chain pointed at that day. Edit the chain afterwards — drop
+// a step, tick Parallel — and the row goes on naming people the chain no longer
+// names: "awaiting Christopher Cicala, Test Architect" for an application
+// Fidevia had already reviewed and that was sitting with the architect alone.
+//
+// A stored status is right about the decision — filed, approved, sent back —
+// and cannot stay right about a position in a chain that Settings can change
+// underneath it. So the decision is read from the row and the position is read
+// from the chain, every time the log is drawn.
+function payWithNow(row){
+  let steps=[];
+  try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){ return []; }
+  if(!steps.length || wfIsStopped(row) || wfIsDone(row)) return [];
+  if(!String((row&&row['Workflow Status'])||'').trim()) return [];
+  // A chain that has been shortened can leave the row past its end.
+  const cur=Math.min(Math.max(wfActiveIdx(row),0), steps.length-1);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+  if(!Array.isArray(done)) done=[];
+  // In an all-must-sign group the people who have already answered are not
+  // still being waited on.
+  return steps.slice(gs,ge+1)
+    .map((st,i)=>done.includes(gs+i) ? '' : (st.person||st.company||st.name||''))
+    .filter(Boolean);
+}
+// What the log shows. The stored status wherever it records a decision; who it
+// is with wherever it was only ever a description of where it had got to.
+// A status that says something happened stands. One that only says where the
+// application had got to is worked out again, because that is the part Settings
+// can change underneath it. "Pencil approved \u2014 awaiting final" is a decision
+// even though it says awaiting; "Pencil \u2014 awaiting Fidevia" is a position.
+const PAY_DECIDED=/approv|reject|deny|denied|sign|revise|resubmit|void|withdraw|complete/i;
+function payStatusLabel(row){
+  const stored=String((row&&row['Status'])||'').trim()||'Submitted';
+  if(PAY_DECIDED.test(stored)) return stored;
+  const who=payWithNow(row);
+  if(!who.length) return stored;
+  return (payIsPencil(row)?'Pencil \u2014 with ':'With ')+who.join(', ');
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -13634,7 +13676,7 @@ function renderPayApps(){
     else {
       const trs=g.rows.slice().sort((a,b)=>(Date.parse(b['Period']||b['Review Date']||'')||0)-(Date.parse(a['Period']||a['Review Date']||'')||0)).map(r=>{
         const idx=rows.indexOf(r);
-        const s=r['Status']||'Submitted';
+        const s=payStatusLabel(r);
         // The number alone is ambiguous once two contractors are billing, so the
         // saved file carries the company too.
         const pfx=[String(r['App #']||'').trim(), String(r['Contractor']||'').trim()].filter(Boolean).join(' ');
