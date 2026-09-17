@@ -1391,8 +1391,8 @@
           <span id="jc-dirty-note" style="font-size:13px;color:var(--danger);font-weight:600;"></span>
         </div>
         <div class="cd-card">
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
-          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="11">Loading…</td></tr></tbody></table>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external notify-col" title="Email this contact about payment applications. Who may be told is a rule, not a choice: Fidevia, the design team, and each contractor about their own applications only. This turns it off for somebody who is on that list.">PAY</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
+          <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="12">Loading…</td></tr></tbody></table>
         </div>
       </div>
 
@@ -1631,6 +1631,13 @@
           <h3 style="font-size:16px;margin:20px 0 10px;">New Submittal</h3>
           <div class="field"><label>Subject</label><input id="nt-sub-subject" placeholder="[Fidevia] New Submittal: {number}"></div>
           <div class="field"><label>Message heading</label><input id="nt-sub-intro" placeholder="Submittal Received: {title}"></div>
+          <h3 style="font-size:16px;margin:20px 0 10px;">Payment Application</h3>
+          <div class="field"><label>Subject</label><input id="nt-pay-subject" placeholder="[Fidevia] Payment Application: {number}"></div>
+          <div class="field"><label>Message heading</label><input id="nt-pay-intro" placeholder="Payment Application: {title}"></div>
+          <p class="file-hint" style="margin:6px 0 0;">Who these reach is not a matter of ticking boxes. A payment
+            application is one contractor's money, so it goes to Fidevia, the architect and the engineers, and to
+            that contractor only \u2014 never to another contractor on the job. Anybody can be taken off it on the
+            Contacts tab.</p>
           <div style="margin-top:20px;"><button class="btn-primary" onclick="saveNotifSettings()" id="btn-notif-save">Save Settings</button></div>
           <div class="status-msg" id="notif-status"></div>
         </div>
@@ -2751,7 +2758,7 @@ const MODULES = {
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name','Report Data']},
-  contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal']},
+  contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal','Notify - Pay App']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
   comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
@@ -5322,8 +5329,25 @@ function renderContacts(){
     ? (q ? keep.length+' of '+all.length+' contacts' : all.length+' contact'+(all.length===1?'':'s'))
     : '';
   if(!all.length){tb.innerHTML=emptyRow(11);return;}
-  if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="11">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
+  if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="12">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
   const rows=all;
+  // The payment application column reads the other way round. The three beside
+  // it are opt-in: blank means no. This one is opt-out, because the audience is
+  // already narrowed to the people who belong on the thread, and a new column
+  // defaulting to off would have silenced all of them at once. It is greyed for
+  // anybody the rule does not reach, since a toggle that changes nothing is
+  // worse than no toggle.
+  const payTog=(r,i)=>{
+    if(!IS_ADMIN) return '<td class="hide-external notify-col"></td>';
+    const inAudience = contactIsFidevia(r) || contactIsDesign(r)
+      || (allData.pay_apps||[]).some(p=>String(p['Contractor']||p['Company']||'').trim().toLowerCase()
+            ===String(r['Company']||'').trim().toLowerCase() && String(r['Company']||'').trim());
+    if(!inAudience) return '<td class="hide-external notify-col"><span style="color:var(--muted);font-size:12px;" '
+      +'title="Not on the payment application thread: only Fidevia, the design team and a contractor\u2019s own people are.">\u2014</span></td>';
+    const off=String(r['Notify - Pay App']||'').trim().toLowerCase()==='no';
+    return '<td class="hide-external notify-col"><button class="notify-toggle '+(off?'off':'on')+'"'
+      +' onclick="event.stopPropagation();togglePayNotify('+i+')">'+(off?'No':'Yes')+'</button></td>';
+  };
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external notify-col"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="event.stopPropagation();toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external notify-col">'+esc(v)+'</td>'; };
   // Where a contact has an account and the project value disagrees with their
   // profile, offer the directory value rather than changing anything silently.
@@ -5344,15 +5368,16 @@ function renderContacts(){
   const companies=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
   const pa=(currentProject&&currentProject.config&&currentProject.config.projectAdmin)||'';
   let html='';
-  if(pa && IS_ADMIN){ html+='<tr><td colspan="11" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
+  if(pa && IS_ADMIN){ html+='<tr><td colspan="12" style="background:var(--khaki-100);padding:8px 14px;font-size:13px;"><strong>Project Administrator:</strong> '+esc(pa)+'</td></tr>'; }
   companies.forEach(c=>{
-    html+='<tr class="cd-band"><td colspan="11"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
+    html+='<tr class="cd-band"><td colspan="12"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span><span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
         +editCell(i,'Company',r['Company'],110)+roleCell(r,i)
         +'<td class="cd-email" title="'+esc(r['Email']||'')+'">'+mailLink(r['Email'])+'</td>'
         +'<td class="nw">'+telLink(r['Phone'])+flagFor(i,'Phone')+'</td>'
         +tog(r['Notify - RFI'],i,'Notify - RFI')+tog(r['Notify - CO'],i,'Notify - CO')+tog(r['Notify - Submittal'],i,'Notify - Submittal')
+        +payTog(r,i)
         +accountCell(r)+accessCell(r)+'<td class="admin-col nw">'+contactInvite(r,i)+delBtn('contacts',i)+'</td></tr>';
     });
   });
@@ -5417,6 +5442,13 @@ function psLogoRemove(){
   const note=document.getElementById('ps-logo-note');
   if(note){ note.textContent='Not saved yet — press Save.'; note.style.color='var(--danger)'; }
 }
+// Written as 'No' or cleared, rather than 'Yes' or cleared, because blank means
+// on for this one.
+function togglePayNotify(i){
+  const r=(allData.contacts||[])[i]; if(!r) return;
+  const off=String(r['Notify - Pay App']||'').trim().toLowerCase()==='no';
+  saveContactField(i, 'Notify - Pay App', off?'':'No');
+}
 async function saveContactField(i, field, val){
   const mod=MODULES.contacts, fid=currentProject.folders.contacts; if(!fid) return;
   const cur=allData.contacts[i]; if(!cur) return;
@@ -5459,7 +5491,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:24';
+const BUILD_STAMP='2026-09-17 00:41';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5919,6 +5951,63 @@ function contactEmail(row){ return String((row&&row['Email'])||'').trim().toLowe
 function contactMailable(row){ const e=contactEmail(row); return !!e && e.indexOf('@')>0; }
 // Fidevia staff already have accounts and access to every project.
 function contactIsFidevia(row){ return contactEmail(row).endsWith('@fidevia.com'); }
+// The design team on this project: architects and engineers. Two ways of
+// knowing, because both are true in practice — the role somebody was granted
+// here, and the role written next to their name on the contact sheet, which is
+// all there is for a firm that has been added but never signed in.
+function contactIsDesign(row){
+  const em=contactEmail(row);
+  if(em && DESIGN_ROLES.includes(String(PROJECT_ROLES[em]||'').trim().toLowerCase())) return true;
+  if(/architect|engineer/i.test(String((row&&row['Role'])||''))) return true;
+  // A colleague of somebody who was granted a design role. Firms are added as
+  // firms; only one of them may have logged in.
+  const co=String((row&&row['Company'])||'').trim().toLowerCase();
+  if(!co) return false;
+  return Object.keys(PROJECT_ROLES||{}).some(k=>{
+    if(!DESIGN_ROLES.includes(String(PROJECT_ROLES[k]||'').trim().toLowerCase())) return false;
+    const c=(allData.contacts||[]).find(x=>contactEmail(x)===k);
+    return !!c && String(c['Company']||'').trim().toLowerCase()===co;
+  });
+}
+// ── WHO HEARS ABOUT A PAYMENT APPLICATION ──────────────────────────────────
+//
+// Every other module tells whoever ticked its box, and that is right for an
+// RFI: the question and the answer concern the whole job. A payment
+// application is one contractor's money. Sending it to the "Notify - CO" list
+// told every other contractor on the job what Summit Builders had billed —
+// which the dashboard itself refuses to show them.
+//
+// So the audience is a rule, not a list: Fidevia, the design team, and the
+// contractor whose application it is. Nobody else's contractor.
+function payNotifyAudience(row){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  const theirs=norm(row&&(row['Contractor']||row['Company']));
+  return (allData.contacts||[]).filter(c=>{
+    if(!String(c['Email']||'').trim()) return false;
+    // Opting out is explicit. Blank means yes, because the whole point of the
+    // rule above is that these people belong on the thread — a column added
+    // today, defaulting to off, would have silenced everyone at once.
+    if(String(c['Notify - Pay App']||'').trim().toLowerCase()==='no') return false;
+    if(contactIsFidevia(c)) return true;
+    if(contactIsDesign(c)) return true;
+    return !!theirs && norm(c['Company'])===theirs;
+  });
+}
+function payNotifyEmails(row){
+  return payNotifyAudience(row).map(c=>String(c['Email']||'').trim()).filter(Boolean);
+}
+// Same shape as notifyContacts, but the recipients come from the rule rather
+// than from a per-contact toggle.
+function payNotify(row, subject, bodyHTML, opts){
+  opts=opts||{};
+  const to=payNotifyEmails(row)
+    .concat((Array.isArray(opts.extraTo)?opts.extraTo:(opts.extraTo?[opts.extraTo]:[])));
+  const seen=new Set();
+  const list=to.filter(e=>{ const k=String(e||'').trim().toLowerCase();
+    if(!k||seen.has(k)) return false; seen.add(k); return true; });
+  if(list.length) sendEmail(list, subject, bodyHTML,
+    {attachments:opts.attachments, replyTo:opts.replyTo, kind:opts.kind, trigger:opts.trigger, by:opts.by});
+}
 function contactHasAccount(row){ return ACCOUNT_EMAILS.has(contactEmail(row)); }
 // An invitation is an invitation to create an account. Offering it to someone
 // who already has one is not just noise — it tells them to do something they
@@ -9500,7 +9589,8 @@ async function removeAdmin(email){
 const NOTIF_DEFAULTS={
   rfi:{subject:'[Fidevia] New RFI Submitted: {number}',intro:'New RFI: {title}'},
   co:{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},
-  sub:{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'}
+  sub:{subject:'[Fidevia] New Submittal: {number}',intro:'Submittal Received: {title}'},
+  pay_apps:{subject:'[Fidevia] Payment Application: {number}',intro:'Payment Application: {title}'}
 };
 function loadNotifSettings(){
   const n=(currentProject&&currentProject.notif)||{};
@@ -9511,6 +9601,8 @@ function loadNotifSettings(){
   document.getElementById('nt-co-intro').value=g('co','intro');
   document.getElementById('nt-sub-subject').value=g('sub','subject');
   document.getElementById('nt-sub-intro').value=g('sub','intro');
+  document.getElementById('nt-pay-subject').value=g('pay_apps','subject');
+  document.getElementById('nt-pay-intro').value=g('pay_apps','intro');
   loadReminderSettings();
   loadNotifLog();
 }
@@ -9629,7 +9721,8 @@ async function saveNotifSettings(){
   const templates={
     rfi:{subject:val('nt-rfi-subject'),intro:val('nt-rfi-intro')},
     co:{subject:val('nt-co-subject'),intro:val('nt-co-intro')},
-    sub:{subject:val('nt-sub-subject'),intro:val('nt-sub-intro')}
+    sub:{subject:val('nt-sub-subject'),intro:val('nt-sub-intro')},
+    pay_apps:{subject:val('nt-pay-subject'),intro:val('nt-pay-intro')}
   };
   const btn=document.getElementById('btn-notif-save'); btn.disabled=true;
   try{
@@ -13290,7 +13383,7 @@ async function submitPayReplace(){
     try{ auditLog('Document replaced before review','pay_apps',r, String(r['App #']||'')); }catch(e){}
     // Fidevia may be part-way through reading the old one.
     try{
-      notifyContacts('Notify - CO', '[Fidevia] Payment Application '+(r['App #']||'')+' \u2014 document replaced',
+      payNotify(r, '[Fidevia] Payment Application '+(r['App #']||'')+' \u2014 document replaced',
         emailTemplate('Payment Application Document Replaced',
           [['App #',r['App #']||''],['Contractor',r['Contractor']||''],
            ['Period',fmtDMY(r['Period']||'')],['Replaced by',who||'\u2014'],
@@ -13669,7 +13762,7 @@ async function submitPayAction(){
       const _headline=_pending
         ? ((_chain.step||'Review')+' recorded \u2014 now with '+(_chain.names.join(', ')||'the next reviewer'))
         : status;
-      notifyContacts('Notify - CO', '[Fidevia] '+_kind+(row['App #']||'')+' \u2014 '+_headline,
+      payNotify(row, '[Fidevia] '+_kind+(row['App #']||'')+' \u2014 '+_headline,
         emailTemplate(_kind+_headline,
           [['App #',row['App #']||''],['Contractor',row['Contractor']||''],
            ['Step',(_chain&&_chain.step)||'\u2014'],['Outcome',action]]
@@ -15298,7 +15391,7 @@ async function wfAdvance(key, i, ov){
     try{
       const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
       const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
-      const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - CO'}[key];
+      const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - Pay App'}[key];
       const who=String((steps[ov.stepIdx]&&(steps[ov.stepIdx].person||steps[ov.stepIdx].name))||'a reviewer');
       notifyContacts(notifyField,
         '[Fidevia] '+label+' '+(row[idf]||row['PCO #']||'')+' \u2014 '+String(ov.outcome),
@@ -15308,7 +15401,7 @@ async function wfAdvance(key, i, ov){
            ['Recorded for', who],
            ['Entered by', (ME_NAME||ME_EMAIL||'Fidevia')+' \u2014 override'],
            ['Reason', String(ov.reason||'')]],
-          currentProject.name));
+          currentProject.name), {payRow: key==='pay_apps' ? row : null});
     }catch(e){}
     renderAll();
     return;
@@ -15342,7 +15435,7 @@ async function wfAdvance(key, i, ov){
   try{
     const label={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item';
     const idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
-    const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - CO'}[key];
+    const notifyField={rfi:'Notify - RFI',co:'Notify - CO',sub:'Notify - Submittal',pay_apps:'Notify - Pay App'}[key];
     // Who the item is now waiting on, said by company. "Ready for your review"
     // went to everyone on the notify list, so most recipients were told to act
     // on something that was never theirs. Naming the firm lets each reader see
@@ -15360,7 +15453,7 @@ async function wfAdvance(key, i, ov){
     notifyContacts(notifyField, subj,
       emailTemplate(label+' Workflow Update',
         [[label+' #',row[idf]||''],['Advanced By',by||'\u2014'],['Next in Workflow',nextNames]],
-        currentProject.name), {extraTo:extra});
+        currentProject.name), {extraTo:extra, payRow: key==='pay_apps' ? row : null});
   }catch(e){}
   renderAll();
 }
@@ -16280,6 +16373,11 @@ function applyReviewAdvance(key, row, by){
 }
 function notifyContacts(notifyField, subject, bodyHTML, opts){
   opts=opts||{};
+  // A payment application's audience is a rule rather than a toggle list, and
+  // the rule keeps one contractor's money away from another's inbox. Routed
+  // here so the workflow paths, which pick their field from a map, cannot
+  // quietly fall back to sending it to everybody.
+  if(opts.payRow) return payNotify(opts.payRow, subject, bodyHTML, opts);
   const contacts = allData.contacts||[];
   let emails = contacts.filter(r=>(r[notifyField]||'').toLowerCase()==='yes' && r['Email']).map(r=>r['Email']);
   if(opts.extraTo){ (Array.isArray(opts.extraTo)?opts.extraTo:[opts.extraTo]).forEach(e=>{ if(e) emails.push(e); }); }

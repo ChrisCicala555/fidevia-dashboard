@@ -89,8 +89,10 @@ console.log('What replacing does, and what it leaves alone');
   ok(/Replaced by the contractor before review/.test(sub), 'saying plainly what happened');
   ok(/was '\+old/.test(sub), 'and naming what it replaced, so the history reads without opening the files');
   ok(/auditLog\('Document replaced before review'/.test(sub), 'it reaches the audit log');
-  ok(/notifyContacts\(/.test(sub) && /document replaced/.test(sub),
+  ok(/payNotify\(r, /.test(sub) && /document replaced/.test(sub),
      'and Fidevia is told, because they may be part-way through reading the old one');
+  ok(!/notifyContacts\(/.test(sub),
+     'through the rule that keeps one contractor\u2019s money out of another\u2019s inbox, not the shared toggle list');
   ok(/const b=JSON\.parse\(before\);[\s\S]*r\['Attachment File ID'\]=b\.a/.test(sub),
      'a failed upload puts the row back rather than leaving it pointing at nothing');
   ok(/await payAppFolder\(r\)/.test(sub), 'and the new file lands in that application’s own folder');
@@ -113,7 +115,8 @@ console.log('Through the path a contractor is allowed to write on');
     boxUploadText=async()=>{ CALLS.push('WHOLE FILE'); return {}; };
     boxUpdateRow=async(k,row,patch)=>{ CALLS.push('save'); KEY=k; PATCH=patch; return {}; };
     toCSV=()=>''; resolveMe=async()=>{}; renderAll=()=>{}; auditLog=()=>{ CALLS.push('audit'); };
-    notifyContacts=()=>{ CALLS.push('told'); }; emailTemplate=()=>''; showStatus=()=>{};
+    payNotify=()=>{ CALLS.push('told'); }; notifyContacts=()=>{ CALLS.push('EVERYBODY'); };
+    emailTemplate=()=>''; showStatus=()=>{};
   `);
   await P2.run(`submitPayReplace()`);
   const row=P2.run(`allData.pay_apps[0]`);
