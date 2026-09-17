@@ -1,5 +1,7 @@
-// A reviewer can hand their step to somebody else, and handing it over is not
-// an approval.
+// A reviewer can hand their step to another firm, and handing it over is not
+// an approval. It goes to a firm rather than a person for the same reason
+// every other workflow assignment does: a step parked on one desk is invisible
+// to the colleagues who can also answer it.
 import fs from 'fs';
 import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
@@ -16,14 +18,14 @@ const run = (action, who) => {
     document.getElementById('reply-status').value='${action}';
     const ns=document.getElementById('reply-next');
     ns.value=${JSON.stringify(who||'')};
-    ns.options=[{value:${JSON.stringify(who||'')}, getAttribute:()=>'dave@summit.test'}];
   })()`);
   const added = b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')");
   return { added,
     signed: JSON.parse(b.run("JSON.stringify(Object.keys(wfSignedMap(allData.sub[0])))")),
     step: b.run("allData.sub[0]['Workflow Step']"),
     status: b.run("allData.sub[0]['Workflow Status']"),
-    chain: b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(s.person||'')).join(' -> ')"),
+    chain: b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(wfStepCompany(s)||s.person||'')).join(' -> ')"),
+    from: b.run("(wfEffectiveSteps('sub', allData.sub[0])[0]||{}).reassignedFrom||''"),
     to: b.run("REPLY_CTX && REPLY_CTX._reassignedTo || ''") };
 };
 
@@ -39,20 +41,22 @@ const run = (action, who) => {
 }
 // ── review, and send it on as well ──
 {
-  const r = run('__also','Dave Chen');
+  const r = run('__also','Summit Builders');
   ok(r.signed.join()==='0', 'the review is still recorded');
-  ok(r.added==='Dave Chen' && /Further Review\/Dave Chen/.test(r.chain), 'and they are added after');
+  ok(r.added==='Summit Builders' && /Further Review\/Summit Builders/.test(r.chain),
+     'and the firm is added after');
   ok(r.status==='In Review', 'so the item is still open');
 }
 // ── hand it over, which is not an approval ──
 {
-  const r = run('__reassign','Dave Chen');
+  const r = run('__reassign','Summit Builders');
   ok(r.signed.length===0,
      'handing the step over records no approval — nobody gave one');
-  ok(/Architect Review\/Dave Chen/.test(r.chain), 'the step now belongs to them');
+  ok(/Architect Review\/Summit Builders/.test(r.chain), 'the step now belongs to that firm');
+  ok(r.from==='Architect 2', 'and the chain remembers whose step it was');
   ok(r.step==='0' && r.status==='In Review', 'and the item has not moved on, it is waiting for them');
   ok(!/Further Review/.test(r.chain), 'no extra step is invented; this is a handover, not an addition');
-  ok(r.to==='Dave Chen', 'and the reply says who it went to');
+  ok(r.to==='Summit Builders', 'and the reply says which firm it went to');
 }
 ok(b.run("JSON.stringify(currentProject.config.workflows.sub.map(s=>s.person))")==='["Test Architect","Penelope Odiem"]',
    'through all of it the project’s own workflow is untouched — one submittal is not a reason to rewrite the job');

@@ -1982,7 +1982,7 @@
       <div class="field" id="reply-next-field" style="display:none;">
         <div id="reply-next-who" style="display:none;">
           <label>Who</label>
-          <select id="reply-next"><option value="">Choose somebody on the project&hellip;</option></select>
+          <select id="reply-next"><option value="">Choose a firm on the project&hellip;</option></select>
           <p class="file-hint" id="reply-next-hint" style="font-size:13px;color:var(--muted);margin-top:4px;"></p>
         </div>
       </div>
@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:26';
+const BUILD_STAMP='2026-09-17 22:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15846,7 +15846,12 @@ function wfEffectiveSteps(key, row){
   const extra=wfExtraSteps(row);
   const withMoves=base.map((st,i)=>{
     const m=moved[String(i)];
-    return m ? Object.assign({}, st, {person:m.person||st.person, email:m.email||'', reassigned:true, reassignedBy:m.by||''}) : st;
+    return m ? Object.assign({}, st, {person:m.person||'', email:m.email||'',
+        company:m.company||st.company, reassigned:true, reassignedBy:m.by||'',
+        // Kept so the chain can show the handover as its own line. Without it
+        // the step simply read as the new firm's, and who was asked first —
+        // the architect, on the project's own workflow — vanished.
+        reassignedFrom:m.from||'', reassignedAt:m.at||''}) : st;
   });
   if(!extra.length) return withMoves;
   const out=withMoves.slice();
@@ -16325,7 +16330,19 @@ function wfProgressHTML(key,r,i){
       ? 'display:flex;align-items:center;gap:8px;padding:5px 9px;margin:2px -9px;font-size:13px;flex-wrap:wrap;'
         +'background:var(--khaki-100);border-left:3px solid var(--olive-700);border-radius:4px;color:'+color+';'
       : 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:'+color+';flex-wrap:wrap;';
-    return '<div style="'+rowStyle+'">'
+    // Handed over, said as a step of its own. Replacing the firm in place made
+    // the chain read as though the project's workflow had always named the new
+    // one: the architect the job actually appoints disappeared from their own
+    // submittal, and nothing on the item said a handover had happened.
+    const handover = s.reassigned && s.reassignedFrom
+      ? '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;color:var(--muted);flex-wrap:wrap;">'
+        +'<span style="font-weight:700;">\u21b7</span>'
+        +'<span style="font-weight:500;text-decoration:line-through;">'+esc(s.name||('Step '+(n+1)))+'</span>'
+        +'<span>\u2014 '+esc(s.reassignedFrom)+'</span>'
+        +'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;">handed over'
+        +(s.reassignedBy?(' by '+esc(s.reassignedBy)):'')+'</span></div>'
+      : '';
+    return handover+'<div style="'+rowStyle+'">'
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
       +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">'
           +(s.returned?'YOUR TURN':'YOUR REVIEW')+'</span>':'')
@@ -16336,7 +16353,8 @@ function wfProgressHTML(key,r,i){
       +(wfPartyLabel(s)?'<span style="color:var(--muted);">\u2014 '+esc(wfPartyLabel(s))+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':(s.rereview?'revision':'added'))+'</span>':'')
-      +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
+      +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'
+          +(s.reassignedFrom?('reassigned from '+esc(s.reassignedFrom)):'reassigned')+'</span>':'')
       +(sig&&sig.override?'<span style="font-size:10px;background:#F6E6C8;padding:1px 6px;border-radius:3px;color:#8a5a00;"'
           +(sig.reason?(' title="'+esc(String(sig.reason))+'"'):'')+'>override</span>':'')
       // Single quotes inside the attribute. JSON.stringify puts DOUBLE quotes
@@ -16955,9 +16973,9 @@ function replyStatusChanged(){
   if(who) who.style.display = (route==='also'||route==='reassign') ? '' : 'none';
   const hint=document.getElementById('reply-next-hint');
   if(hint) hint.textContent = route==='reassign'
-    ? 'They take over this step. Your approval is not recorded, because you are not giving one — the item waits for them instead. This item only; the project’s workflow is unchanged.'
+    ? 'The firm you choose takes over this step, and everyone there is notified. Your approval is not recorded, because you are not giving one — the item waits for them instead. This item only; the project’s workflow is unchanged.'
     : route==='also'
-    ? 'Your review is recorded as an approval, and they are added after you as one more step. This item only; the project’s workflow is unchanged.'
+    ? 'Your review is recorded as an approval, and the firm you choose is added after you as one more step. This item only; the project’s workflow is unchanged.'
     : '';
 }
 // advance: this is the reviewer completing their step, so the chain moves on
@@ -17024,14 +17042,16 @@ function openReply(key,i,advance){
       // replyStatusChanged when the chosen option needs a name.
       nf.style.display = (advance && _decides) ? '' : 'none';
       if(advance && _decides){
-        const seen=new Set(); const opts=[];
-        (allData.contacts||[]).forEach(c=>{
-          const nm=String(c['Name']||'').trim(); const em=String(c['Email']||'').trim();
-          if(!nm || seen.has(nm.toLowerCase())) return; seen.add(nm.toLowerCase());
-          opts.push('<option value="'+esc(nm)+'" data-email="'+esc(em)+'">'+esc(nm)
-            +(c['Company']?(' \u2014 '+esc(c['Company'])):'')+'</option>');
+        // Firms, not people. This was the last control in the workflow that
+        // handed a step to an individual: the step would then sit on one desk
+        // while everybody else at that firm — who can see it and answer it —
+        // had no idea it was theirs.
+        const opts=wfCompanyList(false).map(function(f){
+          return '<option value="'+esc(f.name)+'">'+esc(f.name)
+            +' \u2014 '+f.n+' '+(f.n===1?'person':'people')
+            +(f.roles.length?(' \u00b7 '+esc(f.roles.join(', '))):'')+'</option>';
         });
-        ns.innerHTML='<option value="">Choose somebody on the project\u2026</option>'+opts.join('');
+        ns.innerHTML='<option value="">Choose a firm on the project\u2026</option>'+opts.join('');
         ns.value='';
         try{ replyStatusChanged(); }catch(e){}
       }
@@ -17414,7 +17434,9 @@ function applyReviewAdvance(key, row, by){
   const act=replyRouteOf((document.getElementById('reply-status')||{}).value);
   const ns=document.getElementById('reply-next');
   const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
-  const emailOf=nm=>{ const o=ns&&[...ns.options].find(x=>x.value===nm); return (o&&o.getAttribute('data-email'))||''; };
+  // A firm is told through its people, so the address is looked up rather than
+  // carried on the option.
+  const emailOf=co=>{ const l=wfStepEmails({company:co}, REPLY_NOTIFY[key]); return (l&&l[0])||''; };
 
   // Whether this is a return, from either control. Settled before the handover
   // branch below, which would otherwise act on "hand it to somebody else"
@@ -17436,7 +17458,11 @@ function applyReviewAdvance(key, row, by){
   if(!_returning && act==='reassign' && pick){
     const target = mine.length ? mine[0] : gs;
     const moved=wfReassigned(row);
-    moved[String(target)]={person:pick, email:emailOf(pick), by:(by||ME_NAME||ME_EMAIL||''), at:etToday()};
+    // The firm that owes it now, and the one it came from — so the chain can
+    // say a step was handed over rather than quietly renaming who owns it.
+    moved[String(target)]={company:pick, person:'', email:'',
+                           from:wfPartyLabel(steps[target])||'',
+                           by:(by||ME_NAME||ME_EMAIL||''), at:etToday()};
     row['Workflow Reassigned']=JSON.stringify(moved);
     row['Workflow Status']='In Review';
     try{ auditLog('Review step reassigned', key, row,
@@ -17511,7 +17537,7 @@ function applyReviewAdvance(key, row, by){
     const email=emailOf(pick);
     const extra=wfExtraSteps(row);
     addedStamp=etToday();
-    extra.push({after:wfBaseAnchor(steps,ge), name:'Further Review', person:pick, email:email,
+    extra.push({after:wfBaseAnchor(steps,ge), name:'Further Review', company:pick, person:'', email:'',
                 addedBy:(by||ME_NAME||ME_EMAIL||''), at:addedStamp});
     row['Workflow Extra']=JSON.stringify(extra);
     added=pick;
@@ -17538,11 +17564,11 @@ function applyReviewAdvance(key, row, by){
   // the old neighbour, not the step just added.
   let next=ge+1;
   if(added){
-    const had=steps.filter(st=>st&&st.name==='Further Review'&&String(st.person||'')===String(pick)).length;
+    const had=steps.filter(st=>st&&st.name==='Further Review'&&coNorm(wfStepCompany(st))===coNorm(pick)).length;
     let seen=0;
     for(let i=0;i<after.length;i++){
       const st=after[i];
-      if(st && st.name==='Further Review' && String(st.person||'')===String(pick) && st.at===addedStamp){
+      if(st && st.name==='Further Review' && coNorm(wfStepCompany(st))===coNorm(pick) && st.at===addedStamp){
         seen++; if(seen>had){ next=i; break; }
       }
     }

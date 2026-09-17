@@ -81,11 +81,11 @@ ok(b.run("document.getElementById('reply-next-field').style.display")==='none',
 // tools-test-reassign.mjs covers all three; this one is the send-it-on case.
 b.run("openReply('sub',0,true)");
 b.run("(()=>{document.getElementById('reply-status').value='__also';"
-    + "const ns=document.getElementById('reply-next'); ns.value='Dave Chen';"
-    + "ns.options=[{value:'Dave Chen',getAttribute:()=>'d@s.test'}];})()");
+    + "const ns=document.getElementById('reply-next'); ns.value='Summit Builders';"
+    + "})()");
 const added = b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')");
-ok(added==='Dave Chen', 'the chosen person is added');
-ok(/Further Review\/Dave Chen/.test(b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(s.person||'')).join(' -> ')")),
+ok(added==='Summit Builders', 'the chosen firm is added');
+ok(/Further Review\/Summit Builders/.test(b.run("wfEffectiveSteps('sub', allData.sub[0]).map(s=>s.name+'/'+(wfStepCompany(s)||s.person||'')).join(' -> ')")),
    'and appears in this item’s chain');
 // Not immediately, though. The seeded chain is an architect and an engineer in
 // parallel and a group of two needs both, so the item stays with the engineer
@@ -99,14 +99,14 @@ ok(/Awaiting[^<]*Next Level Engineers/.test(b.run("wfProgressHTML('sub',allData.
    'the item still waits on the rest of the group, named by firm \u2014 the step is the office\u2019s, and '
    +'anyone there can answer it');
 ok(b.run("allData.sub[0]['Workflow Status']")==='In Review', 'so the chain has not moved on');
-ok(b.run("(()=>{const st=wfEffectiveSteps('sub',allData.sub[0]);return st[st.length-1].person;})()")==='Dave Chen',
-   'and the person sent it is queued after them');
+ok(b.run("(()=>{const st=wfEffectiveSteps('sub',allData.sub[0]);return wfStepCompany(st[st.length-1]);})()")==='Summit Builders',
+   'and the firm it was sent to is queued after them');
 ok(b.run("JSON.stringify(currentProject.config.workflows.sub.map(s=>s.name))")==='["Architect Review","Engineer Review"]',
    'the project’s own workflow is untouched — this was one item, not the job');
 ok(b.run("JSON.stringify(Object.keys(wfSignedMap(allData.sub[0])))")==='["0"]',
    'the reviewer signed their step and nobody else’s');
-ok(b.run("REPLY_CTX && REPLY_CTX._addedEmail")==='d@s.test',
-   'and the person it was sent to is emailed rather than left to notice');
+ok(/@/.test(b.run("REPLY_CTX && REPLY_CTX._addedEmail || ''")),
+   'and somebody at the firm it was sent to is emailed rather than left to notice');
 // A second item must not inherit it.
 b.run("allData.sub.push(Object.assign({},allData.sub[0],{'Submittal #':'SUB-GC-002','Workflow Extra':'','Workflow Step':'0','Workflow Signed':''}))");
 ok(b.run("wfEffectiveSteps('sub', allData.sub[1]).length")===2,

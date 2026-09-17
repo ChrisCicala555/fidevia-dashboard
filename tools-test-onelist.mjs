@@ -105,8 +105,8 @@ console.log('A route with nobody named is refused, not quietly downgraded')
             try{ applyReviewAdvance('sub', allData.sub[0], 'Penelope Odiem'); }catch(e){}`);
     return P2.run(`wfEffectiveSteps('sub',allData.sub[0]).map(function(s){ return wfStepCompany(s); })`); };
 
-  ok(chainAfter('__also','Test Architect').join()==='Architect 2,Next Level Engineers,Architect 2',
-     'naming somebody adds them back \u2014 which is what the reviewer asked for');
+  ok(chainAfter('__also','Architect 2').join()==='Architect 2,Next Level Engineers,Architect 2',
+     'naming a firm adds them back — which is what the reviewer asked for');
   ok(chainAfter('__also','').length===2, 'naming nobody adds nobody, which is the trap');
 
   // The guard: the submit refuses before anything is written.

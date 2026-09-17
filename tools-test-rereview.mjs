@@ -70,8 +70,8 @@ ok(chain()[cur()-1]==='Revise and Resubmit/Summit Builders',
    'the re-review is after the return, so the chain reads in the order it happened');
 
 console.log('And the reviewer can still send it on');
-const added=act('eng','__also','Test Architect');
-ok(added==='Test Architect', 'the architect was added — the call used to write nothing');
+const added=act('eng','__also','Architect 2');
+ok(added==='Architect 2', 'the architect was added — the call used to write nothing');
 ok(chain()[cur()]==='Further Review/Architect 2', 'and the item is now with them');
 ok(chain().filter(s=>s==='Further Review/Architect 2').length===1, 'once, not twice');
 ok(status()==='In Review', 'still open until they answer');
@@ -127,8 +127,8 @@ ok(chain().join(' | ').endsWith('Owner Review/Fidevia | Revise and Resubmit/Summ
 act('gc','Resubmitted');
 ok(chain()[cur()]==='Owner Review/Fidevia' && cur()===4,
    'the revision returns to the owner who objected, not to the step before them');
-const added2=act('own2','__also','Test Architect');
-ok(added2==='Test Architect', 'the owner sends it on to the architect');
+const added2=act('own2','__also','Architect 2');
+ok(added2==='Architect 2', 'the owner sends it on to the architect');
 ok(chain()[cur()]==='Further Review/Architect 2', 'and it is with the architect');
 ok(chain().join(' | ').endsWith('Revise and Resubmit/Summit Builders | Owner Review/Fidevia | Further Review/Architect 2'),
    'added last, so it reads last');
@@ -151,27 +151,27 @@ P.run(`allData.contacts=[{'Name':'Test Architect','Company':'Architect 2','Email
      {after:0,name:'Additional Review',company:'Next Level Engineers',parallel:true,added:true},
      {after:0,name:'Revise and Resubmit',person:'Test Contractor',company:'Summit Builders',returned:true}
    ])}]; 1;`);
-ok(act('arch','__also','Owner Rep')==='Owner Rep', 'the architect sends it on');
+ok(act('arch','__also','Fidevia')==='Fidevia', 'the architect sends it on');
 ok(chain()[cur()]==='Further Review/Fidevia',
    'the cursor follows the step that was added, not the return sitting in between');
 ok(cur()===3, 'which is where it landed, not one past the group');
 
-console.log('The same person added twice');
+console.log('The same firm added twice');
 // Both entries carry the same day stamp, so "the first one that matches" is
 // the step they already answered. It has to be the one that was not there
 // before.
 seed();
 P.run(`allData.sub[0]['Workflow Extra']='';`);   // architect alone, no parallel group
-act('arch','__also','Owner Rep');
+act('arch','__also','Fidevia');
 ok(chain()[cur()]==='Further Review/Fidevia', 'added once');
 P.run(`ME_EMAIL='o@f.test'; ME_NAME='Owner Rep'; currentProject.userCompany='Fidevia';
        currentProject.userRole='owner'; EXTERNAL=true; IS_ADMIN=false;
        openReply('sub',0,true);
        document.getElementById('reply-status').value='__also'; replyStatusChanged();
-       document.getElementById('reply-next').value='Penelope Odiem';
+       document.getElementById('reply-next').value='Next Level Engineers';
        String(applyReviewAdvance('sub', allData.sub[0], ME_NAME));`);
-const back=act('eng','__also','Owner Rep');
-ok(back==='Owner Rep', 'and added again by somebody else');
+const back=act('eng','__also','Fidevia');
+ok(back==='Fidevia', 'and added again by somebody else');
 ok(cur()===chain().length-1, 'the cursor goes to the new step, not the one they already answered');
 ok(chain().filter(x=>x==='Further Review/Fidevia').length===2, 'both entries are in the chain');
 
