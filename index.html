@@ -1729,6 +1729,7 @@
       <p class="file-hint" style="margin:0 0 14px;">This replaces the pencil copy as the current document on
         this application. The pencil and anything filed against it stay in the history, and the owner can see
         the application from here.</p>
+      <div id="payfinal-warn"></div>
       <div class="field"><label>Final Application File *</label>
         <input autocomplete="off" type="file" id="payfinal-file">
         <p class="file-hint">The signed final application PDF.</p></div>
@@ -5499,7 +5500,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:27';
+const BUILD_STAMP='2026-09-17 04:36';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13091,6 +13092,21 @@ function payDueDate(r){
 // version on the same row, so the thread reads as one application that went
 // from draft to formal rather than two records nobody can line up.
 let PAYFINAL_IDX=-1;
+// The formal application is built on what the pencil copy brings back. Filed
+// while the pencil is still being marked up, it is built on nothing — and
+// whatever the reviewer asks for afterwards lands on a document the owner has
+// already been shown. Said rather than refused: a due date does not move
+// because a review is running late, and the contractor is the one on the hook
+// for the date.
+function payPencilOpenWarning(r){
+  if(!r || !payIsPencil(r) || payPencilAwaitingFinal(r)) return null;
+  let who=[]; try{ who=payWithNow(r)||[]; }catch(e){}
+  const named = who.length===1 ? who[0]
+    : who.length ? who.slice(0,-1).join(', ')+' and '+who[who.length-1] : '';
+  return 'The pencil copy has not come back yet'+(named?' — it is still with '+named:'')
+    +'. The formal application is normally built on what that review sends back, so filing now '
+    +'means any change they ask for lands on a document the owner has already seen.';
+}
 function openPayFinal(idx){
   const r=(allData.pay_apps||[])[idx];
   if(!r || !payMayPromote(r)){ alert('That is not a pencil copy of yours to submit.'); return; }
@@ -13099,7 +13115,13 @@ function openPayFinal(idx){
   if(t) t.textContent='Submit Final — '+(r['App #']||r['Attachment Name']||'application');
   const f=document.getElementById('payfinal-file'); if(f) f.value='';
   showStatus('payfinal-status','','info');
-  const b=document.getElementById('payfinal-btn'); if(b) b.disabled=false;
+  const warn=payPencilOpenWarning(r);
+  { const wl=document.getElementById('payfinal-warn');
+    if(wl) wl.innerHTML = warn
+      ? '<p class="file-hint" style="margin:0 0 14px;color:#8a5a00;font-weight:600;">'+esc(warn)+'</p>'
+      : ''; }
+  const b=document.getElementById('payfinal-btn');
+  if(b){ b.disabled=false; b.textContent = warn ? 'Submit Final anyway' : 'Submit Final'; }
   document.getElementById('payfinal-backdrop').classList.add('open');
 }
 function closePayFinal(){ document.getElementById('payfinal-backdrop').classList.remove('open'); }
