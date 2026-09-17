@@ -79,9 +79,11 @@ ok(!/coDeleteEffect/.test(html.split("function askDelete")[0].split('function co
 
 console.log('One definition of the contract base');
 {
-  ok(/function contractBaseFor\(name\)\{/.test(html), 'there is a helper for it');
+  ok(/function contractBaseFor\(who\)\{/.test(html),
+     'there is a helper for it, and it takes a contract rather than a company \u2014 a firm holding '
+     +'two primes has two of them');
   const f = html.split('function renderFinancials')[1].split('\n}')[0];
-  ok(/const contract = contractBaseFor\(c\.name\);/.test(f),
+  ok(/const contract = contractBaseFor\(c\);/.test(f),
      'the financial summary uses it, so the figure in the prompt is the figure on the page');
   ok(!/pa && num\(pa\['Contract Amount'\]\)/.test(f),
      'and no longer works it out a second way');

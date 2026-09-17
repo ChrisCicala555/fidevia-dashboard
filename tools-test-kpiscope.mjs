@@ -36,6 +36,12 @@ const code=[harness,
   grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
   grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'), grab('function coIsExecuted'),
+  // A contract line is a trade held by a company, so the lookups reach for the
+  // predicate that knows it. Pulled in rather than stubbed: a stub here would
+  // let the contractor scoping this file exists to check pass on a copy.
+  grab('function contractorLines'), grab('function coNorm'), grab('function tradeKeyOf'),
+  grab('function linesForCompany'), grab('function lineOfRow'), grab('function tradeOfRow'),
+  grab('function rowOnLine'), grab('function billedAgainst'),
   grab('function allowanceUsedBy'), grab('function coContractImpactFor'),
   grab('function financialTotals'),
 ].join('\n')+`

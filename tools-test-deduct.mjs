@@ -87,8 +87,9 @@ console.log('Netting to zero is an answer, not an absence');
   ok(R(`coHasApproved('Summit Builders')`)===false, 'and an empty log says nothing is');
   // `coFromLog || payApp` read a net of zero as "nothing on file" and
   // substituted the pay application's figure — a different number, silently.
-  ok(/const co = coHasApproved\(c\.name\) \? coFromLog : \(pa \? num\(pa\['Approved Change Orders'\]\) : 0\)/.test(html),
-     'so the summary asks whether there is a log, not whether the total is truthy');
+  ok(/const co = coHasApproved\(c\) \? coFromLog : \(pa \? num\(pa\['Approved Change Orders'\]\) : 0\)/.test(html),
+     'so the summary asks whether there is a log, not whether the total is truthy \u2014 of the contract, '
+     +'since a firm holding two primes keeps a separate log against each');
 }
 
 console.log('The generated document agrees with the dashboard');

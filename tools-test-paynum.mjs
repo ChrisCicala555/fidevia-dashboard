@@ -18,6 +18,11 @@ fs.writeFileSync('.pn.tmp.mjs', [
   // Proposals and change orders became two registers; the label/column lookup
   // moved out into its own function.
   grab('function numRunFields'),
+  // A contract line is a trade held by a company, so the record lookups reach for
+  // the helpers that know it rather than a company-name compare of their own.
+  grab('function contractorLines'), grab('function coNorm'), grab('function tradeKeyOf'),
+  grab('function linesForCompany'), grab('function lineOfRow'), grab('function tradeOfRow'),
+  grab('function rowOnLine'), grab('function billedAgainst'),
   grab('function tradeCodeFor'), grab('function contractorRec'),
   // Numbering now also consults the numbers retired by deletion, so the run
   // does not restart when a record is removed.

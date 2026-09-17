@@ -87,6 +87,29 @@ console.log('Is this row on that line');
      'and neither half is assumed to exist');
 }
 
+console.log('One contractor, the trades they hold ticked on it')
+{
+  // How somebody setting up a job thinks about it: Garden Spot is one firm that
+  // holds two of the four primes, not two companies that share a name.
+  P.run(`currentProject={folders:{},config:{contractors:[
+    {name:'Summit Builders', role:'GC', contract:3000000, active:true},
+    {name:'Garden Spot', active:true, lines:[
+      {role:'MC', contract:500000},
+      {role:'PC', contract:300000}]}]}};`);
+  ok(P.run(`contractorLines().length`)===3, 'the ticked trades expand to one line each');
+  ok(P.run(`tradesForCompany('Garden Spot').join()`)==='MC,PC', 'both of theirs');
+  ok(P.run(`(lineForTrade('PC')||{}).contract`)===300000,
+     'each carrying its own contract — which is the point, since the money must not pool');
+  ok(P.run(`(lineForTrade('GC')||{}).name`)==='Summit Builders',
+     'while a firm holding one trade is still written the old way and still works');
+  ok(P.run(`tradeOfRow({'Contractor':'Garden Spot','Trade':'PC'})`)==='PC', 'rows resolve against it the same');
+  ok(P.run(`rowOnLine({'Contractor':'Garden Spot','Trade':'MC'}, lineForTrade('PC'))`)===false,
+     'and one trade’s rows stay off the other’s contract');
+  // A trade dropped from a firm that still holds others.
+  P.run(`currentProject.config.contractors[1].lines[1].active=false;`);
+  ok(P.run(`tradesForCompany('Garden Spot').join()`)==='MC', 'a trade can be retired without retiring the firm');
+}
+
 console.log('An inactive line is not a line');
 {
   P.run(`currentProject={folders:{},config:{contractors:[

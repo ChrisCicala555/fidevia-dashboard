@@ -95,7 +95,7 @@ console.log('Wired into the delete');
 console.log('Pending is visible, not just excluded');
 {
   const f = html.split('function renderFinancials')[1].split('\n}')[0];
-  ok(/const pending = coPendingFor\(c\.name\)/.test(f), 'each contractor’s pending total is worked out');
+  ok(/const pending = coPendingFor\(c\)/.test(f), 'each contract’s pending total is worked out');
   ok(/pending\?\('<div style="color:var\(--muted\);font-size:11px;"/.test(f),
      'and shown under their change order figure');
   ok(/tPending\+=pending/.test(f), 'summed across the project');

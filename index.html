@@ -2447,12 +2447,10 @@ function paySameMonth(a, b){
   const x=String(a||'').slice(0,7), y=String(b||'').slice(0,7);
   return !!x && x===y;
 }
-function payPeriodRows(company, period){
-  const norm=v=>String(v||'').trim().toLowerCase();
-  const co=norm(company);
-  if(!co || !period) return [];
-  return (allData.pay_apps||[]).filter(r=>
-    norm(r['Contractor']||r['Company'])===co && paySameMonth(r['Period'], period));
+function payPeriodRows(who, period){
+  if(!who || !period) return [];
+  const mine=billedAgainst(who);
+  return (allData.pay_apps||[]).filter(r=>mine(r) && paySameMonth(r['Period'], period));
 }
 // What is already on record for this contractor in this month, and therefore
 // what is worth saying before another application joins it.
@@ -5623,7 +5621,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 11:33';
+const BUILD_STAMP='2026-09-17 11:42';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6932,48 +6930,51 @@ function renderAllowances(){
 }
 function renderFinancials(){
   const tb=document.getElementById('tbody-financials'); if(!tb) return;
-  const cfg=(currentProject&&currentProject.config)||{};
-  let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  // One row per contract, not per company: a firm holding the mechanical and
+  // the plumbing primes has two contracts, two schedules of values and two sets
+  // of pay applications, and adding them together answers a question nobody is
+  // asking.
+  let contractors=contractorLines();
   if(viewingAsExternal() && isContractorView()){
     const mine=companyScope().toLowerCase();
     contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
   }
   const pays=allData.pay_apps||[];
   const num=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\-]/g,''))||0;
-  const latestFor=name=>{ const rows=pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(name||'').trim().toLowerCase()); return rows.length?rows[rows.length-1]:null; };
+  const latestFor=line=>{ const rows=pays.filter(billedAgainst(line)); return rows.length?rows[rows.length-1]:null; };
   let tC=0,tCO=0,tR=0,tB=0,tRem=0,tAllow=0,tAllowUsed=0,tPending=0;
   const out=[];
   contractors.forEach(c=>{
-    const pa=latestFor(c.name);
-    const contract = contractBaseFor(c.name);
+    const pa=latestFor(c);
+    const contract = contractBaseFor(c);
     // Only the part of approved change orders NOT funded from the allowance
     // increases the contract; the allowance was already inside it.
     // Zero is an answer, not an absence: a deduct cancelling an addition nets
     // to nought, and falling through to the pay application there would show a
     // different number without saying so.
-    const coFromLog = coContractImpactFor(c.name);
-    const co = coHasApproved(c.name) ? coFromLog : (pa ? num(pa['Approved Change Orders']) : 0);
-    const allowTotal = allowanceFor(c.name);
-    const allowUsed  = allowanceUsedBy(c.name);
+    const coFromLog = coContractImpactFor(c);
+    const co = coHasApproved(c) ? coFromLog : (pa ? num(pa['Approved Change Orders']) : 0);
+    const allowTotal = allowanceFor(c);
+    const allowUsed  = allowanceUsedBy(c);
     const allowLeft  = allowTotal - allowUsed;
     const revised = contract + co;
-    const billed = pays.filter(p=>(p['Contractor']||'').trim().toLowerCase()===(c.name||'').trim().toLowerCase()).reduce((s,p)=>s+payApproved(p),0);
+    const billed = pays.filter(billedAgainst(c)).reduce((s,p)=>s+payApproved(p),0);
     const remaining = revised - billed;
     tC+=contract; tCO+=co; tR+=revised; tB+=billed; tRem+=remaining;
     tAllow+=allowTotal; tAllowUsed+=allowUsed;
     const pct = revised>0 ? billed/revised : 0;
     const coPct = contract>0 ? co/contract : 0;
     // Agreed and waiting to be papered. Not in the contract, and not invisible.
-    const pending = coPendingFor(c.name);
+    const pending = coPendingFor(c);
     tPending+=pending;
     // A negative balance means the allowance is overdrawn — show it, do not hide it.
     // The total is what the column shows; the letters are on hover, so a
     // contract carrying four allowances does not need four columns to be read.
     // Reads as a gap rather than as a default, since the trade drives numbering.
     const tradeCell = c.role
-      ? esc(c.role==='Other'?'OC':c.role)
+      ? esc(tradeLabelOf(c))
       : '<span style="color:var(--danger);font-weight:600;" title="No trade set. Items raised by this firm number as CM until one is chosen.">Not set</span>';
-    const allowList = allowancesFor(c.name);
+    const allowList = allowancesFor(c);
     const allowTip = allowList.length>1
       ? allowList.map(a=>'Allowance '+a.id+(a.name?(' — '+a.name):'')+': '
           +fmtMoney(allowanceRemainingById(c.name,a.id))+' of '+fmtMoney(a.amount)
@@ -12568,9 +12569,29 @@ function coIsPending(r){ return coIsApproved(r) && !coIsExecuted(r); }
 // key and the company is an attribute of it. The trade is already what numbers
 // the paperwork — PCO-GC-004, RFI-GC-002 — so this is the identity the
 // documents were using all along.
+// Two shapes, one answer. A contractor is entered once and the trades they hold
+// are ticked on that one record — Garden Spot, mechanical and plumbing, a
+// contract against each — which is how somebody setting up a job thinks about
+// it. Older projects wrote one record per trade instead. Both expand to the
+// same flat list of lines, so nothing downstream has to know which it was.
 function contractorLines(){
   const cfg=(currentProject&&currentProject.config)||{};
-  return (cfg.contractors||[]).filter(c=>c.active!==false);
+  const out=[];
+  (cfg.contractors||[]).forEach(function(c){
+    if(!c || c.active===false) return;
+    const sub=Array.isArray(c.lines)?c.lines.filter(Boolean):null;
+    if(sub && sub.length){
+      sub.forEach(function(l){
+        if(l.active===false) return;
+        out.push({ name:c.name, role:l.role, label:l.label||'',
+                   contract:l.contract, allowances:l.allowances||c.allowances||[],
+                   active:true, _of:c });
+      });
+      return;
+    }
+    out.push(c);
+  });
+  return out;
 }
 function coNorm(v){ return String(v==null?'':v).trim().toLowerCase(); }
 // Two unlabelled Other lines would collide exactly the way two companies of one
@@ -12624,15 +12645,35 @@ function rowOnLine(row, line){
 // Every trade one company holds on this job. One entry for a firm with a single
 // contract, which is the ordinary case and reads the same as it always did.
 function tradesForCompany(name){ return linesForCompany(name).map(tradeKeyOf).filter(Boolean); }
+// Every money lookup asks one question — is this row billed against the contract
+// I am adding up? — and each carried its own copy of a company-name compare,
+// which is why a firm holding two primes had both contracts claiming all of its
+// rows. One predicate now, built from either a line straight off the config or a
+// company name off a row.
+//
+// A name resolves only while that company holds one contract. Holding two, the
+// caller has to name which: silently summing them is the pooling this exists to
+// stop, and picking the first is the bug it replaces. A company on no contractor
+// list at all still adds up by name, so a row filed against a firm nobody
+// recorded is counted rather than lost.
+function billedAgainst(who){
+  if(who && typeof who==='object'){ const l=who; return r=>rowOnLine(r,l); }
+  const mine=linesForCompany(who);
+  if(mine.length===1){ const l=mine[0]; return r=>rowOnLine(r,l); }
+  if(mine.length>1) return ()=>false;
+  const n=coNorm(who);
+  return n ? (r=>coNorm(r&&(r['Contractor']||r['Company']))===n) : (()=>false);
+}
 // The contract a company started with, before any change order. Project
 // settings is where that lives; a pay application only restates it, and is read
 // here only for a project old enough that the contract was never recorded in
 // settings at all. renderFinancials works it out the same way, and reads it
 // from here so the two cannot drift.
-function contractBaseFor(name){
-  const cfg=(currentProject&&currentProject.config)||{};
-  const rec=(cfg.contractors||[]).find(c=>String(c.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
-  const pays=(allData.pay_apps||[]).filter(p=>String(p['Contractor']||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
+function contractBaseFor(who){
+  const rec = (who && typeof who==='object') ? who
+    : (function(){ const m=linesForCompany(who); return m.length===1 ? m[0] : null; })();
+  const mine=billedAgainst(who);
+  const pays=(allData.pay_apps||[]).filter(mine);
   const pa=pays.length?pays[pays.length-1]:null;
   const fromPa=pa?payNum(pa['Contract Amount']):0;
   return payNum(rec&&rec.contract) || fromPa;
@@ -12678,9 +12719,9 @@ function coDeleteEffect(row){
     +'Deleting it does not change the contract, and leaves '+into+' as it is.';
   return 'It has not been approved, so the contract does not move.';
 }
-function coPendingFor(name){
-  const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).filter(r=>coIsPending(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+function coPendingFor(who){
+  const mine=billedAgainst(who);
+  return (allData.co||[]).filter(r=>coIsPending(r)&&mine(r))
     .reduce((s,r)=>s+coContractImpact(r),0);
 }
 // ── Allowances ────────────────────────────────────────────────────────────
@@ -12694,20 +12735,23 @@ function allowanceLetter(i){
   do { out=String.fromCharCode(65+(n%26))+out; n=Math.floor(n/26)-1; } while(n>=0);
   return out;
 }
-function contractorRec(name){
-  const cfg=(currentProject&&currentProject.config)||{};
-  return (cfg.contractors||[]).find(x=>String(x.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase())||null;
+// The record an allowance hangs off. A line when the caller has one — allowances
+// belong to a contract, and a firm holding the mechanical and plumbing primes
+// carries a separate set against each.
+function contractorRec(who){
+  if(who && typeof who==='object') return who;
+  const mine=linesForCompany(who);
+  return mine.length===1 ? mine[0] : null;
 }
 // The list for one contractor. A project set up before allowances were named
 // carries a single number on the contractor; it is read as Allowance A so the
 // figures do not change underneath anyone.
 // How much an allowance has been written down by approved deducts tied to it.
 // Reads the change order log directly, so it must not call allowancesFor.
-function allowanceReducedById(name, id){
-  const norm=String(name||'').trim().toLowerCase();
+function allowanceReducedById(who, id){
+  const mine=billedAgainst(who);
   const want=String(id||'').trim().toUpperCase();
-  return (allData.co||[]).filter(r=>coIsExecuted(r)
-      && String(r['Company']||'').trim().toLowerCase()===norm
+  return (allData.co||[]).filter(r=>coIsExecuted(r) && mine(r)
       && coApprovedAmount(r) < 0)
     .reduce((sum,r)=>{
       // A deduct writes down the allowances named on it. Where it names none,
@@ -12725,11 +12769,11 @@ function allowanceReducedById(name, id){
 // set it at. Callers asking what is left, or what may still be drawn, want the
 // current figure — which is why the reduction is applied here rather than at
 // each call site, where one would eventually be missed.
-function allowancesFor(name){
-  const c=contractorRec(name);
+function allowancesFor(who){
+  const c=contractorRec(who);
   if(!c) return [];
   const build=(id,nm,amt,legacy)=>{
-    const cut=allowanceReducedById(name,id);
+    const cut=allowanceReducedById(c,id);
     return { id, name:nm, original:amt, reduced:cut,
              amount:Math.max(0, amt-cut), legacy:!!legacy };
   };
@@ -12816,11 +12860,10 @@ function coAllowanceAmountFor(r, id){
 // the proposal form. The allowance is now decided on the change order, where
 // the change is agreed, so both moved to coGenAllowFill and coGenAllowNote.
 
-function allowanceUsedById(name, id){
-  const norm=String(name||'').trim().toLowerCase();
+function allowanceUsedById(who, id){
+  const mine=billedAgainst(who);
   const want=String(id||'').trim().toUpperCase();
-  return (allData.co||[]).filter(r=>coIsExecuted(r)
-      && String(r['Company']||'').trim().toLowerCase()===norm)
+  return (allData.co||[]).filter(r=>coIsExecuted(r) && mine(r))
     .reduce((sum,r)=>{
       // The draw is capped at what the change order is worth, so when it is
       // split across several allowances each takes its share of the cap rather
@@ -12832,9 +12875,9 @@ function allowanceUsedById(name, id){
       return sum + coAllowanceAmountFor(r, want)*scale;
     },0);
 }
-function allowanceUsedBy(name){
-  const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).filter(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+function allowanceUsedBy(who){
+  const mine=billedAgainst(who);
+  return (allData.co||[]).filter(r=>coIsExecuted(r)&&mine(r))
     .reduce((s,r)=>s+coAllowanceDraw(r),0);
 }
 function allowanceRemainingById(name, id){ 
@@ -12844,13 +12887,13 @@ function allowanceRemainingById(name, id){
 function allowanceRemaining(name){ return allowanceFor(name)-allowanceUsedBy(name); }
 // Approved CO value that lands on the contract, for one contractor.
 // Whether anything is on the log at all, as distinct from netting to zero.
-function coHasApproved(name){
-  const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).some(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm);
+function coHasApproved(who){
+  const mine=billedAgainst(who);
+  return (allData.co||[]).some(r=>coIsExecuted(r)&&mine(r));
 }
-function coContractImpactFor(name){
-  const norm=String(name||'').trim().toLowerCase();
-  return (allData.co||[]).filter(r=>coIsExecuted(r)&&String(r['Company']||'').trim().toLowerCase()===norm)
+function coContractImpactFor(who){
+  const mine=billedAgainst(who);
+  return (allData.co||[]).filter(r=>coIsExecuted(r)&&mine(r))
     .reduce((s,r)=>s+coContractImpact(r),0);
 }
 
@@ -12972,12 +13015,12 @@ function contractOnRecord(name){
 // same month is this period's own, not money already billed, so the cut is the
 // month before. Undated rows count, for the same reason they do in coNetAsOf:
 // the figure should never quietly understate what has already been drawn.
-function payPrevPaidFor(name, period, skipIdx){
-  const norm=s=>String(s||'').trim().toLowerCase();
+function payPrevPaidFor(who, period, skipIdx){
+  const mine=billedAgainst(who);
   const cut=period?monthEnd(period):null;
   return (allData.pay_apps||[]).reduce(function(sum,p,i){
     if(i===skipIdx) return sum;
-    if(norm(p['Contractor']||p['Company'])!==norm(name)) return sum;
+    if(!mine(p)) return sum;
     if(cut){
       const d=p['Period'] ? monthEnd(p['Period']) : null;
       if(d && d>=cut) return sum;
@@ -14036,16 +14079,24 @@ function renderPayApps(){
   const wrap=document.getElementById('payapp-groups'); if(!wrap) return;
   const rows=allData.pay_apps||[];
   updateContractBar(rows);
-  const cfg=(currentProject&&currentProject.config)||{};
-  const contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  // A group is a contract, not a company. Garden Spot holding the mechanical and
+  // the plumbing primes files two applications a month — separate contract sums,
+  // separate schedules of values, separate retainage — and grouping by name put
+  // both under one heading and counted each of them twice.
+  const contractors=contractorLines();
   const norm=s=>(s||'').trim().toLowerCase();
-  let groups=contractors.map(c=>({name:c.name,role:c.role||'',rows:rows.filter(r=>norm(r['Contractor'])===norm(c.name))}));
+  let groups=contractors.map(c=>({name:c.name, role:tradeLabelOf(c), line:c,
+                                  rows:rows.filter(billedAgainst(c))}));
   if(viewingAsExternal() && isContractorView()){
     const mine=norm(companyScope());
     groups=groups.filter(g=>mine && norm(g.name)===mine);
   }
-  const known=new Set(contractors.map(c=>norm(c.name)));
-  const other=rows.filter(r=>!known.has(norm(r['Contractor'])));
+  // Anything no contract claimed. A row for a firm nobody recorded, and — the
+  // case worth seeing — a row naming a firm that holds two primes without saying
+  // which, since that money belongs to one of two schedules of values and
+  // nothing on it says which.
+  const claimed=new Set(); groups.forEach(g=>g.rows.forEach(r=>claimed.add(r)));
+  const other=rows.filter(r=>!claimed.has(r));
   if(other.length) groups.push({name:'Other / Unassigned',role:'',rows:other});
   if(!groups.length){ wrap.innerHTML='<div style="padding:16px;color:var(--muted);font-size:14px;">'+(EXTERNAL?'No payment applications are associated with your company on this project.':('No contractors set up yet'+(IS_ADMIN?' — add them under Financial Summary → Manage Contractors.':'.')))+'</div>'; return; }
   wrap.innerHTML=groups.map((g,gi)=>{

@@ -17,6 +17,11 @@ fs.writeFileSync('.cg.tmp.mjs', [
   grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'), grab('function coIsExecuted'),
   // allowanceFor now sums a named list, so its helpers come too.
+  // A contract line is a trade held by a company, so the record lookups reach for
+  // the helpers that know it rather than a company-name compare of their own.
+  grab('function contractorLines'), grab('function coNorm'), grab('function tradeKeyOf'),
+  grab('function linesForCompany'), grab('function lineOfRow'), grab('function tradeOfRow'),
+  grab('function rowOnLine'), grab('function billedAgainst'),
   grab('function allowanceLetter'), grab('function contractorRec'),
   // allowancesFor nets off approved deducts tied to each allowance, so its
   // write-down helper comes with it.
@@ -24,7 +29,7 @@ fs.writeFileSync('.cg.tmp.mjs', [
   // Signatures are exact: grab matches the first occurrence, and
   // allowanceRemainingById is declared above allowanceRemaining.
   grab('function allowanceFor(name)'), grab('function coAllowanceId'),
-  grab('function allowanceUsedById'), grab('function allowanceUsedBy(name)'),
+  grab('function allowanceUsedById'), grab('function allowanceUsedBy(who)'),
   grab('function allowanceRemainingById'), grab('function allowanceRemaining(name)'),
   grab('function coContractMathFor'),
   "export { coContractMathFor, coIsApproved };"
