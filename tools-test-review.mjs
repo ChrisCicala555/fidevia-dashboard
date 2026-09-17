@@ -80,7 +80,7 @@ ok(b.run("document.getElementById('reply-next-field').style.display")==='none',
 // you are recording a review, sending it on as well, or handing the step over.
 // tools-test-reassign.mjs covers all three; this one is the send-it-on case.
 b.run("openReply('sub',0,true)");
-b.run("(()=>{document.getElementById('reply-action').value='also';"
+b.run("(()=>{document.getElementById('reply-status').value='__also';"
     + "const ns=document.getElementById('reply-next'); ns.value='Dave Chen';"
     + "ns.options=[{value:'Dave Chen',getAttribute:()=>'d@s.test'}];})()");
 const added = b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')");

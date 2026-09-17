@@ -28,7 +28,7 @@ const setup=key=>b.run(`allData.contacts=[{'Name':'Test Architect','Company':'Ar
 const as=(email,co,role,name)=>b.run(`EXTERNAL=true;IS_ADMIN=false;ME_EMAIL='${email}';ME_NAME='${name||''}';
   ME_COMPANY='${co}';currentProject.userCompany='${co}';currentProject.userRole='${role}';`);
 const act=(key,status)=>b.run(`openReply('${key}',0,true);
-  document.getElementById('reply-action').value='continue';
+  /* the status list holds no route by default */
   document.getElementById('reply-status').value=${JSON.stringify(status)};
   applyReviewAdvance('${key}', allData.${key}[0], ME_NAME||ME_EMAIL);`);
 const panel=key=>b.run(`wfProgressHTML('${key}',allData.${key}[0],0)`).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');

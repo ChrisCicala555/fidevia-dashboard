@@ -13,7 +13,7 @@ const run = (action, who) => {
     allData.sub[0]['Workflow Step']='0'; allData.sub[0]['Workflow Status']='In Review';
     allData.sub[0]['Workflow Signed']=''; allData.sub[0]['Workflow Extra']=''; allData.sub[0]['Workflow Reassigned']='';
     openReply('sub',0,true);
-    document.getElementById('reply-action').value='${action}';
+    document.getElementById('reply-status').value='${action}';
     const ns=document.getElementById('reply-next');
     ns.value=${JSON.stringify(who||'')};
     ns.options=[{value:${JSON.stringify(who||'')}, getAttribute:()=>'dave@summit.test'}];
@@ -29,7 +29,7 @@ const run = (action, who) => {
 
 // ── recording a review, as before ──
 {
-  const r = run('continue','');
+  const r = run('Approved','');
   ok(r.signed.join()==='0', 'reviewing signs the reviewer’s own step');
   // The seeded submittal chain is an architect and an engineer in parallel, and
   // a group of two now needs both. One review signs its own step and leaves the
@@ -39,14 +39,14 @@ const run = (action, who) => {
 }
 // ── review, and send it on as well ──
 {
-  const r = run('also','Dave Chen');
+  const r = run('__also','Dave Chen');
   ok(r.signed.join()==='0', 'the review is still recorded');
   ok(r.added==='Dave Chen' && /Further Review\/Dave Chen/.test(r.chain), 'and they are added after');
   ok(r.status==='In Review', 'so the item is still open');
 }
 // ── hand it over, which is not an approval ──
 {
-  const r = run('reassign','Dave Chen');
+  const r = run('__reassign','Dave Chen');
   ok(r.signed.length===0,
      'handing the step over records no approval — nobody gave one');
   ok(/Architect Review\/Dave Chen/.test(r.chain), 'the step now belongs to them');
@@ -58,14 +58,14 @@ ok(b.run("JSON.stringify(currentProject.config.workflows.sub.map(s=>s.person))")
    'through all of it the project’s own workflow is untouched — one submittal is not a reason to rewrite the job');
 
 // ── the dialog only asks for a name when it needs one ──
-b.run("document.getElementById('reply-action').value='continue'; replyActionChanged();");
+b.run("document.getElementById('reply-status').value='Approved'; replyStatusChanged();");
 ok(b.run("document.getElementById('reply-next-who').style.display")==='none',
    'recording a plain review asks for nobody');
-b.run("document.getElementById('reply-action').value='reassign'; replyActionChanged();");
+b.run("document.getElementById('reply-status').value='__reassign'; replyStatusChanged();");
 ok(b.run("document.getElementById('reply-next-who').style.display")!=='none', 'handing over asks who');
 ok(/Your approval is not recorded/.test(b.run("document.getElementById('reply-next-hint').textContent")),
    'and says plainly that no approval is being given');
-b.run("document.getElementById('reply-action').value='also'; replyActionChanged();");
+b.run("document.getElementById('reply-status').value='__also'; replyStatusChanged();");
 ok(/added after you/.test(b.run("document.getElementById('reply-next-hint').textContent")),
    'while sending it on says the opposite');
 

@@ -69,7 +69,7 @@ console.log('The record still says who actually acted');
     currentProject.userCompany='Architect 2'; currentProject.userRole='architect';
     currentProject.config.workflows.sub=${JSON.stringify(ARCH)};
     allData.sub[0]['Workflow Step']='0'; allData.sub[0]['Workflow Signed']='';
-    openReply('sub',0,true); document.getElementById('reply-action').value='continue';
+    openReply('sub',0,true); /* the status list holds no route by default */
     document.getElementById('reply-status').value='Approved';
     applyReviewAdvance('sub', allData.sub[0], 'Second Architect');`);
   const sig=JSON.parse(b.run("JSON.stringify(wfSignedMap(allData.sub[0]))"))['0'];
@@ -84,7 +84,7 @@ console.log('The record still says who actually acted');
   // The named person acting for themselves gets no such note.
   b.run(`ME_EMAIL='a@x.test'; ME_NAME='Test Architect';
     allData.sub[0]['Workflow Step']='0'; allData.sub[0]['Workflow Signed']='';
-    openReply('sub',0,true); document.getElementById('reply-action').value='continue';
+    openReply('sub',0,true); /* the status list holds no route by default */
     document.getElementById('reply-status').value='Approved';
     applyReviewAdvance('sub', allData.sub[0], 'Test Architect');`);
   const sig=JSON.parse(b.run("JSON.stringify(wfSignedMap(allData.sub[0]))"))['0'];

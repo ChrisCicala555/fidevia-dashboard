@@ -17,15 +17,17 @@ as('engineer','p@y.test');    ok(statusShown(), 'so is an engineer');
 as('contractor','d@s.test');  ok(!statusShown(), 'a contractor resubmitting is not — they are not deciding');
 b.run("EXTERNAL=false; IS_ADMIN=true; ME_EMAIL='cc@fidevia.com'; currentProject.userRole='';");
 ok(statusShown(), 'and Fidevia keeps it');
-ok(/'Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejected'/.test(html),
-   'the choices are the ones a submittal review actually has');
+ok(/'Comment only \\u2014 no decision','Approved as Noted','Revise and Resubmit','Approved','Rejected'/.test(html),
+   'the choices are the ones a submittal review actually has \u2014 and the first says what choosing it '
+   +'does, rather than naming the state the item is already in');
 {
   const c = html.split('const _sf=document.getElementById')[1].split('const note=')[0];
   // Three cases now, not two. Whoever was shown the field chooses; the side
   // that filed the item is resubmitting; anybody else is adding a version or a
   // note and must not stamp a status over the last real decision.
-  ok(/_canDecide \? document\.getElementById\('reply-status'\)\.value/.test(c),
-     'whoever was shown the field chooses');
+  ok(/_canDecide\s*\n?\s*\? replyStatusFor\(document\.getElementById\('reply-status'\)\.value, _row0\['Status'\]\)/.test(c),
+     'whoever was shown the field chooses \u2014 through replyStatusFor, since two of its entries route the '
+     +'item rather than naming a status');
   ok(/replyIsSubmitterSide\(key,_row0\)/.test(c), 'the side that filed it is resubmitting');
   ok(/replyOnReturnedStep\(key,_row0\)/.test(c),
      'but only when answering a request — a version filed while a reviewer still has it is a correction');
@@ -43,7 +45,7 @@ const review = (status) => {
     allData.sub[0]['Workflow Signed']=''; allData.sub[0]['Workflow Extra']='';
     allData.sub[0]['Submitted By (Sub)']='Dave Chen (Summit Builders)';
     openReply('sub',0,true);
-    document.getElementById('reply-action').value='continue';
+    /* the status list holds no route by default */
     document.getElementById('reply-status').value=${JSON.stringify(status)};
   })()`);
   b.run("applyReviewAdvance('sub', allData.sub[0], 'Test Architect')");

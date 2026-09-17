@@ -1995,14 +1995,7 @@
       <p id="reply-return-note" style="display:none;margin:-4px 0 14px;font-size:13px;color:var(--olive-900);
         background:var(--warn-bg);border:1px solid var(--khaki-300);border-radius:6px;padding:9px 11px;"></p>
       <div class="field" id="reply-next-field" style="display:none;">
-        <label>What are you doing?</label>
-        <select id="reply-action" onchange="replyActionSyncsStatus();replyActionChanged()">
-          <option value="continue">Recording my review &mdash; the chain moves on as configured</option>
-          <option value="also">Recording my review, and sending it to somebody else as well</option>
-          <option value="reassign">Handing this step to somebody else instead of me</option>
-          <option value="return">Sending it back to be revised and resubmitted</option>
-        </select>
-        <div id="reply-next-who" style="display:none;margin-top:10px;">
+        <div id="reply-next-who" style="display:none;">
           <label>Who</label>
           <select id="reply-next"><option value="">Choose somebody on the project&hellip;</option></select>
           <p class="file-hint" id="reply-next-hint" style="font-size:13px;color:var(--muted);margin-top:4px;"></p>
@@ -5766,7 +5759,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:12';
+const BUILD_STAMP='2026-09-17 19:36';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15343,7 +15336,7 @@ function sendItemNotif(notifyField, type, def, vars, rows, opts){ const c=notifC
 // ══════════════════════════════════════════════
 // VERSION THREAD (RFI / CO / Submittal)
 // ══════════════════════════════════════════════
-const REPLY_STATUS={rfi:['Open','Answered','Closed'],co:['Open','Approved','Rejected','Revise & Resubmit'],sub:['Under Review','Approved as Noted','Revise and Resubmit','Approved','Rejected']};
+const REPLY_STATUS={rfi:['Open','Answered','Closed'],co:['Open','Approved','Rejected','Revise & Resubmit'],sub:['Comment only \u2014 no decision','Approved as Noted','Revise and Resubmit','Approved','Rejected']};
 const REPLY_IDF={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'};
 // What a row is called, for finding it again. A change order answers to its CO
 // number once it has one and to its PCO number before that — keying only on
@@ -16800,6 +16793,33 @@ function toggleThread(key,i){ const el=document.getElementById('td-'+key+'-'+i);
 //
 // Now either control can say it and the other follows, so whichever one the
 // reader reaches for, both read the same when they submit.
+// Where a review can go, as against what it says. These were a second dropdown
+// asking "what are you doing?", which read as a step you should not need: four
+// of its five answers were already implied by the status, and the two that were
+// not are these. They sit in the one list now, and the Who picker appears only
+// for them.
+const REPLY_ROUTE={
+  '__also':    'Approved \u2014 and send to somebody else as well\u2026',
+  '__reassign':'Hand this step to somebody else instead of me\u2026'
+};
+function replyIsRoute(v){ return Object.prototype.hasOwnProperty.call(REPLY_ROUTE, String(v||'')); }
+// What the one dropdown means for the chain, in the words applyReviewAdvance
+// already used. A return is read off the status, as it always was.
+function replyRouteOf(v){
+  const t=String(v||'');
+  if(t==='__also') return 'also';
+  if(t==='__reassign') return 'reassign';
+  return wfIsReturnOutcome(t) ? 'return' : 'continue';
+}
+// Routing a review somewhere is not a decision about the item, so the status it
+// writes is not the option's own label. Sending it on is an approval; handing
+// the step over decides nothing, so the item keeps the status it arrived with.
+function replyStatusFor(v, current){
+  const t=String(v||'');
+  if(t==='__also') return 'Approved';
+  if(t==='__reassign') return String(current||'');
+  return t;
+}
 const REPLY_RETURN_ACTION='return';
 function replyReturnTarget(){
   const r=(REPLY_CTX && (allData[REPLY_CTX.key]||[])[REPLY_CTX.i])||{};
@@ -16830,45 +16850,21 @@ function replySyncReturn(returning){
 }
 // The status was changed: bring the action into line with it.
 function replyStatusChanged(){
-  const sel=document.getElementById('reply-status');
-  const act=document.getElementById('reply-action');
-  if(!sel) return;
+  const sel=document.getElementById('reply-status'); if(!sel) return;
+  const v=String(sel.value||'');
+  const route=replyRouteOf(v);
   // A reader who cannot set the status is not choosing a return, whatever the
   // status happens to say — the row arrived that way.
-  const returning=replyDecidesHere() && wfIsReturnOutcome(sel.value);
-  if(act){
-    if(returning) act.value=REPLY_RETURN_ACTION;
-    else if(act.value===REPLY_RETURN_ACTION) act.value='continue';
-  }
-  replySyncReturn(returning);
-  try{ replyActionChanged(); }catch(e){}
-}
-// The action was changed: bring the status into line with it.
-function replyActionSyncsStatus(){
-  const act=document.getElementById('reply-action');
-  const sel=document.getElementById('reply-status');
-  if(!act||!sel) return;
-  const returning=act.value===REPLY_RETURN_ACTION;
-  if(returning){
-    const hit=[...sel.options].find(o=>wfIsReturnOutcome(o.value));
-    if(hit) sel.value=hit.value;
-  } else if(wfIsReturnOutcome(sel.value)){
-    const hit=[...sel.options].find(o=>!wfIsReturnOutcome(o.value));
-    if(hit) sel.value=hit.value;
-  }
-  replySyncReturn(returning);
-}
-function replyActionChanged(){
-  const act=(document.getElementById('reply-action')||{}).value||'continue';
+  replySyncReturn(replyDecidesHere() && route==='return');
+  // Only the two that route anywhere ask who to.
   const who=document.getElementById('reply-next-who');
+  if(who) who.style.display = (route==='also'||route==='reassign') ? '' : 'none';
   const hint=document.getElementById('reply-next-hint');
-  // Returning names nobody: it goes to whoever filed the thing.
-  if(who) who.style.display = (act==='continue'||act===REPLY_RETURN_ACTION) ? 'none' : '';
-  if(hint) hint.textContent = act===REPLY_RETURN_ACTION
-    ? 'It goes back to '+replyReturnTarget()+', who become the next step. Nobody else is added.'
-    : act==='reassign'
-    ? 'They take over this step. Your approval is not recorded, because you are not giving one \u2014 the item waits for them instead. This item only; the project\u2019s workflow is unchanged.'
-    : 'Your review is recorded, and they are added after you as one more step. This item only; the project\u2019s workflow is unchanged.';
+  if(hint) hint.textContent = route==='reassign'
+    ? 'They take over this step. Your approval is not recorded, because you are not giving one — the item waits for them instead. This item only; the project’s workflow is unchanged.'
+    : route==='also'
+    ? 'Your review is recorded as an approval, and they are added after you as one more step. This item only; the project’s workflow is unchanged.'
+    : '';
 }
 // advance: this is the reviewer completing their step, so the chain moves on
 // when they submit. Two buttons for one decision let a review be written while
@@ -16879,20 +16875,19 @@ function openReply(key,i,advance){
   // list that has been re-rendered underneath the open dialog cannot change
   // which item the reply was written about.
   REPLY_CTX={key,i,advance:!!advance,id:rowIdOf(key,r)};
-  // Every one of the three answers under "What are you doing?" is a reviewer's
-  // answer — record my review, add somebody to the review, hand my review to
-  // somebody else. A contractor answering a return is not reviewing anything;
-  // they are sending the revision back. So the question is asked of reviewers,
-  // and the title says which of the two things is happening rather than calling
-  // a resubmission a review.
+  // Routing an item somewhere — sending it on as well, handing the step over —
+  // is a reviewer's act, and one that only makes sense while the chain is on
+  // them. A contractor answering a return is not reviewing anything; they are
+  // sending the revision back. So the routing entries are offered on the same
+  // condition the status field is, and the title says which of the two things
+  // is happening rather than calling a resubmission a review.
+  //
   // Three facts, worked out once: is this reader somebody who reviews at all,
   // is the chain on them now, and therefore may they record a review here.
-  //
-  // The status field already used all three. "What are you doing?" used only
-  // the first, so an architect looking at an item that had gone back to the
-  // contractor was told the decision was not theirs to record and then asked
-  // which kind of review they were recording. Both fields belong to the same
-  // act, so they now answer to the same condition.
+  // These were once split across two fields answering to different conditions,
+  // so an architect looking at an item that had gone back to the contractor was
+  // told the decision was not theirs and then asked which kind of review they
+  // were recording. One field now, one condition.
   // Being on the design team is not the same as being the reviewer.
   //
   // This used to be the role alone, deliberately: "the design team is recording
@@ -16931,10 +16926,9 @@ function openReply(key,i,advance){
   {
     const nf=document.getElementById('reply-next-field'), ns=document.getElementById('reply-next');
     if(nf && ns){
+      // The block holds only the Who picker now, and that is shown by
+      // replyStatusChanged when the chosen option needs a name.
       nf.style.display = (advance && _decides) ? '' : 'none';
-      // Left on 'continue' when it is hidden, so the answer the submitter never
-      // gave is the one that simply moves the chain along.
-      { const act=document.getElementById('reply-action'); if(act && !_decides) act.value='continue'; }
       if(advance && _decides){
         const seen=new Set(); const opts=[];
         (allData.contacts||[]).forEach(c=>{
@@ -16945,8 +16939,7 @@ function openReply(key,i,advance){
         });
         ns.innerHTML='<option value="">Choose somebody on the project\u2026</option>'+opts.join('');
         ns.value='';
-        const act=document.getElementById('reply-action'); if(act) act.value='continue';
-        try{ replyActionChanged(); }catch(e){}
+        try{ replyStatusChanged(); }catch(e){}
       }
     }
   }
@@ -16975,7 +16968,11 @@ function openReply(key,i,advance){
       cn.innerHTML = why ? ('<strong>This '+esc(REPLY_LABEL[key]||'item').toLowerCase()+' is closed.</strong> '+esc(why)
         +' Anything added here is filed against the closed record and does not reopen the review.') : '';
     } }
-  const sel=document.getElementById('reply-status'); sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('');
+  const sel=document.getElementById('reply-status');
+  // The statuses, then — for the reviewer the chain is actually on — the two
+  // things a review can do that no status can say.
+  sel.innerHTML=(REPLY_STATUS[key]||['Open']).map(s=>'<option>'+esc(s)+'</option>').join('')
+    + (advance ? Object.keys(REPLY_ROUTE).map(v=>'<option value="'+esc(v)+'">'+esc(REPLY_ROUTE[v])+'</option>').join('') : '');
   // The status was hidden from everyone outside Fidevia, which made sense when
   // the only external reply was a contractor resubmitting. A reviewer has a
   // decision to record — approve, send back, refuse — and no way to say it.
@@ -17166,7 +17163,8 @@ async function submitReply(){
   // resubmitted one while its workflow still said complete.
   const _closed=!!replyClosedReason(key,_row0);
   const _answering=replyIsSubmitterSide(key,_row0) && !_closed && replyOnReturnedStep(key,_row0);
-  const status=_canDecide ? document.getElementById('reply-status').value
+  const status=_canDecide
+    ? replyStatusFor(document.getElementById('reply-status').value, _row0['Status'])
     : (_answering ? 'Resubmitted' : String(_row0['Status']||''));
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
@@ -17297,7 +17295,7 @@ function applyReviewAdvance(key, row, by){
   if(!steps.length) return '';
   const cur=wfActiveIdx(row); const [gs,ge]=wfGroupAt(steps,cur);
   const mine=wfMyStepsIn(steps,gs,ge);
-  const act=((document.getElementById('reply-action')||{}).value)||'continue';
+  const act=replyRouteOf((document.getElementById('reply-status')||{}).value);
   const ns=document.getElementById('reply-next');
   const pick=ns && REPLY_CTX && REPLY_CTX.advance ? String(ns.value||'').trim() : '';
   const emailOf=nm=>{ const o=ns&&[...ns.options].find(x=>x.value===nm); return (o&&o.getAttribute('data-email'))||''; };
@@ -17305,8 +17303,7 @@ function applyReviewAdvance(key, row, by){
   // Whether this is a return, from either control. Settled before the handover
   // branch below, which would otherwise act on "hand it to somebody else"
   // while the status said Revise and Resubmit and send it to a third party.
-  const _outcome0=String((document.getElementById('reply-status')||{}).value||'');
-  const _returning = act===REPLY_RETURN_ACTION || wfIsReturnOutcome(_outcome0);
+  const _returning = act==='return';
 
   // Handing the step over is not an approval, so nothing is signed and the
   // chain does not move: the item simply waits for somebody else now. Signing
@@ -17325,7 +17322,7 @@ function applyReviewAdvance(key, row, by){
 
   const toSign = mine.length ? mine : (IS_ADMIN ? [gs] : []);
   if(!toSign.length) return '';
-  const outcome=String((document.getElementById('reply-status')||{}).value||'');
+  const outcome=replyStatusFor((document.getElementById('reply-status')||{}).value, row['Status']);
   toSign.forEach(n=>wfMarkSigned(row, n, by||ME_NAME||ME_EMAIL||'', !mine.length, outcome,
     (steps[n]&&steps[n].person)||''));
 

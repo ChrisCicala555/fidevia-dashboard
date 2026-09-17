@@ -27,7 +27,7 @@ const open=(email,co,role,ext,adm,adv)=>{
            asks:  b.run("document.getElementById('reply-next-field').style.display")!=='none',
            status:b.run("document.getElementById('reply-status-field').style.display")!=='none',
            file:  b.run("document.getElementById('reply-file-label').textContent"),
-           action:b.run("document.getElementById('reply-action').value") };
+           action:b.run("replyRouteOf(document.getElementById('reply-status').value)") };
 };
 
 console.log('The contractor sending a revision back');
@@ -78,8 +78,8 @@ console.log('The rule');
      'and somebody advancing who is not on the review side at all is sending a revision back');
   ok(/nf\.style\.display = \(advance && _decides\) \? '' : 'none';/.test(c),
      'so the reviewer’s question is hidden from them');
-  ok(/if\(act && !_decides\) act\.value='continue';/.test(c),
-     'left on continue rather than on whatever it held last time');
+  ok(/The block holds only the Who picker now/.test(c),
+     'and what is left in it is the Who picker alone, shown only when the chosen option needs a name');
   // Being a reviewer is not enough: an architect whose item has gone back to
   // the contractor is a reviewer with nothing to review here.
   const v=open('a@x.test','Architect 2','architect',true,false,true);

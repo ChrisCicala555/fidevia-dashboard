@@ -22,7 +22,7 @@ allData.sub=[{'Submittal #':'SUB-GC-001','Description':'Wall','Submitted By (Sub
  'Workflow Step':'0','Workflow Status':'In Review','Version History':'[]','Workflow Extra':''}];`);
 const as=(e,co,r)=>b.run(`EXTERNAL=true;IS_ADMIN=false;ME_EMAIL='${e}';ME_NAME='';
   currentProject.userCompany='${co}';currentProject.userRole='${r}';DATA_READY=true;renderAll();`);
-const act=(s)=>b.run(`(()=>{openReply('sub',0,true);document.getElementById('reply-action').value='continue';
+const act=(s)=>b.run(`(()=>{openReply('sub',0,true);/* the status list holds no route by default */
   document.getElementById('reply-status').value=${JSON.stringify(s)};
   applyReviewAdvance('sub',allData.sub[0],ME_EMAIL);})()`);
 const names=()=>JSON.parse(b.run("JSON.stringify(wfEffectiveSteps('sub',allData.sub[0]).map(s=>s.name))"));

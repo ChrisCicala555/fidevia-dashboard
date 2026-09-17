@@ -39,7 +39,7 @@ console.log('The reviewer’s one press');
 {
   b.run(`ME_EMAIL='p@y.test'; currentProject.userRole='engineer'; currentProject.userCompany='Next Level Engineers';
     allData.sub[0]['Workflow Step']='0'; allData.sub[0]['Workflow Signed']='';
-    openReply('sub',0,true); document.getElementById('reply-action').value='continue';
+    openReply('sub',0,true); /* the status list holds no route by default */
     document.getElementById('reply-status').value='Approved';
     applyReviewAdvance('sub', allData.sub[0], 'Penelope Odiem');`);
   ok(b.run("JSON.stringify(wfSignedMap(allData.sub[0]))")==='{}',

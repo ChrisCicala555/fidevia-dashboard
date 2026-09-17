@@ -27,7 +27,7 @@ const opened=()=>{ b.run("openReply('sub',0,true)");
 console.log('Sending it back, twice');
 reset(); as('a@x.test','Architect 2','architect',true,false);
 ok(opened().decides, 'the architect may decide while the chain is on them');
-b.run(`document.getElementById('reply-action').value='continue';
+b.run(`/* the status list holds no route by default */
   document.getElementById('reply-status').value='Revise and Resubmit';
   applyReviewAdvance('sub', allData.sub[0], 'Test Architect');
   allData.sub[0]['Status']='Revise and Resubmit';`);
