@@ -5279,6 +5279,18 @@ function coStageChips(rows){
 // The arrow in the number cell says a proposal became a change order. Nothing
 // said the opposite, so one agreed months ago and never written read exactly
 // like one executed yesterday.
+// The pill said "Approved" with seven signatures still outstanding: true of
+// the decision, silent about the document. A change order is agreed once, then
+// written, then signed round the table, and until that finishes it is with
+// somebody. Appended rather than replacing the word, because which decision was
+// taken still matters here — and the appended form no longer matches the pill's
+// colour map, so it stops reading green until the chain actually ends.
+function coStatusLabel(r){
+  const stored=String((r&&r['Status'])||'').trim();
+  if(!stored || DECIDED_AGAINST.test(stored)) return stored;
+  let who=[]; try{ who=wfWithNow('co', r)||[]; }catch(e){}
+  return who.length ? stored+' — with '+who.join(', ') : stored;
+}
 function coStageNote(r){
   return coStage(r)==='agreed'
     ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Approved — no CO number yet</div>'
@@ -5319,7 +5331,7 @@ function renderCOs(){
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(coStatusLabel(r),false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
   countFooter(shown.length, all.length, 'change order');
   { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
@@ -5611,7 +5623,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:54';
+const BUILD_STAMP='2026-09-17 04:57';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13847,9 +13859,13 @@ let PAY_REVIEW_TRACE=true;
 // and cannot stay right about a position in a chain that Settings can change
 // underneath it. So the decision is read from the row and the position is read
 // from the chain, every time the log is drawn.
-function payWithNow(row){
+function payWithNow(row){ return wfWithNow('pay_apps', row); }
+// Whoever the chain is still waiting on. Written for payment applications
+// and taken out whole when change orders needed the same answer: one place
+// that knows how a part-answered group reads, rather than two that diverge.
+function wfWithNow(key, row){
   let steps=[];
-  try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){ return []; }
+  try{ steps=wfEffectiveSteps(key, row)||[]; }catch(e){ return []; }
   if(!steps.length || wfIsStopped(row) || wfIsDone(row)) return [];
   if(!String((row&&row['Workflow Status'])||'').trim()) return [];
   // A chain that has been shortened can leave the row past its end.

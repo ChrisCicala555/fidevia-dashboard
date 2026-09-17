@@ -42,6 +42,37 @@ console.log('Said on the row, not only in the filter');
      'which is what that arrow is: the PCO, then the CO number it became');
 }
 
+console.log('And the pill says what is still outstanding')
+{
+  // "Then status should say something like Approved — Awaiting etc." It said
+  // Approved with seven signatures still to come: true of the decision, silent
+  // about the document.
+  const FID={step:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia'};
+  const ARCH={step:'Architect Review', person:'Test Architect', company:'Architect 2'};
+  const GEN={step:'Change Order Generated', person:'Christopher Cicala', company:'Fidevia'};
+  // Keyed, so asking the wrong module's chain is a failure rather than a
+  // coincidence that happens to give the same answer.
+  P.run(`wfEffectiveSteps=function(key){
+    return key==='co' ? ${JSON.stringify([FID,ARCH,GEN])} : []; };`);
+  const lab=(o)=>P.run(`coStatusLabel(${JSON.stringify(o)})`);
+  const mid={'Status':'Approved','Workflow Status':'In Review','Workflow Step':'1',
+             'Workflow Signed':JSON.stringify({'0':{by:'Christopher Cicala',at:'2026-09-15'}})};
+  ok(lab(mid)==='Approved \u2014 with Architect 2',
+     'the decision stays, and the pill names who the document is with \u2014 '+lab(mid));
+  ok(!/^(open|closed|approved|under review|pending review|revise and resubmit|rejected)$/i.test(lab(mid)),
+     'and the appended form falls out of the pill colour map, so it stops reading green mid-chain');
+  ok(lab({'Status':'Approved','Workflow Status':'Complete'})==='Approved',
+     'a chain that has run its course says Approved and nothing more');
+  ok(lab({'Status':'Approved'})==='Approved', 'as does one with no chain at all');
+  ok(lab({'Status':'Rejected','Workflow Status':'In Review','Workflow Step':'1'})==='Rejected',
+     'and a decision against it is the end of the sentence \u2014 nobody is waiting on anything');
+  ok(lab({'Status':''})==='', 'no status, nothing invented');
+  const open={'Status':'Open','Workflow Status':'In Review','Workflow Step':'0'};
+  ok(lab(open)==='Open \u2014 with Fidevia',
+     'an unapproved one says whose review it is sitting in too \u2014 '+lab(open));
+  ok(/pill\(coStatusLabel\(r\),false\)/.test(html), 'and the log draws that, not the stored word');
+}
+
 console.log('Counting them, with a way into each');
 {
   const chips=(rows)=>P.run(`(function(){ coStageChips(${JSON.stringify(rows)});

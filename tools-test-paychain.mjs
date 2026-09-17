@@ -21,7 +21,7 @@ P.run(`
     {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
     {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}
   ]; };
-  wfEffectiveSteps=function(){ return wfSteps(); };
+  wfEffectiveSteps=function(key){ return key==='pay_apps' ? wfSteps() : []; };
 `);
 const ROW=(o)=>Object.assign({'App #':'PA #01','Contractor':'Summit Builders','Company':'Summit Builders',
   'Copy Type':'Pencil','Status':'Pencil — awaiting Fidevia','Workflow Step':'0',

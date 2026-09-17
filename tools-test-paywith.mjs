@@ -10,7 +10,9 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const html=fs.readFileSync('index.html','utf8');
 const P=bootPage(); P.run(SEED);
-const chain=(js)=>P.run(`wfEffectiveSteps=function(){ return ${js}; };`);
+// Keyed, so a caller asking the wrong module's chain fails here rather than
+// getting the right answer by coincidence.
+const chain=(js)=>P.run(`wfEffectiveSteps=function(key){ return key==='pay_apps' ? ${js} : []; };`);
 const FID={name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia'};
 const ARCH={name:'Architect Review', person:'Test Architect', company:'Architect 2'};
 // A step belongs to a firm. The person against it is who Fidevia expects to
