@@ -44,6 +44,16 @@ console.log('The step is theirs, so the button is');
      'the firm the contact sheet gives the person on the step counts as much as the label on it');
   P.run(`allData.contacts=[]; viewingAsCompany=function(){ return 'Nobody Ltd'; };`);
   ok(may()===false, 'and a firm that is neither still may not');
+  // Only the label on the step matches: a different person, a different
+  // address, and nothing on the contact sheet to resolve the name through.
+  P.run(`viewingAsCompany=function(){ return 'Architect 2'; };`);
+  ok(may()===true, 'the label on the step is enough on its own');
+  // Somebody with no firm recorded must not fall through a blank comparison
+  // into every step whose person is not on the contact sheet.
+  P.run(`viewingAsCompany=function(){ return ''; };`);
+  ok(may()===false, 'and a viewer with no firm at all matches nothing');
+  P.run(`viewingAsCompany=function(){ return 'Architect 2'; };
+         ME_NAME='Test Architect'; ME_EMAIL='arch@example.com';`);
   P.run(`viewingAsCompany=function(){ return 'Architect 2'; };
          ME_EMAIL='arch@example.com'; ME_NAME='Test Architect';`);
 }
