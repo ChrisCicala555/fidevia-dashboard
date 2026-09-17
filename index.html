@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:40';
+const BUILD_STAMP='2026-09-17 22:51';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15844,7 +15844,13 @@ function wfEffectiveSteps(key, row){
   const base=wfStepsFor(key, rowCompany(row), row);
   const moved=wfReassigned(row);
   const extra=wfExtraSteps(row);
+  // Which store owns each step, carried on the step itself. A handover was
+  // keyed by position and applied only to base steps, so handing over an added
+  // step — a re-review, a further review — wrote a key that matched nothing and
+  // was thrown away without a word. Position is not identity once the chain can
+  // grow.
   const withMoves=base.map((st,i)=>{
+    st=Object.assign({_base:i}, st);
     const m=moved[String(i)];
     return m ? Object.assign({}, st, {person:m.person||'', email:m.email||'',
         company:m.company||st.company, reassigned:true, reassignedBy:m.by||'',
@@ -15859,14 +15865,18 @@ function wfEffectiveSteps(key, row){
   // it was recorded.
   extra.map((e,idx)=>({e,idx}))
     .sort((a,b)=> (parseInt(b.e.after,10)||0)-(parseInt(a.e.after,10)||0) || b.idx-a.idx)
-    .forEach(({e})=>{
+    .forEach(({e,idx})=>{
       const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
       out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'',
         company:e.company||'', added:true, returned:!!e.returned, rereview:!!e.rereview,
         // Carried through, or an added step that was meant to run alongside the
         // one above it is rebuilt as a step queued behind it.
         parallel:!!e.parallel, requireAll:!!e.requireAll,
-        addedBy:e.addedBy||'', at:e.at||'', after:e.after});
+        addedBy:e.addedBy||'', at:e.at||'', after:e.after, _ex:idx,
+        // Added steps can be handed over too, and theirs is recorded on the
+        // entry rather than by position.
+        reassigned:!!e.reassigned, reassignedFrom:e.reassignedFrom||'',
+        reassignedBy:e.reassignedBy||''});
     });
   return out;
 }
@@ -17457,13 +17467,23 @@ function applyReviewAdvance(key, row, by){
   // on the way out would put an approval on the record that nobody gave.
   if(!_returning && act==='reassign' && pick){
     const target = mine.length ? mine[0] : gs;
-    const moved=wfReassigned(row);
+    const tSt = steps[target]||{};
     // The firm that owes it now, and the one it came from — so the chain can
     // say a step was handed over rather than quietly renaming who owns it.
-    moved[String(target)]={company:pick, person:'', email:'',
-                           from:wfPartyLabel(steps[target])||'',
-                           by:(by||ME_NAME||ME_EMAIL||''), at:etToday()};
-    row['Workflow Reassigned']=JSON.stringify(moved);
+    const from=wfPartyLabel(tSt)||'';
+    const stamp=etToday();
+    if(tSt._ex!=null){
+      // An added step is a stored object, so the handover is recorded on it.
+      const extra=wfExtraSteps(row); const e=extra[tSt._ex];
+      e.company=pick; e.person=''; e.email='';
+      e.reassigned=true; e.reassignedFrom=from; e.reassignedBy=(by||ME_NAME||ME_EMAIL||''); e.reassignedAt=stamp;
+      row['Workflow Extra']=JSON.stringify(extra);
+    } else {
+      const moved=wfReassigned(row);
+      moved[String(tSt._base!=null?tSt._base:target)]={company:pick, person:'', email:'',
+                             from:from, by:(by||ME_NAME||ME_EMAIL||''), at:stamp};
+      row['Workflow Reassigned']=JSON.stringify(moved);
+    }
     row['Workflow Status']='In Review';
     try{ auditLog('Review step reassigned', key, row,
       (steps[target]&&(steps[target].person||steps[target].name)||('step '+(target+1)))+' \u2192 '+pick); }catch(e){}
