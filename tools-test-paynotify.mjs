@@ -47,6 +47,94 @@ console.log('Who is on the thread');
   ok(theirs.includes('chris@fidevia.com') && theirs.includes('arch@example.com'),
      'with Fidevia and the design team on both, since they review every application');
 }
+console.log('The chain is the list, whatever the Role column happens to say');
+{
+  // This is what went wrong. contactIsDesign asks the grant and the Role text.
+  // From a contractor's session the grants are not theirs to read, so it came
+  // down to free text: "Structural Engineer" matched, "Principal" did not, and
+  // the architect was left off their own review.
+  P.run(`PROJECT_ROLES={};
+    allData.contacts=[
+      {'Name':'Christopher Cicala','Company':'Fidevia','Role':'CM','Email':'chris@fidevia.com'},
+      {'Name':'Quiet Architect','Company':'Architect 2','Role':'Principal','Email':'arch@example.com'},
+      {'Name':'Test Engineer','Company':'Engineer 1','Role':'Structural Engineer','Email':'eng@example.com'},
+      {'Name':'Sam Summit','Company':'Summit Builders','Role':'PM','Email':'sam@summit.example'},
+      {'Name':'Dana Delaney','Company':'Delaney Mechanical','Role':'PM','Email':'dana@delaney.example'}];
+    wfStepsFor=function(k,co,r){
+      return String((r&&r['Copy Type'])||'')==='Final'
+        ? [{name:'Fidevia Signature', person:'Christopher Cicala', company:'Fidevia'},
+           {name:'Architect Signature', person:'Quiet Architect', company:'Architect 2'}]
+        : [{name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia'},
+           {name:'Architect Review', person:'Quiet Architect', company:'Architect 2'}];
+    };
+    wfEffectiveSteps=function(k,r){ return wfStepsFor(k,'',r); };`);
+  ok(P.run(`contactIsDesign(allData.contacts[1])`)===false,
+     'a contact whose Role column says "Principal" does not read as the design team');
+  ok(to().includes('arch@example.com'),
+     'but the chain names them, so they are on the thread — which is the point of the chain');
+  ok(to().includes('eng@example.com'), 'the engineer still is too');
+  ok(!to().includes('dana@delaney.example'), 'and no other contractor has been let in by it');
+}
+{
+  // The final copy's signature chain counts from the day the pencil is filed.
+  P.run(`wfStepsFor=function(k,co,r){
+      return String((r&&r['Copy Type'])||'')==='Final'
+        ? [{name:'Architect Signature', person:'Quiet Architect', company:'Architect 2'}] : [];
+    }; wfEffectiveSteps=function(){ return []; };`);
+  ok(to().includes('arch@example.com'),
+     'somebody who only signs the final application is on the thread from the start');
+  // And the other way round: somebody who only reviews the pencil copy.
+  P.run(`wfStepsFor=function(k,co,r){
+      return String((r&&r['Copy Type'])||'')==='Pencil'
+        ? [{name:'Architect Review', person:'Quiet Architect', company:'Architect 2'}] : [];
+    };`);
+  ok(to().includes('arch@example.com'), 'and somebody who only reviews the pencil copy');
+}
+{
+  // A step spliced onto this row alone \u2014 one somebody added, or a step handed
+  // to a colleague \u2014 is as real as the configured chain.
+  P.run(`wfStepsFor=function(){ return []; };
+    wfEffectiveSteps=function(){ return [{name:'Further Review', person:'Quiet Architect', company:'Architect 2'}]; };`);
+  ok(to().includes('arch@example.com'), 'a reviewer added to this row alone is on its thread');
+  P.run(`wfEffectiveSteps=function(){ return []; };`);
+}
+{
+  // A firm named on a step with nobody against it still counts.
+  P.run(`wfStepsFor=function(){ return [{name:'Architect Review', person:'', company:'Architect 2'}]; };
+         wfEffectiveSteps=function(){ return []; };`);
+  ok(to().includes('arch@example.com'), 'a step naming a firm and no person reaches that firm');
+  P.run(`wfStepsFor=function(){ return [{name:'Architect Review', person:'Quiet Architect', company:''}]; };`);
+  ok(to().includes('arch@example.com'), 'and one naming a person and no firm reaches that person');
+}
+{
+  P.run(`wfStepsFor=function(){ throw new Error('no config'); };
+         wfEffectiveSteps=function(){ throw new Error('no config'); };`);
+  ok(to().includes('chris@fidevia.com') && to().includes('sam@summit.example'),
+     'a project whose chains cannot be read still reaches Fidevia and the contractor');
+  ok(!to().includes('dana@delaney.example'), 'and still nobody else');
+}
+{
+  P.run(`wfStepsFor=function(){ return [{name:'Review', person:'', company:''}]; };
+         wfEffectiveSteps=function(){ return []; };`);
+  ok(!to().includes('dana@delaney.example'), 'a step naming nobody lets nobody in');
+  // The case that would go wrong if a blank were stored: a contact with no name
+  // and no firm would match a step with neither.
+  P.run(`allData.contacts=allData.contacts.concat([
+    {'Name':'','Company':'','Role':'','Email':'ghost@example.com'}]);`);
+  ok(!to().includes('ghost@example.com'),
+     'and a contact with neither name nor firm is not matched by a step with neither');
+  P.run(`allData.contacts=allData.contacts.filter(function(c){ return c['Email']!=='ghost@example.com'; });`);
+  // Put the working fixtures back for the rest of the file.
+  P.run(`allData.contacts=[
+      {'Name':'Christopher Cicala','Company':'Fidevia','Role':'CM','Email':'chris@fidevia.com'},
+      {'Name':'Test Architect','Company':'Architect 2','Role':'Architect','Email':'arch@example.com'},
+      {'Name':'Test Engineer','Company':'Engineer 1','Role':'Structural Engineer','Email':'eng@example.com'},
+      {'Name':'Sam Summit','Company':'Summit Builders','Role':'PM','Email':'sam@summit.example'},
+      {'Name':'Dana Delaney','Company':'Delaney Mechanical','Role':'PM','Email':'dana@delaney.example'},
+      {'Name':'Owen Owner','Company':'Riverside School District','Role':'Business Manager','Email':'owen@rsd.example'}];
+    wfStepsFor=function(){ return []; }; wfEffectiveSteps=function(){ return []; };`);
+}
+
 console.log('The owner joins when the pencil is approved, and not before');
 {
   P.run(`currentProject={name:'X',config:{owner:'Riverside School District'}};`);

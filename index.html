@@ -5502,7 +5502,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 01:22';
+const BUILD_STAMP='2026-09-17 01:29';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6015,10 +6015,39 @@ function contactIsOwner(row){
   const own=String((currentProject&&currentProject.config&&currentProject.config.owner)||'').trim().toLowerCase();
   return !!own && String((row&&row['Company'])||'').trim().toLowerCase()===own;
 }
+// Everybody this project's own chains name for a payment application, pencil
+// and final both.
+//
+// The architect was missed. contactIsDesign asks the grant and the Role column,
+// and from a contractor's session the grants are not theirs to read, so it came
+// down to whether somebody had typed "architect" in a free-text field. The
+// engineer's said "Structural Engineer" and got the email; the architect's did
+// not and was left off their own review.
+//
+// The chain is the better answer, and the obvious one: it is the list of people
+// who will review this application, written by Fidevia, visible to everyone.
+// Both chains, because the architect signing the final belongs on the thread
+// from the day the pencil copy is filed.
+function payChainParties(row){
+  const people=new Set(), firms=new Set();
+  const add=st=>{
+    const p=String((st&&st.person)||'').trim().toLowerCase(); if(p) people.add(p);
+    const f=String((st&&st.company)||'').trim().toLowerCase(); if(f) firms.add(f);
+  };
+  const co=rowCompany(row);
+  ['Pencil','Final'].forEach(t=>{
+    try{ (wfStepsFor('pay_apps', co, Object.assign({}, row, {'Copy Type':t}))||[]).forEach(add); }catch(e){}
+  });
+  // Anything spliced onto this row in particular — a step somebody added, or a
+  // reviewer a step was handed to — counts as much as the configured chain.
+  try{ (wfEffectiveSteps('pay_apps', row)||[]).forEach(add); }catch(e){}
+  return { people, firms };
+}
 function payNotifyAudience(row){
   const norm=v=>String(v||'').trim().toLowerCase();
   const theirs=norm(row&&(row['Contractor']||row['Company']));
   const ownerOn=payOwnerIsOn(row);
+  const chain=payChainParties(row);
   return (allData.contacts||[]).filter(c=>{
     if(!String(c['Email']||'').trim()) return false;
     // Opting out is explicit. Blank means yes, because the whole point of the
@@ -6027,6 +6056,7 @@ function payNotifyAudience(row){
     if(String(c['Notify - Pay App']||'').trim().toLowerCase()==='no') return false;
     if(contactIsFidevia(c)) return true;
     if(contactIsDesign(c)) return true;
+    if(chain.people.has(norm(c['Name'])) || chain.firms.has(norm(c['Company']))) return true;
     if(ownerOn && contactIsOwner(c)) return true;
     return !!theirs && norm(c['Company'])===theirs;
   });
