@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:56';
+const BUILD_STAMP='2026-09-17 22:59';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -16385,14 +16385,19 @@ function wfProgressHTML(key,r,i){
         +(s.reassignedBy?(' by '+esc(s.reassignedBy)):'')+'</span></div>'
       : '';
     return handover+'<div style="'+rowStyle+'">'
-      +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
+      // The name is what the step is called; the party is who owes it. Colouring
+      // the name and greying the party emphasised "Architect Review" over
+      // whoever the reader is actually waiting on — and on a handed-over step
+      // the name is not even who has it.
+      +'<span style="font-weight:700;">'+mark+'</span><span style="color:var(--muted);font-weight:500;">'+esc(s.name||('Step '+(n+1)))+'</span>'
       +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">'
           +(s.returned?'YOUR TURN':'YOUR REVIEW')+'</span>':'')
       // The firm owes the step, so the firm is what the line says. Naming a
       // person read as though only that desk could answer — which stopped being
       // true when permission moved to the firm, and was never true of a chain
       // set up by company.
-      +(wfPartyLabel(s)?'<span style="color:var(--muted);">\u2014 '+esc(wfPartyLabel(s))+'</span>':'')
+      +(wfPartyLabel(s)?'<span style="color:var(--muted);">\u2014</span>'
+          +'<span style="font-weight:'+(isCur?'700':'500')+';">'+esc(wfPartyLabel(s))+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':(s.rereview?'revision':'added'))+'</span>':'')
       +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'
