@@ -2801,9 +2801,9 @@ function toCSV(headers, rows){
 // stay only so that change orders which recorded one keep it. Removing a
 // header would erase that history the next time the log is written.
 const MODULES = {
-  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
+  rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Copied To','Archived','Archived By','Archived Date']},
   co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
-  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Archived','Archived By','Archived Date']},
+  sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Copied To','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name','Report Data']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal','Notify - Pay Pencil','Notify - Pay Final']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
@@ -5766,7 +5766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 16:43';
+const BUILD_STAMP='2026-09-17 18:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6090,6 +6090,31 @@ function fillAssignedFirm(key, fieldId){
   note.textContent = firms.length>1
     ? 'Set by the workflow. Also goes to '+firms.slice(1).join(' and ')+'.'
     : 'Set by the workflow, from who reviews first.';
+}
+// Whoever the submitter wants kept in the loop, beyond the people the workflow
+// and the notify flags already reach. A consultant's reviewer, an owner's rep,
+// their own office — the person filing knows who needs to see it, and used to
+// have to forward the email by hand.
+//
+// Held on the row rather than on the first email alone, so a reply three weeks
+// later still reaches them. That is the difference between copying somebody in
+// and copying them once.
+function ccList(row){
+  const raw=String((row&&row['Copied To'])||'').trim();
+  if(!raw) return [];
+  const out=[], seen=new Set();
+  const add=e=>{ const k=String(e||'').trim().toLowerCase();
+    if(k && k.indexOf('@')>0 && !seen.has(k)){ seen.add(k); out.push(k); } };
+  raw.split(/[;,]/).forEach(function(part){
+    const t=String(part||'').trim(); if(!t) return;
+    // A person on the contact sheet, or an address typed straight in — wfEmailOf
+    // answers both, since rows often record whoever filed them as an address.
+    const em=wfEmailOf(t);
+    if(em){ add(em); return; }
+    // Otherwise a firm on the job, which copies in everyone there.
+    wfStepEmails({company:t}).forEach(add);
+  });
+  return out;
 }
 function firmOptions(sel){
   const list=projectFirms();
@@ -8718,6 +8743,7 @@ const FORMS = {
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-assigned" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p></div></div>
+    <div class="field-row"><div class="field"><label>Copy in (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm\u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;">Kept on the item, so replies reach them too. A firm copies in everyone there.</p></div><div class="field"></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-rfi"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'New PCO',html:`
@@ -8732,6 +8758,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="Panelboard shop drawings"></div>
     <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Goes to</label><input autocomplete="off" id="f-reviewer" readonly style="background:#f0efe9;cursor:default;"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p></div></div>
+    <div class="field-row"><div class="field"><label>Copy in (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm\u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;">Kept on the item, so replies reach them too. A firm copies in everyone there.</p></div><div class="field"></div></div>
     <div class="field"><label>Submittal Document <span id="f-file-req-sub"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="J. Doe (Superintendent)"></div></div>
@@ -9724,7 +9751,12 @@ async function submitForm(){
     }
 
     let _senderEmail=''; try{ const u=await auth0Client.getUser(); _senderEmail=u.email||''; }catch(e){}
-    _NOTIF_OPTS={ replyTo:_senderEmail||undefined, extraTo:(_senderEmail?[_senderEmail]:[]) };
+    // Whoever the submitter asked to be copied in. Resolved here so a name or a
+    // firm becomes addresses once, and recorded on the row below so a reply
+    // weeks later still reaches them.
+    const _ccRaw=(function(){ const el=document.getElementById('f-cc'); return el?String(el.value||'').trim():''; })();
+    _NOTIF_OPTS={ replyTo:_senderEmail||undefined,
+                  extraTo:(_senderEmail?[_senderEmail]:[]).concat(ccList({'Copied To':_ccRaw})) };
     if(fi&&fi.files&&fi.files[0] && fi.files[0].size < 9*1024*1024){
       try{ const b64=await fileToB64(fi.files[0]); _NOTIF_OPTS.attachments=[{filename:fi.files[0].name, content:b64, type:fi.files[0].type||'application/octet-stream'}]; }catch(e){}
     }
@@ -9861,6 +9893,9 @@ async function submitForm(){
       newRow={'Document Name':v('f-name'),'Category':v('f-cat'),'Version':v('f-ver'),'Date':etToday(),'Visible To':v('f-vis'),'File ID':attachId,'File Name':attachName,'Submitted By':(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||'')),'Submitted By Email':ME_EMAIL||''};
     }
 
+    // Kept on the row, not only on the first email: copying somebody in should
+    // outlast the submission.
+    try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Copied To')){ newRow['Copied To']=_ccRaw||''; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     let _wfFirst=[];
@@ -17182,6 +17217,10 @@ async function submitReply(){
     let _rEmail=''; try{ const u=await auth0Client.getUser(); _rEmail=u.email||''; }catch(e){}
     const _rOpts={ replyTo:_rEmail||undefined, extraTo:(_rEmail?[_rEmail]:[]) };
     if(REPLY_CTX && REPLY_CTX._addedEmail) _rOpts.extraTo.push(REPLY_CTX._addedEmail);
+    // Anybody the submitter copied in stays copied in. Dropping them after the
+    // first email would make Copy in a courtesy rather than a record, and the
+    // reply is the part they were waiting for.
+    try{ ccList(row).forEach(e=>_rOpts.extraTo.push(e)); }catch(e){}
     if(fileInput.files&&fileInput.files[0] && fileInput.files[0].size < 9*1024*1024){
       try{ const b64=await fileToB64(fileInput.files[0]); _rOpts.attachments=[{filename:fileInput.files[0].name, content:b64, type:fileInput.files[0].type||'application/octet-stream'}]; }catch(e){}
     }
