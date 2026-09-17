@@ -56,9 +56,11 @@ ok('person and firm the same still resolves', h[0].by==='Comfort Systems' && h[0
 console.log('Rendering');
 const rowfn=src.slice(src.indexOf('function verThreadRows'), src.indexOf('function verThreadRows')+1800);
 ok('the person is emphasised',     /v\.by\?' &middot; <strong/.test(rowfn));
-ok('the firm is shown muted',      /v\.co && String\(v\.co\)/.test(rowfn));
-ok('a firm equal to the name is not repeated',
-   /toLowerCase\(\)!==String\(v\.by\|\|''\)\.trim\(\)\.toLowerCase\(\)/.test(rowfn));
+ok('the firm is shown muted',      /verShowsCo\(v\.by, v\.co\) \? ' <span style="color:var\(--muted\);">/.test(rowfn));
+// Not just an exact match: a submitter recorded as "address (Firm)" is neither
+// equal to the firm nor free of it, and was given it a second time.
+ok('a firm already in the name is not repeated',
+   /return b\.toLowerCase\(\)\.indexOf\(c\.toLowerCase\(\)\)<0;/.test(src));
 
 console.log('Replies record both');
 // Anchored forwards from the reply itself. The end marker is a line that also

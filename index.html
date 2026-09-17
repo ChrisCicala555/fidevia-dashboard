@@ -5759,7 +5759,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:36';
+const BUILD_STAMP='2026-09-17 19:41';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -16681,6 +16681,15 @@ async function removeVersionFile(key, idx, vNum){
     alert('Could not remove it: '+(e.message||e));
   }
 }
+// Is the firm worth adding after the name? Only when the name does not already
+// carry it — older rows record the submitter as "address (Firm)", which reads
+// as a different string from the firm itself and so was never caught.
+function verShowsCo(by, co){
+  const c=String(co||'').trim(); if(!c) return false;
+  const b=String(by||'').trim();
+  if(!b) return true;
+  return b.toLowerCase().indexOf(c.toLowerCase())<0;
+}
 function verThreadRows(key,r,i,colspan){
   const _all=_versions(r);
   const vs=_all.slice().reverse();
@@ -16695,8 +16704,11 @@ function verThreadRows(key,r,i,colspan){
     +(v.by?' &middot; <strong style="font-weight:600;">'+esc(v.by)+'</strong>':'')
     // Older entries hold only one value, which may be either. Where both exist
     // and differ, show the firm alongside; where they match, say it once.
-    +(v.co && String(v.co).trim().toLowerCase()!==String(v.by||'').trim().toLowerCase()
-        ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
+    // Said once. The two matched exactly, or they did not and both were shown —
+    // but a submitter recorded as "someone@example.com (Summit Builders)" is
+    // neither, so the firm was appended to a line that already named it:
+    // "…@gmail.com (Summit Builders) (Summit Builders)".
+    +(verShowsCo(v.by, v.co) ? ' <span style="color:var(--muted);">('+esc(v.co)+')</span>' : '')
     +(v.fileId?' &middot; <a class="attach-link"'+(_sup?' style="text-decoration:line-through;"':'')
         +' href="#" onclick="openBoxFile(\''+esc(v.fileId)+'\',event);return false;">'+esc(v.fileName||'View file')+'</a>'
         +dlBtn(v.fileId, v.fileName, (rowItemNumber(r)?rowItemNumber(r)+' ':'')+'v'+v.v):'')
