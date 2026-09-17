@@ -20,8 +20,8 @@ const CO=(o)=>Object.assign({'PCO #':'PCO-GC-001','Company':'Summit Builders',
   'Description':'x','Status':'Approved','Cost Impact':'5000'}, o);
 const bar=(rows)=>P.run(`(function(){ allData.co=${JSON.stringify(rows)}; updateCoBar(allData.co);
   var g=function(id){ return document.getElementById(id).textContent; };
-  return { impact:g('cob-impact'), allow:g('cob-allow'), contract:g('cob-contract'),
-           revised:g('cob-revised'), note:g('cob-note'),
+  return { impact:g('cob-impact'), allow:g('cob-allow'), await_:g('cob-await'),
+           contract:g('cob-contract'), revised:g('cob-revised'), note:g('cob-note'),
            shown:document.getElementById('co-bar').style.display!=='none' }; })()`);
 
 console.log('What has been agreed, and what it did to the contract');
@@ -64,9 +64,29 @@ console.log('Agreed is not the same as executed');
   ok(b.impact==='$5,000', 'it counts as agreed');
   ok(b.contract==='$0', 'and not yet as contract, which is where the Financial Summary has it');
   ok(b.revised==='$4,000,000', 'so the revised contract has not moved');
-  ok(/\$5,000 approved but not yet executed/.test(b.note),
-     'and the gap between the two columns is explained rather than left to look like an error — '+b.note);
-  ok(/reaches the contract when the change order is written/.test(b.note), 'saying what closes it');
+  ok(b.await_==='$5,000',
+     'it waits in a column of its own, where a contract that has not moved has something standing next to it');
+  ok(/Revised Contract reaches \$4,005,000/.test(b.note),
+     'and the note says what the number becomes rather than leaving it to be worked out — '+b.note);
+  ok(/once the outstanding change orders are written/.test(b.note), 'and what has to happen first');
+}
+
+console.log('$12,000 approved and a contract that has not moved');
+{
+  // Asked of exactly this screen. Nothing was wrong: $7,000 came out of an
+  // allowance the contract was already carrying, and the other $5,000 had no
+  // change order written. Both reasons were there; the arithmetic joining them
+  // was not.
+  const splits=JSON.stringify([{id:'A', amount:7000}]);
+  const b=bar([CO({'Cost Impact':'7000','Allowance Splits':splits}),
+               CO({'PCO #':'PCO-GC-002','Cost Impact':'5000'})]);
+  ok(b.impact==='$12,000', 'twelve thousand agreed');
+  ok(b.allow==='$7,000', 'seven of it out of the allowance, which the contract already held');
+  ok(b.await_==='$5,000', 'five waiting on a change order nobody has written');
+  ok(b.contract==='$0', 'and so nothing has reached the contract');
+  ok(b.revised==='$4,000,000', 'which is why it has not moved');
+  ok(/Revised Contract reaches \$4,005,000 once the outstanding change orders are written/.test(b.note),
+     'and the line under it answers the question before it is asked — '+b.note);
 }
 
 console.log('What is still open');
@@ -97,6 +117,17 @@ console.log('Where it sits');
      'above the log, which is what "a summary at the top" means');
   ok(/id="co-bar"[^>]*class="contract-bar"|class="contract-bar" id="co-bar"/.test(html),
      'built from the same card as the payment application summary, so the two read alike');
+  // Every figure is labelled, and in the order the money travels: what was
+  // agreed, what came out of the allowance, what is waiting on paperwork, what
+  // has landed, and what the contract now is.
+  const card=html.split('id="co-bar"')[1].split('</div>\n        </div>')[0];
+  ['Approved Cost Impact','From Allowance','Awaiting CO','To Contract','Revised Contract']
+    .forEach((lab,i,arr)=>{
+      ok(new RegExp('>'+lab+'<\\/div><div class="cb-val" id="cob-').test(card),
+         '"'+lab+'" is a labelled figure, not a bare number');
+      if(i) ok(card.indexOf(arr[i-1]) < card.indexOf(lab),
+         'and it comes after "'+arr[i-1]+'", which is the order the money travels');
+    });
   ok(/function renderCOs\(\)\{\s*\n\s*const all=allData\.co\|\|\[\], tb=document\.getElementById\('tbody-cos'\);\s*\n\s*updateCoBar\(all\);/.test(html),
      'and refreshed with the log, before the early return on an empty one');
 }

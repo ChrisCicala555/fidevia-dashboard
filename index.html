@@ -1336,7 +1336,8 @@
           <div class="cb-items">
             <div class="cb-item"><div class="cb-lbl">Approved Cost Impact</div><div class="cb-val" id="cob-impact">—</div></div>
             <div class="cb-item"><div class="cb-lbl" title="Funded from the contractor's allowance, which was already inside the contract">From Allowance</div><div class="cb-val" id="cob-allow">—</div></div>
-            <div class="cb-item"><div class="cb-lbl" title="The part that actually increases the contract">To Contract</div><div class="cb-val" id="cob-contract">—</div></div>
+            <div class="cb-item"><div class="cb-lbl" title="Agreed, but no change order written yet — it reaches the contract when one is">Awaiting CO</div><div class="cb-val" id="cob-await">—</div></div>
+            <div class="cb-item"><div class="cb-lbl" title="Executed change orders — the part that has actually increased the contract">To Contract</div><div class="cb-val" id="cob-contract">—</div></div>
             <div class="cb-item"><div class="cb-lbl">Revised Contract</div><div class="cb-val" id="cob-revised">—</div></div>
           </div>
           <p class="file-hint" style="margin:10px 0 0;" id="cob-note"></p>
@@ -5233,9 +5234,15 @@ function updateCoBar(rows){
   set('cob-allow', fmtMoney(draw));
   set('cob-contract', fmtMoney(executed));
   set('cob-revised', fmtMoney(base+executed));
+  set('cob-await', fmtMoney(unpapered));
   const notes=[];
-  if(unpapered) notes.push(fmtMoney(unpapered)+' approved but not yet executed — it reaches the contract '
-    +'when the change order is written, and is not in Revised Contract yet.');
+  // "Shouldn't the revised contract be higher?" — asked of $12,000 approved
+  // against a contract that had not moved. It had not, and both reasons were on
+  // screen without the arithmetic that joins them: the allowance draw was
+  // already inside the contract, and the rest had no change order written. So
+  // say what the number becomes, and what has to happen first.
+  if(unpapered) notes.push('Revised Contract reaches '+fmtMoney(base+executed+unpapered)
+    +' once the outstanding change orders are written.');
   if(open.length) notes.push(open.length+' still open, '
     +fmtMoney(sum(open, r=>payNum(r['Cost Impact'])))+' requested.');
   set('cob-note', notes.join(' '));
@@ -5604,7 +5611,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:51';
+const BUILD_STAMP='2026-09-17 04:54';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
