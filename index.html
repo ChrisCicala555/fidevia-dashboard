@@ -1081,6 +1081,16 @@
         <button class="btn-secondary" onclick="psAddFolder()" style="margin-top:12px;padding:8px 14px;">+ Add a folder</button>
       </div>
     </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-header">Default Review Workflows</div>
+      <div style="padding:14px 18px 18px;">
+        <p class="file-hint" style="margin:0 0 12px;">The chains a new project starts with. Each project can still
+          be changed afterwards in its own Settings, and a contractor can still be given their own chain there —
+          this is only the starting point.</p>
+        <div id="ps-workflows"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3360,6 +3370,12 @@ function initWizard(){
   ['np-name','np-owner','np-jobnum','np-addr1','np-addr2','np-city','np-state','np-zip','np-cm','np-scope'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const jn=document.getElementById('np-jobnum'); if(jn) delete jn.dataset.suggested;
   NPWF_SCOPE=''; NPWF_BYCO={}; NPWF_DEFAULT=null;
+  // Drawn from the built-in templates first so the step is never blank, then
+  // redrawn from Fidevia's saved defaults when they arrive.
+  fidSettings().then(function(cfg){
+    if(NPWF_DEFAULT || NPWF_SCOPE) return;      // already edited; leave it alone
+    if(cfg && cfg.workflows){ NPWF_DEFAULT=cfg.workflows; wfRenderAll('npwf','np-workflows',NPWF_DEFAULT,[]); }
+  });
   const lf=document.getElementById('np-logo'); if(lf) lf.value='';
   const bd=document.getElementById('np-board'); if(bd) bd.checked=false;
   document.getElementById('np-contacts').innerHTML=''; wizAddContact();
@@ -3807,6 +3823,16 @@ function wizWfCapture(){
   if(NPWF_SCOPE) NPWF_BYCO[NPWF_SCOPE]=g; else NPWF_DEFAULT=g;
 }
 let NPWF_DEFAULT=null;
+// Fidevia's own defaults, fetched once and kept. The wizard starts from these
+// rather than from the built-in templates, which is the whole point of having
+// somewhere to set them.
+let FID_SETTINGS=null;
+async function fidSettings(){
+  if(FID_SETTINGS) return FID_SETTINGS;
+  try{ const d=await proxyCall('settingsGet',{},{quiet:true}); FID_SETTINGS=d.settings||{}; }
+  catch(e){ FID_SETTINGS={}; }     // unreachable settings is not a reason to block a project
+  return FID_SETTINGS;
+}
 function wizWfScopeChange(){
   const sel=document.getElementById('npwf-scope'); if(!sel) return;
   wizWfCapture();
@@ -5828,7 +5854,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 23:39';
+const BUILD_STAMP='2026-09-17 23:43';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9404,6 +9430,9 @@ async function openProjSettings(){
       children:(f.children||[]).map(c=>({name:String(c.name||'')}))
     }));
     psRender();
+    // Nothing saved yet means the agreed templates, which is what a project
+    // has always started with. wfRenderAll falls back to them on an empty set.
+    wfRenderAll('pswf','ps-workflows',(d.settings&&d.settings.workflows)||null,[]);
   }catch(e){ host.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
 function psBack(){
@@ -9497,13 +9526,14 @@ async function psSave(){
   const btn=document.getElementById('btn-ps-save'); if(btn) btn.disabled=true;
   psStatus('Saving\u2026');
   try{
-    const d=await proxyCall('settingsSave',{docFolders:PS_FOLDERS});
+    const d=await proxyCall('settingsSave',{docFolders:PS_FOLDERS, workflows:wfGather('pswf')});
     PS_FOLDERS=((d.settings&&d.settings.docFolders)||PS_FOLDERS).map(f=>({
       name:String(f.name||''), visibility:String(f.visibility||'all'),
       children:(f.children||[]).map(c=>({name:String(c.name||'')}))
     }));
     PS_DIRTY=false; psRender();
-    psStatus('Saved. New projects will start with these folders.');
+    wfRenderAll('pswf','ps-workflows',(d.settings&&d.settings.workflows)||null,[]);
+    psStatus('Saved. New projects will start with these folders and these review chains.');
     try{ auditLog('Project defaults changed','gendocs',{}, PS_FOLDERS.map(f=>f.name).join(', ')); }catch(e){}
   }catch(e){ psStatus(e.message||'Could not save.', true); }
   if(btn) btn.disabled=false;

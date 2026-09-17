@@ -1,64 +1,88 @@
-// One set of workflow defaults, drawn and saved.
+// "Also also yes please add the workflows to the project settings tab."
+//
+// The review chains a new project starts with, set once for Fidevia rather
+// than rebuilt in the wizard every time. Each project can still be changed
+// afterwards, and a contractor can still be given their own chain - this is
+// only the starting point.
 import fs from 'fs';
-const html = fs.readFileSync('index.html','utf8');
+import { execSync } from 'child_process';
+execSync('node tools-extract-filters.mjs', { cwd: process.cwd() });
+const WF = await import('./.filters.tmp.mjs');
+import { bootPage, SEED } from './tools-harness.mjs';
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
+const html=fs.readFileSync('index.html','utf8');
+const srv=fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
+const P=bootPage('index.html'); P.run(SEED);
 
-ok(!/^const WF_DEFAULTS=/m.test(html), 'the older stub set is gone');
-ok(/WF_DEFAULTS used to live here/.test(html), 'and why it went is recorded');
-ok(!/WF_DEFAULTS\[k\]/.test(html), 'nothing still reads it');
+console.log('The page has somewhere to set them');
+ok(/id="ps-workflows"/.test(html), 'a panel on Project Settings');
+ok(/Default Review Workflows/.test(html), 'named for what it is');
+ok(/wfRenderAll\('pswf','ps-workflows'/.test(html), 'drawn by the editor the wizard already uses');
+ok(/workflows:wfGather\('pswf'\)/.test(html), 'and read by the same reader, so the two cannot drift');
+ok(/can still\s+be changed afterwards/.test(html), 'and it says a project can still be changed after');
 
-const ra = html.split('function wfRenderAll')[1].split('function wfGather')[0];
-ok(/WF_TEMPLATES\[k\]/.test(ra), 'the wizard draws the agreed defaults');
-ok(/Object\.assign\(\{\},x\)/.test(ra), 'steps are copied, so editing one project cannot alter the template');
-// Read through wfFromConfig now, which also cuts a pay app chain configured
-// before pencil and final were separated into the two it is actually running.
-ok(/wfFromConfig\(workflows\|\|\{\}, k\)/.test(ra), 'a saved workflow still wins over the default');
-ok(/live\.length \? live :/.test(ra), 'and the template applies only where there is nothing at all');
+console.log('A new project starts from them');
+ok(/let FID_SETTINGS=null;/.test(html), 'the defaults are fetched');
+ok(/if\(FID_SETTINGS\) return FID_SETTINGS;/.test(html), 'once, then kept');
+ok(/if\(NPWF_DEFAULT \|\| NPWF_SCOPE\) return;/.test(html),
+   'and never overwrite a chain already edited in the wizard');
+ok(/catch\(e\)\{ FID_SETTINGS=\{\}; \}/.test(html),
+   'settings that cannot be reached do not block making a project');
 
-// the templates themselves — the shape that was agreed
-const tpl = html.split('const WF_TEMPLATES=')[1].split('// WF_DEFAULTS used to live here')[0];
-for (const k of ['rfi:','sub:','payapp_pencil:','payapp_final:','co:']) ok(tpl.includes(k), 'template exists for '+k.replace(':',''));
-// That decision was reversed. Pencil copies were left to the billing cycle on
-// the grounds that the contractor uploads the finalised application; they are
-// now a submission of their own, with a review chain that stops short of any
-// signature.
-ok(!/Pencil copies are handled by the billing cycle/.test(tpl),
-   'the old note saying pencils are not a workflow is gone');
-ok(/Nobody signs a pencil copy/.test(tpl),
-   'and the reason the two chains are separate is recorded against them');
-ok(/requireAll:true/.test(tpl), 'the all-must-sign steps survive');
-ok(/parallel:true/.test(tpl), 'the parallel steps survive');
+console.log('What the server will store');
+ok(WF.WF_KEYS.join()==='rfi,co,sub,payapp_pencil,payapp_final',
+   'every chain the dashboard runs, and only those');
 {
-  const co = tpl.split('co:[')[1];
-  ok(/Contractor Signature/.test(co) && /Fidevia Signature/.test(co)
-     && /Architect Signature/.test(co) && /Owner Signature/.test(co),
-     'the change order chain keeps all four signatures');
-  // One chain became two. The pencil is worked through and the final is signed,
-  // so 'Signed' as a single trailing step is gone: the signing is now named
-  // steps on a chain of its own.
-  const pen = tpl.split('payapp_pencil:[')[1].split(']')[0];
-  const fin = tpl.split('payapp_final:[')[1].split(']')[0];
-  ok(/Fidevia Records Amounts/.test(pen) && /Architect Review/.test(pen),
-     'the pencil chain reads the amounts and takes them round the reviewers');
-  ok(!/Signature|Signed/.test(pen), 'and asks nobody to sign a draft');
-  ok(/Fidevia Signature/.test(fin) && /Architect Signature/.test(fin),
-     'the final chain is the two signatures');
+  const c=WF.cleanWorkflows({sub:[{name:'Architect Review',company:'Architect 2',parallel:true,requireAll:true}]});
+  ok(c.sub.length===1, 'a chain survives');
+  ok(c.sub[0].company==='Architect 2' && c.sub[0].name==='Architect Review', 'with its step and firm');
+  ok(c.sub[0].parallel===true && c.sub[0].requireAll===true, 'and its flags');
+  ok(c.sub[0].person==='', 'and nobody named, whatever was sent');
+}
+ok(WF.cleanWorkflows({sub:[{name:'X',company:'Y',person:'Bob Potter'}]}).sub[0].person==='',
+   'a person sent in is dropped \u2014 a step belongs to a firm, and one desk is how a whole office gets stuck');
+ok(!WF.cleanWorkflows({sub:[{name:'  '},{company:''},{}]}),
+   'steps with neither a name nor a firm are not a chain');
+ok(WF.cleanWorkflows({sub:[{name:'A'},{name:'  '},{company:'B'}]}).sub.length===2,
+   'and the empty one is dropped from among real ones');
+ok(!WF.cleanWorkflows(null) && !WF.cleanWorkflows('nope') && !WF.cleanWorkflows({}),
+   'nothing saved at all stays nothing, not a set of empty chains');
+ok(!WF.cleanWorkflows({nonsense:[{name:'A'}]}), 'a chain the dashboard does not run is not stored');
+ok(!WF.cleanWorkflows({sub:{name:'A',company:'B'}}),
+   'and a chain that is not a list of steps is not quietly made into one');
+ok(!WF.cleanWorkflows({sub:'Architect Review'}), 'however plausible it looks');
+ok(WF.cleanWorkflows({sub:Array.from({length:50},(_,i)=>({name:'S'+i}))}).sub.length===20,
+   'and a chain has a ceiling');
+ok(WF.cleanWorkflows({sub:[{name:'a/b',company:'c\\d'}]}).sub[0].name==='a b',
+   'a slash cannot smuggle a path into a step name');
+
+console.log('A saved chain is what the page draws');
+// Read off the markup rather than through getElementById: the harness's DOM
+// does not index nodes created by innerHTML, which is how the other workflow
+// tests here work too.
+P.run(`wfRenderAll('pswf','ps-workflows',{sub:[{name:'Architect Review',company:'Architect 2'},
+  {name:'Engineer Review',company:'Next Level Engineers',parallel:true,requireAll:true}]},[]); 1;`);
+{
+  const h=P.run("document.getElementById('ps-workflows').innerHTML");
+  const sub=h.split('id="pswf-sub-rows"')[1].split('id="pswf-payapp_pencil-rows"')[0];
+  ok(/class="wf-firm"[^>]*value="Architect 2"/.test(sub), 'the firm that owes the step');
+  ok(/class="wf-name"[^>]*value="Architect Review"/.test(sub), 'and what the step is called');
+  ok(/value="Next Level Engineers"/.test(sub), 'the second step too');
+  ok((sub.match(/class="wf-par" checked/g)||[]).length===1, 'parallel ticked on the one that had it');
+  ok((sub.match(/class="wf-all" checked/g)||[]).length===1, 'and all-must-sign likewise');
+  ok(!/class="wf-person"/.test(sub), 'nobody named - the step is the firm’s');
+  ok(/id="pswf-rfi-rows"/.test(h) && /id="pswf-payapp_final-rows"/.test(h),
+     'and every chain the dashboard runs is on the page, not only the one saved');
 }
 
-// round trip: what is drawn can be gathered back
-ok(/wfStepRow\(prefix,key,s\.name,s\.person,s\.parallel,s\.requireAll,s\.company\)/.test(html),
-   'parallel and all-must-sign are rendered, not dropped on the way in \u2014 and so is the firm the '
-   +'step belongs to, with the person still passed so an older chain can name its firm from them');
+console.log('Nothing saved yet still draws the agreed templates');
+P.run(`wfRenderAll('pswf','ps-workflows',null,[]); 1;`);
 {
-  const g = html.split('function wfGather')[1].split("let WF_SCOPE")[0];
-  ok(/parallel:r\.querySelector\('\.wf-par'\)\.checked/.test(g), 'and read back out');
-  ok(/requireAll:!!\(r\.querySelector\('\.wf-all'\)/.test(g), 'both of them');
+  const h=P.run("document.getElementById('ps-workflows').innerHTML");
+  ok(/class="wf-name"[^>]*value="[^"]+"/.test(h),
+     'so the panel is never blank - a project has always started from these');
 }
 
-// the creation fallback stays as a safety net but is no longer load-bearing
-ok(/Object\.keys\(WF_TEMPLATES\)\.forEach\(k=>\{ if\(!\(g\[k\]&&g\[k\]\.length\)\)/.test(html),
-   'creation still fills an empty group from the template');
-
-console.log((bad?'FAIL ':'ok   ')+'tools-test-wfdefaults.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
+console.log(`\n${n-bad} passed, ${bad} failed`);
 process.exit(bad?1:0);

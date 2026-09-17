@@ -582,6 +582,28 @@ function defaultDocFolders(){
     name, visibility: name.toLowerCase() === DOCS_PRIVATE ? VIS_FIDEVIA : VIS_ALL
   }));
 }
+// The chains a new project starts with. Sanitised on the way in for the same
+// reason as the folders: this is a stored blob, and the wizard is not the only
+// thing that could have written it.
+const WF_KEYS = ['rfi', 'co', 'sub', 'payapp_pencil', 'payapp_final'];
+function cleanWorkflows(w){
+  if (!w) return null;
+  const out = {}; let any = false;
+  for (const k of WF_KEYS) {
+    const list = Array.isArray(w[k]) ? w[k] : [];
+    const steps = [];
+    for (const raw of list) {
+      const name = cleanFolderName(raw && raw.name);
+      const company = cleanFolderName(raw && raw.company);
+      if (!name && !company) continue;
+      steps.push({ name, company, person: '',
+                   parallel: !!(raw && raw.parallel), requireAll: !!(raw && raw.requireAll) });
+      if (steps.length >= 20) break;
+    }
+    if (steps.length) { out[k] = steps; any = true; }
+  }
+  return any ? out : null;
+}
 let _settingsCache = null, _settingsAt = 0;
 async function getSettings(){
   // Cached briefly: every docsList and every docsAllows reads this, and the
@@ -590,7 +612,8 @@ async function getSettings(){
   let d = null;
   try { d = await settingsStore().get('settings', { type: 'json' }); } catch (e) { d = null; }
   const docFolders = cleanTemplate((d && d.docFolders) || [], 0);
-  _settingsCache = { docFolders: docFolders.length ? docFolders : defaultDocFolders() };
+  _settingsCache = { docFolders: docFolders.length ? docFolders : defaultDocFolders(),
+                     workflows: cleanWorkflows(d && d.workflows) };
   _settingsAt = Date.now();
   return _settingsCache;
 }
@@ -1462,6 +1485,8 @@ export default async (req) => {
       // to a contractor would tell them what Fidevia keeps and they cannot.
       const g = await grantFor(t, _grants, 'folder', String(body.projectId || ''));
       const role = normRole(g && g.role);
+      // No workflows: they name firms across the whole job, which is not an
+      // external caller's business, and nothing outside Fidevia reads them.
       return json({ ok: true, settings: {
         docFolders: st.docFolders.filter(f => visAllowsRole(f.visibility, role))
                                  .map(f => ({ name: f.name, children: f.children || [] }))
@@ -1471,9 +1496,10 @@ export default async (req) => {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const docFolders = cleanTemplate(body.docFolders || [], 0);
       if (!docFolders.length) return json({ error: 'Keep at least one document folder.' }, 400);
-      await settingsStore().setJSON('settings', { docFolders });
+      const workflows = cleanWorkflows(body.workflows);
+      await settingsStore().setJSON('settings', { docFolders, workflows });
       _settingsCache = null;            // the next read is the one just saved
-      return json({ ok: true, settings: { docFolders } });
+      return json({ ok: true, settings: { docFolders, workflows } });
     }
     if (op === 'docsEnsureStandard') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
