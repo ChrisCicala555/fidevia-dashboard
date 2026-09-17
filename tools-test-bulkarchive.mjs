@@ -136,8 +136,10 @@ console.log('Change orders now have somewhere to go');
   // condition would still satisfy a bare substring match.
   ok(/\n  renderPastPanel\('co','section-cos','Past Change Orders', past, 10,/.test(c),
      'into a Past panel of its own, unconditionally');
-  ok(/countFooter\(live\.length, all\.length, 'change order'\)/.test(c),
-     'and the count reads "1 of 3" rather than counting the archived as live');
+  ok(/countFooter\(shown\.length, all\.length, 'change order'\)/.test(c),
+     'and the count reads "1 of 3" rather than counting the archived as live \u2014 shown, not live, '
+     +'since a stage filter narrows it again');
+  ok(/const shown=CO_STAGE \? live\.filter/.test(c), 'which is drawn from the live rows, never from all');
   ok(/archiveBtn\('co',idx,r\)/.test(c), 'with a restore control on each archived row');
 }
 

@@ -1342,7 +1342,7 @@
           <p class="file-hint" style="margin:10px 0 0;" id="cob-note"></p>
         </div>
         <div class="panel">
-          <div class="panel-header"><span>All Change Orders</span><span class="src">Box · 02 - Change Orders</span></div>
+          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">All Change Orders<span class="seg" id="co-stage"></span></span><span class="src">Box · 02 - Change Orders</span></div>
           <table><thead><tr><th>PCO / CO #</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th title="Portion funded from the contractor's allowance">From Allowance</th><th title="Portion that increases the contract">To Contract</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-cos"><tr class="loading-row"><td colspan="10">Loading…</td></tr></tbody></table>
           <div class="table-count" id="changeorder-count"></div>
@@ -5240,6 +5240,43 @@ function updateCoBar(rows){
     +fmtMoney(sum(open, r=>payNum(r['Cost Impact'])))+' requested.');
   set('cob-note', notes.join(' '));
 }
+// ── WHICH PROPOSALS BECAME CHANGE ORDERS ───────────────────────────────────
+//
+// A proposal is priced (PCO), agreed, and then papered as a change order with
+// a CO number. The log showed all three as one list, so "approved" covered
+// both the ones that had become change orders and the ones still waiting to be
+// written — and only the latter are still somebody's job.
+const CO_STAGES=[['','All'],['open','Open'],['agreed','Approved, no CO yet'],
+                 ['executed','Executed COs'],['closed','Closed']];
+function coStage(r){
+  if(DECIDED_AGAINST.test(String((r&&r['Status'])||''))) return 'closed';
+  if(coIsExecuted(r)) return 'executed';
+  if(coIsApproved(r)) return 'agreed';
+  return 'open';
+}
+let CO_STAGE='';
+function setCoStage(v){ CO_STAGE=String(v||''); renderCOs(); }
+function coStageChips(rows){
+  const el=document.getElementById('co-stage'); if(!el) return;
+  const count=k=>k ? rows.filter(r=>coStage(r)===k).length : rows.length;
+  el.innerHTML=CO_STAGES.map(function(pair){
+    const k=pair[0], c=count(k);
+    // A stage with nothing in it is not a filter, it is a dead end — unless it
+    // is the one being looked at, which still needs its way out.
+    if(k && !c && CO_STAGE!==k) return '';
+    return '<button type="button" class="seg-opt'+(CO_STAGE===k?' on':'')+'" data-v="'+esc(k)+'"'
+      +' onclick="setCoStage(\''+k+'\')">'+esc(pair[1])
+      +' <span style="opacity:.6;font-weight:700;">'+c+'</span></button>';
+  }).join('');
+}
+// The arrow in the number cell says a proposal became a change order. Nothing
+// said the opposite, so one agreed months ago and never written read exactly
+// like one executed yesterday.
+function coStageNote(r){
+  return coStage(r)==='agreed'
+    ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Approved — no CO number yet</div>'
+    : '';
+}
 function renderCOs(){
   const all=allData.co||[], tb=document.getElementById('tbody-cos');
   updateCoBar(all);
@@ -5257,16 +5294,27 @@ function renderCOs(){
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('co',idx,r)+'</td></tr>');
+  coStageChips(live.map(x=>x.r));
   if(!live.length){tb.innerHTML=emptyRow(9);countFooter(0,all.length,'change order');return;}
-  tb.innerHTML=live.map(({r,idx})=>{ const i=idx;
+  const shown=CO_STAGE ? live.filter(x=>coStage(x.r)===CO_STAGE) : live;
+  if(!shown.length){
+    // A filter that empties the table has to carry its own way out, or the log
+    // looks broken and the chip that did it is the one thing nobody suspects.
+    tb.innerHTML='<tr><td colspan="10" style="padding:18px;color:var(--muted);">No change orders at this '
+      +'stage. <a href="#" onclick="setCoStage(\'\');return false;">Show all</a></td></tr>';
+    countFooter(0, all.length, 'change order');
+    { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
+    return;
+  }
+  tb.innerHTML=shown.map(({r,idx})=>{ const i=idx;
     // A change order carries a PCO number while pending and gains a CO number
     // once executed, so show both when they exist.
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':''))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(r['Status'],false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
-  countFooter(live.length, all.length, 'change order');
+  countFooter(shown.length, all.length, 'change order');
   { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
 }
 
@@ -5556,7 +5604,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:47';
+const BUILD_STAMP='2026-09-17 04:51';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;

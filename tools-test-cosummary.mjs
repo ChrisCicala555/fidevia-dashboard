@@ -93,7 +93,7 @@ console.log('Whose arithmetic it is');
 
 console.log('Where it sits');
 {
-  ok(html.indexOf('id="co-bar"') < html.indexOf('<span>All Change Orders</span>'),
+  ok(html.indexOf('id="co-bar"') < html.indexOf('All Change Orders'),
      'above the log, which is what "a summary at the top" means');
   ok(/id="co-bar"[^>]*class="contract-bar"|class="contract-bar" id="co-bar"/.test(html),
      'built from the same card as the payment application summary, so the two read alike');

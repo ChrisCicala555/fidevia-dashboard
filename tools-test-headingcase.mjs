@@ -27,7 +27,8 @@ ok(heads.length>10, 'enough of them to be worth a rule');
   });
   ok(wrong.length===0, 'every panel heading is Title Case'+(wrong.length?' — '+wrong.join(' | '):''));
 }
-ok(/<span>All Change Orders<\/span>/.test(html), 'the change order log says All Change Orders');
+ok(/>All Change Orders<span class="seg" id="co-stage">/.test(html),
+   'the change order log says All Change Orders, with its stage filter beside it');
 ok(/>All Submittals</.test(html), 'and the submittal log says All Submittals');
 ok(/<span>All RFIs<\/span>/.test(html), 'while RFIs keeps its acronym rather than being tidied into Rfis');
 
