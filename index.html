@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:20';
+const BUILD_STAMP='2026-09-17 22:26';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -16358,7 +16358,10 @@ function wfProgressHTML(key,r,i){
       ? '<div style="font-size:11.5px;color:var(--muted);font-style:italic;padding:3px 0;">Approvals on this item were recorded before each one was attributed.</div>' : '');
   const status = stopped
     ? '<span style="color:var(--muted);font-weight:700;">Closed \u2014 '+esc(String(r['Status']||'decided against'))
-      +'. No further signatures are needed.</span>'
+      // "No further signatures are needed" answers a narrower question than the
+      // reader is asking. A closed item needs nothing from anybody — not a
+      // signature, not a revision, not a reply.
+      +'. Nothing further is needed.</span>'
     : done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : (function(){
         const grp=steps.slice(gs,ge+1);
