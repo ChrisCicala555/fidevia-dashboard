@@ -82,5 +82,21 @@ console.log('Held on the row, not just on the first email');
      +'rather than a record, and the reply is the part they were waiting for');
 }
 
+console.log('The list stays open when you click into the box')
+{
+  // "When i click on the box, it flashes a list that goes away." Focus opened
+  // it; the click that caused the focus closed it again. The guard spared only
+  // .wf-row, which is where this picker started life — on a submission form it
+  // had no such ancestor.
+  const c=html.split('function wfCloseAC')[1].split('function wfCompanyList')[0];
+  ok(/\.wf-ac-host'\)\.forEach\(el=>el\.classList\.remove\('wf-ac-host'\)\)/.test(c),
+     'closing clears the marker, so it cannot go stale and keep a later click alive');
+  ok(/!e\.target\.closest\('\.wf-row'\) && !e\.target\.closest\('\.wf-ac-host'\)\) wfCloseAC\(\);/.test(html),
+     'and a click inside whatever opened the list no longer closes it');
+  ok((html.match(/wrap\.classList\.add\('wf-ac-host'\)/g)||[]).length===2,
+     'both pickers mark their host, since both are governed by the one guard \u2014 fixing only the new '
+     +'one would leave the same trap set for the next field that uses it');
+}
+
 console.log(bad ? `FAIL tools-test-copyin.mjs — ${bad} of ${n}` : `ok   tools-test-copyin.mjs — ${n} assertions`);
 process.exit(bad?1:0);

@@ -5766,7 +5766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 18:39';
+const BUILD_STAMP='2026-09-17 18:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15522,7 +15522,12 @@ function rfiShowAC(inp){
     +'<div style="font-weight:600;color:var(--ink);">'+esc(x.num)+(x.status?' <span style="font-size:11px;font-weight:600;color:var(--muted);">\u00b7 '+esc(x.status)+'</span>':'')+'</div>'
     +(x.subject?'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+esc(x.subject)+'</div>':'')
     +'</div>').join('');
-  const wrap=inp.parentElement; wrap.style.position='relative'; wrap.appendChild(box);
+  // Marked so the click that opened this does not immediately close it. The
+  // guard below used to spare only .wf-row, which is where this picker started
+  // life; offered on a submission form it opened on focus and was shut by the
+  // very click that focused it, so it flashed and vanished.
+  const wrap=inp.parentElement; wrap.style.position='relative';
+  wrap.classList.add('wf-ac-host'); wrap.appendChild(box);
   // mousedown, not click: the input blurs first and the list would be gone.
   box.querySelectorAll('.rfi-ac-item').forEach(it=>{
     it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-num'); rfiCloseAC(); rfiLinkNote(inp); });
@@ -15588,7 +15593,10 @@ function wfPeopleList(inWizard){
   return list.filter(p=>{ const k=p.name.trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
              .sort((a,b)=>a.name.localeCompare(b.name));
 }
-function wfCloseAC(){ document.querySelectorAll('.wf-ac').forEach(el=>el.remove()); }
+function wfCloseAC(){
+  document.querySelectorAll('.wf-ac').forEach(el=>el.remove());
+  document.querySelectorAll('.wf-ac-host').forEach(el=>el.classList.remove('wf-ac-host'));
+}
 // Every firm on the project, with how many people would hear about a step
 // assigned to it \u2014 which is the number worth seeing before you assign one.
 function wfCompanyList(inWizard){
@@ -15613,14 +15621,21 @@ function wfShowAC(inp){
   box.innerHTML=matches.map(p=>'<div class="wf-ac-item" data-name="'+esc(p.name)+'" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--khaki-100);"><div style="font-weight:600;color:var(--ink);">'+esc(p.name)+'</div>'
     +'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+p.n+' '+(p.n===1?'person':'people')
     +(p.roles.length?' \u00b7 '+esc(p.roles.join(', ')):'')+'</div></div>').join('');
-  const wrap=inp.parentElement; wrap.style.position='relative'; wrap.appendChild(box);
+  // Marked so the click that opened this does not immediately close it. The
+  // guard below used to spare only .wf-row, which is where this picker started
+  // life; offered on a submission form it opened on focus and was shut by the
+  // very click that focused it, so it flashed and vanished.
+  const wrap=inp.parentElement; wrap.style.position='relative';
+  wrap.classList.add('wf-ac-host'); wrap.appendChild(box);
   box.querySelectorAll('.wf-ac-item').forEach(it=>{
     it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-name'); wfCloseAC(); });
     it.addEventListener('mouseenter',function(){ it.style.background='var(--cream)'; });
     it.addEventListener('mouseleave',function(){ it.style.background=''; });
   });
 }
-document.addEventListener('click',function(e){ if(!e.target.closest('.wf-row')) wfCloseAC(); });
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.wf-row') && !e.target.closest('.wf-ac-host')) wfCloseAC();
+});
 function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; const el=row.querySelector('.wf-co'); if(!el) return; el.value=wfCompanyOf(inp.value, wfInWizard(inp))||''; }
 // Project default chains.
 // Which configured chain a row runs. Every module has one; a payment
