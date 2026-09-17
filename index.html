@@ -5499,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:46';
+const BUILD_STAMP='2026-09-17 03:54';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7923,6 +7923,19 @@ function renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd){
                     cls:'wf', sec});
       }
     });
+  });
+
+  // An approved pencil copy waiting for its formal application. The review
+  // chain is complete, so the loop above has already let it go — and nothing
+  // else was telling the contractor that the next move is theirs. It is the
+  // one thing on this panel that is not a review: it is a document to file.
+  (pays||[]).forEach(r=>{
+    if(!payPencilAwaitingFinal(r)) return;
+    const co=String(r['Contractor']||r['Company']||'').trim();
+    if(!coMatches(co)) return;
+    const when=payPeriodLabel(r['Period']||'')||'this period';
+    items.push({label:(r['App #']||'')+' \u2014 upload the final application for '+when,
+      due:payDueDate(r)||'', badge:'Your upload', cls:'wf', sec:'payapps'});
   });
 
   // Assigned to anyone at our company
@@ -13348,6 +13361,14 @@ function payIsPencil(r){ return String((r&&r['Copy Type'])||'').trim().toLowerCa
 // Only their own, only while it is still a pencil, and only from the outside —
 // Fidevia issuing the contractor's final application on their behalf would be
 // signing their name to a figure.
+// A pencil copy that has been through its review and approved, with no formal
+// application filed against it yet. The moment the contractor is waiting on.
+function payPencilAwaitingFinal(r){
+  if(!r || !payIsPencil(r) || isArchived(r)) return false;
+  // No separate test for sent back or refused: neither of those statuses says
+  // approved, and one status cannot say both.
+  return String(r['Status']||'').toLowerCase().indexOf('approv')>=0;
+}
 function payMayPromote(r){
   if(!r || !payIsPencil(r)) return false;
   // Belt and braces: viewingAsCompany() is empty for Fidevia reading as itself,
@@ -14033,14 +14054,25 @@ async function submitPayAction(){
       // One email saying "approved" to everybody, with an architect still to
       // look at it, was the dashboard announcing a decision nobody had made.
       const _pending=!!(_chain && !_chain.complete);
+      // The last review on a pencil copy is the moment the contractor has been
+      // waiting for, and "Pencil approved \u2014 awaiting final" describes a state
+      // rather than asking for anything. The email that lands on them should
+      // say what to do next.
+      const _finalDue = !_pending && pencil && payPencilAwaitingFinal(row);
       const _headline=_pending
         ? ((_chain.step||'Review')+' recorded \u2014 now with '+(_chain.names.join(', ')||'the next reviewer'))
-        : status;
+        : (_finalDue
+            ? ('every review is complete \u2014 '+(row['Contractor']||'the contractor')
+               +' to submit the final application')
+            : status);
       payNotify(row, '[Fidevia] '+_kind+(row['App #']||'')+' \u2014 '+_headline,
         emailTemplate(_kind+_headline,
           [['App #',row['App #']||''],['Contractor',row['Contractor']||''],
            ['Step',(_chain&&_chain.step)||'\u2014'],['Outcome',action]]
             .concat(_pending?[['Now with',_chain.names.join(', ')||'\u2014']]:[])
+            .concat(_finalDue?[['Next','Submit the final application for '
+              +(payPeriodLabel(row['Period']||'')||'this period')],
+              ['Due',fmtDMY(payDueDate(row)||'')||'\u2014']]:[])
             .concat((pencil||_pending)?[]:[['Approved Amount',fmtMoney(appAmt)]])
             .concat([['Comments',note||'\u2014'],['Reviewed By',by||'\u2014']]),
           currentProject.name),

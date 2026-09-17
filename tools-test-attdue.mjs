@@ -93,8 +93,12 @@ console.log('Wiring');
   const own=(html.match(/due:r\['Due Date'\]\|\|''/g)||[]).length;
   const derived=(html.match(/due:payDueDate\(r\)/g)||[]).length;
   const both=(html.match(/due:\(key==='pay_apps'\) \? payDueDate\(r\) : \(r\['Due Date'\]\|\|''\)/g)||[]).length;
-  ok(own+derived+both===5,
+  ok(own+derived+both===6,
      'every rule that has a due date to give passes one — got '+own+' plain, '+derived+' derived, '+both+' either');
+  // The sixth is not a review at all: an approved pencil copy waiting for its
+  // formal application, which is due on the billing cycle's own date.
+  ok(/upload the final application for/.test(html) && derived>=2,
+     'including the one asking a contractor to file the final, which takes the same derived date');
 }
 {
   const d=html.slice(html.indexOf('const byItem=new Map();'));
