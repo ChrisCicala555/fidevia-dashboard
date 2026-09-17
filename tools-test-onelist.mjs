@@ -81,5 +81,46 @@ console.log('The routes are offered only to the reviewer the chain is on');
   ok(/Approved/.test(opts(false)), 'while the statuses are unaffected');
 }
 
+console.log('A route with nobody named is refused, not quietly downgraded')
+{
+  // "I tried to ask the architect if they agree as a test (as the engineer), is
+  // there a reason why the architect wasn't roped back in?" Because the Who
+  // field was empty: the branch that adds them requires a name, so the step was
+  // signed, nobody was added, and nothing said the request had been dropped.
+  const P2=bootPage('index.html'); P2.run(SEED);
+  const setup=`
+    allData.contacts=[{'Name':'Test Architect','Company':'Architect 2','Email':'a@x.test'},
+      {'Name':'Penelope Odiem','Company':'Next Level Engineers','Email':'p@y.test'}];
+    currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'}];
+    allData.sub=[{'Submittal #':'S','Description':'d','Company':'Summit Builders',
+      'Status':'Pending Review','Workflow Step':'0','Workflow Status':'In Review',
+      'Version History':'[]','Workflow Signed':'','Workflow Extra':'','Workflow Done':''}];
+    ccAddReviewSteps('sub', allData.sub[0], 'Next Level Engineers');
+    EXTERNAL=true; IS_ADMIN=false; ME_EMAIL='p@y.test'; ME_NAME='Penelope Odiem';
+    currentProject.userCompany='Next Level Engineers'; currentProject.userRole='engineer';
+    openReply('sub',0,true);`;
+  const chainAfter=(route,pick)=>{ P2.run(setup);
+    P2.run(`document.getElementById('reply-status').value=${JSON.stringify(route)}; replyStatusChanged();
+            document.getElementById('reply-next').value=${JSON.stringify(pick)};
+            try{ applyReviewAdvance('sub', allData.sub[0], 'Penelope Odiem'); }catch(e){}`);
+    return P2.run(`wfEffectiveSteps('sub',allData.sub[0]).map(function(s){ return wfStepCompany(s); })`); };
+
+  ok(chainAfter('__also','Test Architect').join()==='Architect 2,Next Level Engineers,Architect 2',
+     'naming somebody adds them back \u2014 which is what the reviewer asked for');
+  ok(chainAfter('__also','').length===2, 'naming nobody adds nobody, which is the trap');
+
+  // The guard: the submit refuses before anything is written.
+  const sr=html.slice(html.indexOf("if(_canDecide){\n    const _v=document.getElementById('reply-status').value;"),
+                      html.indexOf("const note=document.getElementById('reply-note').value.trim();"));
+  ok(/_route==='also' \|\| _route==='reassign'/.test(sr), 'both routing choices are checked');
+  ok(/if\(!_pick\)\{/.test(sr) && /alert\(/.test(sr) && /return;/.test(sr),
+     'and an empty name stops the submit rather than letting it record something else');
+  ok(/Choose who to send it to as well/.test(sr) && /Choose who to hand this step to/.test(sr),
+     'each says which name is missing');
+  ok(html.indexOf("if(_route==='also' || _route==='reassign')")
+     < html.indexOf("const fileInput=document.getElementById('reply-file')"),
+     'checked before the file is uploaded, so a refused submit writes nothing at all');
+}
+
 console.log(bad ? `FAIL tools-test-onelist.mjs — ${bad} of ${n}` : `ok   tools-test-onelist.mjs — ${n} assertions`);
 process.exit(bad?1:0);

@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 20:26';
+const BUILD_STAMP='2026-09-17 20:42';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -17234,6 +17234,24 @@ async function submitReply(){
   const status=_canDecide
     ? replyStatusFor(document.getElementById('reply-status').value, _row0['Status'])
     : (_answering ? 'Resubmitted' : String(_row0['Status']||''));
+  // Both routing choices need a name. Left blank, "send it to somebody else as
+  // well" quietly signed the step and added nobody: the reviewer had asked for
+  // a second opinion and the item carried on without one, with nothing on the
+  // record saying the request had been dropped. Checked here, before the file
+  // is uploaded, so nothing is written at all.
+  if(_canDecide){
+    const _v=document.getElementById('reply-status').value;
+    const _route=replyRouteOf(_v);
+    if(_route==='also' || _route==='reassign'){
+      const _pick=String((document.getElementById('reply-next')||{}).value||'').trim();
+      if(!_pick){
+        alert(_route==='also'
+          ? 'Choose who to send it to as well \u2014 or pick a plain approval if nobody else needs it.'
+          : 'Choose who to hand this step to.');
+        return;
+      }
+    }
+  }
   const note=document.getElementById('reply-note').value.trim();
   const fileInput=document.getElementById('reply-file');
   const btn=document.getElementById('reply-submit-btn'); btn.disabled=true;
