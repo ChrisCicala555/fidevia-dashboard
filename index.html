@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 20:42';
+const BUILD_STAMP='2026-09-17 21:22';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6143,7 +6143,7 @@ function ccAddReviewSteps(key, row, raw){
   const names=String(raw||'').split(/[;,]/).map(x=>String(x||'').trim()).filter(Boolean);
   if(!names.length) return [];
   let steps=[]; try{ steps=wfEffectiveSteps(key,row)||[]; }catch(e){ steps=[]; }
-  const after = steps.length ? wfGroupAt(steps,0)[1] : -1;
+  const after = steps.length ? wfBaseAnchor(steps, wfGroupAt(steps,0)[1]) : -1;
   const extra=wfExtraSteps(row);
   const added=[];
   const seen=new Set(steps.map(st=>coNorm(wfStepCompany(st))));
@@ -15830,6 +15830,16 @@ function wfReturnSource(row, steps, retIdx){
   if(!isNaN(after) && steps[after]){ const [gs]=wfGroupAt(steps, after); return gs; }
   return retIdx>0 ? retIdx-1 : -1;
 }
+// An anchor is an index into the BASE chain, but a caller only ever knows
+// where it is in the rebuilt one. Passing the rebuilt index straight through
+// made every anchor on a short workflow overshoot and clamp to the end, so
+// added steps landed in whatever order the sort happened to splice them —
+// which is how a re-review ended up behind the contractor's returned step.
+function wfBaseAnchor(steps, idx){
+  let n=-1;
+  for(let i=0;i<=idx && i<(steps||[]).length;i++){ if(!steps[i] || !steps[i].added) n++; }
+  return n;
+}
 function wfEffectiveSteps(key, row){
   const base=wfStepsFor(key, rowCompany(row), row);
   const moved=wfReassigned(row);
@@ -15851,7 +15861,7 @@ function wfEffectiveSteps(key, row){
         // Carried through, or an added step that was meant to run alongside the
         // one above it is rebuilt as a step queued behind it.
         parallel:!!e.parallel, requireAll:!!e.requireAll,
-        addedBy:e.addedBy||'', after:e.after});
+        addedBy:e.addedBy||'', at:e.at||'', after:e.after});
     });
   return out;
 }
@@ -15933,11 +15943,12 @@ function wfHealReturn(key,row){
   const [,ge]=wfGroupAt(steps,wfActiveIdx(row));
   const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
   const extra=wfExtraSteps(row);
-  extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
-              email:rowSubmitterEmail(row),
+  extra.push({after:wfBaseAnchor(steps,ge), name:'Revise and Resubmit', person:who,
+              company:rowCompany(row), email:rowSubmitterEmail(row),
               addedBy:'', at:'', returned:true, inferred:true});
   row['Workflow Extra']=JSON.stringify(extra);
-  row['Workflow Step']=String(ge+1);
+  const placed=wfEffectiveSteps(key,row).findIndex(st=>st&&st.inferred);
+  row['Workflow Step']=String(placed>=0 ? placed : ge+1);
   row['Workflow Status']='In Review';
   return true;
 }
@@ -17427,10 +17438,16 @@ function applyReviewAdvance(key, row, by){
       // Beside the return rather than at the end of the chain, and as its own
       // step rather than by rewinding: rewinding into a parallel group would
       // re-ask an engineer who never objected to anything.
-      extra.push({after:(curSt.after!=null?curSt.after:srcIdx), name:src.name||'Review',
+      extra.push({after:curSt.after, name:src.name||'Review',
                   person:src.person||'', email:em, company:src.company||'',
                   addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), rereview:true});
       row['Workflow Extra']=JSON.stringify(extra);
+      // cur+1 only because the anchor is right: sharing the returned step's
+      // anchor and being pushed last puts this immediately after it. When the
+      // anchor was a rebuilt index it overshot and clamped, the re-review
+      // landed before the return, and cur+1 pointed back at the contractor's
+      // own signed step — so the reviewer matched no step of theirs and every
+      // action they took wrote nothing, while the panel said it was with them.
       row['Workflow Step']=String(cur+1);
       row['Workflow Status']='In Review';
       if(REPLY_CTX){ REPLY_CTX._backToReviewer=src.person||src.name||'the reviewer';
@@ -17446,7 +17463,7 @@ function applyReviewAdvance(key, row, by){
   if(_returning){
     const who=rowSubmitterName(row) || rowCompany(row) || 'The submitter';
     const extra=wfExtraSteps(row);
-    extra.push({after:ge, name:'Revise and Resubmit', person:who, company:rowCompany(row),
+    extra.push({after:wfBaseAnchor(steps,ge), name:'Revise and Resubmit', person:who, company:rowCompany(row),
                 email:rowSubmitterEmail(row),
                 addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday(), returned:true});
     row['Workflow Extra']=JSON.stringify(extra);
@@ -17461,12 +17478,13 @@ function applyReviewAdvance(key, row, by){
 
   // Anyone the reviewer is sending it on to goes in directly after this group,
   // so they are next rather than last.
-  let added='';
+  let added=''; let addedStamp='';
   if(act==='also' && pick){
     const email=emailOf(pick);
     const extra=wfExtraSteps(row);
-    extra.push({after:ge, name:'Further Review', person:pick, email:email,
-                addedBy:(by||ME_NAME||ME_EMAIL||''), at:etToday()});
+    addedStamp=etToday();
+    extra.push({after:wfBaseAnchor(steps,ge), name:'Further Review', person:pick, email:email,
+                addedBy:(by||ME_NAME||ME_EMAIL||''), at:addedStamp});
     row['Workflow Extra']=JSON.stringify(extra);
     added=pick;
     // They are next in the chain, so they are told directly rather than
@@ -17488,7 +17506,19 @@ function applyReviewAdvance(key, row, by){
     if(outstanding){ row['Workflow Status']='In Review'; return added; }
     row['Workflow Done']=JSON.stringify([]);
   }
-  const next=ge+1;
+  // Where the new step actually landed, for the same reason as above: ge+1 is
+  // the old neighbour, not the step just added.
+  let next=ge+1;
+  if(added){
+    const had=steps.filter(st=>st&&st.name==='Further Review'&&String(st.person||'')===String(pick)).length;
+    let seen=0;
+    for(let i=0;i<after.length;i++){
+      const st=after[i];
+      if(st && st.name==='Further Review' && String(st.person||'')===String(pick) && st.at===addedStamp){
+        seen++; if(seen>had){ next=i; break; }
+      }
+    }
+  }
   if(next>=after.length){
     row['Workflow Step']=String(after.length-1); row['Workflow Status']='Complete';
     const st=wfStatusOnComplete(key,row); if(st) row['Status']=st;
