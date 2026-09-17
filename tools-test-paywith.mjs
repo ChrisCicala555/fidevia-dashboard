@@ -82,6 +82,15 @@ console.log('The chain says where it is, not a sentence written last week');
   ok(label({'Workflow Step':'1','Workflow Signed':'{"0":{"by":"Christopher Cicala"}}'})
        ==='Pencil — with Architect 2',
      'a step somebody has signed is not still being waited on');
+  // The one that does not depend on any record surviving. Settings re-cut the
+  // chain, the indices no longer line up with the signatures, and the only
+  // thing still true is that the cursor moved past step 0.
+  ok(label({'Workflow Step':'1','Workflow Signed':'','Workflow Done':''})
+       ==='Pencil — with Architect 2',
+     'and neither is one the cursor has moved past, whatever Done and Signed hold');
+  ok(label({'Workflow Step':'0','Workflow Signed':'','Workflow Done':''})
+       ==='Pencil — with Fidevia, Architect 2',
+     'while a group the cursor is sitting on is with everybody in it');
   ok(label({'Workflow Step':'0','Workflow Signed':'{"0":{"by":"Christopher Cicala"}}'})
        ==='Pencil — with Architect 2',
      'wherever the index happens to point after the chain was edited');

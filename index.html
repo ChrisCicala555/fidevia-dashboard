@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:45';
+const BUILD_STAMP='2026-09-17 02:52';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13665,7 +13665,13 @@ function payWithNow(row){
   // moved and Done was empty. A step carrying a signature has been answered,
   // whatever shape the chain is now.
   const signedNow=wfSignedMap(row);
-  const answered=i=>done.includes(i) || !!signedNow[String(i)];
+  // Three ways a step can be behind us, and the first is the one that does not
+  // depend on any record surviving: the cursor has moved past it. The chain
+  // only advances when a group finishes, so a step before the cursor has been
+  // answered whatever Done and Signed happen to hold — which matters exactly
+  // when Settings has re-cut the chain underneath them and the indices no
+  // longer line up with the signatures.
+  const answered=i=>i<cur || done.includes(i) || !!signedNow[String(i)];
   const seen=new Set();
   return steps.slice(gs,ge+1)
     .map((st,i)=>answered(gs+i) ? '' : wfPartyLabel(st))
