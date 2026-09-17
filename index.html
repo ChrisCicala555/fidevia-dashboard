@@ -2406,6 +2406,59 @@ function copyTypeNote(){
   el.textContent = segValue('f-copytype')==='Pencil'
     ? 'A draft for Fidevia and the architect to work through with you. The owner does not see it.'
     : 'The application you are asking to be paid on. The owner sees it from here.';
+  try{ payFinalWarnNote(); }catch(e){}
+}
+// ── FILING A FINAL COPY WITH NO PENCIL BEHIND IT ───────────────────────────
+//
+// The order is a pencil copy, marked up by Fidevia and the architect, then the
+// formal application built on what came back. A final filed straight into a
+// month with nothing behind it has skipped the conversation the pencil copy
+// exists to have — or, worse, there is a pencil sitting there and this is about
+// to become a second application for one billing period.
+//
+// Said, not refused. A first month, or a contract that does not use pencils, is
+// a legitimate reason to file one directly.
+function paySameMonth(a, b){
+  const x=String(a||'').slice(0,7), y=String(b||'').slice(0,7);
+  return !!x && x===y;
+}
+function payPeriodRows(company, period){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  const co=norm(company);
+  if(!co || !period) return [];
+  return (allData.pay_apps||[]).filter(r=>
+    norm(r['Contractor']||r['Company'])===co && paySameMonth(r['Period'], period));
+}
+// What is already on record for this contractor in this month, and therefore
+// what is worth saying before another application joins it.
+function payFinalWarning(company, period){
+  if(!company || !period) return null;
+  const rows=payPeriodRows(company, period);
+  const pencils=rows.filter(payIsPencil);
+  const finals=rows.filter(r=>!payIsPencil(r));
+  const when=payPeriodLabel(period)||'this period';
+  // A pencil still open is the one to carry forward, not to leave behind.
+  const open=pencils.find(r=>payMayPromote(r));
+  if(open) return { kind:'promote',
+    text:'There is already a pencil copy for '+when+'. Use Submit Final on that row instead \u2014 '
+        +'filing here starts a second application for one billing period.' };
+  if(finals.length) return { kind:'duplicate',
+    text:'A final application for '+when+' is already on record. Filing another starts a second '
+        +'application for one billing period.' };
+  if(!pencils.length) return { kind:'nopencil',
+    text:'No pencil copy on record for '+when+'. The usual order is a pencil copy first, for Fidevia '
+        +'and the architect to mark up, then the final built on what comes back.' };
+  return null;
+}
+function payFinalWarnNote(){
+  const el=document.getElementById('f-copytype-warn'); if(!el) return null;
+  const w=(segValue('f-copytype')==='Final')
+    ? payFinalWarning(viewingAsCompany()||(currentProject&&currentProject.userCompany)||'', payPeriodValue())
+    : null;
+  el.innerHTML = w
+    ? '<p class="file-hint" style="margin:6px 0 0;color:#8a5a00;font-weight:600;">'+esc(w.text)+'</p>'
+    : '';
+  return w;
 }
 function fileToB64(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(file); }); }
 
@@ -5405,7 +5458,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:06';
+const BUILD_STAMP='2026-09-17 00:12';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8252,7 +8305,8 @@ const FORMS = {
         <button type="button" class="seg-opt on" data-v="Pencil" role="radio" aria-checked="true" onclick="segPick(this)">Pencil copy</button>
         <button type="button" class="seg-opt" data-v="Final" role="radio" aria-checked="false" onclick="segPick(this)">Final copy</button>
       </div>
-      <p class="file-hint" style="margin-top:6px;" id="f-copytype-note"></p></div>
+      <p class="file-hint" style="margin-top:6px;" id="f-copytype-note"></p>
+      <div id="f-copytype-warn"></div></div>
     <div class="field"><label>Billing Period *</label>
       <div style="display:flex;gap:10px;">
         <select autocomplete="off" id="f-pa-month" style="flex:2;" onchange="payPeriodNote()"></select>
@@ -9279,6 +9333,13 @@ async function submitForm(){
       // These arrived unnumbered, leaving Fidevia to assign one by hand later.
       const _copy = segValue('f-copytype')==='Final' ? 'Final' : 'Pencil';
       const _period = payPeriodValue() || payCurrentPeriod();
+      // Said on the form as it is filled in; asked once here, because the form
+      // can be filled in without ever looking below the choice that caused it.
+      if(_copy==='Final'){
+        const _w=payFinalWarning(_comp, _period);
+        if(_w && !confirm(_w.text+'\n\nFile this final application anyway?'))
+          throw new Error('Cancelled.');
+      }
       // PRE_NUM already asked Box. Where it is missing — the reservation failed,
       // or this path was reached another way — ask again rather than fall back
       // to the log alone, which is the copy that cannot see a leftover folder.
@@ -13021,6 +13082,7 @@ function payPeriodNote(){
   }
   const due=parseLocalDate(isoDay(d.formal));
   const today=parseLocalDate(etToday());
+  try{ payFinalWarnNote(); }catch(e){}
   const late=due && today && today>due;
   el.style.color = late ? 'var(--danger)' : '';
   el.textContent = 'Formal application for '+payPeriodLabel(iso)+' was due '+fmtDMY(isoDay(d.formal))
