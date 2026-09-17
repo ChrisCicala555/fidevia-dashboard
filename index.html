@@ -1391,7 +1391,7 @@
           <span id="jc-dirty-note" style="font-size:13px;color:var(--danger);font-weight:600;"></span>
         </div>
         <div class="cd-card">
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external notify-col" title="Payment applications are not an opt-in like the three to the left. Who may be told is a rule: Fidevia, the design team, and each contractor about their own applications only. Auto means the rule reaches them; Off means somebody took them out of it; a dash means the rule does not reach them at all.">PAY</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external notify-col" title="Payment applications are not an opt-in like the three to the left. Who may be told is a rule: Fidevia, the design team, and each contractor about their own applications only. The owner joins once a pencil copy is approved. Auto means the rule reaches them; Off means somebody took them out of it; a dash means the rule does not reach them at all.">PAY</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="12">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -1636,8 +1636,10 @@
           <div class="field"><label>Message heading</label><input id="nt-pay-intro" placeholder="Payment Application: {title}"></div>
           <p class="file-hint" style="margin:6px 0 0;">Who these reach is not a matter of ticking boxes. A payment
             application is one contractor's money, so it goes to Fidevia, the architect and the engineers, and to
-            that contractor only \u2014 never to another contractor on the job. Anybody can be taken off it on the
-            Contacts tab.</p>
+            that contractor only \u2014 never to another contractor on the job. The owner joins once the pencil copy
+            is approved: a draft still being worked through is not yet something they will be asked to pay, and a
+            pencil sent back to be corrected keeps the same four on it. Anybody can be taken off on the Contacts
+            tab.</p>
           <div style="margin-top:20px;"><button class="btn-primary" onclick="saveNotifSettings()" id="btn-notif-save">Save Settings</button></div>
           <div class="status-msg" id="notif-status"></div>
         </div>
@@ -5345,7 +5347,8 @@ function renderContacts(){
       : contactIsDesign(r) ? 'on the design team'
       : ((allData.pay_apps||[]).some(p=>String(p['Contractor']||p['Company']||'').trim().toLowerCase()
             ===String(r['Company']||'').trim().toLowerCase() && String(r['Company']||'').trim())
-          ? 'the contractor on these applications' : '');
+          ? 'the contractor on these applications'
+      : contactIsOwner(r) ? 'the owner, from the point a pencil copy is approved' : '');
     if(!why) return '<td class="hide-external notify-col"><span style="color:var(--muted);font-size:12px;" '
       +'title="Not on the payment application thread. Only Fidevia, the design team and a contractor\u2019s own people are, and there is nothing to switch for anybody else.">\u2014</span></td>';
     const off=String(r['Notify - Pay App']||'').trim().toLowerCase()==='no';
@@ -5498,7 +5501,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 01:06';
+const BUILD_STAMP='2026-09-17 01:17';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -5986,9 +5989,35 @@ function contactIsDesign(row){
 //
 // So the audience is a rule, not a list: Fidevia, the design team, and the
 // contractor whose application it is. Nobody else's contractor.
+// The owner joins once the pencil copy has been approved. Not before: a draft
+// being worked through between the contractor, Fidevia and the design team is
+// not yet anything the owner will be asked to pay, and copying them on the
+// argument about it would make one. From the approval onward it is an
+// application they will see, so they see it coming.
+//
+// Approved as noted counts. The marks are conditions on the final application,
+// not a refusal of it. Sent back and refused do not, which is what "if there
+// are corrections, all of the above stays on the thread" means: the same four,
+// and still not the owner.
+function payOwnerIsOn(row){
+  if(!row) return false;
+  // A final copy is on the owner's own screen already.
+  if(!payIsPencil(row)) return true;
+  // No separate test for sent back or refused: neither of those statuses says
+  // approved, and a status cannot say both. A guard for it would be a line no
+  // review could reach.
+  return String(row['Status']||'').toLowerCase().indexOf('approv')>=0;
+}
+function contactIsOwner(row){
+  const em=contactEmail(row);
+  if(em && String(PROJECT_ROLES[em]||'').trim().toLowerCase()==='owner') return true;
+  const own=String((currentProject&&currentProject.config&&currentProject.config.owner)||'').trim().toLowerCase();
+  return !!own && String((row&&row['Company'])||'').trim().toLowerCase()===own;
+}
 function payNotifyAudience(row){
   const norm=v=>String(v||'').trim().toLowerCase();
   const theirs=norm(row&&(row['Contractor']||row['Company']));
+  const ownerOn=payOwnerIsOn(row);
   return (allData.contacts||[]).filter(c=>{
     if(!String(c['Email']||'').trim()) return false;
     // Opting out is explicit. Blank means yes, because the whole point of the
@@ -5997,6 +6026,7 @@ function payNotifyAudience(row){
     if(String(c['Notify - Pay App']||'').trim().toLowerCase()==='no') return false;
     if(contactIsFidevia(c)) return true;
     if(contactIsDesign(c)) return true;
+    if(ownerOn && contactIsOwner(c)) return true;
     return !!theirs && norm(c['Company'])===theirs;
   });
 }

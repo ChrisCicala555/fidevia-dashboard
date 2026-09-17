@@ -47,9 +47,53 @@ console.log('Who is on the thread');
   ok(theirs.includes('chris@fidevia.com') && theirs.includes('arch@example.com'),
      'with Fidevia and the design team on both, since they review every application');
 }
+console.log('The owner joins when the pencil is approved, and not before');
 {
+  P.run(`currentProject={name:'X',config:{owner:'Riverside School District'}};`);
   ok(!to().includes('owen@rsd.example'),
-     'the owner is not on it: they see final applications on the dashboard, and never the pencil copies');
+     'a pencil copy still being worked through is not something the owner is asked to pay');
+  ok(!to(ROW({'Status':'Pencil \u2014 awaiting Test Architect'})).includes('owen@rsd.example'),
+     'nor part-way through its review');
+  // "If there are corrections, then all of the above stays on the thread."
+  const sent=ROW({'Status':'Revise and resubmit \u2014 awaiting contractor'});
+  ok(!to(sent).includes('owen@rsd.example'), 'a pencil sent back keeps the owner off it');
+  ok(to(sent).length===4, 'and keeps the other four on');
+  ok(!to(ROW({'Status':'Pencil rejected'})).includes('owen@rsd.example'), 'so does a refusal');
+  // Neither of those statuses says approved, and one status cannot say both,
+  // so the approval test carries this on its own.
+  ok(P.run(`payOwnerIsOn({'Copy Type':'Pencil','Status':'Revise and resubmit \u2014 awaiting contractor'})`)===false
+     && P.run(`payOwnerIsOn({'Copy Type':'Pencil','Status':'Pencil rejected'})`)===false,
+     'which the approval test settles without a rule of its own');
+  ok(P.run(`payOwnerIsOn(null)`)===false, 'and no row at all is not an approval');
+}
+{
+  ok(to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('owen@rsd.example'),
+     'once it is approved they are on it, because it is now an application they will see');
+  ok(to(ROW({'Status':'Pencil approved as noted \u2014 awaiting final'})).includes('owen@rsd.example'),
+     'approved as noted counts \u2014 the marks are conditions on the final, not a refusal of it');
+  ok(to(ROW({'Copy Type':'Final','Status':'Uploaded \u2014 awaiting Fidevia'})).includes('owen@rsd.example'),
+     'and a final copy always, since it is on their own screen');
+  ok(to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('sam@summit.example'),
+     'with everybody who was already on it still there');
+}
+{
+  // Two ways of knowing who the owner is, as with the design team.
+  P.run(`PROJECT_ROLES={'owen@rsd.example':'owner'}; currentProject={name:'X',config:{}};`);
+  ok(to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('owen@rsd.example'),
+     'the role granted on this project');
+  P.run(`PROJECT_ROLES={}; currentProject={name:'X',config:{owner:'Riverside School District'}};`);
+  ok(to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('owen@rsd.example'),
+     'or the owner organization named on the project');
+  P.run(`currentProject={name:'X',config:{}};`);
+  ok(!to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('owen@rsd.example'),
+     'and with neither, nobody is assumed to be the owner');
+  // An owner org of '' must not match a contact whose company is also blank.
+  P.run(`allData.contacts=allData.contacts.concat([
+    {'Name':'No Firm','Company':'','Role':'','Email':'nofirm@example.com'}]);`);
+  ok(!to(ROW({'Status':'Pencil approved \u2014 awaiting final'})).includes('nofirm@example.com'),
+     'least of all somebody with no firm recorded, on a project with no owner recorded');
+  P.run(`allData.contacts=allData.contacts.filter(function(c){ return c['Email']!=='nofirm@example.com'; });`);
+  P.run(`currentProject={name:'X',config:{owner:'Riverside School District'}};`);
 }
 {
   // Roles come from the grant as well as from the contact sheet, because a firm
@@ -144,6 +188,8 @@ console.log('And it is in Settings, with the rule stated');
   ok(/id="nt-pay-subject"/.test(pane) && /id="nt-pay-intro"/.test(pane), 'with a subject and a heading');
   ok(/one contractor's money/.test(pane) && /never to another contractor on the job/.test(pane),
      'and the audience rule said in words, since it is not something you can see from a box');
+  ok(/The owner joins once the pencil copy\s+is approved/.test(pane), 'including when the owner joins');
+  ok(/pencil sent back to be corrected keeps the same four on it/.test(pane), 'and when they do not');
   ok(/pay_apps:\{subject:'\[Fidevia\] Payment Application: \{number\}'/.test(html), 'a default to start from');
   ok(/document\.getElementById\('nt-pay-subject'\)\.value=g\('pay_apps','subject'\)/.test(html), 'loaded');
   ok(/pay_apps:\{subject:val\('nt-pay-subject'\),intro:val\('nt-pay-intro'\)\}/.test(html), 'and saved');
@@ -163,7 +209,9 @@ console.log('And it is in Settings, with the rule stated');
   ok(/On automatically, because they are '\+why/.test(t),
      'with the reason on hover: Fidevia, the design team, or the contractor on these applications');
   ok(/contactIsFidevia\(r\) \? 'Fidevia'/.test(t) && /contactIsDesign\(r\) \? 'on the design team'/.test(t),
-     'named from the same three tests the rule itself uses');
+     'named from the same tests the rule itself uses');
+  ok(/contactIsOwner\(r\) \? 'the owner, from the point a pencil copy is approved'/.test(t),
+     'and the owner is shown as on it, with the point at which they join');
   ok(/Click to take them off\./.test(t) && /Click to put them back on/.test(t),
      'and what pressing it will do');
 }
