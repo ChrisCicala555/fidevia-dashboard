@@ -122,12 +122,19 @@ console.log('The server decides where things go');
      'and a Box failure is reported rather than swallowed, which is what lets the browser stop');
 }
 {
-  const mv = prox.split('async function moveInto(H, kind, id, parentId, name, stamp){')[1].split('\n}')[0];
-  ok(/if \(r\.status === 409\)/.test(mv) && /\+ ' \(' \+ stamp \+ '\)'/.test(mv),
+  const mv = prox.split('async function moveInto(H, kind, id, parentId, name, stamp){')[1]
+    .split('async function folderWritableBy')[0];
+  ok(/const suffixes = \[stamp,/.test(mv),
      'binning RFI-GC-001 twice does not fail on the name — the second keeps the date it was binned');
-  ok(/dot > 0 \? \(name\.slice\(0, dot\) \+ ' \(' \+ stamp \+ '\)' \+ name\.slice\(dot\)\)/.test(mv),
+  // Once was not enough: two deletes of one filename on one day collided again.
+  // tools-test-bincollide runs the real function against a full bin.
+  ok(/stamp \+ '-2'/.test(mv) && /\+ id\]/.test(mv),
+     'and a third and a fourth, ending on the Box id, which no other file can hold');
+  const bn = prox.split('function binName(kind, name, suffix){')[1].split('\n}')[0];
+  ok(/dot > 0 \? \(base\.slice\(0, dot\) \+ ' \(' \+ suffix \+ '\)' \+ base\.slice\(dot\)\)/.test(bn),
      'and a file keeps its extension when it is renamed');
-  ok(/if \(!r\.ok\) throw new Error\('Box ' \+ r\.status/.test(mv), 'any other refusal is an error, not a silent skip');
+  ok((mv.match(/throw new Error\('Box ' \+ r\.status/g)||[]).length===2,
+     'any other refusal is an error, not a silent skip — on the first attempt and on the retries');
 }
 ok(/rfi:'Deleted RFIs'/.test(prox) && /payrolls:'Deleted Certified Payrolls'/.test(prox),
    'every module that files documents has a bin');

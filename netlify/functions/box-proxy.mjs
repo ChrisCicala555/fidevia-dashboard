@@ -436,19 +436,34 @@ async function findOrMakeChild(H, parentId, name){
 }
 // Deleting RFI-GC-001, raising it again and deleting it again would collide in
 // the bin. The second one keeps its name and gains the date it was binned.
+//
+// One retry was not enough. The stamp is a date, so deleting the same filename
+// twice in one day collided again, and the second 409 was reported to the user
+// as a failure — "Nothing was deleted... Box 409" — for a document that was
+// only ever going to be renamed. Suffixes are tried until one is free, and the
+// last of them carries the Box id, which no other file can hold.
+function binName(kind, name, suffix){
+  const base = String(name || 'item');
+  const dot = kind === 'files' ? base.lastIndexOf('.') : -1;
+  return dot > 0 ? (base.slice(0, dot) + ' (' + suffix + ')' + base.slice(dot))
+                 : (base + ' (' + suffix + ')');
+}
 async function moveInto(H, kind, id, parentId, name, stamp){
   const put = (body) => boxFetch(`https://api.box.com/2.0/${kind}/${encodeURIComponent(id)}`,
     { method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   let r = await put({ parent: { id: String(parentId) } });
-  if (r.status === 409) {
-    const dot = kind === 'files' ? String(name || '').lastIndexOf('.') : -1;
-    const alt = dot > 0 ? (name.slice(0, dot) + ' (' + stamp + ')' + name.slice(dot))
-                        : (String(name || 'item') + ' (' + stamp + ')');
+  if (r.ok) return name;
+  if (r.status !== 409) throw new Error('Box ' + r.status + ' moving ' + (name || id));
+  // The date, then the date with a counter, then the id. The id ends it: two
+  // files cannot share one, so the loop cannot run out of names.
+  const suffixes = [stamp, stamp + '-2', stamp + '-3', stamp + '-4', stamp + ' \u00b7 ' + id];
+  for (const suffix of suffixes) {
+    const alt = binName(kind, name, suffix);
     r = await put({ parent: { id: String(parentId) }, name: alt });
     if (r.ok) return alt;
+    if (r.status !== 409) throw new Error('Box ' + r.status + ' moving ' + (name || id));
   }
-  if (!r.ok) throw new Error('Box ' + r.status + ' moving ' + (name || id));
-  return name;
+  throw new Error('Box 409 moving ' + (name || id) + ' — the bin already holds every name tried');
 }
 async function folderWritableBy(H, t, grants, who, folderId){
   if (who.isAdmin) return true;
