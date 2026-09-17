@@ -47,8 +47,9 @@ ok(/parallel:true/.test(tpl), 'the parallel steps survive');
 }
 
 // round trip: what is drawn can be gathered back
-ok(/wfStepRow\(prefix,key,s\.name,s\.person,s\.parallel,s\.requireAll\)/.test(html),
-   'parallel and all-must-sign are rendered, not dropped on the way in');
+ok(/wfStepRow\(prefix,key,s\.name,s\.person,s\.parallel,s\.requireAll,s\.company\)/.test(html),
+   'parallel and all-must-sign are rendered, not dropped on the way in \u2014 and so is the firm the '
+   +'step belongs to, with the person still passed so an older chain can name its firm from them');
 {
   const g = html.split('function wfGather')[1].split("let WF_SCOPE")[0];
   ok(/parallel:r\.querySelector\('\.wf-par'\)\.checked/.test(g), 'and read back out');

@@ -13,7 +13,10 @@ ok(/if\(!inWizard && !list\.length\) list=fromWizard\(\)/.test(pl),
    'outside it, the wizard is only a fallback, as before');
 ok(/It used to prefer/.test(pl), 'the old behaviour is recorded so nobody restores it');
 
-ok(/const people=wfPeopleList\(wfInWizard\(inp\)\);/.test(html), 'the suggestion list is scoped');
+ok(/const firms=wfCompanyList\(wfInWizard\(inp\)\);/.test(html), 'the suggestion list is scoped');
+ok(/function wfCompanyList\(inWizard\)\{[\s\S]{0,200}wfPeopleList\(inWizard\)/.test(html),
+   'and the firms are built from that same scoped list of people, so the wizard still offers only '
+   +'its own team');
 const co = html.split('function wfCompanyOf')[1].split('let CD_PICK')[0];
 ok(/inWizard \? fromWizard\(\)/.test(co), 'the company lookup is scoped the same way');
 ok(/wfCompanyOf\(inp\.value, wfInWizard\(inp\)\)/.test(html), 'and is called with the scope');

@@ -32,11 +32,12 @@ asArchitect();
   ok(!/×<\/button>/.test(h) && !/\\u00d7<\/button>/.test(h),
      'no remove button — left out rather than hidden, since a rule can be overridden and an element never rendered cannot');
   ok(/class="wf-name"[^>]*readonly/.test(h), 'the step name cannot be typed into');
-  ok(/class="wf-person"[^>]*readonly/.test(h), 'nor the assignee');
+  ok(/class="wf-firm"[^>]*readonly/.test(h), 'nor the firm it is assigned to');
   ok(/class="wf-par"[^>]*disabled/.test(h), 'the parallel box cannot be ticked');
   ok((h.match(/disabled/g)||[]).length>=2, 'and neither can all-must-sign');
-  ok(/Architect Review/.test(h) && /Test Architect/.test(h),
-     'while the chain itself still reads — the point is to show it, not to hide it');
+  ok(/Architect Review/.test(h) && /Architect 2/.test(h),
+     'while the chain itself still reads \u2014 the point is to show it, not to hide it \u2014 naming the '
+     +'firm, since that is who owes the step');
 }
 ok(!/\+ Add Step/.test(block()), 'no Add Step');
 
@@ -47,8 +48,9 @@ asFidevia();
   ok(/×<\/button>|\\u00d7<\/button>/.test(h), 'the remove button is back');
   ok(!/class="wf-name"[^>]*readonly/.test(h), 'the step name is editable');
   ok(!/class="wf-par"[^>]*disabled/.test(h), 'and the boxes tick');
-  ok(/class="wf-co"[^>]*readonly/.test(h),
-     'except Company, which was always derived from the assignee and readonly for everyone');
+  ok(!/class="wf-co"/.test(h),
+     'and there is no separate Company column any more \u2014 it was derived from the assignee, and the '
+     +'assignee is now the company');
 }
 ok(/\+ Add Step/.test(block()), 'and Add Step is there');
 

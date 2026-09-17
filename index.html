@@ -3942,29 +3942,34 @@ const WF_TEMPLATES={
 // empty, WF_TEMPLATES never applied to anything made in the wizard. One set of
 // defaults now, in WF_TEMPLATES, rendered and saved.
 function wfMayEditSettings(){ return IS_ADMIN && !viewingAsExternal(); }
-function wfStepRow(prefix,key,name,person,parallel,requireAll){
+function wfStepRow(prefix,key,name,person,parallel,requireAll,company){
   const ed=wfMayEditSettings();
   const lock=ed?'':' readonly style="background:#f0efe9;color:#555;cursor:default;"';
   const dis=ed?'':' disabled';
+  // A step belongs to a firm, not to a desk. One person's absence used to stop a
+  // whole office \u2014 nobody else at Moore could move a submittal sitting on Bob
+  // Potter \u2014 and review permission has been matched on the firm for a while;
+  // this is the assignment catching up. A chain that still names somebody reads
+  // their firm off the contact sheet, so nothing has to be re-entered.
+  const firm=String(company||'').trim() || wfCompanyOf(person)||String(person||'').trim();
   return '<div class="wf-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;">'
     +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Step</label><input class="wf-name" autocomplete="off" value="'+esc(name||'')+'" placeholder="Review step"'+lock+'></div>'
-    +'<div class="field" style="flex:1.2;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-person" autocomplete="off" value="'+esc(person||'')+'"'+lock+' placeholder="Start typing a name…" oninput="wfUpdateCo(this);wfShowAC(this)" onfocus="wfShowAC(this)" onchange="wfUpdateCo(this)"></div>'
-    +'<div class="field" style="flex:1.1;margin:0;"><label style="font-size:11px;color:#888;">Company</label><input class="wf-co" autocomplete="off" readonly placeholder="—" style="background:#f0efe9;color:var(--olive-900);font-weight:600;cursor:default;"></div>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one person in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+dis+' style="width:auto;margin-right:4px;">Parallel</label>'
-    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every person in this group must act before the item moves on. A parallel group already requires this — two reviewers means two reviews — so this only adds anything to a step standing on its own."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+dis+' style="width:auto;margin-right:4px;">All must sign</label>'
+    +'<div class="field" style="flex:1.4;margin:0;"><label style="font-size:11px;color:#888;">Assign to</label><input class="wf-firm" autocomplete="off" value="'+esc(firm)+'"'+lock+' placeholder="Start typing a company\u2026" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"></div>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Runs alongside the step above it. Any one firm in the group can move the item on."><input type="checkbox" class="wf-par" '+(parallel?'checked':'')+dis+' style="width:auto;margin-right:5px;vertical-align:middle;"> Parallel</label>'
+    +'<label style="font-size:12px;color:#666;white-space:nowrap;padding-bottom:9px;" title="Every firm in this group must act before the item moves on. A parallel group already requires this \u2014 two reviewers means two reviews \u2014 so this only adds anything to a group of one."><input type="checkbox" class="wf-all" '+(requireAll?'checked':'')+dis+' style="width:auto;margin-right:5px;vertical-align:middle;"> All must sign</label>'
     +(ed ? '<button type="button" class="btn-secondary wf-edit" style="padding:9px 11px;" onclick="this.closest(\'.wf-row\').remove()">\u00d7</button>' : '')
     +'</div>';
 }
 function wfBlock(prefix,key,label,steps){
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">'
     +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(label)+'</div>'
-    +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel,s.requireAll)).join('')+'</div>'
+    +'<div id="'+prefix+'-'+key+'-rows">'+(steps||[]).map(s=>wfStepRow(prefix,key,s.name,s.person,s.parallel,s.requireAll,s.company)).join('')+'</div>'
     +(wfMayEditSettings()
         ? '<button type="button" class="btn-secondary wf-edit" style="padding:5px 11px;margin-top:2px;" onclick="wfAddStep(\''+prefix+'\',\''+key+'\')">+ Add Step</button>'
         : '')
     +'</div>';
 }
-function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false,false)); }
+function wfAddStep(prefix,key){ const el=document.getElementById(prefix+'-'+key+'-rows'); if(el) el.insertAdjacentHTML('beforeend', wfStepRow(prefix,key,'','',false,false,'')); }
 function wfRenderAll(prefix, containerId, workflows, peopleList){
   const el=document.getElementById(containerId); if(!el) return;
   const dl='<datalist id="'+prefix+'-people">'+(peopleList||[]).map(p=>{ const nm=(typeof p==='string')?p:(p&&p.name)||''; const co=(typeof p==='string')?'':((p&&p.company)||''); return '<option value="'+esc(nm)+'"'+(co?' label="'+esc(nm+' — '+co)+'"':'')+'>'; }).join('')+'</datalist>';
@@ -3983,10 +3988,13 @@ function wfGather(prefix){
   WF_TYPES.forEach(([k])=>{ const el=document.getElementById(prefix+'-'+k+'-rows'); if(!el) return;
     out[k]=[...el.querySelectorAll('.wf-row')].map(r=>({
       name:(r.querySelector('.wf-name').value||'').trim(),
-      person:(r.querySelector('.wf-person').value||'').trim(),
+      // The firm owes the step. Nobody is named: the signature records whoever
+      // actually pressed it, which is the part that has to be exact.
+      company:(r.querySelector('.wf-firm').value||'').trim(),
+      person:'',
       parallel:r.querySelector('.wf-par').checked,
       requireAll:!!(r.querySelector('.wf-all')&&r.querySelector('.wf-all').checked)
-    })).filter(s=>s.name||s.person);
+    })).filter(s=>s.name||s.company);
   });
   return out;
 }
@@ -5758,7 +5766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 12:34';
+const BUILD_STAMP='2026-09-17 16:43';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -14116,7 +14124,12 @@ function payAdvanceChain(row, by, outcome){
     row['Workflow Done']=JSON.stringify(done);
     if(waiting.length){
       row['Workflow Status']='In Review';
-      return { complete:false, waiting:waiting, names:waiting, emails:waiting.map(wfEmailOf).filter(Boolean),
+      // Everyone at the firms still to act. waiting holds firm labels, so the
+      // old wfEmailOf lookup against a contact NAME found nobody at all once
+      // steps stopped naming people.
+      const stillOwed=steps.slice(gs,ge+1).filter((st,n2)=>!answered(gs+n2));
+      return { complete:false, waiting:waiting, names:waiting,
+               emails:stillOwed.reduce((a,st)=>a.concat(wfStepEmails(st, payNotifyFieldFor(row))),[]),
                step:(steps[gs]&&steps[gs].name)||'' };
     }
     row['Workflow Done']=JSON.stringify([]);
@@ -14134,7 +14147,9 @@ function payAdvanceChain(row, by, outcome){
   return { complete:false, step:stepName,
            names: group.map(wfPartyLabel).filter(x=>{ if(!x) return false;
              const k=x.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; }),
-           emails: group.map(st=>String(st.email||'').trim()||wfEmailOf(st.person)).filter(Boolean) };
+           // A step belongs to a firm, so the firm hears about it. One address
+           // per step meant one person's inbox stood for a whole office.
+           emails: group.reduce((a,st)=>a.concat(wfStepEmails(st)),[]) };
 }
 // What the row says while the chain is still running. "Pencil approved" with
 // an architect still to look at it is the dashboard announcing a decision
@@ -15540,19 +15555,33 @@ function wfPeopleList(inWizard){
              .sort((a,b)=>a.name.localeCompare(b.name));
 }
 function wfCloseAC(){ document.querySelectorAll('.wf-ac').forEach(el=>el.remove()); }
+// Every firm on the project, with how many people would hear about a step
+// assigned to it \u2014 which is the number worth seeing before you assign one.
+function wfCompanyList(inWizard){
+  const by={};
+  wfPeopleList(inWizard).forEach(function(p){
+    const co=String(p.company||'').trim(); if(!co) return;
+    const k=co.toLowerCase();
+    if(!by[k]) by[k]={name:co, n:0, roles:[]};
+    by[k].n++; if(p.role && by[k].roles.length<3) by[k].roles.push(p.role);
+  });
+  return Object.keys(by).map(k=>by[k]).sort((a,b)=>a.name.localeCompare(b.name));
+}
 function wfShowAC(inp){
   wfCloseAC();
   const q=(inp.value||'').trim().toLowerCase();
-  const people=wfPeopleList(wfInWizard(inp));
-  const matches=q ? people.filter(p=>p.name.toLowerCase().startsWith(q)) : people;
+  const firms=wfCompanyList(wfInWizard(inp));
+  const matches=q ? firms.filter(p=>p.name.toLowerCase().indexOf(q)>=0) : firms;
   if(!matches.length) return;
   const box=document.createElement('div');
   box.className='wf-ac';
   box.style.cssText='position:absolute;z-index:1200;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 26px rgba(0,0,0,0.16);max-height:230px;overflow-y:auto;min-width:220px;margin-top:2px;';
-  box.innerHTML=matches.map(p=>'<div class="wf-ac-item" data-name="'+esc(p.name)+'" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--khaki-100);"><div style="font-weight:600;color:var(--ink);">'+esc(p.name)+'</div>'+(p.company?'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+esc(p.company)+(p.role?' · '+esc(p.role):'')+'</div>':'')+'</div>').join('');
+  box.innerHTML=matches.map(p=>'<div class="wf-ac-item" data-name="'+esc(p.name)+'" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--khaki-100);"><div style="font-weight:600;color:var(--ink);">'+esc(p.name)+'</div>'
+    +'<div style="font-size:11px;color:var(--olive-700);font-weight:600;">'+p.n+' '+(p.n===1?'person':'people')
+    +(p.roles.length?' \u00b7 '+esc(p.roles.join(', ')):'')+'</div></div>').join('');
   const wrap=inp.parentElement; wrap.style.position='relative'; wrap.appendChild(box);
   box.querySelectorAll('.wf-ac-item').forEach(it=>{
-    it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-name'); wfUpdateCo(inp); wfCloseAC(); });
+    it.addEventListener('mousedown',function(e){ e.preventDefault(); inp.value=it.getAttribute('data-name'); wfCloseAC(); });
     it.addEventListener('mouseenter',function(){ it.style.background='var(--cream)'; });
     it.addEventListener('mouseleave',function(){ it.style.background=''; });
   });
@@ -16002,6 +16031,29 @@ function myCompany(){
 // The firm a step belongs to. Stored on steps that carry one — a returned step
 // records it — and otherwise read off the named person's contact record, which
 // is the same lookup Workflow Settings uses to fill its Company column.
+// Everyone a step should reach. A step belongs to a firm, so the whole office
+// hears about it — that is the point of assigning one. Restricted to the people
+// carrying that module's notify flag, because the firm's whole contact list is
+// not its review team, and falling back to the address on the step itself so a
+// chain written before this still reaches somebody.
+function wfStepEmails(st, notifyField){
+  const out=[]; const seen=new Set();
+  const add=e=>{ const v=String(e||'').trim().toLowerCase();
+    if(v && v.indexOf('@')>0 && !seen.has(v)){ seen.add(v); out.push(v); } };
+  const co=String(wfStepCompany(st)||'').trim().toLowerCase();
+  if(co){
+    (allData.contacts||[]).forEach(function(c){
+      if(String(c['Company']||'').trim().toLowerCase()!==co) return;
+      if(notifyField && String(c[notifyField]||'').trim().toLowerCase()!=='yes') return;
+      add(c['Email']);
+    });
+  }
+  // Nobody at that firm is down for this module, or the step names a person and
+  // no firm could be worked out. Better one address than none: a step nobody is
+  // told about is a step nobody answers.
+  if(!out.length){ add(st&&st.email); add(wfEmailOf(st&&st.person)); }
+  return out;
+}
 function wfStepCompany(st){
   if(!st) return '';
   return String(st.company||'').trim() || String(wfCompanyOf(st.person)||'').trim();
