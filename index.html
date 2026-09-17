@@ -1636,7 +1636,9 @@
           <div class="field"><label>Message heading</label><input id="nt-pay-intro" placeholder="Payment Application: {title}"></div>
           <p class="file-hint" style="margin:6px 0 0;">Who these reach is not a matter of ticking boxes. A payment
             application is one contractor's money, so it goes to Fidevia, the architect and the engineers, and to
-            that contractor only \u2014 never to another contractor on the job. The owner joins once the pencil copy
+            that contractor only \u2014 never to another contractor on the job. The design team is taken from the project's own review
+            chains — all of them, not only the payment application one — so an engineer who reviews submittals
+            is copied whether or not they sit on a payment application step. The owner joins once the pencil copy
             is approved: a draft still being worked through is not yet something they will be asked to pay, and a
             pencil sent back to be corrected keeps the same four on it. Anybody can be taken off on the Contacts
             tab.</p>
@@ -5502,7 +5504,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 01:29';
+const BUILD_STAMP='2026-09-17 01:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6038,10 +6040,30 @@ function payChainParties(row){
   ['Pencil','Final'].forEach(t=>{
     try{ (wfStepsFor('pay_apps', co, Object.assign({}, row, {'Copy Type':t}))||[]).forEach(add); }catch(e){}
   });
+  // Every other module's chain as well. An engineer who reviews submittals but
+  // is on no payment application step is still this project's engineer, and
+  // "copy the engineers too" is not a question of which chain somebody happens
+  // to sit on. The exclusion below is what keeps this safe.
+  ['rfi','co','sub'].forEach(k=>{
+    try{ (wfStepsFor(k, co, row)||[]).forEach(add); }catch(e){}
+  });
   // Anything spliced onto this row in particular — a step somebody added, or a
   // reviewer a step was handed to — counts as much as the configured chain.
   try{ (wfEffectiveSteps('pay_apps', row)||[]).forEach(add); }catch(e){}
   return { people, firms };
+}
+// Chains name contractors too, and a rival contractor reading what Summit
+// Builders billed is the one thing this whole rule exists to prevent. Being on
+// a chain gets you onto a payment application thread only if you are not
+// somebody else's contractor.
+function payIsRivalContractor(contact, theirs){
+  const norm=v=>String(v||'').trim().toLowerCase();
+  const co=norm(contact&&contact['Company']);
+  // No guard for a blank company: no contractor is recorded without a name, so
+  // a blank matches none of them below.
+  if(co===norm(theirs)) return false;
+  return ((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .some(c=>norm(c.name)===co);
 }
 function payNotifyAudience(row){
   const norm=v=>String(v||'').trim().toLowerCase();
@@ -6056,7 +6078,8 @@ function payNotifyAudience(row){
     if(String(c['Notify - Pay App']||'').trim().toLowerCase()==='no') return false;
     if(contactIsFidevia(c)) return true;
     if(contactIsDesign(c)) return true;
-    if(chain.people.has(norm(c['Name'])) || chain.firms.has(norm(c['Company']))) return true;
+    if((chain.people.has(norm(c['Name'])) || chain.firms.has(norm(c['Company'])))
+       && !payIsRivalContractor(c, theirs)) return true;
     if(ownerOn && contactIsOwner(c)) return true;
     return !!theirs && norm(c['Company'])===theirs;
   });

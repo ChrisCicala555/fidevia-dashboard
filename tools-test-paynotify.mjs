@@ -135,6 +135,72 @@ console.log('The chain is the list, whatever the Role column happens to say');
     wfStepsFor=function(){ return []; }; wfEffectiveSteps=function(){ return []; };`);
 }
 
+console.log('Every chain on the project, not only the payment application one');
+{
+  // "Actually let's copy the engineers too." An engineer who reviews submittals
+  // but sits on no payment application step is still this project's engineer.
+  P.run(`PROJECT_ROLES={};
+    currentProject={name:'X',config:{contractors:[
+      {name:'Summit Builders'},{name:'Delaney Mechanical'},{name:'Gorilla Construction'}]}};
+    allData.contacts=[
+      {'Name':'Christopher Cicala','Company':'Fidevia','Role':'CM','Email':'chris@fidevia.com'},
+      {'Name':'Quiet Architect','Company':'Architect 2','Role':'Principal','Email':'arch@example.com'},
+      {'Name':'Quiet Engineer','Company':'Engineer 1','Role':'Associate','Email':'eng@example.com'},
+      {'Name':'Sam Summit','Company':'Summit Builders','Role':'PM','Email':'sam@summit.example'},
+      {'Name':'Dana Delaney','Company':'Delaney Mechanical','Role':'PM','Email':'dana@delaney.example'}];
+    wfStepsFor=function(k){
+      if(k==='pay_apps') return [{name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia'},
+                                 {name:'Architect Review', person:'Quiet Architect', company:'Architect 2'}];
+      if(k==='sub') return [{name:'Engineer Review', person:'Quiet Engineer', company:'Engineer 1'}];
+      return [];
+    };
+    wfEffectiveSteps=function(){ return []; };`);
+  ok(P.run(`contactIsDesign(allData.contacts[2])`)===false,
+     'an engineer whose Role column says "Associate" does not read as the design team either');
+  ok(to().includes('eng@example.com'),
+     'but the submittal chain names them, so they are copied \u2014 which is the ask');
+  ok(to().includes('arch@example.com'), 'with the architect from the payment application chain');
+  ok(to().includes('chris@fidevia.com') && to().includes('sam@summit.example'),
+     'and the two who were never in doubt');
+}
+{
+  // The safeguard. Chains name contractors as well, and a rival reading what
+  // Summit Builders billed is the one thing this rule exists to prevent.
+  P.run(`wfStepsFor=function(k){
+      return k==='rfi' ? [{name:'GC Review', person:'Dana Delaney', company:'Delaney Mechanical'}] : [];
+    };`);
+  ok(!to().includes('dana@delaney.example'),
+     'another contractor on some other chain is still not copied on this application');
+  ok(to(ROW({'Contractor':'Delaney Mechanical','Company':'Delaney Mechanical'}))
+       .includes('dana@delaney.example'), 'though they are on their own');
+  ok(P.run(`payIsRivalContractor({'Company':'Delaney Mechanical'},'Summit Builders')`)===true,
+     'the test is simply whether they are a different contractor on this job');
+  ok(P.run(`payIsRivalContractor({'Company':'Architect 2'},'Summit Builders')`)===false,
+     'a design firm is not a contractor');
+  ok(P.run(`payIsRivalContractor({'Company':'Summit Builders'},'Summit Builders')`)===false,
+     'and the contractor whose application it is is not a rival to themselves');
+  ok(P.run(`payIsRivalContractor({'Company':''},'Summit Builders')`)===false,
+     'somebody with no firm recorded is not excluded by a firm they do not have \u2014 '
+     +'no contractor is recorded without a name, so a blank matches none of them');
+}
+{
+  // Fidevia, the owner and the submitting contractor do not come through the
+  // chain at all, so the exclusion cannot reach them.
+  P.run(`wfStepsFor=function(){ return []; };`);
+  ok(to().includes('chris@fidevia.com') && to().includes('sam@summit.example'),
+     'with no chains configured, the four who are named by rule are still on it');
+  // Back to the working fixtures.
+  P.run(`currentProject={name:'X',config:{owner:'Riverside School District'}};
+    allData.contacts=[
+      {'Name':'Christopher Cicala','Company':'Fidevia','Role':'CM','Email':'chris@fidevia.com'},
+      {'Name':'Test Architect','Company':'Architect 2','Role':'Architect','Email':'arch@example.com'},
+      {'Name':'Test Engineer','Company':'Engineer 1','Role':'Structural Engineer','Email':'eng@example.com'},
+      {'Name':'Sam Summit','Company':'Summit Builders','Role':'PM','Email':'sam@summit.example'},
+      {'Name':'Dana Delaney','Company':'Delaney Mechanical','Role':'PM','Email':'dana@delaney.example'},
+      {'Name':'Owen Owner','Company':'Riverside School District','Role':'Business Manager','Email':'owen@rsd.example'}];
+    wfStepsFor=function(){ return []; }; wfEffectiveSteps=function(){ return []; };`);
+}
+
 console.log('The owner joins when the pencil is approved, and not before');
 {
   P.run(`currentProject={name:'X',config:{owner:'Riverside School District'}};`);
