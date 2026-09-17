@@ -939,6 +939,7 @@
       <h3 style="font-size:16px;margin:0 0 6px;">Contractors &amp; Contracts</h3>
       <p class="form-desc" style="margin-bottom:10px;">List each prime contractor and their original contract amount. This seeds the financial summary and the payment-application dropdown. You can add or remove contractors later.</p>
       <div id="np-contractors"></div>
+      <div id="np-contractor-note"></div>
       <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--khaki-300);">
         <h4 style="font-size:14px;margin:0 0 4px;color:var(--olive-900);">Allowances</h4>
         <p class="form-desc" style="margin:0 0 12px;max-width:640px;">Sums carried inside a contract for scope that is not yet defined. Lettered A, B, C for reference on paperwork. A change order can draw against one, and the remainder is what still sits in the contract.</p>
@@ -2012,6 +2013,7 @@
     <div class="modal-body">
       <p class="form-desc" style="margin-bottom:10px;">Add, edit, or deactivate contractors. Changes update the financial summary and the payment-application options.</p>
       <div id="contractors-list"></div>
+      <div id="contractors-note"></div>
       <button type="button" class="btn-secondary" onclick="addContractorEditRow()" style="margin-top:6px;">+ Add Contractor</button>
     </div>
     <div class="modal-footer">
@@ -3565,8 +3567,43 @@ function wizAddContractor(){
   div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select autocomplete="off" class="cn-role">'+contractorRoleOptions('')+'</select></div>'
     +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Example Contracting LLC"></div>'
     +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:12px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="1,000,000"></div>'
-    +(idx>0?'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
+    // A firm can hold several of the four primes, and each is its own contract
+    // with its own sum — so it is another row, not another tick, because one
+    // tick could not carry a second contract amount.
+    +'<div class="field" style="margin:0;flex:0 0 116px;"><label style="font-size:12px;">&nbsp;</label>'
+      +'<button type="button" class="row-act" style="margin:0;" title="This firm holds another of the primes — a second contract, with its own sum" onclick="wizAddTrade(this)">+ Trade</button></div>'
+    +(idx>0?'<button type="button" onclick="wizDropContractor(this)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
   wrap.appendChild(div);
+  div.addEventListener('input', wizContractorNote);
+  div.addEventListener('change', wizContractorNote);
+  wizContractorNote();
+}
+// Another prime for the firm already on that row: same name, blank trade, blank
+// contract. Copying the name is the whole point — typed twice it is two firms.
+function wizAddTrade(btn){
+  const row=btn.closest('.wiz-contractor-row'); if(!row) return;
+  const nm=(row.querySelector('.cn-name')||{}).value||'';
+  wizAddContractor();
+  const wrap=document.getElementById('np-contractors');
+  const fresh=wrap.lastElementChild;
+  const f=fresh&&fresh.querySelector('.cn-name'); if(f) f.value=nm;
+  const t=fresh&&fresh.querySelector('.cn-role'); if(t) t.focus();
+  wizContractorNote();
+}
+function wizDropContractor(btn){
+  const row=btn.closest('.wiz-contractor-row'); if(row) row.remove();
+  wizContractorNote();
+}
+// Reads back what a firm holding several primes has just been set up to be,
+// where somebody can see it before the project is written.
+function wizContractorNote(){
+  const el=document.getElementById('np-contractor-note'); if(!el) return;
+  let notes=[], bad=[];
+  try{ notes=multiTradeNote(wizGatherContractors()); bad=contractLineProblems(wizGatherContractors()); }catch(e){}
+  el.innerHTML = (bad.length
+      ? '<p class="file-hint" style="margin:6px 0 0;color:#8a5a00;font-weight:600;">'+esc(bad.join(' '))+'</p>' : '')
+    + (notes.length
+      ? '<p class="file-hint" style="margin:6px 0 0;">'+esc(notes.join(' '))+'</p>' : '');
 }
 function wizShow(){
   document.querySelectorAll('.wiz-step').forEach(el=>{ el.style.display = (parseInt(el.getAttribute('data-step'))===WIZ_STEP)?'block':'none'; });
@@ -3973,10 +4010,9 @@ async function createProject(){
   // raised them. Worth stopping at creation rather than discovering it on a
   // printed log.
   {
-    const noTrade=wizGatherContractors().filter(c=>!c.role).map(c=>c.name);
-    if(noTrade.length){
-      alert('Set a trade for:\n\n  \u2022 '+noTrade.join('\n  \u2022 ')
-        +'\n\nThe trade appears in every RFI, submittal and change order number for that firm.');
+    const problems=contractLineProblems(wizGatherContractors());
+    if(problems.length){
+      alert('The contracts need sorting out first:\n\n  \u2022 '+problems.join('\n  \u2022 '));
       WIZ_STEP=4; wizShow();
       return;
     }
@@ -5621,7 +5657,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 11:42';
+const BUILD_STAMP='2026-09-17 11:50';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7032,8 +7068,38 @@ function addContractorEditRow(c){
           return a? (a+' set') : 'None'; })()
       +'</div></div>'
     +'<div class="field" style="margin:0;flex:0 0 95px;"><label style="font-size:12px;">Status</label><select class="ce-active"><option value="1"'+(c.active!==false?' selected':'')+'>Active</option><option value="0"'+(c.active===false?' selected':'')+'>Inactive</option></select></div>'
-    +'<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>';
+    +'<div class="field" style="margin:0;flex:0 0 100px;"><label style="font-size:12px;">&nbsp;</label>'
+      +'<button type="button" class="row-act" style="margin:0;" title="This firm holds another of the primes \u2014 a second contract, with its own sum" onclick="ceAddTrade(this)">+ Trade</button></div>'
+    +'<button type="button" onclick="ceDropRow(this)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>';
   wrap.appendChild(div);
+  div.addEventListener('input', ceNote); div.addEventListener('change', ceNote);
+  ceNote();
+}
+function ceRows(){
+  return [...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>({
+    role:(r.querySelector('.ce-role')||{}).value||'',
+    name:String((r.querySelector('.ce-name')||{}).value||'').trim(),
+    contract:(r.querySelector('.ce-contract')||{}).value||''}));
+}
+// Another prime for the firm on that row. The name is carried over, because
+// typed a second time it is a second firm as far as every total is concerned.
+function ceAddTrade(btn){
+  const row=btn.closest('.contr-edit-row'); if(!row) return;
+  const nm=(row.querySelector('.ce-name')||{}).value||'';
+  addContractorRow({name:nm, role:'', contract:''});
+  const wrap=document.getElementById('contractors-list');
+  const t=wrap.lastElementChild && wrap.lastElementChild.querySelector('.ce-role');
+  if(t) t.focus();
+  ceNote();
+}
+function ceDropRow(btn){ const r=btn.closest('.contr-edit-row'); if(r) r.remove(); ceNote(); }
+function ceNote(){
+  const el=document.getElementById('contractors-note'); if(!el) return;
+  let notes=[], bad=[];
+  try{ notes=multiTradeNote(ceRows()); bad=contractLineProblems(ceRows()); }catch(e){}
+  el.innerHTML = (bad.length
+      ? '<p class="file-hint" style="margin:6px 0 0;color:#8a5a00;font-weight:600;">'+esc(bad.join(' '))+'</p>' : '')
+    + (notes.length ? '<p class="file-hint" style="margin:6px 0 0;">'+esc(notes.join(' '))+'</p>' : '');
 }
 async function saveContractors(){
   const rows=[...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>{
@@ -7041,13 +7107,23 @@ async function saveContractors(){
     // Allowances are edited in Settings, on their own tab. Whatever is already
     // recorded is carried through untouched rather than being rebuilt from a
     // field that no longer exists here.
+    // Carried forward by contract, not by company: a firm holding two primes has
+    // an allowance set against each, and matching on the name alone would copy
+    // the mechanical allowances onto the plumbing contract.
     const prev=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
-      .find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase());
+      .find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase()
+              && String(x.role||'').trim().toUpperCase()===String(role||'').trim().toUpperCase());
     const carry={};
     if(prev){ if(prev.allowances) carry.allowances=prev.allowances;
               else if(prev.allowance!=null) carry.allowance=prev.allowance; }
     return name?Object.assign({role,name,contract,active},carry):null;
   }).filter(Boolean);
+  // A firm listed once per prime is ordinary. The same firm on the same prime
+  // twice is two contracts nothing could tell apart, and is refused rather than
+  // warned about — every figure keyed on the trade would take whichever came
+  // first, and nothing on screen would say so.
+  { const dupes=contractLineProblems(rows).filter(m=>/listed twice|needs its own trade/.test(m));
+    if(dupes.length){ alert('This cannot be saved as it stands:\n\n  \u2022 '+dupes.join('\n  \u2022 ')); return; } }
   // A missing trade would silently number that firm's items as Fidevia's.
   const noTrade=rows.filter(r=>!r.role).map(r=>r.name);
   if(noTrade.length && !confirm('No trade is set for:\n\n  \u2022 '+noTrade.join('\n  \u2022 ')
@@ -12645,6 +12721,51 @@ function rowOnLine(row, line){
 // Every trade one company holds on this job. One entry for a firm with a single
 // contract, which is the ordinary case and reads the same as it always did.
 function tradesForCompany(name){ return linesForCompany(name).map(tradeKeyOf).filter(Boolean); }
+// A firm can hold several of the four primes, so the same name on two rows is
+// ordinary. The same name on the same TRADE twice is not: that is two contracts
+// nothing could ever tell apart, and every figure keyed on the trade would take
+// whichever came first. Said before the project is written rather than found
+// later in a total that quietly disagrees with the paperwork.
+function contractLineProblems(lines){
+  const out=[];
+  const named=(lines||[]).filter(c=>String((c&&c.name)||'').trim());
+  const noTrade=named.filter(c=>!String(c.role||'').trim());
+  noTrade.forEach(c=>out.push(c.name+' — no trade set. The trade numbers every RFI, submittal and '
+    +'change order for that firm.'));
+  const seen={};
+  named.forEach(function(c){
+    if(!String(c.role||'').trim()) return;
+    const k=coNorm(c.name)+'|'+tradeKeyOf(c);
+    seen[k]=(seen[k]||0)+1;
+  });
+  Object.keys(seen).forEach(function(k){
+    if(seen[k]<2) return;
+    const parts=k.split('|');
+    out.push(parts[0]+' is listed twice as '+parts[1]+'. A firm can hold several primes, but not the '
+      +'same one twice — nothing could tell the two contracts apart.');
+  });
+  // Two lines, one named, is unresolvable in the other direction: a row filed
+  // by that firm cannot say which contract it belongs to.
+  const byName={};
+  named.forEach(c=>{ const nm=coNorm(c.name); (byName[nm]=byName[nm]||[]).push(c); });
+  Object.keys(byName).forEach(function(nm){
+    const g=byName[nm];
+    if(g.length>1 && g.some(c=>!String(c.role||'').trim()))
+      out.push(g[0].name+' holds more than one contract, so every one of them needs its own trade.');
+  });
+  return out;
+}
+// How a firm holding several primes reads back, for a note under the editor.
+function multiTradeNote(lines){
+  const byName={};
+  (lines||[]).forEach(function(c){
+    const nm=String((c&&c.name)||'').trim(); if(!nm) return;
+    (byName[coNorm(nm)]=byName[coNorm(nm)]||{name:nm,trades:[]}).trades.push(tradeLabelOf(c)||'?');
+  });
+  return Object.keys(byName).map(k=>byName[k]).filter(g=>g.trades.length>1)
+    .map(g=>g.name+' holds '+g.trades.join(' and ')+' — '+g.trades.length
+      +' contracts, and '+g.trades.length+' payment applications a month.');
+}
 // Every money lookup asks one question — is this row billed against the contract
 // I am adding up? — and each carried its own copy of a company-name compare,
 // which is why a firm holding two primes had both contracts claiming all of its

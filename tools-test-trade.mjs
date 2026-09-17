@@ -1,5 +1,6 @@
 // A trade has to be chosen, because the number carries it.
 import fs from 'fs';
+import { bootPage, SEED } from './tools-harness.mjs';
 const html = fs.readFileSync('index.html','utf8');
 let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
@@ -21,7 +22,9 @@ ok((html.match(/CONTRACTOR_ROLES\.map\(r=>.<option/g)||[]).length===1,
 // creation refuses
 {
   const cp = html.split('async function createProject')[1].slice(0, 1200);
-  ok(/wizGatherContractors\(\)\.filter\(c=>!c\.role\)/.test(cp), 'creation checks for a missing trade');
+  ok(/const problems=contractLineProblems\(wizGatherContractors\(\)\);/.test(cp),
+     'creation checks the contracts \u2014 a missing trade, and a firm listed twice on one prime, which is '
+     +'two contracts nothing could tell apart');
   ok(/WIZ_STEP=4; wizShow\(\);/.test(cp), 'and sends you to the step to fix it');
   ok(/numbered CM — as though Fidevia had/.test(cp), 'the consequence is spelled out');
   ok(cp.indexOf('noTrade') < cp.indexOf('showStatus'), 'before anything is created');
@@ -46,6 +49,28 @@ ok(!/class="ce-allowance"/.test(html), 'the superseded allowance field is remove
 ok(/const tradeCell = c\.role/.test(html), 'the financial summary shows the trade');
 ok(/Not set</.test(html), 'and flags a missing one rather than printing blank');
 ok(/out\.push\('<tr><td>'\+tradeCell/.test(html), 'in the contractor row');
+
+console.log('A firm can hold several primes, but not one of them twice');
+{
+  const P2=bootPage(); P2.run(SEED);
+  const probs=(rows)=>P2.run(`contractLineProblems(${JSON.stringify(rows)})`);
+  ok(probs([{name:'Garden Spot',role:'MC'},{name:'Garden Spot',role:'PC'}]).length===0,
+     'mechanical and plumbing under one firm is ordinary \u2014 two contracts, and the job is multi-prime');
+  ok(/listed twice as MC/.test(probs([{name:'Garden Spot',role:'MC'},{name:'Garden Spot',role:'MC'}]).join(' ')),
+     'the same prime twice is refused: nothing could tell the two contracts apart');
+  ok(/needs its own trade/.test(probs([{name:'Garden Spot',role:'MC'},{name:'Garden Spot',role:''}]).join(' ')),
+     'and a second line with no trade is unresolvable in the other direction \u2014 a row filed by that '
+     +'firm could not say which contract it belongs to');
+  ok(probs([{name:'Summit',role:''}]).length===1,
+     'while one firm with no trade is the old warning, unchanged');
+  ok(probs([{name:'',role:'MC'}]).length===0, 'an empty row is not yet a problem, it is just empty');
+  const note=P2.run(`multiTradeNote(${JSON.stringify([{name:'Garden Spot',role:'MC'},{name:'Garden Spot',role:'PC'}])})`);
+  ok(/Garden Spot holds MC and PC/.test(note.join(' ')), 'and what a firm holds is read back \u2014 '+note.join(' '));
+  ok(/\u2014 2 contracts, and 2 payment applications a month/.test(note.join(' ')),
+     'saying the consequence, since that is the thing somebody has to plan for');
+  ok(P2.run(`multiTradeNote(${JSON.stringify([{name:'Summit',role:'GC'}])}).length`)===0,
+     'a firm holding one prime needs nothing said about it');
+}
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-trade.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);
