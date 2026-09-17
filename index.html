@@ -5757,7 +5757,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 12:26';
+const BUILD_STAMP='2026-09-17 12:31';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7152,82 +7152,126 @@ function renderFinancials(){
 function openContractors(){ renderContractorsEditor(); const s=document.getElementById('contractors-status'); if(s){s.textContent='';s.className='status-msg';} document.getElementById('contractors-backdrop').classList.add('open'); }
 function closeContractors(){ document.getElementById('contractors-backdrop').classList.remove('open'); }
 function renderContractorsEditor(){
-  const cfg=(currentProject&&currentProject.config)||{}; const list=cfg.contractors||[];
-  document.getElementById('contractors-list').innerHTML='';
-  if(list.length){ list.forEach(c=>addContractorEditRow(c)); } else { addContractorEditRow(); }
+  // Grouped by firm, the way the wizard asks for them and the way a job is
+  // awarded: one contractor, the primes it holds ticked against it. A row per
+  // trade read as a company per trade, which is how a firm ended up named
+  // "Garden Spot Mechanical - MC".
+  const wrap=document.getElementById('contractors-list'); wrap.innerHTML='';
+  const byName=[];
+  contractorLines().forEach(function(c){
+    const nm=String(c.name||'').trim(); if(!nm) return;
+    let g=byName.find(x=>coNorm(x.name)===coNorm(nm));
+    if(!g){ g={name:nm, lines:[]}; byName.push(g); }
+    g.lines.push(c);
+  });
+  // Deactivated contracts are edited here too — this is where they are brought
+  // back — so they are listed, ticked, with their Inactive state kept.
+  ((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c && c.active===false && String(c.name||'').trim())
+    .forEach(function(c){
+      let g=byName.find(x=>coNorm(x.name)===coNorm(c.name));
+      if(!g){ g={name:String(c.name).trim(), lines:[]}; byName.push(g); }
+      g.lines.push(c);
+    });
+  if(byName.length){ byName.forEach(g=>addContractorEditRow(g)); } else { addContractorEditRow(); }
 }
-function addContractorEditRow(c){
-  c=c||{}; const wrap=document.getElementById('contractors-list');
-  const div=document.createElement('div'); div.className='contr-edit-row'; div.style='display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select class="ce-role">'+contractorRoleOptions(c.role||'')+'</select></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Name</label><input class="ce-name" value="'+esc(c.name||'')+'"></div>'
-    +'<div class="field" style="margin:0;flex:0 0 120px;"><label style="font-size:12px;">Contract ($)</label><input class="ce-contract" value="'+esc(c.contract!=null?c.contract:'')+'"></div>'
-    +'<div class="field" style="margin:0;flex:0 0 115px;"><label style="font-size:12px;">Allowances</label>'
-      +'<div style="padding:9px 0 0;font-size:12.5px;color:var(--muted);">'
-        +(function(){ const a=(c.allowances&&c.allowances.length)?c.allowances.length:(payNum(c.allowance)?1:0);
-          return a? (a+' set') : 'None'; })()
-      +'</div></div>'
-    +'<div class="field" style="margin:0;flex:0 0 95px;"><label style="font-size:12px;">Status</label><select class="ce-active"><option value="1"'+(c.active!==false?' selected':'')+'>Active</option><option value="0"'+(c.active===false?' selected':'')+'>Inactive</option></select></div>'
-    +'<div class="field" style="margin:0;flex:0 0 100px;"><label style="font-size:12px;">&nbsp;</label>'
-      +'<button type="button" class="row-act" style="margin:0;" title="This firm holds another of the primes \u2014 a second contract, with its own sum" onclick="ceAddTrade(this)">+ Trade</button></div>'
-    +'<button type="button" onclick="ceDropRow(this)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>';
+function addContractorEditRow(g){
+  g=g||{name:'',lines:[]}; const wrap=document.getElementById('contractors-list');
+  const div=document.createElement('div'); div.className='contr-edit-row wiz-contractor-row';
+  const held={};
+  (g.lines||[]).forEach(function(l){ held[String(l.role||'').toUpperCase()]=l; });
+  div.innerHTML='<div class="field" style="margin:0 0 10px;"><label style="font-size:12px;">Contractor Name</label>'
+      +'<input class="cn-name" value="'+esc(g.name||'')+'"></div>'
+    +'<div class="cn-head"><span>Contracts held \u2014 tick each prime this firm was awarded</span>'
+      +'<span class="cn-head-amt">Original contract ($)</span></div>'
+    +'<div class="cn-trades">'+CONTRACTOR_ROLES.map(function(r){
+      const code=(r[0]==='Other')?'OC':r[0];
+      const on=held[String(r[0]).toUpperCase()];
+      return '<div class="cn-trade'+(on?' on':'')+'" data-code="'+esc(r[0])+'">'
+        +'<label class="cn-tick"><input type="checkbox" class="ct-on"'+(on?' checked':'')+' onchange="wizTradeToggle(this)">'
+          +'<span class="ct-code">'+esc(code)+'</span>'
+          +'<span class="ct-name">'+esc(r[1])+'</span></label>'
+        +(r[0]==='Other'?'<input class="ct-label" placeholder="Scope, e.g. Roofing" value="'+esc((on&&on.label)||'')+'"'+(on?'':' disabled')+'>':'')
+        +'<input class="ct-amt" placeholder="1,000,000" value="'+esc(on&&on.contract!=null?on.contract:'')+'"'+(on?'':' disabled')+'>'
+        // An allowance belongs to a contract, so it is counted against the trade
+        // rather than against the firm. Edited in Settings; said here so nobody
+        // retires a prime without seeing what goes with it.
+        +'<span class="ct-alw">'+(on&&on.allowances&&on.allowances.length
+            ? (on.allowances.length+' allowance'+(on.allowances.length===1?'':'s'))
+            : (on&&payNum(on.allowance)?'1 allowance':''))+'</span>'
+        +'</div>';
+    }).join('')+'</div>'
+    +'<div class="field" style="margin:10px 0 0;flex:0 0 130px;"><label style="font-size:12px;">Status</label>'
+      +'<select class="ce-active"><option value="1"'+((g.lines||[]).some(l=>l.active!==false)||!(g.lines||[]).length?' selected':'')+'>Active</option>'
+      +'<option value="0"'+((g.lines||[]).length&&(g.lines||[]).every(l=>l.active===false)?' selected':'')+'>Inactive</option></select></div>'
+    +'<button type="button" class="cn-drop" onclick="ceDropRow(this)" title="Remove this contractor">&times;</button>';
   wrap.appendChild(div);
   div.addEventListener('input', ceNote); div.addEventListener('change', ceNote);
   ceNote();
 }
+// The contracts on the panel, flat, in the shape everything downstream expects.
 function ceRows(){
-  return [...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>({
-    role:(r.querySelector('.ce-role')||{}).value||'',
-    name:String((r.querySelector('.ce-name')||{}).value||'').trim(),
-    contract:(r.querySelector('.ce-contract')||{}).value||''}));
+  const out=[];
+  [...document.querySelectorAll('#contractors-list .contr-edit-row')].forEach(function(row){
+    const name=String((row.querySelector('.cn-name')||{}).value||'').trim(); if(!name) return;
+    const active=String((row.querySelector('.ce-active')||{}).value||'1')==='1';
+    [...row.querySelectorAll('.cn-trade')].forEach(function(t){
+      if(!(t.querySelector('.ct-on')||{}).checked) return;
+      out.push({ role:t.getAttribute('data-code'), name:name,
+                 label:String((t.querySelector('.ct-label')||{}).value||'').trim(),
+                 contract:payNum((t.querySelector('.ct-amt')||{}).value), active:active });
+    });
+  });
+  return out;
 }
-// Another prime for the firm on that row. The name is carried over, because
-// typed a second time it is a second firm as far as every total is concerned.
-function ceAddTrade(btn){
-  const row=btn.closest('.contr-edit-row'); if(!row) return;
-  const nm=(row.querySelector('.ce-name')||{}).value||'';
-  addContractorRow({name:nm, role:'', contract:''});
-  const wrap=document.getElementById('contractors-list');
-  const t=wrap.lastElementChild && wrap.lastElementChild.querySelector('.ce-role');
-  if(t) t.focus();
-  ceNote();
+// Firms on the panel, including any with no prime ticked — which is a setup
+// nobody finished rather than a contract, and is worth saying out loud.
+function ceFirms(){
+  return [...document.querySelectorAll('#contractors-list .contr-edit-row')].map(function(row){
+    return { name:String((row.querySelector('.cn-name')||{}).value||'').trim(),
+             ticked:[...row.querySelectorAll('.ct-on')].filter(c=>c.checked).length };
+  }).filter(f=>f.name);
 }
 function ceDropRow(btn){ const r=btn.closest('.contr-edit-row'); if(r) r.remove(); ceNote(); }
 function ceNote(){
   const el=document.getElementById('contractors-note'); if(!el) return;
   let notes=[], bad=[];
-  try{ notes=multiTradeNote(ceRows()); bad=contractLineProblems(ceRows()); }catch(e){}
+  try{
+    const lines=ceRows();
+    notes=multiTradeNote(lines); bad=contractLineProblems(lines);
+    ceFirms().filter(f=>!f.ticked).forEach(f=>bad.push(f.name
+      +' \u2014 no trade ticked. Every RFI, submittal and change order for that firm is numbered by it.'));
+  }catch(e){}
   el.innerHTML = (bad.length
       ? '<p class="file-hint" style="margin:6px 0 0;color:#8a5a00;font-weight:600;">'+esc(bad.join(' '))+'</p>' : '')
     + (notes.length ? '<p class="file-hint" style="margin:6px 0 0;">'+esc(notes.join(' '))+'</p>' : '');
 }
 async function saveContractors(){
-  const rows=[...document.querySelectorAll('#contractors-list .contr-edit-row')].map(r=>{
-    const role=r.querySelector('.ce-role').value, name=r.querySelector('.ce-name').value.trim(), contract=parseFloat((r.querySelector('.ce-contract').value||'').replace(/[^0-9.]/g,''))||0, active=r.querySelector('.ce-active').value==='1';
+  const rows=ceRows().map(function(line){
     // Allowances are edited in Settings, on their own tab. Whatever is already
     // recorded is carried through untouched rather than being rebuilt from a
-    // field that no longer exists here.
-    // Carried forward by contract, not by company: a firm holding two primes has
-    // an allowance set against each, and matching on the name alone would copy
-    // the mechanical allowances onto the plumbing contract.
-    const prev=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
-      .find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase()
-              && String(x.role||'').trim().toUpperCase()===String(role||'').trim().toUpperCase());
+    // field that no longer exists here — and carried by CONTRACT, not by
+    // company: a firm holding two primes keeps a set against each, and matching
+    // on the name alone would copy the mechanical allowances onto the plumbing.
+    const prev=contractorLines().find(x=>coNorm(x.name)===coNorm(line.name)
+      && tradeKeyOf(x)===tradeKeyOf(line));
     const carry={};
     if(prev){ if(prev.allowances) carry.allowances=prev.allowances;
               else if(prev.allowance!=null) carry.allowance=prev.allowance; }
-    return name?Object.assign({role,name,contract,active},carry):null;
-  }).filter(Boolean);
+    return Object.assign({}, line, carry);
+  });
   // A firm listed once per prime is ordinary. The same firm on the same prime
   // twice is two contracts nothing could tell apart, and is refused rather than
   // warned about — every figure keyed on the trade would take whichever came
   // first, and nothing on screen would say so.
   { const dupes=contractLineProblems(rows).filter(m=>/listed twice|needs its own trade/.test(m));
     if(dupes.length){ alert('This cannot be saved as it stands:\n\n  \u2022 '+dupes.join('\n  \u2022 ')); return; } }
-  // A missing trade would silently number that firm's items as Fidevia's.
-  const noTrade=rows.filter(r=>!r.role).map(r=>r.name);
-  if(noTrade.length && !confirm('No trade is set for:\n\n  \u2022 '+noTrade.join('\n  \u2022 ')
-    +'\n\nRFI, submittal and change order numbers carry the trade, so theirs will read CM until it is set. Save anyway?')) return;
+  // A firm with no prime ticked holds no contract, so its items would number as
+  // Fidevia's and it would vanish from the financial summary. Worth stopping on.
+  { const none=ceFirms().filter(f=>!f.ticked).map(f=>f.name);
+    if(none.length && !confirm('No trade is ticked for:\n\n  \u2022 '+none.join('\n  \u2022 ')
+      +'\n\nThey hold no contract on this job, so they will not appear in the financial summary and '
+      +'their items will number as CM. Save anyway?')) return; }
   const btn=document.getElementById('contractors-save'); btn.disabled=true;
   try{
     currentProject.config=currentProject.config||{}; currentProject.config.contractors=rows;
@@ -11561,9 +11605,10 @@ function setTab(name){
 // The dates panel is authored inside the notifications markup for historical
 // reasons; move the node once so it lives under its own tab.
 function fillAllowances(){
-  const cs=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
-    .filter(c=>c.active!==false);
-  alwRenderAll('ps','ps-allowances',cs);
+  // One block per contract. An allowance is a sum carried inside a particular
+  // contract, so a firm holding the mechanical and the plumbing primes keeps a
+  // set against each — keyed on the company they shared one set between two.
+  alwRenderAll('ps','ps-allowances',contractorLines());
   const st=document.getElementById('psa-status'); if(st){ st.textContent=''; st.className='status-msg'; }
 }
 async function saveAllowances(ev){
@@ -11571,15 +11616,25 @@ async function saveAllowances(ev){
   showStatus('psa-status','Saving\u2026','info');
   try{
     const c=currentProject.config=currentProject.config||{};
-    const cs=(c.contractors||[]).filter(x=>x.active!==false);
-    const got=alwGather('ps', cs);
-    c.contractors=(c.contractors||[]).map(x=>{
-      if(!Object.prototype.hasOwnProperty.call(got, x.name)) return x;
-      const next=Object.assign({}, x, { allowances: got[x.name] });
+    const lines=contractorLines();
+    const got=alwGather('ps', lines);
+    // Written back against the contract the boxes belong to. Matching on the
+    // company alone put the plumbing allowances onto the mechanical contract
+    // and lost one of the two.
+    const put=(rec)=>{
+      const k=alwLineKey(rec);
+      if(!Object.prototype.hasOwnProperty.call(got, k)) return rec;
+      const next=Object.assign({}, rec, { allowances: got[k] });
       // The old single field is removed once a named list exists, so the two
       // cannot disagree about the total.
       delete next.allowance;
       return next;
+    };
+    c.contractors=(c.contractors||[]).map(x=>{
+      if(Array.isArray(x.lines) && x.lines.length){
+        return Object.assign({}, x, { lines: x.lines.map(l=>put(Object.assign({name:x.name}, l))) });
+      }
+      return put(x);
     });
     await writeProjectConfig(currentProject.folderId, c);
     showStatus('psa-status','Saved.','success');

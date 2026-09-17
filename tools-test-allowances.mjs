@@ -63,7 +63,10 @@ ok(/function alwRemove/.test(html) && !/function alwReletter/.test(html),
   const sa = html.split('async function saveAllowances')[1].split('function relocateDatesPanel')[0];
   ok(/delete next\.allowance/.test(sa), 'the old single field is removed once a list exists');
   ok(/cannot disagree about the total/.test(sa), 'and why');
-  ok(/hasOwnProperty\.call\(got, x\.name\)/.test(sa), 'a contractor not on screen is left alone');
+  ok(/hasOwnProperty\.call\(got, k\)/.test(sa), 'a contract not on screen is left alone');
+  ok(/const k=alwLineKey\(rec\);/.test(sa),
+     'and the boxes are written back against the contract they belong to \u2014 matched on the company '
+     +'alone, a firm holding two primes had the plumbing set land on the mechanical contract');
 }
 
 // ── change orders ──

@@ -25,12 +25,18 @@ const FAKE=`
              querySelectorAll:function(sel){ var o=els[sel]; return o?[o]:[]; },
              classList:{toggle:function(){}} };
   }
-  function fakeRow(name, boxes){
-    return { querySelector:function(sel){ return sel==='.cn-name'?{value:name}:null; },
-             querySelectorAll:function(sel){ return sel==='.cn-trade'?boxes:[]; } };
+  function fakeRow(name, boxes, active){
+    return { querySelector:function(sel){
+               if(sel==='.cn-name') return {value:name};
+               if(sel==='.ce-active') return {value:(active===false?'0':'1')};
+               return null; },
+             querySelectorAll:function(sel){
+               if(sel==='.cn-trade') return boxes;
+               if(sel==='.ct-on') return boxes.map(function(b){ return b.querySelector('.ct-on'); });
+               return []; } };
   }
   function useRows(rows){ document.querySelectorAll=function(sel){
-    return /wiz-contractor-row/.test(sel) ? rows : []; }; }
+    return /wiz-contractor-row|contr-edit-row/.test(sel) ? rows : []; }; }
 `;
 P.run(FAKE);
 
@@ -112,6 +118,53 @@ console.log('A draft comes back grouped as it was entered')
   ok(/if\(cb\)\{ cb\.checked=true; wizTradeToggle\(cb\); \}/.test(r),
      'ticking each prime through the same handler, so the boxes open the way they would by hand');
   ok(/amt\.value=\(c\.contract==null\?'':c\.contract\)/.test(r), 'and each sum lands on its own trade');
+}
+
+console.log('Manage Contractors asks the same question')
+{
+  const e=html.split('function addContractorEditRow')[1].split('function ceRows')[0];
+  ok(/CONTRACTOR_ROLES\.map\(function\(r\)\{/.test(e) && /class="ct-on"/.test(e),
+     'the live editor lists the primes against the firm, the way the wizard does');
+  ok(/class="cn-name"/.test(e) && !/class="ce-name"/.test(e),
+     'one name field for the firm, not one per contract');
+  ok(/onchange="wizTradeToggle\(this\)"/.test(e),
+     'and shares the wizard\u2019s handler, so the two editors cannot behave differently');
+  ok(/class="ct-alw"/.test(e) && /allowance/.test(e),
+     'each prime says how many allowances sit inside it, so nobody retires one without seeing what '
+     +'goes with it');
+  const r=html.split('function renderContractorsEditor')[1].split('function addContractorEditRow')[0];
+  ok(/let g=byName\.find\(x=>coNorm\(x\.name\)===coNorm\(nm\)\);/.test(r),
+     'existing contracts group back into firms on the way in');
+  ok(/c\.active===false/.test(r),
+     'and a deactivated contract is still listed, since this is where it would be brought back');
+  const g=html.split('function ceRows')[1].split('function ceFirms')[0];
+  ok(/tradeKeyOf/.test(html.split('async function saveContractors')[1].split('const dupes')[0]),
+     'and what is saved carries allowances forward by contract, not by company');
+  ok(/active:active/.test(g), 'the firm\u2019s status applies to every contract it holds');
+}
+
+console.log('And the live editor gathers the same way')
+{
+  P.run(`useRows([ fakeRow('Garden Spot Mechanical', [
+    fakeBox('GC',false,'999999'), fakeBox('MC',true,'500,000'), fakeBox('PC',true,'300000') ]) ]);`);
+  const lines=P.run(`ceRows()`);
+  ok(lines.length===2, 'two contracts off one firm (got '+lines.length+')');
+  ok(!lines.some(l=>l.role==='GC'),
+     'and a sum sitting under a prime nobody ticked is not one of them \u2014 it is a number somebody '
+     +'typed and thought better of');
+  ok(lines[0].contract===500000 && lines[1].contract===300000, 'each carrying its own sum');
+  ok(lines.every(l=>l.active===true), 'active by default');
+  P.run(`useRows([ fakeRow('Garden Spot Mechanical', [fakeBox('MC',true,'500000')], false) ]);`);
+  ok(P.run(`ceRows()`)[0].active===false,
+     'and the firm\u2019s status carries to every contract it holds, since a firm is off the job or on it');
+  // The empty row the panel opens with is not a firm, and reporting it would put
+  // "— no trade ticked" under a panel nobody has touched.
+  P.run(`useRows([ fakeRow('', [fakeBox('GC',false,'')]) ]);`);
+  ok(P.run(`ceFirms().length`)===0, 'a blank row is not a firm');
+  P.run(`useRows([ fakeRow('Cook\u2019s Service Company', [fakeBox('GC',false,'')]) ]);`);
+  ok(P.run(`ceRows().length`)===0 && P.run(`ceFirms()[0].ticked`)===0,
+     'a firm with nothing ticked holds no contract, and is still reported as a firm so the save can '
+     +'stop on it');
 }
 
 console.log('An allowance belongs to a contract, not to a firm');

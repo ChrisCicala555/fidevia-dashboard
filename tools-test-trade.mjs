@@ -18,9 +18,13 @@ ok(/cannot quietly be whichever option happens to be first/.test(html),
 // option still guards every other place a single trade is chosen.
 ok(/CONTRACTOR_ROLES\.map\(function\(r\)\{/.test(html) && /class="ct-on"/.test(html),
    'the wizard lists every trade against the firm, each with its own contract');
-ok(/class="ce-role">'\+contractorRoleOptions\(c\.role\|\|''\)/.test(html),
-   'while the contractors editor still chooses one at a time, and gets the blank option');
-ok(/class="ce-role">'\+contractorRoleOptions\(c\.role\|\|''\)/.test(html), 'the contractors editor does too');
+// Both editors now list the primes against the firm rather than offering one
+// from a dropdown, so the blank option guards the places a single trade is still
+// chosen — and nowhere is a trade picked for a contract any more.
+ok(/class="ct-on"/.test(html.split('function addContractorEditRow')[1].split('function ceRows')[0]),
+   'the contractors editor lists them the same way the wizard does');
+ok(!/class="ce-role"/.test(html) && !/class="ce-contract"/.test(html),
+   'and the single dropdown is gone from it, which could never say a firm holds two');
 // The builder itself maps CONTRACTOR_ROLES, so count call sites instead.
 ok((html.match(/CONTRACTOR_ROLES\.map\(r=>.<option/g)||[]).length===1,
    'only the builder maps the list; neither editor rolls its own');
@@ -38,9 +42,13 @@ ok((html.match(/CONTRACTOR_ROLES\.map\(r=>.<option/g)||[]).length===1,
 // the editor warns rather than refuses, since it edits live projects
 {
   const sc = html.split('async function saveContractors')[1].split('function closeContractors|async function ')[0];
-  ok(/const noTrade=rows\.filter\(r=>!r\.role\)/.test(sc), 'saving checks too');
+  ok(/const none=ceFirms\(\).filter\(f=>!f\.ticked\)/.test(sc),
+     'saving checks too \u2014 for a firm with no prime ticked, which the flat contracts cannot report '
+     +'because it is simply not among them');
   ok(/Save anyway\?/.test(sc), 'but allows it, since an existing project may be mid-flight');
-  ok(/theirs will read CM until it is set/.test(sc), 'and says what happens meanwhile');
+  ok(/their items will number as CM/.test(sc), 'and says what happens meanwhile');
+  ok(/will not appear in the financial summary/.test(sc),
+     'including the part that is easy to miss: no contract means no line in the financials');
 }
 // the old single allowance field is gone from that editor
 ok(!/class="ce-allowance"/.test(html), 'the superseded allowance field is removed');
