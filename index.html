@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 20:18';
+const BUILD_STAMP='2026-09-17 20:26';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6133,9 +6133,12 @@ function fillAssignedFirm(key, fieldId){
 // called Additional Review and added nobody to the review — it only copied them
 // on the email, which is a different promise from the one the label makes.
 //
-// Placed after the first review group rather than at the end, which is where a
-// reviewer's own "send it on as well" puts somebody: an extra reviewer is
-// wanted soon, not last. This item only; the project's workflow is untouched.
+// Joined to the first review group rather than queued behind it. "Also have
+// them review this" means alongside, not after: an engineer's submittal review
+// runs concurrently with the architect's, and queued behind, the added firm
+// could not say anything until somebody else's desk had cleared. Marked
+// parallel, so the chain is on both at once and both may record a review
+// straight away. This item only; the project's workflow is untouched.
 function ccAddReviewSteps(key, row, raw){
   const names=String(raw||'').split(/[;,]/).map(x=>String(x||'').trim()).filter(Boolean);
   if(!names.length) return [];
@@ -6152,6 +6155,7 @@ function ccAddReviewSteps(key, row, raw){
     if(!k || seen.has(k)) return;
     seen.add(k);
     extra.push({after:after, name:'Additional Review', company:firm, person:'',
+                parallel:true,
                 addedBy:(ME_NAME||ME_EMAIL||''), at:etToday(), added:true});
     added.push(firm);
   });
@@ -8801,7 +8805,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="e.g. Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p><p class="file-hint" style="margin-top:2px;">Added to the review chain after the first reviewer, and kept on the RFI so replies reach them too.</p><input type="hidden" id="f-assigned"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p><p class="file-hint" style="margin-top:2px;">They review alongside the first reviewer, and are kept on the RFI so replies reach them too.</p><input type="hidden" id="f-assigned"></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-rfi"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'New PCO',html:`
@@ -8815,7 +8819,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="e.g. Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p><p class="file-hint" style="margin-top:2px;">Added to the review chain after the first reviewer, and kept on the submittal so replies reach them too.</p><input type="hidden" id="f-reviewer"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p><p class="file-hint" style="margin-top:2px;">They review alongside the first reviewer, and are kept on the submittal so replies reach them too.</p><input type="hidden" id="f-reviewer"></div></div>
     <div class="field"><label>Submittal Document <span id="f-file-req-sub"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="e.g. J. Doe (Superintendent)"></div></div>
@@ -15844,6 +15848,9 @@ function wfEffectiveSteps(key, row){
       const at=Math.max(0, Math.min(out.length, (parseInt(e.after,10)||0)+1));
       out.splice(at, 0, {name:e.name||'Further Review', person:e.person||'', email:e.email||'',
         company:e.company||'', added:true, returned:!!e.returned, rereview:!!e.rereview,
+        // Carried through, or an added step that was meant to run alongside the
+        // one above it is rebuilt as a step queued behind it.
+        parallel:!!e.parallel, requireAll:!!e.requireAll,
         addedBy:e.addedBy||'', after:e.after});
     });
   return out;

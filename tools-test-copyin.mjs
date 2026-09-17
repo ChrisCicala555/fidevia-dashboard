@@ -102,7 +102,7 @@ console.log('Additional Review adds the firm to the chain')
   ok(/Additional Review \u2014 Next Level Engineers/.test(one.steps[1]),
      'named for what it is, and carrying the firm \u2014 '+one.steps[1]);
   ok(/Architect Review/.test(one.steps[0]),
-     'after the first reviewer, not before them: the configured chain still runs first');
+     'beside the first reviewer, not before them: the configured chain still leads');
 
   // A two-step chain is what tells "after the first reviewer" apart from "at the
   // end" — on a one-step chain they are the same index.
@@ -112,8 +112,23 @@ console.log('Additional Review adds the firm to the chain')
   ok(mid.steps.length===3, 'the chain grows by one');
   ok(/Architect Review/.test(mid.steps[0]) && /Additional Review/.test(mid.steps[1])
      && /Fidevia Review/.test(mid.steps[2]),
-     'and the firm lands between them \u2014 an extra reviewer is wanted soon, not last \u2014 '+mid.steps.join(' | '));
+     'and the firm lands beside the first, ahead of the rest \u2014 '+mid.steps.join(' | '));
   P2.run(`currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'}];`);
+
+  // The point of the change: the chain is on both at once, so the added firm can
+  // record a review straight away rather than waiting on the architect's desk.
+  const both=P2.run(`(function(){
+    currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'}];
+    var r={'Workflow Step':'0','Workflow Status':'In Review'};
+    ccAddReviewSteps('sub', r, 'Next Level Engineers');
+    var steps=wfEffectiveSteps('sub', r);
+    var g=wfGroupAt(steps, 0);
+    return { group:[g[0],g[1]], parallel:!!steps[1].parallel,
+             with:steps.slice(g[0],g[1]+1).map(function(s){ return wfStepCompany(s); }) }; })()`);
+  ok(both.parallel===true, 'the added step is parallel');
+  ok(both.group[0]===0 && both.group[1]===1, 'so it joins the first group rather than queueing behind it');
+  ok(both.with.join()==='Architect 2,Next Level Engineers',
+     'and the item is with both firms at once \u2014 '+both.with.join(' and '));
 
   const two=add('Next Level Engineers, Moore Engineering');
   ok(two.added.length===2 && two.steps.length===3, 'several firms, several steps');
@@ -136,8 +151,9 @@ console.log('The submission wires it up')
   const rfi=html.split("rfi:{title:'New RFI'")[1].split("co:{title:'New PCO'")[0];
   ok(/placeholder="A firm \\u2014 comma separated"/.test(rfi),
      'and the field asks for a firm, not a person \u2014 a step belongs to an office');
-  ok(/Added to the review chain after the first reviewer/.test(rfi),
-     'saying what it does, which it previously did not do');
+  ok(/They review alongside the first reviewer/.test(rfi),
+     'saying what it does, which it previously did not do \u2014 and that it is alongside, since queued '
+     +'behind, an added reviewer could say nothing until somebody else\u2019s desk had cleared');
 }
 
 console.log('The list stays open when you click into the box')
