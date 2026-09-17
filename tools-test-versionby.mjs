@@ -1,6 +1,7 @@
 // A version entry used to carry one string that was sometimes a person and
 // sometimes a firm, so a reader could not tell which they were looking at.
 import fs from 'fs';
+import { bootPage, SEED } from './tools-harness.mjs';
 const html=fs.readFileSync('index.html','utf8');
 const src=html.slice(html.lastIndexOf('<script>')+8, html.lastIndexOf('</script>'));
 const grab=(sig)=>{ const i=src.indexOf(sig); let d=0,on=false,j=i;
@@ -74,5 +75,40 @@ ok('there is a fallback if that fails', /catch\(e\)\{[\s\S]*getUser\(\)/.test(su
 ok('both are written to the entry',     /by:by, co:co/.test(src));
 
 fs.rmSync('.vb.tmp.mjs',{force:true});
+console.log('The log reads by company')
+{
+  // "Can we put contractor/submitting company on top - and then the email below
+  // in lighter and smaller text?" It was the other way round, and the stored
+  // value is often "address (Firm)" — so the firm was printed inside brackets
+  // on the first line and again on the second, and the address took the
+  // emphasis in a column whose question is whose submittal this is.
+  const P=bootPage('index.html'); P.run(SEED);
+  P.run(`allData.contacts=[{'Name':'Dave Chen','Company':'Summit Builders','Email':'d@s.test'}];`);
+  const cell=(row)=>P.run(`submitterCell(${JSON.stringify(row)})`);
+
+  const c=cell({'Submitted By (Sub)':'theintergalacticinvestments@gmail.com (Summit Builders)',
+                'Company':'Summit Builders'});
+  ok('the firm comes first \u2014 '+c.replace(/<[^>]+>/g,' ').trim(),
+     c.indexOf('Summit Builders')<c.indexOf('@'));
+  ok('and the address sits under it in the muted second line',
+     /class="cell-sub">theintergalacticinvestments@gmail\.com</.test(c));
+  ok('said once: the bracketed copy on the old first line is gone',
+     (c.match(/Summit Builders/g)||[]).length===1);
+
+  ok('an address the directory knows by name is shown as the name, which is what the rest of the '
+     +'project calls them',
+     /class="cell-sub">Dave Chen</.test(cell({'Submitted By':'d@s.test','Company':'Summit Builders'})));
+  const same=cell({'Submitted By':'Summit Builders','Company':'Summit Builders'});
+  ok('a firm that filed under its own name is not repeated under itself', !/cell-sub/.test(same));
+  const nocо=cell({'Submitted By':'Dave Chen'});
+  ok('and with no firm recorded, the person stands alone rather than over an empty line',
+     /Dave Chen/.test(nocо) && !/cell-sub/.test(nocо));
+  ok('an empty cell reads as a dash rather than as nothing at all', /—/.test(cell({})));
+
+  ok('used by the RFI, change order and submittal logs alike \u2014 one cell, so they cannot drift',
+     (html.match(/\+submitterCell\(r\)\+/g)||[]).length===3);
+  ok('and none of them builds its own any more', !/twoLine\(r\['Submitted By/.test(html));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

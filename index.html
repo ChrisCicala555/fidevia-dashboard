@@ -5332,7 +5332,7 @@ function renderRFIs(){
     const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'rfi\','+i+'))">'
       +threadCell('rfi', i, impFlag(r)+twoLine(r['RFI #'], rowCompany(r)))
       +'<td>'+esc(r['Subject'])+'</td>'
-      +'<td>'+twoLine(r['Submitted By'], rowCompany(r))+'</td>'
+      +'<td>'+submitterCell(r)+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+assignedCell('rfi', r, 'Assigned To')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
@@ -5483,7 +5483,7 @@ function renderCOs(){
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked RFI: '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(coStatusLabel(r),false,wfSettled('co',r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked RFI: '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+submitterCell(r)+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(coStatusLabel(r),false,wfSettled('co',r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
   countFooter(shown.length, all.length, 'change order');
   { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
@@ -5567,7 +5567,7 @@ function renderSubmittals(){
       +threadCell('sub', i, impFlag(r)+twoLine(r['Submittal #'], rowCompany(r)))
       +'<td>'+twoLine(sp.code, sp.name, {nowrap:true})+'</td>'
       +'<td>'+esc(r['Description'])+'</td>'
-      +'<td>'+twoLine(r['Submitted By (Sub)'], rowCompany(r))+'</td>'
+      +'<td>'+submitterCell(r)+'</td>'
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+assignedCell('sub', r, 'Reviewer')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
@@ -5792,7 +5792,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:59';
+const BUILD_STAMP='2026-09-17 20:04';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15767,6 +15767,16 @@ function wfStepsFor(key, company, row){
 // the row and spliced into that row's chain only.
 // The person a returned item goes back to: whoever filed it, by name, falling
 // back to their firm when the row only records the company.
+// Who filed it, as a cell. The firm on top and the person under it, because a
+// log is read by company — whose submittal is this — and the individual is the
+// detail. It read the other way round, and worse: the stored value is often
+// "address (Firm)", so the firm was printed on the first line inside brackets
+// and again on the second, and the address took the emphasis.
+function submitterCell(r){
+  const co=String(rowCompany(r)||'').trim();
+  const who=String(rowSubmitterName(r)||'').trim();
+  return co ? twoLine(co, who) : twoLine(who, '');
+}
 function rowSubmitterName(r){
   const raw=String((r&&(r['Submitted By (Sub)']||r['Submitted By']))||'').trim();
   if(!raw) return '';
