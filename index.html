@@ -5498,7 +5498,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:56';
+const BUILD_STAMP='2026-09-17 01:06';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9497,9 +9497,31 @@ async function submitForm(){
     }
     if(_failed.length) setTimeout(()=>alert(_newRows.length+' filed. '+_failed.length+' could not be uploaded: '
       +_failed.map(x=>x.name).join(', ')+'. Try those again.'), 50);
-    try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key]; 
-      sendEmail(_wfFirst.map(x=>x.email), '[Fidevia] Action required: '+_lbl+' '+(newRow[_idf]||'')+' awaits your review',
-        emailTemplate('Action Required: '+_lbl+' Review', [[_lbl+' #',newRow[_idf]||''],['Your Step',_wfFirst[0].step||'Review'],['Project',currentProject.name],['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],['Due Date',fmtDMY(newRow['Due Date']||'')||'—']], currentProject.name)); } }catch(e){}
+    // The first step's reviewer is told an item is waiting on them. For a
+    // payment application the rest of the thread is told too: the architect is
+    // the second step, and learning of an application only when it reaches them
+    // is learning of it too late to have looked at the pencil copy with anybody.
+    //
+    // Where it goes to more than the one person it cannot say "your step", so
+    // it names who it is with instead, and the subject asks for review rather
+    // than for yours.
+    try{ if(_wfFirst.length){ const _lbl={rfi:'RFI',co:'Change Order',sub:'Submittal',pay_apps:'Pay App'}[key]||'Item'; const _idf={rfi:'RFI #',co:'CO #',sub:'Submittal #',pay_apps:'App #'}[key];
+      const _step=_wfFirst[0].step||'Review';
+      const _with=_wfFirst.map(x=>x.name).filter(Boolean).join(', ');
+      const _thread = key==='pay_apps' ? payNotifyEmails(newRow) : [];
+      const _seen=new Set(); const _to=_wfFirst.map(x=>x.email).concat(_thread)
+        .filter(e=>{ const k=String(e||'').trim().toLowerCase();
+          if(!k||_seen.has(k)) return false; _seen.add(k); return true; });
+      const _shared=_to.length>_wfFirst.length;
+      sendEmail(_to, '[Fidevia] '+(_shared?'':'Action required: ')+_lbl+' '+(newRow[_idf]||'')
+          +(_shared?' filed — with '+(_with||_step):' awaits your review'),
+        emailTemplate((_shared?'Filed: ':'Action Required: ')+_lbl+(_shared?'':' Review'),
+          [[_lbl+' #',newRow[_idf]||''],
+           [_shared?'First Step':'Your Step', _step+(_shared&&_with?(' — '+_with):'')],
+           ['Project',currentProject.name],
+           ['Submitted By',newRow['Submitted By']||newRow['Submitted By (Sub)']||newRow['Company']||'—'],
+           ['Due Date',fmtDMY(newRow['Due Date']||'')||'—']],
+          currentProject.name)); } }catch(e){}
     try{ _newRows.forEach(_r=>auditLog('Created', key, _r, (_r['Attachment Name']||_r['File Name']||''))); }catch(e){}
     // Adding someone to a project should tell them so, without an administrator
     // having to remember to press Invite afterwards.
