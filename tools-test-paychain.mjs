@@ -147,6 +147,69 @@ console.log('Needs Your Attention picks it up because the chain is running');
      'and it needs a running chain, which is what was missing');
 }
 
+console.log('The dialog says where the application is, before anything is recorded');
+{
+  const note=(row)=>String(P.run(`payChainNoteHTML(${JSON.stringify(row)})`)).replace(/<[^>]+>/g,' ')
+    .replace(/\s+/g,' ').trim();
+  P.run(`wfSteps=function(){ return [
+    {name:'Fidevia Records Amounts', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+    {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+    {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
+  // The chain in front of us has three steps and the first two are Fidevia's.
+  // One review does not reach the architect, and nothing on the screen said so.
+  const a=note(ROW({'Workflow Step':'0'}));
+  ok(/Step 1 of 3/.test(a), 'which step is being recorded, out of how many');
+  ok(/Fidevia Records Amounts — Christopher Cicala/.test(a), 'what it is and whose it is');
+  ok(/Then: Fidevia Review — Christopher Cicala → Architect Review — Test Architect/.test(a),
+     'and what follows — so two Fidevia steps before the architect is visible rather than surprising');
+  const b=note(ROW({'Workflow Step':'2'}));
+  ok(/Step 3 of 3/.test(b) && /Last step — recording this completes the chain\./.test(b),
+     'the last step says it is the last');
+  ok(!/Then:/.test(b), 'with nothing listed after it');
+}
+{
+  const note=(row)=>String(P.run(`payChainNoteHTML(${JSON.stringify(row)})`));
+  P.run(`wfSteps=function(){ return []; };`);
+  const t=note(ROW()).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  ok(/No review chain is set up for pencil copies on this project/.test(t),
+     'a project with no chain configured says so, rather than looking like one that silently told nobody');
+  ok(/Settings → Workflows/.test(t), 'and says where to set one up');
+  ok(/color:#8a5a00/.test(note(ROW())), 'marked, because it is something to go and fix');
+  ok(/No review chain is set up for final applications/.test(
+       note(ROW({'Copy Type':'Final'})).replace(/<[^>]+>/g,' ')),
+     'naming whichever of the two chains is missing');
+  P.run(`wfSteps=function(){ return [
+    {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+    {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
+}
+{
+  const note=(row)=>String(P.run(`payChainNoteHTML(${JSON.stringify(row)})`)).replace(/<[^>]+>/g,' ')
+    .replace(/\s+/g,' ').trim();
+  ok(/This step is not yours\./.test(note(ROW({'Workflow Step':'1'}))),
+     'a step belonging to somebody else says so before it is answered');
+  ok(/entered as an override, in your name, against Test Architect/.test(note(ROW({'Workflow Step':'1'}))),
+     'naming who it will be recorded against');
+  ok(!/This step is not yours/.test(note(ROW({'Workflow Step':'0'}))), 'and says nothing when it is yours');
+  ok(/This chain was closed by an earlier decision\./.test(note(ROW({'Workflow Status':'Rejected'}))),
+     'a closed chain says that instead of a step');
+}
+ok(/id="pa-chain-note"/.test(html), 'there is somewhere in the dialog for it');
+ok(/cn\.innerHTML=payChainNoteHTML\(r\);/.test(html), 'filled when the dialog opens');
+ok(/catch\(e\)\{ cn\.innerHTML=''; \}/.test(html),
+   'and empty rather than broken if the chain cannot be read');
+
+console.log('And says where it went afterwards');
+{
+  const sub=html.split('async function submitPayAction(){')[1].split('\nfunction updateContractBar')[0];
+  ok(/prog\.textContent='Recorded\. Now with '\+\(_who\|\|'the next reviewer'\)\+'\.';/.test(sub),
+     'a review that closes on silence is one nobody can tell worked');
+  ok(/_chain\.waiting\|\|_chain\.names/.test(sub),
+     'naming the rest of a part-answered group as readily as the next one');
+  ok(/prog\.textContent='Recorded\. Every step is done\.';/.test(sub), 'and says when there is nobody left');
+  ok(/prog\.textContent='Sent back to the contractor\.';/.test(sub), 'or that it went back');
+  ok(/setTimeout\(closePayAction, 1100\);/.test(sub), 'leaving it on screen long enough to read');
+}
+
 console.log('A final copy starts its own chain');
 {
   const f=html.split('async function submitPayFinal(){')[1].split('\nfunction payCurrentPeriod')[0];

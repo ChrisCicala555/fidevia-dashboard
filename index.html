@@ -1747,6 +1747,7 @@
         <button type="button" class="fig-unlock" id="pa-lock-toggle" onclick="payLockToggle()"></button>
       </div>
       <p class="file-hint" style="margin:0 0 12px;" id="pa-kind-note"></p>
+      <div id="pa-chain-note"></div>
       <div class="field"><label id="pa-action-label">Action</label><select id="pa-action" onchange="payActionChanged()"></select></div>
       <div class="field" id="pa-amount-field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
       <div class="field"><label id="pa-note-label">Comments</label><textarea id="pa-note" rows="3" autocomplete="off"></textarea><p class="file-hint" style="margin-top:4px;" id="pa-note-hint"></p></div>
@@ -5458,7 +5459,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:12';
+const BUILD_STAMP='2026-09-17 00:24';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13394,6 +13395,39 @@ function payMidChainStatus(row, names){
   const who=(names&&names.length) ? names.join(', ') : 'the next reviewer';
   return (payIsPencil(row)?'Pencil \u2014 awaiting ':'Awaiting ')+who;
 }
+// Where this application is in its chain, said before the outcome is chosen.
+// Without it a review is a button press with no visible consequence: a chain of
+// three steps takes two Fidevia reviews before it reaches the architect, and
+// nothing on the screen said so — so it looked as though the architect was
+// simply never told.
+function payChainNoteHTML(row){
+  const box=t=>'<div style="border:1px solid var(--border);border-radius:8px;padding:9px 12px;'
+    +'margin:0 0 12px;background:var(--white);font-size:13px;line-height:1.45;">'+t+'</div>';
+  const warn=t=>'<p class="file-hint" style="margin:0 0 12px;color:#8a5a00;font-weight:600;">'+esc(t)+'</p>';
+  let steps=[];
+  try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){ steps=[]; }
+  if(!steps.length) return warn('No review chain is set up for '
+    +(payIsPencil(row)?'pencil copies':'final applications')
+    +' on this project, so recording this notifies nobody further. Settings \u2192 Workflows.');
+  if(wfIsStopped(row)) return warn('This chain was closed by an earlier decision.');
+  const cur=Math.min(wfActiveIdx(row), steps.length-1);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  const now=steps.slice(gs,ge+1);
+  const label=st=>esc((st.name||'Review')+(st.person?(' \u2014 '+st.person):''));
+  const after=steps.slice(ge+1);
+  const mine=wfMyStepsIn(steps,gs,ge);
+  return box(
+    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);">'
+      +'Step '+(gs+1)+(ge>gs?('\u2013'+(ge+1)):'')+' of '+steps.length+'</div>'
+    +'<div style="font-weight:700;margin-top:2px;">'+now.map(label).join('<br>')+'</div>'
+    +(after.length
+      ? '<div style="color:var(--muted);margin-top:4px;">Then: '+after.map(label).join(' \u2192 ')+'</div>'
+      : '<div style="color:var(--muted);margin-top:4px;">Last step \u2014 recording this completes the chain.</div>')
+    +(mine.length ? ''
+      : '<div style="color:#8a5a00;font-weight:600;margin-top:4px;">'
+        +esc('This step is not yours. Recording it is entered as an override, in your name, against '
+             +(now.map(st=>st.person).filter(Boolean).join(', ')||'the named reviewer')+'.')+'</div>'));
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -13522,6 +13556,8 @@ function openPayAction(idx){
     // No payment is approved off a draft, so there is nothing to put here.
     if(af) af.style.display = pencil ? 'none' : '';
     const nt=document.getElementById('pa-note'); if(nt) nt.value='';
+    const cn=document.getElementById('pa-chain-note');
+    if(cn){ try{ cn.innerHTML=payChainNoteHTML(r); }catch(e){ cn.innerHTML=''; } }
   }
   setMoneyField('pa-amount', payNum(r['Requested Amount'])||'');
   // The approved amount follows what is being requested until somebody changes
@@ -13644,7 +13680,17 @@ async function submitPayAction(){
         {extraTo:_extra.concat((_chain&&_chain.emails)||[])});
     }catch(e){}
     auditLog(action, 'pay_apps', row, status+(pencil?'':(' · '+fmtMoney(appAmt))));
-    renderAll(); closePayAction();
+    renderAll();
+    // A review that closes on silence is one nobody can tell worked. Said here
+    // because the row's status is the only other evidence, and it scrolls.
+    try{
+      if(_chain && !_chain.complete){
+        const _who=(_chain.waiting||_chain.names||[]).join(', ');
+        prog.textContent='Recorded. Now with '+(_who||'the next reviewer')+'.';
+      } else if(_chain){ prog.textContent='Recorded. Every step is done.'; }
+      else if(_returning){ prog.textContent='Sent back to the contractor.'; }
+    }catch(e){}
+    setTimeout(closePayAction, 1100);
   }catch(e){ prog.textContent='Error: '+e.message; prog.style.display='inline'; btn.disabled=false; return; }
   btn.disabled=false;
 }

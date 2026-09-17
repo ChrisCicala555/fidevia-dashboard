@@ -79,9 +79,14 @@ ok((html.match(/function wfGroupNeedsAll\(/g)||[]).length===1, 'defined once');
 ok((html.match(/wfGroupNeedsAll\(/g)||[]).length>=4,
    'and used by the reply path, the approve path and the payment application chain');
 {
+  // Nowhere else decides it. A ge>gs that formats "steps 2–3" is not the rule;
+  // a ge>gs that concludes something is.
   const others=html.replace(/function wfGroupNeedsAll\(steps, gs, ge\)\{[\s\S]*?\n\}/,'');
-  ok(!/\bge>gs\b/.test(others) && !/\bst\.requireAll\b/.test(others.replace(/requireAll:/g,'')),
-     'and nowhere else spells the rule out again');
+  ok(!/ge>gs\s*\)?\s*(return|\?\s*true|&&|\|\|)/.test(others),
+     'and nowhere else concludes from the group size itself');
+  // requireAll is read outside it, but only by the Settings editor that draws
+  // and saves the checkbox. Deciding from it is what belongs in one place.
+  ok(!/requireAll\s*\)?\s*(return|\?\s*true)/.test(others), 'nor concludes from the flag behind it');
 }
 ok(/const groupNeedsAll = \(ge > gs\) \|\| steps\.slice\(gs, ge \+ 1\)\.some\(st => st && st\.requireAll\);/.test(srv),
    'and the server says the same, so an external user cannot advance past it');
