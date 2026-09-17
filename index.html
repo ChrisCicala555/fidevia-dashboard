@@ -1660,10 +1660,8 @@
         </div>
         <div class="panel" style="padding:20px;margin-top:20px;">
           <h3 style="font-size:16px;margin:0 0 6px;">Notification Log</h3>
-          <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Every email the dashboard has sent, and who received it. Sends are recorded whether they succeeded or failed.</p>
+          <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Every email this project has sent, and who received it. Sends are recorded whether they succeeded or failed.</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
-            <div class="field" style="margin:0;max-width:210px;"><label>Scope</label>
-              <select id="nlog-scope" onchange="loadNotifLog()"><option value="project">This project</option><option value="all">All projects</option></select></div>
             <div class="field" style="margin:0;max-width:150px;"><label>Period</label>
               <select id="nlog-days" onchange="loadNotifLog()"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="180">Last 180 days</option></select></div>
             <div class="field" style="margin:0;max-width:210px;"><label>Type</label>
@@ -1671,7 +1669,7 @@
             <button class="btn-secondary" onclick="NOTIF_LOG=null;loadNotifLog()">Refresh</button>
           </div>
           <div class="tscroll"><table id="nlog-table" style="min-width:860px;">
-            <thead><tr><th>Sent</th><th>Type</th><th>Subject</th><th>Recipients</th><th>Project</th><th>Sent By</th></tr></thead>
+            <thead><tr><th>Sent</th><th>Type</th><th>Subject</th><th>Recipients</th><th>Sent By</th></tr></thead>
             <tbody id="nlog-body"></tbody></table></div>
           <div style="padding:11px 0 0;font-size:12.5px;color:var(--muted);" id="nlog-count"></div>
         </div>
@@ -5491,7 +5489,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:41';
+const BUILD_STAMP='2026-09-17 00:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9660,16 +9658,26 @@ function fmtSentAt(iso){
 async function loadNotifLog(){
   const body=document.getElementById('nlog-body'); if(!body) return;
   if(!IS_ADMIN || viewingAsExternal()) return;
-  body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Loading\u2026</td></tr>';
-  const scope=(document.getElementById('nlog-scope')||{}).value||'project';
+  body.innerHTML='<tr><td colspan="5" style="color:var(--muted);">Loading\u2026</td></tr>';
   const days=parseInt((document.getElementById('nlog-days')||{}).value,10)||30;
+  // This project's sends, always. The panel lives in this project's settings,
+  // where everything else on the screen is about this project; a scope control
+  // offering every other job put Lebanon's emails on Ithaca's settings tab, and
+  // asked somebody reading one client's screen to notice which rows were
+  // theirs. A cross-project view is an administrator's question, not a
+  // project's, and belongs where the other cross-project tools are.
+  const pid=(currentProject&&currentProject.folderId)||'';
+  if(!pid){
+    NOTIF_LOG=null;
+    body.innerHTML='<tr><td colspan="5" style="color:var(--muted);">Open a project to see what it has sent.</td></tr>';
+    return;
+  }
   try{
-    const d=await proxyCall('notifLog',{days,
-      projectId: scope==='project' ? (currentProject&&currentProject.folderId)||'' : ''},{quiet:true});
+    const d=await proxyCall('notifLog',{days, projectId:pid},{quiet:true});
     NOTIF_LOG=d.entries||[];
   }catch(e){
     NOTIF_LOG=null;
-    body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Could not read the log: '+esc(e.message)+'</td></tr>';
+    body.innerHTML='<tr><td colspan="5" style="color:var(--muted);">Could not read the log: '+esc(e.message)+'</td></tr>';
     return;
   }
   // The type filter offers only the types actually present, so it never
@@ -9691,7 +9699,7 @@ function renderNotifLog(){
   const kind=(document.getElementById('nlog-kind')||{}).value||'';
   const rows=(NOTIF_LOG||[]).filter(r=>!kind || (r.kind||'other')===kind);
   if(!rows.length){
-    body.innerHTML='<tr><td colspan="6" style="color:var(--muted);">Nothing sent in this period.</td></tr>';
+    body.innerHTML='<tr><td colspan="5" style="color:var(--muted);">Nothing sent in this period.</td></tr>';
     if(count) count.textContent='';
     return;
   }
@@ -9708,7 +9716,6 @@ function renderNotifLog(){
         +(failed?' <span style="font-size:11px;color:var(--danger);">failed</span>':'')+'</td>'
       +'<td>'+esc(r.subject||'')+(failed&&r.error?('<div style="font-size:11.5px;color:var(--danger);">'+esc(r.error)+'</div>'):'')+'</td>'
       +'<td title="'+esc(to.join(', '))+'">'+esc(toText)+'</td>'
-      +'<td>'+esc(r.project||'\u2014')+'</td>'
       +'<td>'+esc(r.by||'System')+'</td></tr>';
   }).join('');
   if(count){

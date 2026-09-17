@@ -81,8 +81,23 @@ ok(/not something a contractor may read about their rivals/.test(srv), 'and it s
 
 // ── the log panel ──
 ok(/id="nlog-body"/.test(html) && /Notification Log/.test(html), 'there is a panel for it');
-ok(/id="nlog-scope"/.test(html) && /id="nlog-days"/.test(html) && /id="nlog-kind"/.test(html),
-   'scoped by project, period and type');
+ok(/id="nlog-days"/.test(html) && /id="nlog-kind"/.test(html), 'filtered by period and type');
+// The panel sits in one project's settings, where everything else on the screen
+// is about that project. A scope control offering every other job put Lebanon's
+// emails on Ithaca's settings tab, and asked somebody reading one client's
+// screen to notice which rows were theirs.
+ok(!/id="nlog-scope"/.test(html), 'and not by project, because it is already this project');
+ok(!/All projects/.test(html), 'with no way to ask for anybody else\u2019s');
+{
+  const c = html.split('async function loadNotifLog')[1].split('function renderNotifLog')[0];
+  ok(/const pid=\(currentProject&&currentProject\.folderId\)\|\|'';/.test(c),
+     'the project is taken from the one that is open');
+  ok(/proxyCall\('notifLog',\{days, projectId:pid\}/.test(c), 'and always sent');
+  ok(/if\(!pid\)\{/.test(c) && /Open a project to see what it has sent\./.test(c),
+     'with no project open it says so rather than asking for everything');
+}
+ok(!/esc\(r\.project\|\|'\\u2014'\)/.test(html),
+   'and the Project column is gone, since every row is this one');
 {
   const c = html.split('async function loadNotifLog')[1].split('function renderNotifLog')[0];
   ok(/if\(!IS_ADMIN \|\| viewingAsExternal\(\)\) return;/.test(c),
