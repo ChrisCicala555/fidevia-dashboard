@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:59';
+const BUILD_STAMP='2026-09-17 03:05';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13632,7 +13632,14 @@ function payMayReview(row){
     const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
     if(em && em===me) return true;
     if(myName && String(st.person||'').trim().toLowerCase()===myName) return true;
-    return !!myCo && String(wfPartyLabel(st)||'').trim().toLowerCase()===myCo;
+    if(!myCo) return false;
+    // The office, by either of the two names it can be known by here: what the
+    // step says, and what the contact sheet says about the person on it. A step
+    // labelled "Architect 2" and a grant issued to "Clymer LLC" are the same
+    // firm, and matching only the first shut the architect out of their own
+    // step.
+    if(String(st.company||'').trim().toLowerCase()===myCo) return true;
+    return String(firmOf(st.person)||'').trim().toLowerCase()===myCo;
   });
 }
 // ── WHO IT IS WITH, NOW ────────────────────────────────────────────────────

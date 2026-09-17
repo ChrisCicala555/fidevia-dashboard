@@ -34,6 +34,16 @@ console.log('The step is theirs, so the button is');
   ok(may()===true, 'a colleague at the named firm may, since the obligation is the office’s');
   P.run(`viewingAsCompany=function(){ return 'Engineer 1'; };`);
   ok(may()===false, 'somebody at another firm may not');
+  // A step labelled "Architect 2" and a grant issued to the firm's real name
+  // are the same office. Matching only what the step says shut the architect
+  // out of their own step.
+  P.run(`allData.contacts=[{'Name':'Test Architect','Company':'Clymer LLC','Email':'clymer@example.com'}];
+         viewingAsCompany=function(){ return 'Clymer LLC'; };
+         ME_NAME='Someone Else'; ME_EMAIL='someone@else.com';`);
+  ok(may()===true,
+     'the firm the contact sheet gives the person on the step counts as much as the label on it');
+  P.run(`allData.contacts=[]; viewingAsCompany=function(){ return 'Nobody Ltd'; };`);
+  ok(may()===false, 'and a firm that is neither still may not');
   P.run(`viewingAsCompany=function(){ return 'Architect 2'; };
          ME_EMAIL='arch@example.com'; ME_NAME='Test Architect';`);
 }
