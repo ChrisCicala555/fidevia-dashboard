@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:31';
+const BUILD_STAMP='2026-09-17 02:39';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13625,11 +13625,18 @@ function payWithNow(row){
   const [gs,ge]=wfGroupAt(steps,cur);
   let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
   if(!Array.isArray(done)) done=[];
-  // In an all-must-sign group the people who have already answered are not
-  // still being waited on.
+  // Whoever has already answered is not still being waited on. Workflow Done
+  // only tracks a part-answered all-must-sign group; Workflow Signed is the
+  // record of who answered what, and it outlives a change to the chain.
+  // Fidevia signed step 0 under a three-step chain, Settings turned it into a
+  // parallel pair, and the row went back to naming Fidevia \u2014 the index had
+  // moved and Done was empty. A step carrying a signature has been answered,
+  // whatever shape the chain is now.
+  const signedNow=wfSignedMap(row);
+  const answered=i=>done.includes(i) || !!signedNow[String(i)];
   const seen=new Set();
   return steps.slice(gs,ge+1)
-    .map((st,i)=>done.includes(gs+i) ? '' : wfPartyLabel(st))
+    .map((st,i)=>answered(gs+i) ? '' : wfPartyLabel(st))
     .filter(x=>{ if(!x) return false; const k=x.toLowerCase();
       // Two people from one firm in one parallel group is one firm waiting.
       if(seen.has(k)) return false; seen.add(k); return true; });

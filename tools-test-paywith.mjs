@@ -74,6 +74,39 @@ console.log('The chain says where it is, not a sentence written last week');
 }
 
 {
+  // The case on screen: Fidevia signed step 0 when the chain had three steps,
+  // Settings turned it into a parallel pair, and the row went back to naming
+  // Fidevia — the index had moved and Workflow Done, which only tracks a
+  // part-answered group, was empty. A signature outlives a change to the chain.
+  chain(`[${JSON.stringify(FID)},${JSON.stringify(Object.assign({}, ARCH, {parallel:true}))}]`);
+  ok(label({'Workflow Step':'1','Workflow Signed':'{"0":{"by":"Christopher Cicala"}}'})
+       ==='Pencil — with Architect 2',
+     'a step somebody has signed is not still being waited on');
+  ok(label({'Workflow Step':'0','Workflow Signed':'{"0":{"by":"Christopher Cicala"}}'})
+       ==='Pencil — with Architect 2',
+     'wherever the index happens to point after the chain was edited');
+  ok(label({'Workflow Step':'0','Workflow Signed':'{}'})
+       ==='Pencil — with Fidevia, Architect 2',
+     'and one nobody has signed still is');
+  ok(label({'Workflow Step':'0','Workflow Signed':'not json'})
+       ==='Pencil — with Fidevia, Architect 2',
+     'unreadable signatures drop nobody off it');
+  ok(label({'Workflow Step':'0','Workflow Signed':'{"0":{"by":"C"},"1":{"by":"A"}}'})
+       ==='Pencil — awaiting Christopher Cicala, Test Architect',
+     'and a group everybody has signed falls back to the stored status rather than naming nobody');
+  // A group that does not begin at the first step: the signature is at index 1,
+  // and index 1 is the first of the group rather than the second of it.
+  chain(`[{name:'Intake', person:'Clerk', company:'Fidevia'},`
+       +`{name:'Engineer Review', person:'E', company:'Engineer 1'},`
+       +`{name:'Architect Review', person:'A', company:'Architect 2', parallel:true}]`);
+  ok(label({'Workflow Step':'1','Workflow Signed':'{"1":{"by":"E"}}'})
+       ==='Pencil — with Architect 2',
+     'a signature is counted against the step it is on, not against its place in the group');
+  ok(label({'Workflow Step':'1','Workflow Signed':'{"0":{"by":"Clerk"}}'})
+       ==='Pencil — with Engineer 1, Architect 2',
+     'and a signature on an earlier step does not excuse this one');
+}
+{
   // Two people from one office in one parallel group is one office waiting.
   chain(`[{name:'Architect Review', person:'A', company:'Architect 2'},`
        +`{name:'Second Reviewer', person:'B', company:'Architect 2', parallel:true}]`);
