@@ -120,6 +120,22 @@ console.log('A draft comes back grouped as it was entered')
   ok(/amt\.value=\(c\.contract==null\?'':c\.contract\)/.test(r), 'and each sum lands on its own trade');
 }
 
+console.log('The row is a card, not a flex strip')
+{
+  // Left with the old inline display:flex, the whole grid laid out sideways:
+  // the name field, the heading and every trade in one line, each squeezed to
+  // nothing. Nothing on it could be read, let alone ticked.
+  const w=html.split('function wizAddContractor')[1].split('function wizTradeToggle')[0];
+  ok(!/div\.style='display:flex/.test(w),
+     'the wizard row carries no inline flex \u2014 that is what turned the grid on its side');
+  ok(/div\.className='wiz-contractor-row';/.test(w), 'it is styled by class');
+  const e=html.split('function addContractorEditRow')[1].split('function ceRows')[0];
+  ok(!/div\.style=/.test(e), 'nor does the editor row');
+  ok(/\.wiz-contractor-row\{display:block;/.test(html),
+     'and the class says block, so the trades stack the way a list of contracts should');
+  ok(/\.cn-trade\{display:flex;/.test(html), 'while each trade line is the flex one \u2014 tick, code, name, sum');
+}
+
 console.log('Manage Contractors asks the same question')
 {
   const e=html.split('function addContractorEditRow')[1].split('function ceRows')[0];

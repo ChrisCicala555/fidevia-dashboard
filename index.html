@@ -410,8 +410,10 @@
     border-radius:4px; padding:3px 6px; cursor:pointer;}
   .jc-trade:hover{border-color:var(--olive-700); background:var(--white);}
   .jc-trade-none{color:var(--danger);}
-  .wiz-contractor-row{border:1px solid var(--border); border-radius:8px; padding:12px 14px;
-    margin-bottom:10px; position:relative; background:var(--white);}
+  .wiz-contractor-row{display:block; border:1px solid var(--border); border-radius:8px;
+    padding:14px 16px; margin-bottom:10px; position:relative; background:var(--white);}
+  .wiz-contractor-row > .field{display:block; flex:none;}
+  .wiz-contractor-row .ce-active{max-width:150px;}
   .cn-trades{display:grid; gap:4px;}
   .cn-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
     font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px;
@@ -3610,7 +3612,6 @@ function wizAddContractor(){
   const idx=wrap.children.length;
   const div=document.createElement('div');
   div.className='wiz-contractor-row';
-  div.style='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
   // One firm, the primes it holds listed against it. A separate row per trade
   // read as a separate company — which is what "Garden Spot Mechanical - MC"
   // typed into a name field was somebody working around — and a single dropdown
@@ -5757,7 +5758,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 12:31';
+const BUILD_STAMP='2026-09-17 12:34';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
