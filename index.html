@@ -5795,7 +5795,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 21:22';
+const BUILD_STAMP='2026-09-17 22:20';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -15897,6 +15897,18 @@ const WF_RETURNED=/revise|resubmit|returned/i;
 // word — so anywhere the difference matters, ask this instead. Reading the
 // answer as another instruction made the chain believe it had just been sent
 // back by the person who had in fact just complied.
+// The one entry in the list that is not a decision. It was sitting in there
+// as an ordinary status, so choosing it signed the reviewer's step and moved
+// the chain on — the exact opposite of what it says. An engineer who wrote
+// "Idk Architect u tell me" was recorded as having answered.
+function wfIsCommentOnly(x){ return /^\s*comment only/i.test(String(x||'')); }
+// What the item carries after a reply. A comment leaves the last decision
+// standing: written through, "Comment only \u2014 no decision" became the row's
+// Status, so the log column and the pill showed a note saying there was no
+// decision where the decision should be. The version entry still records it.
+function replyRowStatus(chosen, current){
+  return wfIsCommentOnly(chosen) ? String(current||'') : chosen;
+}
 function wfIsReturnOutcome(x){
   const t=String(x||'').trim();
   return WF_RETURNED.test(t) && !/^re-?submitted$/i.test(t);
@@ -17289,7 +17301,8 @@ async function submitReply(){
     let vs=_versions(row);
     vs.push({v:vs.length+1, fileId:newFid, fileName:newName, status:status, date:etToday(), by:by, co:co, note:note});
     row['Version History']=JSON.stringify(vs);
-    row['Attachment File ID']=newFid; row['Attachment Name']=newName; row['Status']=status;
+    row['Attachment File ID']=newFid; row['Attachment Name']=newName;
+    row['Status']=replyRowStatus(status, row['Status']);
     const _wfChange=wfApplyDecision(key, row, status, by);
     // A reviewer completing their step advances the chain in the same action.
     // Two buttons for one decision meant the review could be written and the
@@ -17363,6 +17376,7 @@ async function submitReply(){
     const _returnedTo=(REPLY_CTX&&REPLY_CTX._returnedTo)||'';
     const _handedTo=(REPLY_CTX&&REPLY_CTX._reassignedTo)||'';
     const _backToReviewer=(REPLY_CTX&&REPLY_CTX._backToReviewer)||'';
+    const _commentOnly=!!(REPLY_CTX&&REPLY_CTX._commentOnly);
     const REPLY_CTX_ADVANCED_NOOP=!!(REPLY_CTX&&REPLY_CTX.advance)&&!_advanced&&_wfChange!=='stopped';
     renderAll(); closeReply();
     if(_wfChange==='stopped') alert('Marked '+status+'. The review chain is closed, so nobody will be asked to sign it.');
@@ -17371,6 +17385,8 @@ async function submitReply(){
       +' to review, and they have been emailed.');
     else if(_returnedTo) alert('Sent back to '+_returnedTo
       +' to revise and resubmit. They are next in the chain.');
+    else if(_commentOnly) alert('Comment recorded. No decision was made, so the chain has not moved '
+      +'and the item still waits on whoever it was with.');
     else if(_handedTo) alert('Handed to '+_handedTo
       +'. Your approval was not recorded \u2014 the item is waiting on them now.');
     else if(_added) alert('Review recorded. '+_added+' has been added to the chain and is next.');
@@ -17401,6 +17417,15 @@ function applyReviewAdvance(key, row, by){
   // branch below, which would otherwise act on "hand it to somebody else"
   // while the status said Revise and Resubmit and send it to a third party.
   const _returning = act==='return';
+
+  // Deliberately before anything is signed: a comment leaves the item exactly
+  // where it was, still waiting on whoever it was waiting on. The note and any
+  // file are already on the record by the time this runs.
+  if(wfIsCommentOnly((document.getElementById('reply-status')||{}).value)){
+    if(REPLY_CTX) REPLY_CTX._commentOnly=true;
+    try{ auditLog('Comment recorded \u2014 no decision', key, row, by||ME_NAME||ME_EMAIL||''); }catch(e){}
+    return '';
+  }
 
   // Handing the step over is not an approval, so nothing is signed and the
   // chain does not move: the item simply waits for somebody else now. Signing
