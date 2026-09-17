@@ -5623,7 +5623,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 05:02';
+const BUILD_STAMP='2026-09-17 11:33';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12556,6 +12556,74 @@ function coIsExecuted(r){ return coIsApproved(r) && !!String((r&&r['CO #'])||'')
 // Agreed, but not yet papered. These are the ones that move the contract the
 // moment somebody writes the change order, and nothing before.
 function coIsPending(r){ return coIsApproved(r) && !coIsExecuted(r); }
+// ── A CONTRACT LINE IS A TRADE, NOT A COMPANY ──────────────────────────────
+//
+// A multi-prime job awards GC, MC, PC and EC separately, and nothing stops one
+// firm winning two of them — mechanical and plumbing most often, since both are
+// piping trades out of the same shop. Keyed on the company, such a firm collided
+// with itself: two rows in the financial summary, both reporting the first
+// line's contract, both claiming every one of the company's pay applications.
+//
+// A job has one GC contract and one MC contract, so the trade is the natural
+// key and the company is an attribute of it. The trade is already what numbers
+// the paperwork — PCO-GC-004, RFI-GC-002 — so this is the identity the
+// documents were using all along.
+function contractorLines(){
+  const cfg=(currentProject&&currentProject.config)||{};
+  return (cfg.contractors||[]).filter(c=>c.active!==false);
+}
+function coNorm(v){ return String(v==null?'':v).trim().toLowerCase(); }
+// Two unlabelled Other lines would collide exactly the way two companies of one
+// name do, so an Other carries a label and the label is part of its key.
+function tradeKeyOf(c){
+  const r=String((c&&c.role)||'').trim().toUpperCase();
+  if(!r) return '';
+  if(r!=='OTHER' && r!=='OC') return r;
+  const lab=String((c&&c.label)||'').trim().toUpperCase();
+  return lab ? 'OC:'+lab : 'OC';
+}
+function tradeLabelOf(c){
+  const r=String((c&&c.role)||'').trim();
+  if(!r) return '';
+  if(!/^(other|oc)$/i.test(r)) return r.toUpperCase();
+  const lab=String((c&&c.label)||'').trim();
+  return lab ? 'OC — '+lab : 'OC';
+}
+function linesForCompany(name){
+  const n=coNorm(name);
+  return n ? contractorLines().filter(c=>coNorm(c.name)===n) : [];
+}
+function lineForTrade(trade){
+  const t=String(trade||'').trim().toUpperCase();
+  return t ? (contractorLines().find(c=>tradeKeyOf(c)===t) || null) : null;
+}
+// Which line a row belongs to. Its Trade when it carries one; otherwise the
+// company's only line — which covers every row filed before trades were keys,
+// and every firm that holds a single contract, so nothing existing moves.
+//
+// Deliberately null rather than a guess when a company holds two lines and the
+// row names neither: attributing that money to whichever line sorted first is
+// how the old bug read, and a blank is a question somebody can answer.
+function lineOfRow(row){
+  const mine=linesForCompany((row&&(row['Contractor']||row['Company']))||'');
+  if(!mine.length) return null;
+  const t=String((row&&row['Trade'])||'').trim().toUpperCase();
+  if(t){ const hit=mine.find(c=>tradeKeyOf(c)===t); if(hit) return hit; }
+  return mine.length===1 ? mine[0] : null;
+}
+function tradeOfRow(row){ const l=lineOfRow(row); return l ? tradeKeyOf(l) : ''; }
+// Is this row billed against that line? The question every money lookup asks,
+// in one place, so they cannot answer it differently from one another.
+function rowOnLine(row, line){
+  if(!row || !line) return false;
+  if(coNorm(row['Contractor']||row['Company'])!==coNorm(line.name)) return false;
+  const mine=linesForCompany(line.name);
+  if(mine.length<2) return true;
+  return tradeOfRow(row)===tradeKeyOf(line);
+}
+// Every trade one company holds on this job. One entry for a firm with a single
+// contract, which is the ordinary case and reads the same as it always did.
+function tradesForCompany(name){ return linesForCompany(name).map(tradeKeyOf).filter(Boolean); }
 // The contract a company started with, before any change order. Project
 // settings is where that lives; a pay application only restates it, and is read
 // here only for a project old enough that the contract was never recorded in
