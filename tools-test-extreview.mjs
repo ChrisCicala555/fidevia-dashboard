@@ -81,8 +81,8 @@ console.log('The step is theirs, so the button is');
   ok(may()===false, 'and a project with no chain configured grants nothing either');
   P.run(`wfEffectiveSteps=function(){ return [${JSON.stringify(FID)},${JSON.stringify(ARCH)}]; };`);
 }
-ok(/payMayReview\(r\)\?'<button class="btn-approve ext-ok" onclick="openPayAction\('\+idx\+'\)">Review<\/button>'/.test(html),
-   'and the row carries a Review button for them, marked ext-ok so it is not hidden from outside');
+ok(/payMayReview\(r\)\?'<button class="btn-approve ext-ok" onclick="openPayAction\('\+idx\+'\)">'\+esc\(payActionLabel\(r\)\)/.test(html),
+   'and the row carries a button for them, marked ext-ok so it is not hidden from outside');
 
 {
   // The bug itself. viewingAsCompany is empty for a design role on purpose:
@@ -133,8 +133,8 @@ console.log('What they see, and what they do not');
      'the contractor’s figures are Fidevia’s to record, and are not offered to a reviewer');
   ok(/if\(af\) af\.style\.display = \(pencil \|\| _ext\) \? 'none' : '';/.test(o),
      'nor is the approved payment amount');
-  ok(/viewingAsExternal\(\) \? 'Record your review — '/.test(o),
-     'and the dialog says what it is for');
+  ok(/payActionLabel\(r\)\+' — '/.test(o),
+     'and the dialog is headed with the same words as the button that opened it');
 }
 
 console.log('What they may write, and where');

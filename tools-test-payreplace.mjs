@@ -141,8 +141,8 @@ console.log('Where the contractor finds it');
   const ext=html.split(":((payMayReview(r)")[1].split(';')[0];
   ok(/Submit Final/.test(ext) && /Replace file/.test(ext),
      'alongside Submit Final, since a pencil copy can be both wrong and ready to finalise');
-  ok(/Review<\/button>/.test(ext),
-     'and alongside Review, which is a different person\u2019s business on the same row');
+  ok(/^\?'<button class="btn-approve ext-ok" onclick="openPayAction/.test(ext),
+     'and alongside the review-and-sign button, which is a different person\u2019s business on the same row');
   ok(/id="payrepl-backdrop"/.test(html) && /id="payrepl-file"/.test(html), 'and a dialog to do it in');
   ok(/backdropClick\(event,closePayReplace\)/.test(html),
      'which closes on the backdrop the same way as every other, drag-select included');

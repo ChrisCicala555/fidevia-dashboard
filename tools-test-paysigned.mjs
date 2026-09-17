@@ -146,5 +146,35 @@ console.log('A marked-up pencil copy is a version, not a signature');
   ok(!String(r.row['Signed File ID']||''), 'and the signed slot stays empty');
 }
 
+console.log('The button says which of the two it is')
+{
+  const P=bootPage(); P.run(SEED);
+  const lab=(row, ext)=>P.run(`(function(){ viewingAsExternal=function(){ return ${ext?'true':'false'}; };
+    return payActionLabel(${JSON.stringify(row)}); })()`);
+  const FINAL={'App #':'PA-001','Copy Type':'Final','Requested Amount':'100000'};
+  const PENCIL={'App #':'PA-001','Copy Type':'Pencil','Requested Amount':'100000'};
+  ok(lab(FINAL,true)==='Sign Final',
+     'the architect is signing the formal application, and the button says so rather than "Review"');
+  ok(lab(FINAL,false)==='Sign Final', 'and so is Fidevia, at their own step on the same document');
+  ok(lab(PENCIL,true)==='Review pencil', 'a draft is reviewed, which is a different act');
+  ok(lab(PENCIL,false)==='Review pencil', 'for either of them');
+  // Fidevia opening a row the contractor filed with no figures on it does two
+  // jobs at once, and the button has always said both.
+  const BARE={'App #':'','Copy Type':'Final','Requested Amount':''};
+  ok(lab(BARE,false)==='Record & Sign', 'reading the figures off the paper and signing it is still one click');
+  ok(lab(Object.assign({},BARE,{'Copy Type':'Pencil'}),false)==='Record & Review', 'or one review');
+  ok(lab(BARE,true)==='Sign Final',
+     'but never for somebody outside Fidevia, who is not shown the figures to record');
+
+  const row=html.split('function renderPayApps(')[1].split('\nfunction togglePayGroup')[0];
+  ok((row.match(/esc\(payActionLabel\(r\)\)/g)||[]).length===2,
+     'one label serves both the inside button and the outside one, so they cannot drift apart');
+  ok(!/>Take Action</.test(row) && !/Record &amp; Review'/.test(row),
+     'and neither carries a fixed word any more');
+  const o=html.split('function openPayAction(idx){')[1].split('\nconst PAY_MODIFY')[0];
+  ok(/payActionLabel\(r\)\+' \u2014 '/.test(o),
+     'the dialog it opens is headed the same, so the click and what it opens agree');
+}
+
 console.log(bad ? `FAIL tools-test-paysigned.mjs — ${bad} of ${n}` : `ok   tools-test-paysigned.mjs — ${n} assertions`);
 process.exit(bad?1:0);

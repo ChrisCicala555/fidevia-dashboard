@@ -46,7 +46,8 @@ console.log('Nothing offered to an external reader is hidden from them');
          +(h.spares?(' unless it also carries .'+h.spares):'')+' — it would render and never be seen');
     });
   });
-  ok(btns.some(b=>/Review/.test(b.label)), 'Review is one of them');
+  ok(btns.some(b=>/payActionLabel/.test(b.label)),
+     'the review-and-sign button is one of them, whatever it is calling itself on this row');
   ok(btns.some(b=>/Submit Final/.test(b.label)), 'and so is Submit Final, which had the same fault');
   ok(btns.some(b=>/Replace file|Submit revision/.test(b.label)), 'and the replace button');
 }
@@ -61,7 +62,7 @@ console.log('The rule still hides what it was written to hide');
   // The exemption has to be asked for, one button at a time.
   const count=(html.match(/btn-approve ext-ok/g)||[]).length;
   ok(count===2, 'exactly two buttons ask for the exemption: Review and Submit Final (got '+count+')');
-  ok(/'<button class="btn-approve" onclick="openPayAction\('\+idx\+'\)">'\+\(needs\?/.test(html),
+  ok(/'<button class="btn-approve" onclick="openPayAction\('\+idx\+'\)">'\+esc\(payActionLabel\(r\)\)/.test(html),
      'and Fidevia’s own button does not ask for it, because nothing was hiding it');
 }
 

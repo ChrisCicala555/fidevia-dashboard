@@ -1510,7 +1510,7 @@
           </div>
         </div>
         <div id="payapp-groups"><div class="loading-row" style="padding:16px;color:var(--muted)">Loading…</div></div>
-        <p class="file-hint" style="margin-top:14px;">Grouped by prime contractor — click a contractor to see their pay applications. Contractors submit; Fidevia reviews with <strong>Take Action</strong>.</p>
+        <p class="file-hint" style="margin-top:14px;">Grouped by prime contractor — click a contractor to see their pay applications. Contractors submit; Fidevia and the design team review and sign from the <strong>Action</strong> column.</p>
       </div>
 
       <!-- MEETING MINUTES -->
@@ -1742,7 +1742,7 @@
 </div>
 <div class="modal-backdrop" id="payaction-backdrop" onclick="backdropClick(event,closePayAction)">
   <div class="modal">
-    <div class="modal-header"><h3 id="payaction-title">Take Action</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
+    <div class="modal-header"><h3 id="payaction-title">Review</h3><button class="modal-close" onclick="closePayAction()">✕</button></div>
     <div class="modal-body">
       <div id="pa-details" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#faf9f5;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">Read off the contractor's application</div>
@@ -5499,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:22';
+const BUILD_STAMP='2026-09-17 04:27';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13848,9 +13848,8 @@ function renderPayApps(){
           +dlBtn(r['Attachment File ID'], r['Attachment Name']||'', pfx):'—';
         const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>'
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
-        const needs=payNeedsDetails(r);
-        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
-          :((payMayReview(r)?'<button class="btn-approve ext-ok" onclick="openPayAction('+idx+')">Review</button>':'')
+        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+esc(payActionLabel(r))+'</button>'+delBtn('pay_apps',idx)
+          :((payMayReview(r)?'<button class="btn-approve ext-ok" onclick="openPayAction('+idx+')">'+esc(payActionLabel(r))+'</button>':'')
             +(payMayPromote(r)?'<button class="btn-approve ext-ok" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
             +(payMayReplace(r)?('<button class="row-act" title="'+(payWasReturned(r)?'This was sent back \u2014 file the corrected document':'Fidevia has not reviewed this yet \u2014 put the right document on it')+'" onclick="openPayReplace('+idx+')">'+(payWasReturned(r)?'Submit revision':'Replace file')+'</button>'):''));
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
@@ -13868,12 +13867,21 @@ function renderPayApps(){
 function togglePayGroup(gi){ const b=document.getElementById('pg-body-'+gi); if(!b) return; const open=b.style.display!=='none'; b.style.display=open?'none':'block'; const a=document.getElementById('pg-arw-'+gi); if(a) a.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
 let PAY_CTX=null;
 function payNeedsDetails(r){ return !String(r['App #']||'').trim() || !String(r['Requested Amount']||'').trim(); }
+// What the button offers depends on what the review is. On a draft it is a
+// review; on the formal application it is a signature, and a button that says
+// "Review" there hides what the click actually commits you to — which is the
+// architect putting their name on the paper the owner pays against.
+function payActionLabel(r){
+  const record=payNeedsDetails(r) && !viewingAsExternal();
+  if(payIsPencil(r)) return record ? 'Record & Review' : 'Review pencil';
+  return record ? 'Record & Sign' : 'Sign Final';
+}
 function openPayAction(idx){
   PAY_CTX={idx};
   const r=(allData.pay_apps||[])[idx]||{};
   const needs=payNeedsDetails(r);
   document.getElementById('payaction-title').textContent=
-    (viewingAsExternal() ? 'Record your review — ' : (needs?'Record & Review — ':'Take Action — '))
+    payActionLabel(r)+' — '
     +(r['App #']||r['Attachment Name']||'Uploaded application')+' ('+(r['Contractor']||'')+')';
   const box=document.getElementById('pa-details');
   // The figures are Fidevia's to record. An architect reviewing the document
