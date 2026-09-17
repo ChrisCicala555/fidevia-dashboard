@@ -29,7 +29,10 @@ const call = (fn, args, label) => {
 // Read from the markup, so a tab added later is walked without anyone
 // remembering to list it here.
 const sections = [...new Set([...b.html.matchAll(/data-section="([a-z_]+)"/g)].map(m=>m[1]))];
-ok(sections.length >= 15, 'found the nav sections ('+sections.length+')');
+ok(sections.length >= 14, 'found the nav sections ('+sections.length+')');
+ok(!sections.includes('qa'),
+   'and the message board is not among them \u2014 it was a second place to say something, which is how '
+   +'a note ends up somewhere nobody looks');
 sections.forEach(sec => call('navTo', [sec], 'opening the '+sec+' tab'));
 
 // ── every render, called directly ──

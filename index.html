@@ -728,15 +728,6 @@
   .version-badge{background:var(--khaki-100);color:var(--olive-700);font-size:11px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:5px;vertical-align:middle;}
   .btn-ver{background:none;border:1px solid var(--khaki-300);color:var(--muted);font-size:12px;padding:3px 8px;border-radius:4px;cursor:pointer;}
   .btn-ver:hover{border-color:var(--olive-500);color:var(--olive-700);}
-  .comment-list{list-style:none;}
-  .comment-item{padding:14px 18px;border-bottom:1px solid var(--border);}
-  .comment-item:last-child{border-bottom:none;}
-  .comment-meta{font-size:12px;color:var(--muted);margin-bottom:5px;}
-  .comment-meta strong{color:var(--olive-900);}
-  .comment-text{font-size:14px;line-height:1.6;}
-  .comment-compose{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end;background:var(--cream);}
-  .comment-compose textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;resize:none;height:64px;}
-  .comment-author{border:1px solid var(--border);border-radius:6px;padding:10px;font-size:14px;font-family:inherit;width:150px;}
   .contract-bar{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px 20px 16px;margin-bottom:16px;}
   .contract-bar .cb-head{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--olive-900);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);}
   .cb-items{display:flex;gap:32px;flex-wrap:wrap;}
@@ -1219,7 +1210,6 @@
     <div class="nav-section-label">Overview</div>
     <div class="nav-item owner-ok active" data-section="overview">Home</div>
     <div class="nav-item nav-contacts owner-ok" data-section="contacts">Directory</div>
-    <div class="nav-item hide-external" data-section="qa">Project Message Board</div>
     <div class="nav-section-label owner-hide">Project Management</div>
     <div class="nav-item owner-ok" data-section="schedule">Schedule</div>
     <div class="nav-item" data-section="rfis">RFIs</div>
@@ -1524,23 +1514,6 @@
       </div>
 
       <!-- Q & A -->
-      <div class="section hide-external" id="section-qa">
-        <div class="page-title-row">
-          <h2>Project Message Board</h2>
-        </div>
-        <div class="panel">
-          <div class="panel-header"><span>Critical Info &amp; Team Discussion</span></div>
-          <ul class="comment-list" id="comment-list">
-            <li class="comment-item"><span class="comment-meta">Loading…</span></li>
-          </ul>
-          <div class="comment-compose">
-            <input class="comment-author" id="comment-author" placeholder="Your name">
-            <textarea id="comment-text" placeholder="Add a comment or question…"></textarea>
-            <button class="btn-add" onclick="postComment()">Post</button>
-          </div>
-        </div>
-      </div>
-
       <!-- PAYMENT APPLICATIONS -->
       <div class="section" id="section-payapps">
         <div class="page-title-row">
@@ -2813,7 +2786,6 @@ const MODULES = {
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal','Notify - Pay Pencil','Notify - Pay Final']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
-  comments: {folder:'08 - Internal',           log:'Comments.csv',              headers:['Date','Author','Role','Comment','Parent ID']},
   pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Copy Type','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Change Orders Claimed','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
@@ -3107,7 +3079,7 @@ async function openProject(folderId, name){
     projectLoadingStep('Checking access…');
     const items = await boxList(folderId);
     const gf = prefix => { const f=items.find(i=>i.type==='folder'&&i.name.startsWith(prefix)); return f?f.id:null; };
-    currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), comments:gf('08'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
+    currentProject = { name, folderId, folders:{ rfi:gf('01'), co:gf('02'), sub:gf('03'), daily:gf('04'), contacts:gf('05'), budget:gf('06'), docs:gf('07'), pay_apps:gf('09'), meetings:gf('10'), board:gf('11'), gendocs:gf('12'), contractor_daily:gf('13'), payrolls:gf('14') } };
     if(EXTERNAL){ const _pp=(typeof PICKER_PROJECTS!=='undefined'?PICKER_PROJECTS:[]).find(x=>String(x.id)===String(folderId)); currentProject.userCompany=(_pp&&_pp.company)||''; currentProject.userRole=(_pp&&_pp.role)||''; currentProject.userModules=(_pp&&_pp.modules)||[]; }
     if(EXTERNAL){ VIEWER_ROLE=String(currentProject.userRole||'contractor'); }
     try{ clearMe(); }catch(e){}
@@ -4268,7 +4240,7 @@ async function refreshProject(){
   if(btn) btn.disabled=false;
 }
 async function loadDashboard(){
-  const allKeys=['rfi','co','sub','daily','contacts','docs','comments','pay_apps','meetings','board','gendocs','contractor_daily','payrolls'];
+  const allKeys=['rfi','co','sub','daily','contacts','docs','pay_apps','meetings','board','gendocs','contractor_daily','payrolls'];
   allKeys.forEach(k=>{ if(allData[k]===undefined) allData[k]=[]; });
   // Architect/Engineer and Owner sit in the OAC meetings, so they get the
   // minutes. Contractors do not — the tab is hidden from them and the server
@@ -4730,7 +4702,7 @@ function splitByArchived(all, df){
   return { live: paired.filter(p=>!isArchived(p.r)).sort(bydate),
            past: paired.filter(p=>isArchived(p.r)).sort(bydate) };
 }
-function renderAll(){ try{ wfHealReturns(); }catch(e){} renderResponseBar(); try{ renderOrgGaps(); }catch(e){} renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderComments(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
+function renderAll(){ try{ wfHealReturns(); }catch(e){} renderResponseBar(); try{ renderOrgGaps(); }catch(e){} renderRFIs(); renderCOs(); renderSubmittals(); renderDailyLogs(); renderContacts(); renderBudget(); renderDocuments(); renderOverview(); renderPayApps(); renderFinancials(); renderSchedule(); renderExec(); renderMeetings(); renderBoard(); renderGenDocs(); renderContractorDaily(); renderPayrolls(); applyOwnerOverview(); applyReadOnlyBanners(); wrapTables(); makeSortableTables(); makeFilterBars(); reapplyFilters(); }
 
 // Owner is read-only, and A/E may read Workflow Settings but not change them.
 // The server enforces both; these banners explain rather than protect.
@@ -4779,7 +4751,7 @@ function askDelete(ev, key, i){
     .catch(e=>{ alert(e && e.message ? e.message : String(e)); });
 }
 const AUDIT_HEADERS=['Timestamp','Action','Module','Item','Details','By'];
-const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',comments:'Q & A',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
+const MODULE_LABEL={rfi:'RFIs',co:'Change Orders',sub:'Submittals',daily:'Daily Logs',contacts:'Contacts',budget:'Budget',docs:'Drawings & Specs',gendocs:'Documents',pay_apps:'Payment Applications',meetings:'Meeting Minutes',board:'Board Reports',contractor_daily:'Contractor Daily Reports',payrolls:'Certified Payrolls'};
 function itemLabel(key,row){
   if(!row) return '';
   const f=['RFI #','CO #','Submittal #','App #','Document Name','Name','Cost Code','Date','Week Ending'];
@@ -5792,7 +5764,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 20:07';
+const BUILD_STAMP='2026-09-17 20:12';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12823,35 +12795,6 @@ async function pvSetCover(){
 // ══════════════════════════════════════════════
 // Q & A COMMENTS
 // ══════════════════════════════════════════════
-function renderComments(){
-  const list=document.getElementById('comment-list'); if(!list) return;
-  const rows=allData.comments||[];
-  if(!rows.length){ list.innerHTML='<li class="comment-item"><div class="comment-text" style="color:var(--muted);font-style:italic;">No comments yet — be the first.</div></li>'; return; }
-  list.innerHTML=rows.slice().reverse().map(r=>'<li class="comment-item"><div class="comment-meta"><strong>'+esc(r['Author']||'—')+'</strong>'+(r['Role']?' · '+esc(r['Role']):'')+'<span style="margin-left:10px;color:var(--muted)">'+esc(r['Date']||'')+'</span></div><div class="comment-text">'+esc(r['Comment']||'')+'</div></li>').join('');
-}
-
-async function postComment(){
-  const author=(document.getElementById('comment-author').value||'').trim();
-  const text=(document.getElementById('comment-text').value||'').trim();
-  if(!author||!text){ alert('Enter your name and a comment.'); return; }
-  const mod=MODULES.comments;
-  let fid=currentProject.folders.comments;
-  if(!fid){
-    if(EXTERNAL){ alert('This project is missing a required folder. Please contact Fidevia.'); return; }
-    try{ fid=await findOrCreateFolder(mod.folder, currentProject.folderId); currentProject.folders.comments=fid; }
-    catch(e){ alert('Could not create comments folder: '+e.message); return; }
-  }
-  const now=new Date().toISOString().slice(0,16).replace('T',' ');
-  const newRow={'Date':now,'Author':author,'Role':'Internal','Comment':text,'Parent ID':''};
-  const existing=await findFile(fid,mod.log);
-  let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
-  rows.push(newRow);
-  await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
-  allData.comments=rows;
-  document.getElementById('comment-text').value='';
-  renderComments();
-}
-
 // ══════════════════════════════════════════════
 // PAYMENT APPLICATIONS
 // ══════════════════════════════════════════════
