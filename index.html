@@ -1693,6 +1693,7 @@
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer">
       <button class="btn-primary" id="modal-submit-btn" onclick="submitForm()">Submit</button>
+      <span id="file-req-note" style="display:none;font-size:13px;color:var(--muted);align-self:center;"></span>
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <span class="upload-progress" id="upload-progress">Saving to Box…</span>
     </div>
@@ -5501,7 +5502,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 01:17';
+const BUILD_STAMP='2026-09-17 01:22';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8597,6 +8598,15 @@ function openModal(type){
     const req=viewingAsExternal() && !!FILE_REQUIRED_EXTERNAL[type];
     const star=document.getElementById('f-file-req-'+({rfi:'rfi',co:'co',submittal:'sub'}[type]||''));
     if(star) star.innerHTML = req ? '<span style="color:var(--danger);">*</span>' : '';
+    // Refusing it on submit is a backstop, not the answer: by then the form has
+    // been filled in and pressed, and the person has to work out what went
+    // wrong. The button says so instead, and stays off until a file is chosen.
+    FILE_REQUIRED_NOW = req;
+    const fi=document.getElementById('f-file');
+    if(fi) fi.onchange=fileReqCheck;
+    // A form reopened after a filing still holds the last file in some
+    // browsers; cleared so the button cannot be enabled by a ghost.
+    if(fi && req) try{ fi.value=''; }catch(e){}
   }
   if(type==='payapp_ext'){
     // Pencil first: it is the earlier half of the billing cycle and the one a
@@ -8612,6 +8622,20 @@ function openModal(type){
   document.getElementById('modal-backdrop').classList.add('open');
   document.getElementById('upload-progress').style.display='none';
   document.getElementById('modal-submit-btn').disabled=false;
+  try{ fileReqCheck(); }catch(e){}
+}
+// Whether the form now open asks a file of whoever is looking at it.
+let FILE_REQUIRED_NOW=false;
+function fileReqCheck(){
+  const btn=document.getElementById('modal-submit-btn');
+  const note=document.getElementById('file-req-note');
+  const fi=document.getElementById('f-file');
+  const has=!!(fi && fi.files && fi.files.length && fi.files[0]);
+  if(btn) btn.disabled = FILE_REQUIRED_NOW && !has;
+  if(note){
+    note.textContent = (FILE_REQUIRED_NOW && !has) ? 'Choose a file to submit.' : '';
+    note.style.display = note.textContent ? '' : 'none';
+  }
 }
 
 function closeModal(){ document.getElementById('modal-backdrop').classList.remove('open'); currentModal=null; }
