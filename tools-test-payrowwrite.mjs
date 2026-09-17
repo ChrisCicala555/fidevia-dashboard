@@ -32,7 +32,7 @@ console.log('What a contractor may write on a payment application');
   ok(/if \(filename === PAY_LOG\) ALLOWED\.add\('Copy Type'\);/.test(ur),
      'Copy Type, because promoting a pencil copy is their own act');
   ok(/if \(filename === PAY_LOG\) \{/.test(ur), 'under a rule of its own');
-  ok(/if \(payRowReviewed\(row\) && !payRowReturned\(row\)\) return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
+  ok(/if \(!payReviewer && payRowReviewed\(row\) && !payRowReturned\(row\)\)\s*\n\s*return json\(\{ error: 'Access denied' \}, 403\);/.test(ur),
      'and nothing at all once somebody has ruled on it');
   // Except the one ruling that asks for exactly this. The page relaxed the same
   // way; a server that did not would tell a contractor to revise and then

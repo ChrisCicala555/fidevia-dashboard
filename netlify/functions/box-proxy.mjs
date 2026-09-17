@@ -2244,6 +2244,12 @@ export default async (req) => {
         // Promoting a pencil copy to the final application is the contractor's
         // own act, and Copy Type is the only field that records it.
         if (filename === PAY_LOG) ALLOWED.add('Copy Type');
+        // An architect or an engineer recording their step on a payment
+        // application. They are reviewers on this job, not the party being
+        // paid, so the outcome of a review is theirs to write — who reviewed
+        // it, when, and what they decided.
+        const payReviewer = filename === PAY_LOG && seesAllCompanies(role);
+        if (payReviewer) { ALLOWED.add('Reviewed By'); ALLOWED.add('Review Date'); ALLOWED.add('Action'); }
         for (const k of Object.keys(patch)) if (!ALLOWED.has(k)) return json({ error: 'Field not writable: ' + k }, 403);
         // The money on a payment application is decided by Fidevia, never by
         // the party being paid.
@@ -2251,15 +2257,27 @@ export default async (req) => {
           // Nothing at all on an application somebody has already ruled on,
           // unless the ruling was "revise and resubmit". This is the server's
           // copy of the rule the Replace button follows.
-          if (payRowReviewed(row) && !payRowReturned(row)) return json({ error: 'Access denied' }, 403);
+          //
+          // A reviewer is the exception, and has to be: Fidevia reviewing first
+          // leaves exactly the marks this test looks for, so without it the
+          // architect's own step would be refused because somebody else had
+          // already taken theirs. The contractor stays held to it.
+          if (!payReviewer && payRowReviewed(row) && !payRowReturned(row))
+            return json({ error: 'Access denied' }, 403);
           // Only ever toward the final copy. Turning a final back into a pencil
           // would take an application the owner can see and hide it again.
           if ('Copy Type' in patch && String(patch['Copy Type'] || '').trim().toLowerCase() !== 'final')
             return json({ error: 'Access denied' }, 403);
           // And only a status that is still waiting on Fidevia. Approved,
-          // signed and denied are Fidevia's words, not the claimant's.
-          if ('Status' in patch && !PAY_AWAITING.test(String(patch['Status'] || '')))
+          // signed and denied are Fidevia's words, not the claimant's — but
+          // they are a reviewer's, since recording an outcome is the whole of
+          // what a review is.
+          if (!payReviewer && 'Status' in patch && !PAY_AWAITING.test(String(patch['Status'] || '')))
             return json({ error: 'Access denied' }, 403);
+          // What a reviewer may never write is the money. Approved Amount is
+          // not in ALLOWED at all, and Copy Type is the contractor's act, not
+          // a reviewer's.
+          if (payReviewer && 'Copy Type' in patch) return json({ error: 'Access denied' }, 403);
         } else if (PRIVATE_CSV[filename] && ('Status' in patch)) {
           return json({ error: 'Access denied' }, 403);
         }

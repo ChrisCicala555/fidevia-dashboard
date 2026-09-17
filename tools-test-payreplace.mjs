@@ -66,7 +66,7 @@ console.log('And only the contractor whose application it is');
 
 console.log('What replacing does, and what it leaves alone');
 {
-  const sub=html.split('async function submitPayReplace(){')[1].split('\nfunction payStatusColor')[0];
+  const sub=html.split('async function submitPayReplace(){')[1].split('\nfunction payActions')[0];
   ok(/if\(!r \|\| !payMayReplace\(r\)\)\{ closePayReplace\(\); renderAll\(\); return; \}/.test(sub),
      'the rule is checked again at the moment of writing, not only when the dialog opened');
   ok(/Choose the corrected document\./.test(sub), 'a replacement with no file is refused');
@@ -138,9 +138,11 @@ console.log('Where the contractor finds it');
 {
   ok(/payMayReplace\(r\)\?\('<button class="row-act"[\s\S]{0,260}openPayReplace\('\+idx\+'\)">'\+\(payWasReturned\(r\)\?'Submit revision':'Replace file'\)/.test(html),
      'a button on their own row, which says Submit revision when that is what it is');
-  const ext=html.split(":((payMayPromote(r)")[1].split(';')[0];
+  const ext=html.split(":((payMayReview(r)")[1].split(';')[0];
   ok(/Submit Final/.test(ext) && /Replace file/.test(ext),
      'alongside Submit Final, since a pencil copy can be both wrong and ready to finalise');
+  ok(/Review<\/button>/.test(ext),
+     'and alongside Review, which is a different person\u2019s business on the same row');
   ok(/id="payrepl-backdrop"/.test(html) && /id="payrepl-file"/.test(html), 'and a dialog to do it in');
   ok(/backdropClick\(event,closePayReplace\)/.test(html),
      'which closes on the backdrop the same way as every other, drag-select included');

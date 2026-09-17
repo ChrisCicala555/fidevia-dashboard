@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 02:39';
+const BUILD_STAMP='2026-09-17 02:45';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13603,6 +13603,38 @@ function wfPartyLabel(st){
       || String(st.person||'').trim()
       || String(st.name||'').trim();
 }
+// Whether the person looking at this may record the step it is sitting on.
+// Fidevia always may — acting on somebody else's step is the documented
+// override. Everybody else may only where the chain names them, their firm, or
+// the address they signed in with.
+function payMayReview(row){
+  if(!row || isArchived(row)) return false;
+  if(!viewingAsExternal()) return IS_ADMIN;
+  // A contractor is the party being paid. They file and they correct; they do
+  // not rule on their own application.
+  if(payContractorOf({'Company':viewingAsCompany()})) return false;
+  let steps=[];
+  try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){ return false; }
+  if(!steps.length || wfIsStopped(row) || wfIsDone(row)) return false;
+  if(!String(row['Workflow Status']||'').trim()) return false;
+  if(payWasReturned(row)) return false;
+  const cur=Math.min(Math.max(wfActiveIdx(row),0), steps.length-1);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  const signed=wfSignedMap(row);
+  let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+  if(!Array.isArray(done)) done=[];
+  const me=String(ME_EMAIL||'').trim().toLowerCase();
+  const myName=String(ME_NAME||'').trim().toLowerCase();
+  const myCo=String(viewingAsCompany()||'').trim().toLowerCase();
+  return steps.slice(gs,ge+1).some((st,i)=>{
+    // A step this person has already answered is not theirs to answer again.
+    if(done.includes(gs+i) || signed[String(gs+i)]) return false;
+    const em=String(st.email||'').trim().toLowerCase()||wfEmailOf(st.person);
+    if(em && em===me) return true;
+    if(myName && String(st.person||'').trim().toLowerCase()===myName) return true;
+    return !!myCo && String(wfPartyLabel(st)||'').trim().toLowerCase()===myCo;
+  });
+}
 // ── WHO IT IS WITH, NOW ────────────────────────────────────────────────────
 //
 // The status was written at the moment of a review and then left alone, so it
@@ -13715,7 +13747,8 @@ function renderPayApps(){
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
         const needs=payNeedsDetails(r);
         const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+(needs?'Record &amp; Review':'Take Action')+'</button>'+delBtn('pay_apps',idx)
-          :((payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
+          :((payMayReview(r)?'<button class="btn-approve" onclick="openPayAction('+idx+')">Review</button>':'')
+            +(payMayPromote(r)?'<button class="btn-approve" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
             +(payMayReplace(r)?('<button class="row-act" title="'+(payWasReturned(r)?'This was sent back \u2014 file the corrected document':'Fidevia has not reviewed this yet \u2014 put the right document on it')+'" onclick="openPayReplace('+idx+')">'+(payWasReturned(r)?'Submit revision':'Replace file')+'</button>'):''));
         const appCell=(String(r['App #']||'').trim() ? esc(r['App #']) : '<span style="color:var(--muted);font-style:italic;">'+esc(r['Attachment Name']||'Uploaded')+'</span>')
           + (payIsPencil(r) ? '<div class="cell-sub" style="color:#8a5a00;font-weight:700;">Pencil copy</div>' : '')
@@ -13736,10 +13769,15 @@ function openPayAction(idx){
   PAY_CTX={idx};
   const r=(allData.pay_apps||[])[idx]||{};
   const needs=payNeedsDetails(r);
-  document.getElementById('payaction-title').textContent=(needs?'Record & Review — ':'Take Action — ')+(r['App #']||r['Attachment Name']||'Uploaded application')+' ('+(r['Contractor']||'')+')';
+  document.getElementById('payaction-title').textContent=
+    (viewingAsExternal() ? 'Record your review — ' : (needs?'Record & Review — ':'Take Action — '))
+    +(r['App #']||r['Attachment Name']||'Uploaded application')+' ('+(r['Contractor']||'')+')';
   const box=document.getElementById('pa-details');
+  // The figures are Fidevia's to record. An architect reviewing the document
+  // has no business editing what the contractor asked for.
+  const _ext=viewingAsExternal();
   if(box){
-    box.style.display=needs?'':'none';
+    box.style.display=(needs && !_ext)?'':'none';
     const dl=document.getElementById('contr-list-pa');
     const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
     if(dl) dl.innerHTML=cts.map(c=>'<option value="'+esc(c.name)+'">').join('');
@@ -13780,8 +13818,9 @@ function openPayAction(idx){
       ? 'Optional. Saved as a new version against the pencil copy \u2014 the contractor\u2019s original is kept.'
       : 'The signed / marked-up PDF is saved as a new version \u2014 the contractor\u2019s original is kept.');
     const af=document.getElementById('pa-amount-field');
-    // No payment is approved off a draft, so there is nothing to put here.
-    if(af) af.style.display = pencil ? 'none' : '';
+    // No payment is approved off a draft, so there is nothing to put here —
+    // and the amount is Fidevia's in any case, never a reviewer's.
+    if(af) af.style.display = (pencil || _ext) ? 'none' : '';
     const nt=document.getElementById('pa-note'); if(nt) nt.value='';
     const cn=document.getElementById('pa-chain-note');
     if(cn){ try{ cn.innerHTML=payChainNoteHTML(r); }catch(e){ cn.innerHTML=''; } }
@@ -13815,9 +13854,14 @@ async function submitPayAction(){
   const prog=document.getElementById('pa-progress'); prog.style.display='inline'; prog.textContent='Saving…';
   try{
     const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
-    const existing=await findFile(fid,mod.log);
-    let rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+    // Rewriting the whole log is Fidevia's alone. A reviewer from outside works
+    // on the row the page is holding and sends the fields a review writes.
+    const _ext=viewingAsExternal();
+    let existing=null, rows;
+    if(_ext){ rows=allData.pay_apps||[]; }
+    else { existing=await findFile(fid,mod.log); rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[]; }
     const row=rows[idx]; if(!row) throw new Error('Pay app not found — reload and try again.');
+    if(_ext && !payMayReview(row)) throw new Error('This step is not yours to record.');
     let by=''; try{ const u=await auth0Client.getUser(); by=u.name||u.email||''; }catch(e){}
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
     if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await payAppFolder(row); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
@@ -13826,7 +13870,10 @@ async function submitPayAction(){
     // A pencil copy approves nothing to be paid. Leaving the amount off the row
     // matters: payApproved falls back to the requested figure when the status
     // says approved and the amount is blank.
-    const appAmt = pencil ? 0 : (action==='Deny' ? 0 : amount);
+    // A reviewer from outside never sets the money: the field is not shown to
+    // them, so the box would read zero and a signature would wipe what Fidevia
+    // recorded.
+    const appAmt = (pencil || _ext) ? 0 : (action==='Deny' ? 0 : amount);
     const note=(function(){ const el=document.getElementById('pa-note'); return el?String(el.value||'').trim():''; })();
     if(PAY_NOTE_REQUIRED.test(action) && !note)
       throw new Error('Say what has to change \u2014 "'+action+'" without the notes is not something the contractor can act on.');
@@ -13876,15 +13923,26 @@ async function submitPayAction(){
       if(_chain && !_chain.complete) status=payMidChainStatus(row, _chain.names);
     }
     row['Status']=status; row['Action']=action;
-    row['Approved Amount']= pencil ? '' : String(appAmt);
+    row['Approved Amount']= (pencil || _ext) ? (row['Approved Amount']||'') : String(appAmt);
     row['Reviewed By']=by; row['Review Date']=etToday();
     // A pencil copy is never signed, so a marked-up file is another version of
     // the document rather than a signed counterpart of it.
     if(pencil){ if(sfid){ row['Attachment File ID']=sfid; row['Attachment Name']=sname; } }
     else { row['Signed File ID']=sfid; row['Signed File Name']=sname; }
     prog.textContent='Updating log…';
-    await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
-    allData.pay_apps=rows;
+    if(_ext){
+      await boxUpdateRow('pay_apps', row, {
+        'Status':row['Status'], 'Action':row['Action'],
+        'Reviewed By':row['Reviewed By'], 'Review Date':row['Review Date'],
+        'Version History':row['Version History'],
+        'Attachment File ID':row['Attachment File ID'], 'Attachment Name':row['Attachment Name'],
+        'Workflow Step':row['Workflow Step'], 'Workflow Status':row['Workflow Status'],
+        'Workflow Done':row['Workflow Done'], 'Workflow Signed':row['Workflow Signed']
+      });
+    } else {
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+      allData.pay_apps=rows;
+    }
     try{
       const _contact=(allData.contacts||[]).find(c=>String(c['Company']||'').trim().toLowerCase()===String(row['Contractor']||'').trim().toLowerCase());
       const _extra=_contact&&_contact['Email']?[_contact['Email']]:[];

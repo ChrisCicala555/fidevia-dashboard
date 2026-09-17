@@ -54,8 +54,9 @@ console.log('What the dialog shows');
   const o=html.split('function openPayAction(idx){')[1].split('\nfunction payActionChanged')[0];
   ok(/const pencil=payIsPencil\(r\);/.test(o), 'it knows which it is');
   ok(/sel\.innerHTML=payActions\(r\)\.map/.test(o), 'the outcomes come from the row');
-  ok(/if\(af\) af\.style\.display = pencil \? 'none' : '';/.test(o),
-     'the approved payment amount is not shown at all on a pencil \u2014 there is no payment to approve');
+  ok(/if\(af\) af\.style\.display = \(pencil \|\| _ext\) \? 'none' : '';/.test(o),
+     'the approved payment amount is not shown at all on a pencil \u2014 there is no payment to approve \u2014 '
+     +'nor to a reviewer from outside, for whom the money was never theirs to set');
   ok(/set\('pa-file-label', pencil \? 'Upload marked-up pencil copy' : 'Upload signed payment application'\)/.test(o),
      'and the upload asks for a marked-up copy rather than a signed one');
   ok(/nothing is signed and no payment is approved here/.test(o), 'saying so in a line above the choices');
@@ -83,10 +84,10 @@ console.log('A review the contractor cannot act on is refused');
 console.log('What the review writes');
 {
   const sub=html.split('async function submitPayAction(){')[1].split('\nfunction updateContractBar')[0];
-  ok(/const appAmt = pencil \? 0 : \(action==='Deny' \? 0 : amount\);/.test(sub),
-     'a pencil approves nothing to be paid');
-  ok(/row\['Approved Amount'\]= pencil \? '' : String\(appAmt\);/.test(sub),
-     'and leaves the amount off the row rather than writing a zero that reads as a decision');
+  ok(/const appAmt = \(pencil \|\| _ext\) \? 0 : \(action==='Deny' \? 0 : amount\);/.test(sub),
+     'a pencil approves nothing to be paid \u2014 nor does a review recorded from outside Fidevia');
+  ok(/row\['Approved Amount'\]= \(pencil \|\| _ext\) \? \(row\['Approved Amount'\]\|\|''\) : String\(appAmt\);/.test(sub),
+     'and leaves the amount as it was rather than writing a zero over what Fidevia recorded');
   ok(/if\(pencil\)\{ if\(sfid\)\{ row\['Attachment File ID'\]=sfid; row\['Attachment Name'\]=sname; \} \}/.test(sub),
      'a marked-up pencil is another version of the document, not a signed counterpart of it');
   ok(/else \{ row\['Signed File ID'\]=sfid; row\['Signed File Name'\]=sname; \}/.test(sub),
