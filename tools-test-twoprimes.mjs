@@ -97,11 +97,32 @@ console.log('And the contact directory says which primes a firm holds')
   const d=html.split('function renderContacts')[1]||html;
   const band=d.slice(d.indexOf('const trades=tradesForCompany(c);'), d.indexOf('groups[c].forEach'));
   ok(/const trades=tradesForCompany\(c\);/.test(band), 'the company heading asks what that firm holds');
-  ok(/trades\.length\?/.test(band), 'and says nothing at all for a company holding no contract \u2014 '
+  ok(/trades\.length\s*\n?\s*\?/.test(band) && /: \(IS_ADMIN && isContractorCompany/.test(band),
+     'and says nothing at all for a company holding no contract and doing no contracting \u2014 '
      +'the architect, the owner, the engineers');
   ok(/trades\.join\(' \\u00b7 '\)/.test(band), 'listing every one of them, not just the first');
-  ok(!/Trade|Role/.test(band.replace(/tradesForCompany/g,'')),
+  ok(!/'Trade'|'Role'/.test(band),
      'and nothing is written against the person, who needs no designation of their own');
+  // "Where? I see GC PC but how do i edit?" — the contracts are two tabs away,
+  // and the person reading the trades is the one most likely to want them
+  // changed, so the badge is the way there.
+  ok((band.match(/onclick="openContractors\(\)"/g)||[]).length===2,
+     'both ways in open the contracts editor: the badge on a firm that holds contracts, and the '
+     +'prompt on one that holds none');
+  ok(/class="jc-trade" title="Edit the contracts this firm holds"/.test(band),
+     'and the badge itself is the control \u2014 it is what somebody reading the trades reaches for');
+  ok(/IS_ADMIN\s*\n?\s*\?/.test(band) && /jc-trade-flat/.test(band),
+     'for Fidevia only \u2014 to everyone else the trades are a fact, not theirs to edit');
+  ok(/isContractorCompany\(c\)/.test(band) && /Set trade/.test(band),
+     'and a firm somebody has called a contractor with no contract behind it is offered the way in '
+     +'rather than being left silent, which is a setup nobody has finished');
+  const P3=bootPage(); P3.run(SEED);
+  P3.run(`currentProject={folders:{},config:{contractors:[{name:'Summit Builders',role:'GC',contract:1,active:true}]}};
+    allData.contacts=[{Company:'Garden Spot', Role:'Contractor'},{Company:'Architect 2', Role:'Architect'}];`);
+  ok(P3.run(`isContractorCompany('Summit Builders')`)===true, 'a firm holding a contract is one');
+  ok(P3.run(`isContractorCompany('Garden Spot')`)===true, 'and so is one whose people are down as contractors');
+  ok(P3.run(`isContractorCompany('Architect 2')`)===false, 'while the architect is not, and is asked nothing');
+  ok(P3.run(`isContractorCompany('')`)===false, 'and a blank company is nobody');
 }
 
 console.log('Wired to the real render, not a copy');

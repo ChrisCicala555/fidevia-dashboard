@@ -405,6 +405,13 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
   .jc-role-flat{font-weight:600;}
   .jc-role-fid{color:var(--olive-700);}
+  .jc-trade{margin-left:9px; font:700 12px/1 'Helvetica Neue',Helvetica,Arial,sans-serif;
+    letter-spacing:.4px; color:var(--olive-700); background:none; border:1px solid transparent;
+    border-radius:4px; padding:3px 6px; cursor:pointer;}
+  .jc-trade:hover{border-color:var(--olive-700); background:var(--white);}
+  .jc-trade-none{color:var(--danger);}
+  .jc-trade-flat{margin-left:9px; font:700 12px/1 'Helvetica Neue',Helvetica,Arial,sans-serif;
+    letter-spacing:.4px; color:var(--olive-700);}
   .jc-role-dirty{border-color:var(--danger); box-shadow:0 0 0 2px rgba(192,57,43,.12);}
   /* Disabled, but stating a fact rather than being unavailable — so it should
      not read as greyed out. */
@@ -5549,7 +5556,17 @@ function renderContacts(){
     // thing worth seeing — it says this firm files two applications a month.
     const trades=tradesForCompany(c);
     html+='<tr class="cd-band"><td colspan="13"><span class="cdb-key" style="font-size:15px;">'+esc(c)+'</span>'
-      +(trades.length?'<span style="margin-left:9px;font-size:12px;font-weight:700;color:var(--olive-700);letter-spacing:.4px;">'+esc(trades.join(' \u00b7 '))+'</span>':'')
+      // Somebody reading the trades here is the person most likely to want to
+      // change them, and the contracts they come from are two tabs away. For
+      // Fidevia the badge is the way there; for everyone else it is just a fact,
+      // since the contracts are not theirs to edit.
+      +(trades.length
+        ? (IS_ADMIN
+            ? '<button type="button" class="jc-trade" title="Edit the contracts this firm holds" onclick="openContractors()">'+esc(trades.join(' \u00b7 '))+'</button>'
+            : '<span class="jc-trade-flat">'+esc(trades.join(' \u00b7 '))+'</span>')
+        : (IS_ADMIN && isContractorCompany(c)
+            ? '<button type="button" class="jc-trade jc-trade-none" title="This firm holds no contract on this job" onclick="openContractors()">Set trade</button>'
+            : ''))
       +'<span class="cdb-n">'+groups[c].length+'</span></td></tr>';
     groups[c].forEach(i=>{ const r=rows[i];
       html+='<tr><td class="cd-name">'+nameCell(r)+flagFor(i,'Name')+'</td>'
@@ -5664,7 +5681,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 12:13';
+const BUILD_STAMP='2026-09-17 12:17';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12728,6 +12745,15 @@ function rowOnLine(row, line){
 // Every trade one company holds on this job. One entry for a firm with a single
 // contract, which is the ordinary case and reads the same as it always did.
 function tradesForCompany(name){ return linesForCompany(name).map(tradeKeyOf).filter(Boolean); }
+// Is this a firm the job treats as a contractor? Either it holds a contract, or
+// somebody on it is down as one — which is the case worth catching, because a
+// contractor with no contract is a setup nobody has finished.
+function isContractorCompany(name){
+  if(linesForCompany(name).length) return true;
+  const n=coNorm(name);
+  return !!n && (allData.contacts||[]).some(c=>coNorm(c['Company'])===n
+    && /contractor|^gc$|^mc$|^pc$|^ec$/i.test(String(c['Role']||'')));
+}
 // A firm can hold several of the four primes, so the same name on two rows is
 // ordinary. The same name on the same TRADE twice is not: that is two contracts
 // nothing could ever tell apart, and every figure keyed on the trade would take
