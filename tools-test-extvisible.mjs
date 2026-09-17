@@ -62,7 +62,7 @@ console.log('The rule still hides what it was written to hide');
   // The exemption has to be asked for, one button at a time.
   const count=(html.match(/btn-approve ext-ok/g)||[]).length;
   ok(count===2, 'exactly two buttons ask for the exemption: Review and Submit Final (got '+count+')');
-  ok(/'<button class="btn-approve" onclick="openPayAction\('\+idx\+'\)">'\+esc\(payActionLabel\(r\)\)/.test(html),
+  ok(/'<button class="'\+\(paySettled\(r\)\?'row-act':'btn-approve'\)\+'" onclick="openPayAction/.test(html),
      'and Fidevia’s own button does not ask for it, because nothing was hiding it');
 }
 

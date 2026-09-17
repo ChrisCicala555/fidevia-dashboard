@@ -166,7 +166,24 @@ console.log('The button says which of the two it is')
   ok(lab(BARE,true)==='Sign Final',
      'but never for somebody outside Fidevia, who is not shown the figures to record');
 
+  // "PA-1 — I already signed that jawn." It said Sign Final on a row reading
+  // Approved & Signed, which is an invitation to sign it twice.
+  const DONE=Object.assign({}, FINAL, {'Status':'Approved & Signed','Workflow Status':'Complete'});
+  ok(lab(DONE,false)==='Amend', 'a settled row offers a correction, not a second signature');
+  ok(lab(Object.assign({},FINAL,{'Status':'Approved & Signed'}),false)==='Amend',
+     'read off the status too, since a row decided without a chain behind it is just as settled');
+  ok(lab(Object.assign({},PENCIL,{'Status':'Pencil approved \u2014 awaiting final'}),false)==='Amend',
+     'and an approved pencil is done with Fidevia \u2014 the next move is the contractor\u2019s');
+  ok(lab(Object.assign({},PENCIL,{'Status':'Revise and resubmit \u2014 awaiting contractor'}),false)==='Amend',
+     'as is one sent back');
+  ok(lab(Object.assign({},FINAL,{'Status':'Uploaded \u2014 awaiting Fidevia'}),false)==='Sign Final',
+     'while one still waiting on them says so \u2014 "awaiting" is not a decision');
+  ok(lab(Object.assign({},PENCIL,{'Status':'Pencil \u2014 with Architect 2'}),false)==='Review pencil',
+     'nor is a chain mid-flight, whoever is holding it');
+
   const row=html.split('function renderPayApps(')[1].split('\nfunction togglePayGroup')[0];
+  ok(/'<button class="'\+\(paySettled\(r\)\?'row-act':'btn-approve'\)\+'"/.test(row),
+     'and it is drawn as a quiet secondary rather than the green one that asks to be pressed');
   ok((row.match(/esc\(payActionLabel\(r\)\)/g)||[]).length===2,
      'one label serves both the inside button and the outside one, so they cannot drift apart');
   ok(!/>Take Action</.test(row) && !/Record &amp; Review'/.test(row),

@@ -5500,7 +5500,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:36';
+const BUILD_STAMP='2026-09-17 04:40';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13870,7 +13870,7 @@ function renderPayApps(){
           +dlBtn(r['Attachment File ID'], r['Attachment Name']||'', pfx):'—';
         const signed=r['Signed File ID']?' &middot; <a class="attach-link" href="#" onclick="openBoxFile(\''+esc(r['Signed File ID'])+'\',event);return false;">Signed</a>'
           +dlBtn(r['Signed File ID'], r['Signed File Name']||'', (pfx?pfx+' ':'')+'signed'):'';
-        const act=!EXTERNAL?'<button class="btn-approve" onclick="openPayAction('+idx+')">'+esc(payActionLabel(r))+'</button>'+delBtn('pay_apps',idx)
+        const act=!EXTERNAL?'<button class="'+(paySettled(r)?'row-act':'btn-approve')+'" onclick="openPayAction('+idx+')">'+esc(payActionLabel(r))+'</button>'+delBtn('pay_apps',idx)
           :((payMayReview(r)?'<button class="btn-approve ext-ok" onclick="openPayAction('+idx+')">'+esc(payActionLabel(r))+'</button>':'')
             +(payMayPromote(r)?'<button class="btn-approve ext-ok" onclick="openPayFinal('+idx+')">Submit Final</button>':'')
             +(payMayReplace(r)?('<button class="row-act" title="'+(payWasReturned(r)?'This was sent back \u2014 file the corrected document':'Fidevia has not reviewed this yet \u2014 put the right document on it')+'" onclick="openPayReplace('+idx+')">'+(payWasReturned(r)?'Submit revision':'Replace file')+'</button>'):''));
@@ -13889,11 +13889,22 @@ function renderPayApps(){
 function togglePayGroup(gi){ const b=document.getElementById('pg-body-'+gi); if(!b) return; const open=b.style.display!=='none'; b.style.display=open?'none':'block'; const a=document.getElementById('pg-arw-'+gi); if(a) a.style.transform=open?'rotate(0deg)':'rotate(90deg)'; }
 let PAY_CTX=null;
 function payNeedsDetails(r){ return !String(r['App #']||'').trim() || !String(r['Requested Amount']||'').trim(); }
+// Nothing is waiting on anybody: the chain ran to its end, or the decision
+// closed it. Fidevia can still go back in — a figure read wrong has to be
+// correctable — but the row is not asking them to.
+function paySettled(r){
+  if(!r) return false;
+  if(wfIsDone(r)) return true;
+  return PAY_DECIDED.test(String(r['Status']||''));
+}
 // What the button offers depends on what the review is. On a draft it is a
 // review; on the formal application it is a signature, and a button that says
 // "Review" there hides what the click actually commits you to — which is the
-// architect putting their name on the paper the owner pays against.
+// architect putting their name on the paper the owner pays against. On a
+// settled row it offers neither: "Sign Final" on a document that already
+// carries the signature is asking for a second one.
 function payActionLabel(r){
+  if(paySettled(r)) return 'Amend';
   const record=payNeedsDetails(r) && !viewingAsExternal();
   if(payIsPencil(r)) return record ? 'Record & Review' : 'Review pencil';
   return record ? 'Record & Sign' : 'Sign Final';
