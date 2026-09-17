@@ -73,6 +73,17 @@ console.log('And the pill says what is still outstanding')
   ok(/pill\(coStatusLabel\(r\),false\)/.test(html), 'and the log draws that, not the stored word');
 }
 
+console.log('And a linked RFI says which field it is')
+{
+  // The cell read "Linked RFI-GC-002", which is the label and the number run
+  // together — it parses as a linked thing called RFI-GC-002 only if you
+  // already know the convention.
+  const r=html.split('function renderCOs(){')[1].split('\n// \u2500\u2500 Filtering the submittal log')[0];
+  ok(/Linked RFI: '\+esc\(r\['Linked RFI'\]\)/.test(r),
+     'the field is named, then its value');
+  ok(!/>Linked '\+esc/.test(r), 'rather than leaving the two to run into each other');
+}
+
 console.log('Counting them, with a way into each');
 {
   const chips=(rows)=>P.run(`(function(){ coStageChips(${JSON.stringify(rows)});
