@@ -82,6 +82,64 @@ console.log('Held on the row, not just on the first email');
      +'rather than a record, and the reply is the part they were waiting for');
 }
 
+console.log('Additional Review adds the firm to the chain')
+{
+  // "I added next level engineers to the Submittal 004, but do not see them on
+  // the workflow anywhere." Because it did not put them there: the field copied
+  // them on the email and nothing else, which is not what the label promises.
+  const P2=bootPage('index.html'); P2.run(SEED);
+  P2.run(`currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'}];
+    ME_NAME='Test Contractor';`);
+  const add=(raw)=>P2.run(`(function(){
+    var r={};
+    var added=ccAddReviewSteps('sub', r, ${'$'}{JSON.stringify(raw)});
+    return { added:added, steps:wfEffectiveSteps('sub', r).map(function(s){
+      return (s.name||'')+' \u2014 '+(wfStepCompany(s)||''); }) }; })()`.replace('${JSON.stringify(raw)}', JSON.stringify(raw)));
+
+  const one=add('Next Level Engineers');
+  ok(one.added.join()==='Next Level Engineers', 'the firm is reported as added');
+  ok(one.steps.length===2, 'and the chain is one step longer');
+  ok(/Additional Review \u2014 Next Level Engineers/.test(one.steps[1]),
+     'named for what it is, and carrying the firm \u2014 '+one.steps[1]);
+  ok(/Architect Review/.test(one.steps[0]),
+     'after the first reviewer, not before them: the configured chain still runs first');
+
+  // A two-step chain is what tells "after the first reviewer" apart from "at the
+  // end" — on a one-step chain they are the same index.
+  P2.run(`currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'},
+    {name:'Fidevia Review', company:'Fidevia'}];`);
+  const mid=add('Next Level Engineers');
+  ok(mid.steps.length===3, 'the chain grows by one');
+  ok(/Architect Review/.test(mid.steps[0]) && /Additional Review/.test(mid.steps[1])
+     && /Fidevia Review/.test(mid.steps[2]),
+     'and the firm lands between them \u2014 an extra reviewer is wanted soon, not last \u2014 '+mid.steps.join(' | '));
+  P2.run(`currentProject.config.workflows.sub=[{name:'Architect Review', company:'Architect 2'}];`);
+
+  const two=add('Next Level Engineers, Moore Engineering');
+  ok(two.added.length===2 && two.steps.length===3, 'several firms, several steps');
+
+  const dup=add('Architect 2');
+  ok(dup.added.length===0 && dup.steps.length===1,
+     'a firm already reviewing it is not added again \u2014 one office signing the same item in two '
+     +'places is not an additional review');
+  ok(add('  ,  ; ').added.length===0, 'and punctuation on its own adds nobody');
+  ok(add('').added.length===0, 'nor does an empty field');
+}
+
+console.log('The submission wires it up')
+{
+  const sm=html.split('async function submitForm()')[1].slice(0,26000);
+  ok(/if\(newRow && _ccRaw\) ccAddReviewSteps\(key, newRow, _ccRaw\)/.test(sm),
+     'the firms named go into the chain as well as onto the email');
+  ok(sm.indexOf("newRow['Copied To']=_ccRaw")<sm.indexOf('ccAddReviewSteps'),
+     'recorded on the row first, so what was asked for survives even if the chain write fails');
+  const rfi=html.split("rfi:{title:'New RFI'")[1].split("co:{title:'New PCO'")[0];
+  ok(/placeholder="A firm \\u2014 comma separated"/.test(rfi),
+     'and the field asks for a firm, not a person \u2014 a step belongs to an office');
+  ok(/Added to the review chain after the first reviewer/.test(rfi),
+     'saying what it does, which it previously did not do');
+}
+
 console.log('The list stays open when you click into the box')
 {
   // "When i click on the box, it flashes a list that goes away." Focus opened

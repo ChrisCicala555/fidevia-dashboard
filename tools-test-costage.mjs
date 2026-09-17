@@ -70,7 +70,8 @@ console.log('And the pill says what is still outstanding')
   const open={'Status':'Open','Workflow Status':'In Review','Workflow Step':'0'};
   ok(lab(open)==='Open \u2014 with Fidevia',
      'an unapproved one says whose review it is sitting in too \u2014 '+lab(open));
-  ok(/pill\(coStatusLabel\(r\),false\)/.test(html), 'and the log draws that, not the stored word');
+  ok(/pill\(coStatusLabel\(r\),false,wfSettled\('co',r\)\)/.test(html),
+     'and the log draws that, not the stored word — green only once nobody is left to sign');
 }
 
 console.log('And a linked RFI says which field it is')

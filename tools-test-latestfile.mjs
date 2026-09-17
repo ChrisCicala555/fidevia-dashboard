@@ -55,5 +55,34 @@ console.log('The firm is said once');
   ok(shows('Dave Chen',null)===false, 'and nothing invented from nothing');
 }
 
+console.log('Green means finished and approved')
+{
+  const cls=(st,settled)=>{ const h=P.run(`pill(${JSON.stringify(st)}, false, ${settled?'true':'false'})`);
+    const m=h.match(/class="pill ([a-z]+)"/); return m?m[1]:''; };
+  // "Approved as Noted" matched nothing in the colour map and came out the same
+  // neutral khaki as Open — a decision reading as no decision.
+  ok(cls('Approved as Noted', true)==='approved', 'an approval with comments is an approval');
+  ok(cls('Approved', true)==='approved', 'as is a plain one');
+  ok(cls('Approved as Noted', false)!=='approved',
+     'but not while somebody is still to sign \u2014 the same reason a change order mid-chain stops '
+     +'reading green');
+  ok(cls('Rejected', true)==='rejected', 'a refusal is never green, finished or not');
+  ok(cls('Revise and Resubmit', true)!=='approved', 'nor is a return');
+  ok(cls('Comment only \u2014 no decision', true)!=='approved', 'and a comment decides nothing');
+  ok(/class="pill overdue"/.test(P.run(`pill('Approved', true, true)`)),
+     'overdue still wins over everything, which is the one thing worth interrupting for');
+}
+
+console.log('What counts as nobody left to sign');
+{
+  const settled=(row)=>P.run(`(function(){ wfEffectiveSteps=function(){ return ${JSON.stringify(row.steps||[])}; };
+    return wfSettled('sub', ${JSON.stringify(row.r||{})}); })()`);
+  ok(settled({steps:[{name:'A'}], r:{'Workflow Status':'Complete'}})===true, 'a chain that ran its course');
+  ok(settled({steps:[{name:'A'}], r:{'Workflow Status':'In Review'}})===false, 'not one still running');
+  ok(settled({steps:[], r:{}})===true,
+     'and a project with no chain configured at all \u2014 an approval is final the moment it is given, '
+     +'because nothing was ever going to follow it');
+}
+
 console.log(bad ? `FAIL tools-test-latestfile.mjs — ${bad} of ${n}` : `ok   tools-test-latestfile.mjs — ${n} assertions`);
 process.exit(bad?1:0);

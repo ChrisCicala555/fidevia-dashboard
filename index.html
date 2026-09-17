@@ -4969,12 +4969,28 @@ async function toggleNotify(i,f){
   renderContacts();
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function pill(status,overdue){
+// Anything that says yes. "Approved as Noted" is an approval with comments, and
+// read as a bare string it matched nothing in the map below and came out the
+// same neutral khaki as "Open" — a decision that reads as no decision.
+const PILL_APPROVING=/^approv/i;
+// Green is for finished and approved, not for approved-with-people-still-to-
+// sign: the same reason a change order mid-chain stops reading green.
+function pill(status,overdue,settled){
   if(overdue) return '<span class="pill overdue">Overdue</span>';
   if(!String(status||'').trim()) return '<span style="color:var(--muted);">\u2014</span>';
   const map={'open':'open','closed':'closed','approved':'approved','under review':'review','under-review':'review','pending review':'pending','pending-review':'pending','revise and resubmit':'pending','rejected':'rejected'};
-  const cls=map[(status||'').toLowerCase()]||'open';
+  let cls=map[(status||'').toLowerCase()]||'open';
+  if(settled && PILL_APPROVING.test(String(status||''))) cls='approved';
   return '<span class="pill '+cls+'">'+esc(status)+'</span>';
+}
+// Is there anybody left to sign? A chain that has run its course, or a row on a
+// project with no chain configured at all — where an approval is final the
+// moment it is given, because nothing was ever going to follow it.
+function wfSettled(key, row){
+  try{
+    if(wfIsDone(row)) return true;
+    return (wfEffectiveSteps(key,row)||[]).length===0;
+  }catch(e){ return false; }
 }
 // Anything still awaiting a response can be overdue. Previously only a status
 // of exactly "open" counted, so a submittal sitting at "Pending Review" past
@@ -5290,7 +5306,7 @@ function renderRFIs(){
     9, ({r,idx})=>'<tr><td style="width:150px;">'+esc(r['RFI #'])+'</td><td>'+esc(r['Subject'])+'</td>'
       +'<td style="width:130px;">'+esc(assignedFirm(r['Assigned To']))+'</td>'
       +'<td style="width:110px;">'+esc(fmtDMY(r['Date Closed']||r['Date Submitted']))+'</td>'
-      +'<td style="width:110px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:110px;">'+pill(r['Status'],false,true)+'</td>'
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('rfi',idx,r)+'</td></tr>');
@@ -5303,7 +5319,7 @@ function renderRFIs(){
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+assignedCell('rfi', r, 'Assigned To')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
-      +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
+      +'<td>'+pill(r['Status'],isOverdue(r),wfSettled('rfi',r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+rowActions('rfi',i,r)+'</td></tr>';
     return main+verThreadRows('rfi',r,i,9);
@@ -5428,7 +5444,7 @@ function renderCOs(){
       +'<td style="width:150px;">'+esc(rowCompany(r))+'</td>'
       +'<td style="width:110px;">'+esc(fmtDMY(r['Date Approved']||r['Date Submitted']))+'</td>'
       +'<td style="width:110px;">'+fmtMoney(coApprovedAmount(r))+'</td>'
-      +'<td style="width:110px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:110px;">'+pill(r['Status'],false,true)+'</td>'
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('co',idx,r)+'</td></tr>');
@@ -5450,7 +5466,7 @@ function renderCOs(){
     const num = r['CO #'] ? (r['PCO #'] ? esc(r['PCO #'])+' <span style="color:var(--muted);">&rarr;</span> <strong>'+esc(r['CO #'])+'</strong>' : '<strong>'+esc(r['CO #'])+'</strong>')
                           : esc(r['PCO #']||'');
     const draw=coAllowanceDraw(r), impact=coContractImpact(r);
-    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked RFI: '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(coStatusLabel(r),false)+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
+    const main='<tr class="thread-main" style="cursor:pointer" onclick="rowActivate(event,()=>toggleThread(\'co\','+i+'))">'+threadCell('co', i, impFlag(r)+num+(rowCompany(r)?'<div class="cell-sub">'+esc(rowCompany(r))+'</div>':'')+coStageNote(r))+'<td>'+esc(r['Description'])+(r['Linked RFI']?'<div class="cell-sub">Linked RFI: '+esc(r['Linked RFI'])+'</div>':'')+'</td><td>'+twoLine(r['Submitted By']||'', rowCompany(r))+'</td><td>'+esc(fmtDMY(r['Date Submitted']))+'</td><td>'+fmtMoney(coApprovedAmount(r))+'</td><td>'+(draw?fmtMoney(draw):'<span style="color:var(--muted);">—</span>')+'</td><td>'+(impact?fmtMoney(impact):'<span style="color:var(--muted);">—</span>')+'</td><td>'+pill(coStatusLabel(r),false,wfSettled('co',r))+'</td><td onclick="event.stopPropagation()">'+fileCell(r)+'</td><td class="admin-col" onclick="event.stopPropagation()">'+rowActions('co',i,r,{gen:coGenBtn(i,r)})+'</td></tr>';
     return main+verThreadRows('co',r,i,10); }).join('');
   countFooter(shown.length, all.length, 'change order');
   { const b=document.getElementById('arch-all-co'); if(b) b.innerHTML=archiveAllBtnHTML('co'); }
@@ -5512,7 +5528,7 @@ function renderSubmittals(){
     9, ({r,idx})=>'<tr><td style="width:160px;">'+esc(r['Submittal #'])+'</td><td>'+esc(r['Description'])+'</td>'
       +'<td style="width:130px;">'+esc(assignedFirm(r['Reviewer']))+'</td>'
       +'<td style="width:110px;">'+esc(fmtDMY(r['Date Submitted']))+'</td>'
-      +'<td style="width:120px;">'+pill(r['Status'],false)+'</td>'
+      +'<td style="width:120px;">'+pill(r['Status'],false,true)+'</td>'
       +'<td style="width:90px;">'+fileCell(r)+'</td>'
       +'<td style="width:170px;font-size:12px;color:var(--muted);">'+esc(r['Archived By']?('Archived by '+r['Archived By']):'')+'</td>'
       +'<td class="admin-col" style="width:90px;">'+archiveBtn('sub',idx,r)+'</td></tr>');
@@ -5538,7 +5554,7 @@ function renderSubmittals(){
       +'<td>'+esc(fmtDMY(r['Date Submitted']))+'</td>'
       +'<td>'+assignedCell('sub', r, 'Reviewer')+'</td>'
       +'<td>'+esc(fmtDMY(r['Due Date']))+offContractFlag(r)+'</td>'
-      +'<td>'+pill(r['Status'],isOverdue(r))+'</td>'
+      +'<td>'+pill(r['Status'],isOverdue(r),wfSettled('sub',r))+'</td>'
       +'<td onclick="event.stopPropagation()">'+fileCell(r)+'</td>'
       +'<td class="admin-col" onclick="event.stopPropagation()">'+rowActions('sub',i,r)+'</td></tr>';
     return main+verThreadRows('sub',r,i,10);
@@ -5759,7 +5775,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 19:41';
+const BUILD_STAMP='2026-09-17 19:53';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6093,6 +6109,35 @@ function fillAssignedFirm(key, fieldId){
 // Held on the row rather than on the first email alone, so a reply three weeks
 // later still reaches them. That is the difference between copying somebody in
 // and copying them once.
+// The firms a submitter asked to review it, as steps on this item. It was
+// called Additional Review and added nobody to the review — it only copied them
+// on the email, which is a different promise from the one the label makes.
+//
+// Placed after the first review group rather than at the end, which is where a
+// reviewer's own "send it on as well" puts somebody: an extra reviewer is
+// wanted soon, not last. This item only; the project's workflow is untouched.
+function ccAddReviewSteps(key, row, raw){
+  const names=String(raw||'').split(/[;,]/).map(x=>String(x||'').trim()).filter(Boolean);
+  if(!names.length) return [];
+  let steps=[]; try{ steps=wfEffectiveSteps(key,row)||[]; }catch(e){ steps=[]; }
+  const after = steps.length ? wfGroupAt(steps,0)[1] : -1;
+  const extra=wfExtraSteps(row);
+  const added=[];
+  const seen=new Set(steps.map(st=>coNorm(wfStepCompany(st))));
+  names.forEach(function(nm){
+    // A firm already in the chain is already reviewing it; adding it again
+    // would make one office sign the same item in two places.
+    const firm=wfCompanyOf(nm)||nm;
+    const k=coNorm(firm);
+    if(!k || seen.has(k)) return;
+    seen.add(k);
+    extra.push({after:after, name:'Additional Review', company:firm, person:'',
+                addedBy:(ME_NAME||ME_EMAIL||''), at:etToday(), added:true});
+    added.push(firm);
+  });
+  if(added.length) row['Workflow Extra']=JSON.stringify(extra);
+  return added;
+}
 function ccList(row){
   const raw=String((row&&row['Copied To'])||'').trim();
   if(!raw) return [];
@@ -8736,7 +8781,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Open</option><option>Closed</option></select></div></div>
     <div class="field"><label>Subject *</label><input autocomplete="off" id="f-subject" placeholder="e.g. Beam clearance conflict at Gridline C4"></div>
     <div class="field"><label>Description</label><textarea autocomplete="off" id="f-desc" placeholder="Detailed description…"></textarea></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p><p class="file-hint" style="margin-top:2px;">Kept on the RFI, so replies reach them too. A firm adds everyone there.</p><input type="hidden" id="f-assigned"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Name / Company"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-assigned-note"></p><p class="file-hint" style="margin-top:2px;">Added to the review chain after the first reviewer, and kept on the RFI so replies reach them too.</p><input type="hidden" id="f-assigned"></div></div>
     <div class="field-row"><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div><div class="field"><label>Response Due</label><input autocomplete="off" type="date" id="f-due"><p class="file-hint" style="margin-top:3px;" id="f-due-hint"></p></div></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-rfi"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">PDF, DWG, or image — uploaded directly to Box.</p></div>`},
   co:{title:'New PCO',html:`
@@ -8750,7 +8795,7 @@ const FORMS = {
     <div class="field-row"><div class="field" id="f-status-field"><label>Status</label><select autocomplete="off" id="f-status"><option>Pending Review</option><option>Under Review</option><option>Revise and Resubmit</option><option>Approved</option><option>Rejected</option></select></div></div>
     <div class="field-row"><div class="field"><label>Spec Section</label><input autocomplete="off" id="f-spec" placeholder="Type or search CSI code…" list="csi-list"></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="e.g. Panelboard shop drawings"></div>
-    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A person or a firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p><p class="file-hint" style="margin-top:2px;">Kept on the submittal, so replies reach them too. A firm adds everyone there.</p><input type="hidden" id="f-reviewer"></div></div>
+    <div class="field-row"><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="Subcontractor / Vendor"></div><div class="field"><label>Additional Review (optional)</label><input autocomplete="off" id="f-cc" placeholder="A firm \u2014 comma separated" oninput="wfShowAC(this)" onfocus="wfShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-reviewer-note"></p><p class="file-hint" style="margin-top:2px;">Added to the review chain after the first reviewer, and kept on the submittal so replies reach them too.</p><input type="hidden" id="f-reviewer"></div></div>
     <div class="field"><label>Submittal Document <span id="f-file-req-sub"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   daily:{title:'Log a Daily Report',html:`
     <div class="field-row"><div class="field"><label>Date *</label><input autocomplete="off" type="date" id="f-date-sub"></div><div class="field"><label>Submitted By *</label><input autocomplete="off" id="f-by" placeholder="e.g. J. Doe (Superintendent)"></div></div>
@@ -9888,6 +9933,9 @@ async function submitForm(){
     // Kept on the row, not only on the first email: copying somebody in should
     // outlast the submission.
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Copied To')){ newRow['Copied To']=_ccRaw||''; } }catch(e){}
+    // And into the chain, which is what "Additional Review" says on the form.
+    // After the row exists, so the steps are written against the item as filed.
+    try{ if(newRow && _ccRaw) ccAddReviewSteps(key, newRow, _ccRaw); }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Submitted By Email')){ newRow['Submitted By Email']=ME_EMAIL||''; } if(newRow && MODULES[key] && MODULES[key].headers.includes('Company') && !newRow['Company'] && ME_COMPANY){ newRow['Company']=ME_COMPANY; } }catch(e){}
     try{ if(newRow && MODULES[key] && MODULES[key].headers.includes('Importance')){ const _hi=document.getElementById('f-high'); newRow['Importance']=(_hi&&_hi.checked)?'High':''; } }catch(e){}
     let _wfFirst=[];

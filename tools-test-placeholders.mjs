@@ -86,7 +86,7 @@ ok(all.includes('e.g. 03-300'), 'the cost code still shows a CSI division');
 // you what to do, not showing you an answer, and "e.g." in front of it would be
 // nonsense.
 {
-  const INSTR=/(\u2026|…|\{|^Auto\b|^Enter\b|^Start typing|^Optional|^A person|^Any\b|^Name$|^Company$|^Names|^Describe|^Password|^Milestone name$|^Brief|^Detail,|^Add a|^Anything|^Permit|^Names? \/|^Review step$|^Select or type$|^Subcontractor \/ Vendor$|^Type, or pick below$|^What |^Who |^Your name$|^\[Fidevia\]|^Search|^Type )/i;
+  const INSTR=/(\u2026|…|\{|^Auto\b|^Enter\b|^Start typing|^Optional|^A person|^A firm|^Any\b|^Name$|^Company$|^Names|^Describe|^Password|^Milestone name$|^Brief|^Detail,|^Add a|^Anything|^Permit|^Names? \/|^Review step$|^Select or type$|^Subcontractor \/ Vendor$|^Type, or pick below$|^What |^Who |^Your name$|^\[Fidevia\]|^Search|^Type )/i;
   const bare=all.filter(p=>p.trim() && !/^e\.g\./.test(p) && !INSTR.test(p) && !/e\.g\./.test(p));
   ok(bare.length===0, 'every specimen value is labelled as one — unlabelled: '+JSON.stringify(bare));
   const wrong=all.filter(p=>/^e\.g\./.test(p) && /^e\.g\. (Describe|Enter|Start typing|Any|What|Who|Your name)/i.test(p));
