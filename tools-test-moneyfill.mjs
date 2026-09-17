@@ -58,19 +58,21 @@ console.log('Wiring tidies what is already in the field');
      'the tidy happens before the once-only guard, the listeners after it');
 }
 
-console.log('The approved amount following the requested one');
+console.log('The approved amount following the requested one')
 {
-  const o=html.split('function openPayAction(idx){')[1].split('\nfunction payActionChanged')[0];
-  ok(/setMoneyField\('pa-amount', payNum\(r\['Requested Amount'\]\)\|\|''\)/.test(o),
-     'it opens showing the requested figure, formatted');
-  ok(/setMoneyField\('pa-amount', payNum\(req\.value\)\|\|''\)/.test(o),
-     'and follows it as a number, not as the text the other field is mid-way through holding');
-  ok(!/a\.value=req\.value/.test(o), 'which is what produced "5,0000"');
-  ok(/if\(a&&!a\.disabled\)/.test(o), 'and stops following once the amount has been taken over');
+  const o=html.split('function openPayAction(idx){')[1].split('\nconst PAY_MODIFY')[0];
+  ok(/if\(req\) req\.oninput=function\(\)\{ payActionChanged\(\); \};/.test(o),
+     'a change to the requested figure is re-derived rather than copied across');
+  ok(!/a\.value=req\.value/.test(o), 'copying the text is what produced "5,0000"');
+  ok(!/setMoneyField\('pa-amount'/.test(o),
+     'and the amount is not filled in here at all — one place decides it, and that place is the action');
+  const c=html.split('function payActionChanged(){')[1].split('\n}')[0];
+  ok(/setMoneyField\('pa-amount', payReqNow\(\)\|\|''\)/.test(c),
+     'which fills it as a number, not as the text the other field is mid-way through holding');
 }
 {
   // Denying pays nothing, and that zero is written by code too.
-  ok(/if\(a==='Deny'\)\{ setMoneyField\('pa-amount','0'\); amt\.disabled=true; \}/.test(html),
+  ok(/if\(denied\) setMoneyField\('pa-amount','0'\);/.test(html),
      'a denial writes its zero through the same path');
 }
 

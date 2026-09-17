@@ -1761,7 +1761,7 @@
       <p class="file-hint" style="margin:0 0 12px;" id="pa-kind-note"></p>
       <div id="pa-chain-note"></div>
       <div class="field"><label id="pa-action-label">Action</label><select id="pa-action" onchange="payActionChanged()"></select></div>
-      <div class="field" id="pa-amount-field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"></div>
+      <div class="field" id="pa-amount-field"><label>Approved Payment Amount ($)</label><input autocomplete="off" id="pa-amount" placeholder="0"><p class="file-hint" style="margin-top:4px;" id="pa-amount-hint"></p></div>
       <div class="field"><label id="pa-note-label">Comments</label><textarea id="pa-note" rows="3" autocomplete="off"></textarea><p class="file-hint" style="margin-top:4px;" id="pa-note-hint"></p></div>
       <div class="field"><label id="pa-file-label">Upload signed payment application</label><input type="file" id="pa-file"><p class="file-hint" style="font-size:13px;color:var(--muted);margin-top:4px;" id="pa-file-hint">The signed / marked-up PDF is saved as a new version — the contractor's original is kept.</p></div>
     </div>
@@ -5499,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:06';
+const BUILD_STAMP='2026-09-17 04:13';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13928,14 +13928,12 @@ function openPayAction(idx){
     const cn=document.getElementById('pa-chain-note');
     if(cn){ try{ cn.innerHTML=payChainNoteHTML(r); }catch(e){ cn.innerHTML=''; } }
   }
-  setMoneyField('pa-amount', payNum(r['Requested Amount'])||'');
-  // The approved amount follows what is being requested until somebody changes
-  // it. Copied as a number rather than as the text the other field is holding:
+  // The approved amount follows what is being requested until the action says
+  // otherwise — payActionChanged is the one place that decides it. Re-derived
+  // as a number rather than copied as the text the other field is holding:
   // mid-keystroke that text is "5,0000", and nothing was going to tidy it.
-  if(needs){ const req=document.getElementById('pa-req'); if(req) req.oninput=function(){
-    const a=document.getElementById('pa-amount');
-    if(a&&!a.disabled) setMoneyField('pa-amount', payNum(req.value)||'');
-  }; }
+  if(needs){ const req=document.getElementById('pa-req');
+    if(req) req.oninput=function(){ payActionChanged(); }; }
   document.getElementById('pa-file').value='';
   document.getElementById('pa-progress').style.display='none';
   document.getElementById('pa-submit-btn').disabled=false;
@@ -13943,10 +13941,37 @@ function openPayAction(idx){
   wireMoneyInputs();
   document.getElementById('payaction-backdrop').classList.add('open');
 }
-function payActionChanged(){ const a=document.getElementById('pa-action').value; const amt=document.getElementById('pa-amount'); if(a==='Deny'){ setMoneyField('pa-amount','0'); amt.disabled=true; } else { amt.disabled=false; } }
+const PAY_MODIFY=/modif/i;
+// What is being approved is the amount asked for. Typing over it is what
+// "Modify and Sign" says out loud, so that is the only action that opens the
+// field: approved as filed and paid at some other figure is a disagreement
+// nobody would ever find, because nothing on the row admits a change was made.
+function payActionChanged(){
+  const sel=document.getElementById('pa-action'); if(!sel) return;
+  const a=String(sel.value||'');
+  const amt=document.getElementById('pa-amount'); if(!amt) return;
+  const modify=PAY_MODIFY.test(a), denied=/deny|denied|reject/i.test(a);
+  if(denied) setMoneyField('pa-amount','0');
+  else if(!modify) setMoneyField('pa-amount', payReqNow()||'');
+  amt.disabled=false;
+  if(modify){ amt.removeAttribute('readonly'); amt.classList.remove('fig-locked'); }
+  else { amt.setAttribute('readonly','readonly'); amt.classList.add('fig-locked'); }
+  const h=document.getElementById('pa-amount-hint');
+  if(h) h.textContent = denied ? 'Nothing is approved on a denial.'
+    : modify ? 'Type the amount you are approving, and say why in the comments — the contractor is told both figures.'
+    : 'The amount asked for. To approve a different figure, choose “Modify and Sign”.';
+}
+// What is on the form if Fidevia is recording the figures, and what is on the
+// row if they were recorded already.
+function payReqNow(){
+  const box=document.getElementById('pa-details'), req=document.getElementById('pa-req');
+  if(box && box.style.display!=='none' && req) return payNum(req.value);
+  const r=(allData.pay_apps||[])[(PAY_CTX&&PAY_CTX.idx)]||{};
+  return payNum(r['Requested Amount']);
+}
 // Approved as noted, or sent back, without saying what the notes are is a
 // review the contractor cannot act on.
-const PAY_NOTE_REQUIRED=/noted|revise|resubmit|reject|deny|denied/i;
+const PAY_NOTE_REQUIRED=/noted|modif|revise|resubmit|reject|deny|denied/i;
 function closePayAction(){ document.getElementById('payaction-backdrop').classList.remove('open'); PAY_CTX=null; }
 async function submitPayAction(){
   if(!PAY_CTX) return; const {idx}=PAY_CTX;
@@ -13976,7 +14001,14 @@ async function submitPayAction(){
     // A reviewer from outside never sets the money: the field is not shown to
     // them, so the box would read zero and a signature would wipe what Fidevia
     // recorded.
-    const appAmt = (pencil || _ext) ? 0 : (action==='Deny' ? 0 : amount);
+    // Read off the action, not off the box. The box is locked unless the
+    // action is Modify and Sign, and a lock that only the browser knows about
+    // is not a lock.
+    const _modify=PAY_MODIFY.test(action);
+    if(!pencil && !_ext && _modify && !(amount>0))
+      throw new Error('“Modify and Sign” approves a different amount — say what it is.');
+    const appAmt = (pencil || _ext) ? 0
+      : (action==='Deny' ? 0 : (_modify ? amount : payReqNow()));
     const note=(function(){ const el=document.getElementById('pa-note'); return el?String(el.value||'').trim():''; })();
     if(PAY_NOTE_REQUIRED.test(action) && !note)
       throw new Error('Say what has to change \u2014 "'+action+'" without the notes is not something the contractor can act on.');

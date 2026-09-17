@@ -84,8 +84,8 @@ console.log('A review the contractor cannot act on is refused');
 console.log('What the review writes');
 {
   const sub=html.split('async function submitPayAction(){')[1].split('\nfunction updateContractBar')[0];
-  ok(/const appAmt = \(pencil \|\| _ext\) \? 0 : \(action==='Deny' \? 0 : amount\);/.test(sub),
-     'a pencil approves nothing to be paid \u2014 nor does a review recorded from outside Fidevia');
+  ok(/const appAmt = \(pencil \|\| _ext\) \? 0\s*\n\s*: \(action==='Deny' \? 0 : \(_modify \? amount : payReqNow\(\)\)\);/.test(sub),
+     'a pencil approves nothing to be paid — nor does a review recorded from outside Fidevia');
   ok(/row\['Approved Amount'\]= \(pencil \|\| _ext\) \? \(row\['Approved Amount'\]\|\|''\) : String\(appAmt\);/.test(sub),
      'and leaves the amount as it was rather than writing a zero over what Fidevia recorded');
   ok(/if\(pencil\)\{ if\(sfid\)\{ row\['Attachment File ID'\]=sfid; row\['Attachment Name'\]=sname; \} \}/.test(sub),
