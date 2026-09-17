@@ -151,7 +151,10 @@ console.log('What they may write, and where');
   ['Status','Action','Reviewed By','Review Date','Version History',
    'Workflow Step','Workflow Status','Workflow Done','Workflow Signed'].forEach(k=>
     ok(patch.includes("'"+k+"'"), k+' is part of what a review writes'));
-  ok(!/Approved Amount/.test(patch), 'and the money is not — that is Fidevia’s');
+  ok(/'Signed File ID':row\['Signed File ID'\]\|\|''/.test(patch),
+     'and the signed copy, which a reviewer of the formal application attaches — without it the file '
+     +'reached Box and the row never pointed at it');
+  ok(!/Approved Amount/.test(patch), 'while the money is not — that is Fidevia’s');
   ok(!/Requested Amount|Contract Amount|Previously Paid|App #|Contractor/.test(patch),
      'nor anything the contractor stated');
 }
@@ -161,8 +164,10 @@ console.log('And the server agrees');
   const ur=srv.slice(srv.indexOf("if (op === 'updateRow')"), srv.indexOf("if (op === 'appendRow')"));
   ok(/const payReviewer = filename === PAY_LOG && seesAllCompanies\(role\);/.test(ur),
      'a design role on a payment application is a reviewer');
-  ok(/if \(payReviewer\) \{ ALLOWED\.add\('Reviewed By'\); ALLOWED\.add\('Review Date'\); ALLOWED\.add\('Action'\); \}/.test(ur),
+  ok(/ALLOWED\.add\('Reviewed By'\); ALLOWED\.add\('Review Date'\); ALLOWED\.add\('Action'\);/.test(ur),
      'who may write the outcome of a review');
+  ok(/ALLOWED\.add\('Signed File ID'\); ALLOWED\.add\('Signed File Name'\);/.test(ur),
+     'and their signed counterpart of the formal application, which is their own signature on the paper');
   ok(/if \(!payReviewer && !promoting && payRowReviewed\(row\)/.test(ur),
      'and is not turned away by the marks Fidevia’s own review left — which is every review after the first');
   ok(/if \(!payReviewer && 'Status' in patch && !PAY_AWAITING/.test(ur),

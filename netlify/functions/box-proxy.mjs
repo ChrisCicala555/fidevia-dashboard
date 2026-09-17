@@ -2257,7 +2257,12 @@ export default async (req) => {
         // paid, so the outcome of a review is theirs to write — who reviewed
         // it, when, and what they decided.
         const payReviewer = filename === PAY_LOG && seesAllCompanies(role);
-        if (payReviewer) { ALLOWED.add('Reviewed By'); ALLOWED.add('Review Date'); ALLOWED.add('Action'); }
+        if (payReviewer) {
+          ALLOWED.add('Reviewed By'); ALLOWED.add('Review Date'); ALLOWED.add('Action');
+          // Their signed counterpart of the formal application. The contractor
+          // never writes this: it is the reviewer's own signature on the paper.
+          ALLOWED.add('Signed File ID'); ALLOWED.add('Signed File Name');
+        }
         for (const k of Object.keys(patch)) if (!ALLOWED.has(k)) return json({ error: 'Field not writable: ' + k }, 403);
         // The money on a payment application is decided by Fidevia, never by
         // the party being paid.

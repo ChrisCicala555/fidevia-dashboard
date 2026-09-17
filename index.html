@@ -5499,7 +5499,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:59';
+const BUILD_STAMP='2026-09-17 04:06';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -14039,6 +14039,10 @@ async function submitPayAction(){
         'Reviewed By':row['Reviewed By'], 'Review Date':row['Review Date'],
         'Version History':row['Version History'],
         'Attachment File ID':row['Attachment File ID'], 'Attachment Name':row['Attachment Name'],
+        // A reviewer signing the formal application attaches their signed copy
+        // to Signed File, not to Attachment. Left out of this patch, the file
+        // reached Box and the row never pointed at it \u2014 uploaded, and lost.
+        'Signed File ID':row['Signed File ID']||'', 'Signed File Name':row['Signed File Name']||'',
         'Workflow Step':row['Workflow Step'], 'Workflow Status':row['Workflow Status'],
         'Workflow Done':row['Workflow Done'], 'Workflow Signed':row['Workflow Signed']
       });
