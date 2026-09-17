@@ -76,10 +76,12 @@ console.log('What replacing does, and what it leaves alone');
   // asked for, and putting it back when the save fails.
   ok((sub.match(/r\['Status'\]=/g)||[]).length===2,
      'the status is untouched, except where the review asked for a correction');
-  ok(/if\(_returned\)\{ r\['Status'\]=\(String\(r\['Copy Type'\]\|\|''\)\.trim\(\)\|\|'Uploaded'\)\+' \\u2014 awaiting Fidevia'/.test(sub),
+  ok(/r\['Status'\]=\(String\(r\['Copy Type'\]\|\|''\)\.trim\(\)\|\|'Uploaded'\)\+' \\u2014 awaiting Fidevia'/.test(sub),
      'and then it goes back to awaiting Fidevia, rather than still reading "revise and resubmit"');
   ok(/_patch\['Status'\]=r\['Status'\]/.test(sub), 'which is sent with the rest');
-  ok(/r\['Status'\]=b\.s;/.test(sub), 'and put back if the save fails');
+  ok(/r\['Workflow Status'\]='In Review';\s*\n\s*_patch\['Workflow Status'\]=r\['Workflow Status'\];/.test(sub),
+     'and the chain wakes on the step of whoever sent it back, so it lands in front of them again');
+  ok(/r\['Status'\]=b\.s; r\['Workflow Status'\]=b\.w;/.test(sub), 'and both are put back if the save fails');
   ok(!/r\['Copy Type'\]=/.test(sub), 'and so is pencil-or-final, the number and the period');
   ok(!/r\['App #'\]=/.test(sub) && !/r\['Period'\]=/.test(sub),
      'this is the same application correctly documented, not a new one');

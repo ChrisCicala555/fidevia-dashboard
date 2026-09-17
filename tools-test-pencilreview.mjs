@@ -95,9 +95,9 @@ console.log('What the review writes');
      'the history records the outcome and the comments, and a figure only where there is one');
   ok(/\(pencil\?'Pencil Copy ':'Payment Application '\)/.test(sub),
      'the email calls it what it is');
-  ok(/\.concat\(pencil\?\[\]:\[\['Approved Amount',fmtMoney\(appAmt\)\]\]\)/.test(sub),
-     'and does not quote an approved amount that was never approved');
-  ok(/\['Comments',note\|\|'—'\]/.test(sub), 'but does carry the comments, which are the point of the review');
+  ok(/\.concat\(\(pencil\|\|_pending\)\?\[\]:\[\['Approved Amount',fmtMoney\(appAmt\)\]\]\)/.test(sub),
+     'and does not quote an approved amount that was never approved \u2014 nor one that is not settled yet');
+  ok(/\['Comments',note\|\|'\\u2014'\]/.test(sub), 'but does carry the comments, which are the point of the review');
 }
 
 console.log('And what the contractor can do afterwards');

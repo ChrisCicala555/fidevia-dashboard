@@ -5405,7 +5405,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-16 23:48';
+const BUILD_STAMP='2026-09-17 00:06';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12859,7 +12859,9 @@ async function submitPayFinal(){
   if(!f || !f.files || !f.files[0]){ showStatus('payfinal-status','Choose your final application file.','error'); return; }
   const btn=document.getElementById('payfinal-btn'); if(btn) btn.disabled=true;
   const before=JSON.stringify({c:r['Copy Type'], s:r['Status'], a:r['Attachment File ID'],
-                               n:r['Attachment Name'], v:r['Version History']});
+                               n:r['Attachment Name'], v:r['Version History'],
+                               ws:r['Workflow Step'], wt:r['Workflow Status'],
+                               wd:r['Workflow Done'], wg:r['Workflow Signed']});
   try{
     showStatus('payfinal-status','Uploading\u2026','info');
     const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
@@ -12874,13 +12876,21 @@ async function submitPayFinal(){
     r['Attachment File ID']=ent.id||'';
     r['Attachment Name']=f.files[0].name;
     r['Status']='Uploaded — awaiting Fidevia';
+    // The final copy has its own chain — signature steps, not review steps —
+    // so it starts at the beginning rather than inheriting where the pencil
+    // copy's review had got to, and carries none of its signatures.
+    r['Workflow Step']='0';
+    r['Workflow Status']=wfSteps('pay_apps', r).length ? 'In Review' : '';
+    r['Workflow Done']='[]'; r['Workflow Signed']='{}';
     // Rewriting the whole log is Fidevia's alone, and this runs as the
     // contractor. Going through uploadText got a 403 after the file had already
     // uploaded — the document in Box, the row never moved.
     await boxUpdateRow('pay_apps', r, {
       'Copy Type': r['Copy Type'], 'Status': r['Status'],
       'Attachment File ID': r['Attachment File ID'], 'Attachment Name': r['Attachment Name'],
-      'Version History': r['Version History']
+      'Version History': r['Version History'],
+      'Workflow Step': r['Workflow Step'], 'Workflow Status': r['Workflow Status'],
+      'Workflow Done': r['Workflow Done'], 'Workflow Signed': r['Workflow Signed']
     });
     try{ auditLog('Final application submitted','pay_apps',r, String(r['App #']||'')); }catch(e){}
     showStatus('payfinal-status','Submitted.','success');
@@ -12890,6 +12900,8 @@ async function submitPayFinal(){
     const b=JSON.parse(before);
     r['Copy Type']=b.c; r['Status']=b.s; r['Attachment File ID']=b.a;
     r['Attachment Name']=b.n; r['Version History']=b.v;
+    r['Workflow Step']=b.ws; r['Workflow Status']=b.wt;
+    r['Workflow Done']=b.wd; r['Workflow Signed']=b.wg;
     renderAll();
     showStatus('payfinal-status','Could not submit it: '+(e.message||e),'error');
   }
@@ -13177,7 +13189,7 @@ async function submitPayReplace(){
   if(!f || !f.files || !f.files[0]){ showStatus('payrepl-status','Choose the corrected document.','error'); return; }
   const btn=document.getElementById('payrepl-btn'); if(btn) btn.disabled=true;
   const before=JSON.stringify({a:r['Attachment File ID'], n:r['Attachment Name'],
-                               v:r['Version History'], s:r['Status']});
+                               v:r['Version History'], s:r['Status'], w:r['Workflow Status']});
   try{
     showStatus('payrepl-status','Uploading\u2026','info');
     const up=await boxUploadBinary(f.files[0], await payAppFolder(r));
@@ -13202,8 +13214,15 @@ async function submitPayReplace(){
     const _patch={ 'Attachment File ID': r['Attachment File ID'],
                    'Attachment Name': r['Attachment Name'],
                    'Version History': r['Version History'] };
-    if(_returned){ r['Status']=(String(r['Copy Type']||'').trim()||'Uploaded')+' \u2014 awaiting Fidevia';
-                   _patch['Status']=r['Status']; }
+    if(_returned){
+      r['Status']=(String(r['Copy Type']||'').trim()||'Uploaded')+' \u2014 awaiting Fidevia';
+      _patch['Status']=r['Status'];
+      // The chain was set aside when it was sent back, on the step of whoever
+      // sent it back. Waking it there is what puts the corrected document in
+      // front of the person who raised the objection.
+      r['Workflow Status']='In Review';
+      _patch['Workflow Status']=r['Workflow Status'];
+    }
     await boxUpdateRow('pay_apps', r, _patch);
     try{ auditLog('Document replaced before review','pay_apps',r, String(r['App #']||'')); }catch(e){}
     // Fidevia may be part-way through reading the old one.
@@ -13220,7 +13239,8 @@ async function submitPayReplace(){
     setTimeout(closePayReplace, 800);
   }catch(e){
     const b=JSON.parse(before);
-    r['Attachment File ID']=b.a; r['Attachment Name']=b.n; r['Version History']=b.v; r['Status']=b.s;
+    r['Attachment File ID']=b.a; r['Attachment Name']=b.n; r['Version History']=b.v;
+    r['Status']=b.s; r['Workflow Status']=b.w;
     renderAll();
     showStatus('payrepl-status','Could not replace it: '+(e.message||e),'error');
   }
@@ -13254,6 +13274,64 @@ function payStatusFor(row, action){
 // A review that asks for a corrected pencil copy, or refuses one outright.
 function payWasReturned(r){ return /revise|resubmit/i.test(String((r&&r['Status'])||'')); }
 function payWasRejected(r){ return /reject/i.test(String((r&&r['Status'])||'')); }
+// ── THE REVIEW CHAIN ON A PAYMENT APPLICATION ──────────────────────────────
+//
+// The steps were configured, the columns were written at filing, and nothing
+// ever moved them. Fidevia recorded a review and the application went straight
+// to "approved": the architect was never asked, nobody's Needs Your Attention
+// changed, and the email told everyone a pencil copy was approved when one of
+// two reviews had been done.
+//
+// Signs the reviewer's step, then moves to the next group. Returns what
+// happened, because the status, the email and who to tell all depend on it.
+function payAdvanceChain(row, by, outcome){
+  const steps=wfEffectiveSteps('pay_apps', row);
+  if(!steps.length) return null;
+  if(!String(row['Workflow Status']||'').trim()) row['Workflow Status']='In Review';
+  const cur=wfActiveIdx(row);
+  const [gs,ge]=wfGroupAt(steps,cur);
+  const mine=wfMyStepsIn(steps,gs,ge);
+  // Fidevia acting on a step that is not theirs is the documented override,
+  // and is recorded as one rather than passing as the named reviewer's answer.
+  const toSign = mine.length ? mine : [gs];
+  toSign.forEach(n=>wfMarkSigned(row, n, by||'', !mine.length, outcome,
+    (steps[n]&&steps[n].person)||''));
+  // Where every reviewer in the group has to sign, the group is not finished
+  // until they all have.
+  if(wfGroupNeedsAll(steps,gs,ge)){
+    let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
+    if(!Array.isArray(done)) done=[];
+    toSign.forEach(n=>{ if(!done.includes(n)) done.push(n); });
+    const waiting=steps.slice(gs,ge+1)
+      .map((st,n)=>done.includes(gs+n)?null:(st.person||st.name||'')).filter(Boolean);
+    row['Workflow Done']=JSON.stringify(done);
+    if(waiting.length){
+      row['Workflow Status']='In Review';
+      return { complete:false, waiting:waiting, names:waiting, emails:waiting.map(wfEmailOf).filter(Boolean),
+               step:(steps[gs]&&steps[gs].name)||'' };
+    }
+    row['Workflow Done']=JSON.stringify([]);
+  }
+  const stepName=(steps[gs]&&steps[gs].name)||'';
+  const next=ge+1;
+  if(next>=steps.length){
+    row['Workflow Step']=String(steps.length-1); row['Workflow Status']='Complete';
+    return { complete:true, names:[], emails:[], step:stepName };
+  }
+  row['Workflow Step']=String(next); row['Workflow Status']='In Review';
+  const [ns,ne]=wfGroupAt(steps,next);
+  const group=steps.slice(ns,ne+1);
+  return { complete:false, step:stepName,
+           names: group.map(st=>st.person||st.company||st.name||'').filter(Boolean),
+           emails: group.map(st=>String(st.email||'').trim()||wfEmailOf(st.person)).filter(Boolean) };
+}
+// What the row says while the chain is still running. "Pencil approved" with
+// an architect still to look at it is the dashboard announcing a decision
+// nobody has made.
+function payMidChainStatus(row, names){
+  const who=(names&&names.length) ? names.join(', ') : 'the next reviewer';
+  return (payIsPencil(row)?'Pencil \u2014 awaiting ':'Awaiting ')+who;
+}
 function payStatusColor(s){ s=(s||'').toLowerCase(); if(s.indexOf('approv')>=0||s.indexOf('signed')>=0) return 'var(--success-bg)'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0) return 'var(--danger-bg)'; return 'var(--khaki-100)'; }
 // Which billing period we are in now, and how the three dates sit against
 // today. Shows the current month until the formal application date passes,
@@ -13419,7 +13497,7 @@ async function submitPayAction(){
     let sfid=row['Signed File ID']||'', sname=row['Signed File Name']||'';
     if(fileInput.files&&fileInput.files[0]){ prog.textContent='Uploading signed file…'; const _upf=await payAppFolder(row); const up=await boxUploadBinary(fileInput.files[0],_upf, uploadProgressTo(prog,'Uploading signed file')); const e=up.entries?up.entries[0]:up; sfid=e.id||''; sname=fileInput.files[0].name; }
     const pencil=payIsPencil(row);
-    const status=payStatusFor(row, action);
+    let status=payStatusFor(row, action);
     // A pencil copy approves nothing to be paid. Leaving the amount off the row
     // matters: payApproved falls back to the requested figure when the status
     // says approved and the amount is blank.
@@ -13455,6 +13533,23 @@ async function submitPayAction(){
       const _c=payNum(g('pa-contract')), _co=payNum(g('pa-cos')), _pv=payNum(g('pa-prev')), _rq=payNum(g('pa-req'));
       row['Remaining on Contract']=((_c+_co)-_pv-_rq).toFixed(2);
     }
+    // Move the review chain before the status is settled, because what the
+    // status should say depends on whether anybody is left to look at it.
+    const _returning=/revise|resubmit/i.test(action);
+    const _against=DECIDED_AGAINST.test(action);
+    let _chain=null;
+    if(_returning){
+      // Not signed and not advanced: the reviewer did not approve anything, and
+      // the step stays theirs so the corrected document comes back to them. The
+      // chain is set aside meanwhile, or Needs Your Attention would go on
+      // naming them while the document sits with the contractor.
+      row['Workflow Status']='';
+    } else if(_against){
+      try{ wfApplyDecision('pay_apps', row, status, by); }catch(e){}
+    } else {
+      try{ _chain=payAdvanceChain(row, by, action); }catch(e){}
+      if(_chain && !_chain.complete) status=payMidChainStatus(row, _chain.names);
+    }
     row['Status']=status; row['Action']=action;
     row['Approved Amount']= pencil ? '' : String(appAmt);
     row['Reviewed By']=by; row['Review Date']=etToday();
@@ -13468,12 +13563,23 @@ async function submitPayAction(){
     try{
       const _contact=(allData.contacts||[]).find(c=>String(c['Company']||'').trim().toLowerCase()===String(row['Contractor']||'').trim().toLowerCase());
       const _extra=_contact&&_contact['Email']?[_contact['Email']]:[];
-      notifyContacts('Notify - CO', '[Fidevia] '+(pencil?'Pencil Copy ':'Payment Application ')+(row['App #']||'')+' — '+status,
-        emailTemplate((pencil?'Pencil Copy ':'Payment Application ')+status,
-          [['App #',row['App #']||''],['Contractor',row['Contractor']||''],['Outcome',action]]
-            .concat(pencil?[]:[['Approved Amount',fmtMoney(appAmt)]])
-            .concat([['Comments',note||'—'],['Reviewed By',by||'—']]),
-          currentProject.name), {extraTo:_extra});
+      const _kind=(pencil?'Pencil Copy ':'Payment Application ');
+      // Who is being told, and what they are being told, both follow the chain.
+      // One email saying "approved" to everybody, with an architect still to
+      // look at it, was the dashboard announcing a decision nobody had made.
+      const _pending=!!(_chain && !_chain.complete);
+      const _headline=_pending
+        ? ((_chain.step||'Review')+' recorded \u2014 now with '+(_chain.names.join(', ')||'the next reviewer'))
+        : status;
+      notifyContacts('Notify - CO', '[Fidevia] '+_kind+(row['App #']||'')+' \u2014 '+_headline,
+        emailTemplate(_kind+_headline,
+          [['App #',row['App #']||''],['Contractor',row['Contractor']||''],
+           ['Step',(_chain&&_chain.step)||'\u2014'],['Outcome',action]]
+            .concat(_pending?[['Now with',_chain.names.join(', ')||'\u2014']]:[])
+            .concat((pencil||_pending)?[]:[['Approved Amount',fmtMoney(appAmt)]])
+            .concat([['Comments',note||'\u2014'],['Reviewed By',by||'\u2014']]),
+          currentProject.name),
+        {extraTo:_extra.concat((_chain&&_chain.emails)||[])});
     }catch(e){}
     auditLog(action, 'pay_apps', row, status+(pencil?'':(' · '+fmtMoney(appAmt))));
     renderAll(); closePayAction();

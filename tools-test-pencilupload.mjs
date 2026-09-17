@@ -136,7 +136,12 @@ console.log('Promoting a pencil to the final');
        'the promotion is what is sent');
     ok(patch['Attachment File ID']==='b' && !!patch['Version History'],
        'with the new document and the history that keeps the pencil');
-    ok(Object.keys(patch).sort().join()==='Attachment File ID,Attachment Name,Copy Type,Status,Version History',
+    ok(Object.keys(patch).sort().join()==='Attachment File ID,Attachment Name,Copy Type,Status,'
+         +'Version History,Workflow Done,Workflow Signed,Workflow Status,Workflow Step',
+       'the document, and the fresh chain the final copy starts');
+    ok(patch['Workflow Step']==='0' && patch['Workflow Done']==='[]' && patch['Workflow Signed']==='{}',
+       'which begins at the first step carrying none of the pencil copy\u2019s signatures');
+    ok(!Object.keys(patch).some(k=>/Amount|Paid|Contract|Contractor|App #|Period/.test(k)),
        'and nothing else — the money on the row is not the claimant\u2019s to touch');
   }
 }

@@ -72,8 +72,17 @@ ok(/const isSkipped = !sig && passed && attributed;/.test(html),
 console.log('The rule, in both places that enforce it');
 ok(/function wfGroupNeedsAll\(steps, gs, ge\)\{\s*\n\s*if\(ge>gs\) return true;/.test(html),
    'a group of more than one needs all of them');
-ok((html.match(/wfGroupNeedsAll\(/g)||[]).length===3,
-   'defined once and used by both the reply path and the approve path');
+ok((html.match(/function wfGroupNeedsAll\(/g)||[]).length===1, 'defined once');
+// Every place that decides whether a parallel group is finished asks it, rather
+// than re-deriving the rule. Counting call sites broke on every new caller; what
+// matters is that nobody works it out for themselves.
+ok((html.match(/wfGroupNeedsAll\(/g)||[]).length>=4,
+   'and used by the reply path, the approve path and the payment application chain');
+{
+  const others=html.replace(/function wfGroupNeedsAll\(steps, gs, ge\)\{[\s\S]*?\n\}/,'');
+  ok(!/\bge>gs\b/.test(others) && !/\bst\.requireAll\b/.test(others.replace(/requireAll:/g,'')),
+     'and nowhere else spells the rule out again');
+}
 ok(/const groupNeedsAll = \(ge > gs\) \|\| steps\.slice\(gs, ge \+ 1\)\.some\(st => st && st\.requireAll\);/.test(srv),
    'and the server says the same, so an external user cannot advance past it');
 ok(/requireAll/.test(html.split('function wfGroupNeedsAll')[1].split('\nfunction ')[0]),
