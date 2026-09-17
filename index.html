@@ -1524,7 +1524,7 @@
         </div>
         <p class="file-hint" style="margin:0 0 12px;">Each company sees only its own reports; Fidevia sees all.</p>
         <div class="panel">
-          <div class="panel-header">Daily Reports by Contractor</div>
+          <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">Daily Reports by Contractor<span class="seg" id="cd-company"></span></span></div>
           <table><thead><tr><th>Date</th><th>Company</th><th>Submitted By</th><th>Report</th><th class="admin-col">Actions</th></tr></thead>
           <tbody id="tbody-cdaily"><tr class="loading-row"><td colspan="5">Loading…</td></tr></tbody></table>
         </div>
@@ -3100,6 +3100,7 @@ function resetProjectPhotos(){
 async function openProject(folderId, name){
   // Answers belong to the project that was asked about.
   SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false; DOCS_STD_ERR='';
+  COTAB={};   // the firm being read is this project's, not the next one's
   try{ history.replaceState({app:1,screen:'screen-dashboard',p:String(folderId)}, '', '#p='+encodeURIComponent(folderId)); }catch(e){}
   document.getElementById('topbar-title').textContent = name;
   showProjectLoading(name);
@@ -3184,6 +3185,7 @@ function wizVal(id){ const el=document.getElementById(id); return el?el.value.tr
 // a different project and should start from nothing.
 function wizClearProjectContext(){
   SCHED_UPLOADS=null; SCHED_LAST_SEND=null; SCHED_FOLDER_ID=''; MY_SCHEDULE=null; SUB_SPEC_FILTER=''; RECONCILED_FOR=''; DOCS_STD_DONE=false; DOCS_STD_ERR='';
+  COTAB={};   // the firm being read is this project's, not the next one's
   currentProject=null;
   Object.keys(allData||{}).forEach(k=>{ allData[k]=[]; });
   try{ PROJECT_ACCESS=new Set(); PROJECT_ROLES={}; }catch(e){}
@@ -5826,7 +5828,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 23:13';
+const BUILD_STAMP='2026-09-17 23:39';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7043,7 +7045,9 @@ async function docsCatchUp(){
 function renderGenDocs(){}
 function renderContractorDaily(){
   try{ ensureMonthFolders('contractor_daily'); }catch(e){}
-  const rows=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
+  const all=viewerFilter(allData.contractor_daily||[],'Company'), tb=document.getElementById('tbody-cdaily'); if(!tb) return;
+  coTabChips('contractor_daily','cd-company',all);
+  const rows=coTabRows('contractor_daily',all);
   if(!rows.length){tb.innerHTML=emptyRow(5);return;}
   // Contractors upload the report itself; the document is the record, so the
   // weather / crew / work columns were always empty and have been dropped.
@@ -7051,41 +7055,51 @@ function renderContractorDaily(){
     return '<tr><td>'+esc(fmtDMY(r['Date']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('contractor_daily',i)+'</td></tr>';
   });
 }
-// One firm at a time. A certified payroll is looked at to answer a question
-// about a single subcontractor — did Summit file for the week ending the 10th
-// — and one list in date order makes that a search through everybody else's
-// paperwork. Each prime also files its own, so on a job with four of them the
-// single list is four unrelated records interleaved by date.
-let PR_CO='', PR_FIRMS=[];
+// One firm at a time, on the logs that are filed per company. A certified
+// payroll or a daily report is opened to answer a question about one
+// subcontractor — did Summit file for the week ending the 10th — and a single
+// list in date order makes that a search through everybody else's paperwork.
+//
+// Shared rather than written twice: the two logs behave identically, and a
+// second copy is how they stop behaving identically.
+let COTAB={};
+const COTAB_RENDER={payrolls:()=>renderPayrolls(), contractor_daily:()=>renderContractorDaily()};
+function coTabState(key){ return COTAB[key] || (COTAB[key]={sel:'', firms:[]}); }
 // By position, not by name: passing the name through an onclick attribute
 // breaks on a firm like Cook's Service Company, and the apostrophe is in the
-// directory already.
-// -1 is the All tab, and there is no PR_FIRMS[-1].
-function setPrCompanyAt(i){ PR_CO = PR_FIRMS[i] || ''; renderPayrolls(); }
-function prCompanyChips(rows){
-  const el=document.getElementById('pr-company'); if(!el) return;
-  const by={};
+// directory already. -1 is the All tab, and there is no firms[-1].
+function setCoTabAt(key,i){
+  const st=coTabState(key); st.sel = st.firms[i] || '';
+  const r=COTAB_RENDER[key]; if(r) r();
+}
+function coTabChips(key, elId, rows){
+  const el=document.getElementById(elId); if(!el) return;
+  const st=coTabState(key); const by={};
   rows.forEach(function(r){
     const c=String(r['Company']||'').trim(); if(!c) return;
     const k=coNorm(c); if(!by[k]) by[k]={name:c,n:0}; by[k].n++;
   });
-  PR_FIRMS=Object.keys(by).map(k=>by[k].name).sort((a,b)=>a.localeCompare(b));
+  st.firms=Object.keys(by).map(k=>by[k].name).sort((a,b)=>a.localeCompare(b));
   // A subcontractor sees only their own, so a strip of one tab is furniture.
-  if(PR_FIRMS.length<2){ el.innerHTML=''; return; }
+  if(st.firms.length<2){ el.innerHTML=''; return; }
   const chip=(i,label,count,on)=>'<button type="button" class="seg-opt'+(on?' on':'')+'"'
-    +' onclick="setPrCompanyAt('+i+')">'+esc(label)
+    +' onclick="setCoTabAt(\''+key+'\','+i+')">'+esc(label)
     +' <span style="opacity:.6;font-weight:700;">'+count+'</span></button>';
-  el.innerHTML=chip(-1,'All',rows.length,!PR_CO)
-    +PR_FIRMS.map((nm,i)=>chip(i,nm,by[coNorm(nm)].n,coNorm(PR_CO)===coNorm(nm))).join('');
+  el.innerHTML=chip(-1,'All',rows.length,!st.sel)
+    +st.firms.map((nm,i)=>chip(i,nm,by[coNorm(nm)].n,coNorm(st.sel)===coNorm(nm))).join('');
+}
+// The firm being read filed nothing, or is no longer on the project. Left
+// selected, the page would read as though nobody had filed anything.
+function coTabRows(key, all){
+  const st=coTabState(key);
+  if(st.sel && !all.some(r=>coNorm(r['Company'])===coNorm(st.sel))) st.sel='';
+  return st.sel ? all.filter(r=>coNorm(r['Company'])===coNorm(st.sel)) : all;
 }
 function renderPayrolls(){
   try{ ensureMonthFolders('payrolls'); }catch(e){}
   const all=viewerFilter(allData.payrolls||[],'Company'), tb=document.getElementById('tbody-payrolls'); if(!tb) return;
-  prCompanyChips(all);
-  // The firm being looked at filed nothing, or is no longer on the project.
-  // Left selected, the page would read as though nobody had filed anything.
-  if(PR_CO && !all.some(r=>coNorm(r['Company'])===coNorm(PR_CO))) PR_CO='';
-  const rows = PR_CO ? all.filter(r=>coNorm(r['Company'])===coNorm(PR_CO)) : all;
+  coTabChips('payrolls','pr-company',all);
+  const rows=coTabRows('payrolls',all);
   if(!rows.length){tb.innerHTML=emptyRow(6);return;}
   tb.innerHTML=moSections('payrolls', withIdxSorted(rows,'Week Ending'), 'Week Ending', 'payroll', 6, ({r,idx})=>{ const i=idx;
     return '<tr><td>'+esc(fmtDMY(r['Week Ending']))+'</td><td>'+esc(r['Company'])+'</td><td>'+esc(r['Payroll #'])+'</td><td>'+esc(r['Submitted By'])+'</td><td>'+fileCell(r)+'</td><td class="admin-col">'+delBtn('payrolls',i)+'</td></tr>';
