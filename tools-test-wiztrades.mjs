@@ -45,7 +45,7 @@ console.log('Every prime is listed on the firm')
   const m=html.split('function wizAddContractor')[1].split('function wizTradeToggle')[0];
   ok(/CONTRACTOR_ROLES\.map\(function\(r\)\{/.test(m), 'the row is built from the trade list itself');
   ok(/class="ct-on" onchange="wizTradeToggle\(this\)"/.test(m), 'each with a tick of its own');
-  ok(/class="ct-amt" placeholder="1,000,000" disabled/.test(m),
+  ok(/class="ct-amt" placeholder="e\.g\. 1,000,000" disabled/.test(m),
      'and a contract box, shut until the trade is ticked \u2014 a sum against a prime nobody was '
      +'awarded is not a contract');
   ok(/r\[0\]==='Other'\?'<input autocomplete="off" class="ct-label"/.test(m),

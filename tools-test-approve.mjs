@@ -42,8 +42,8 @@ ok('it is the same value as the project loading screen',
    /id="project-loading"[^>]*background:var\(--olive-900\)/.test(html));
 ok('placeholders are not the owner’s own name',
    !html.includes('placeholder="Chris"') && !html.includes('placeholder="Cicala"'));
-ok('placeholders still demonstrate the format',
-   html.includes('placeholder="Jane"') && html.includes('placeholder="Doe"'));
+ok('placeholders still demonstrate the format, and say they are examples',
+   html.includes('placeholder="e.g. Jane"') && html.includes('placeholder="e.g. Doe"'));
 
 
 console.log('Requesting access');
