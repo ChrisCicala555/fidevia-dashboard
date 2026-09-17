@@ -310,7 +310,7 @@ async function sendGrantEmailMany(email, projectNames, company, role, opts){
   const rows = [[multi ? 'Projects' : 'Project', multi ? names.map(esc).join('<br>') : proj], ['Your Sign-in Email', esc(email)]];
   if (company) rows.push(['Company', esc(company)]);
   if (roleLabel) rows.push(['Role', esc(roleLabel)]);
-  const rowsHTML = rows.map(([k, v], i) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:10px 16px;color:#7a7a70;font-size:13px;font-family:${sans};width:170px;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
+  const rowsHTML = rows.map(([k, v], i) => `<tr style="background:${i % 2 ? '#ffffff' : '#faf9f6'}"><td style="padding:10px 10px 10px 14px;color:#7a7a70;font-size:13px;font-family:${sans};width:34%;border-bottom:1px solid #ece8df">${k}</td><td style="padding:10px 16px;font-size:14px;font-weight:600;color:#2f2f2f;font-family:${sans};border-bottom:1px solid #ece8df">${v}</td></tr>`).join('');
   const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:${sans}">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden">
     <tr><td style="padding:26px 24px 12px;text-align:center;background:#ffffff">
