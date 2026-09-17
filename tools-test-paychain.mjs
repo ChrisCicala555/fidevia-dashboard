@@ -113,6 +113,52 @@ console.log('A parallel group waits for everyone in it');
     {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
 }
 
+{
+  // Ticking Parallel on a step the chain has already passed puts an answered
+  // step back inside the live group. Asking Workflow Done alone would have told
+  // the architect their review was still waiting on Fidevia, who signed days
+  // ago, and parked the application there.
+  P.run(`ME_NAME='Test Architect'; ME_EMAIL='arch@example.com';
+    wfSteps=function(){ return [
+      {name:'Fidevia Records Amounts', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+      {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com', parallel:true}
+    ]; };`);
+  // The architect owns their step and nobody else's, which is the whole point
+  // of the case: the group still contains Fidevia's, and Fidevia answered it
+  // days ago under a chain that did not group them together.
+  P.run(`globalThis._origMine=wfMyStepsIn; wfMyStepsIn=function(){ return [1]; };`);
+  const a=advance(ROW({'Workflow Step':'1','Workflow Done':'',
+    'Workflow Signed':'{"0":{"by":"ccicala@fidevia.com","at":"2026-09-16","override":false}}'}),
+    'Test Architect','Approved');
+  ok(a.res.complete===true, 'the architect\u2019s answer finishes the chain');
+  ok(!a.res.waiting, 'rather than waiting on somebody who signed days ago');
+  ok(a.row['Workflow Status']==='Complete', 'and the chain says so');
+  ok(JSON.parse(a.row['Workflow Signed']||'{}')['1'],
+     'and their own step carries their signature');
+  // The two records answer different cases, so each is checked without the
+  // other. A signature where the cursor never moved past the step:
+  const sigOnly=advance(ROW({'Workflow Step':'0','Workflow Done':'',
+    'Workflow Signed':'{"0":{"by":"ccicala@fidevia.com"}}'}), 'Test Architect','Approved');
+  ok(sigOnly.res.complete===true && !sigOnly.res.waiting,
+     'a signed step counts even where the cursor is still sitting on the group');
+  // And a cursor that moved past a step no signature survived for:
+  const curOnly=advance(ROW({'Workflow Step':'1','Workflow Done':'','Workflow Signed':''}),
+    'Test Architect','Approved');
+  ok(curOnly.res.complete===true && !curOnly.res.waiting,
+     'and a step the cursor has passed counts even with no signature left against it');
+  // Workflow Done on its own is how a part-signed group was recorded before
+  // signatures were kept. Those rows are still on the logs.
+  const doneOnly=advance(ROW({'Workflow Step':'0','Workflow Done':'[0]','Workflow Signed':''}),
+    'Test Architect','Approved');
+  ok(doneOnly.res.complete===true && !doneOnly.res.waiting,
+     'and a step marked done by an older version of this counts too');
+  P.run(`wfMyStepsIn=globalThis._origMine;`);
+  P.run(`ME_NAME='Christopher Cicala'; ME_EMAIL='chris@fidevia.com';
+    wfSteps=function(){ return [
+      {name:'Fidevia Review', person:'Christopher Cicala', company:'Fidevia', email:'chris@fidevia.com'},
+      {name:'Architect Review', person:'Test Architect', company:'Architect 2', email:'arch@example.com'}]; };`);
+}
+
 console.log('What the row says while somebody is still to look at it');
 {
   ok(P.run(`payMidChainStatus(${JSON.stringify(ROW())},['Test Architect'])`)

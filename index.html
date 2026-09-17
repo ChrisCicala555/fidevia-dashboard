@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:19';
+const BUILD_STAMP='2026-09-17 03:24';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13535,8 +13535,15 @@ function payAdvanceChain(row, by, outcome){
     let done=[]; try{ done=JSON.parse(row['Workflow Done']||'[]'); }catch(e){}
     if(!Array.isArray(done)) done=[];
     toSign.forEach(n=>{ if(!done.includes(n)) done.push(n); });
+    // The same three ways of being answered the log reads, not Done alone.
+    // Ticking Parallel on a step the chain had already passed puts an answered
+    // step back inside the live group: Fidevia signed step 0 days ago, and
+    // asking only Done would have told the architect their review was still
+    // waiting on Fidevia and parked the application there.
+    const signedNow=wfSignedMap(row);
+    const answered=i=>i<cur || done.includes(i) || !!signedNow[String(i)];
     const waiting=steps.slice(gs,ge+1)
-      .map((st,n)=>done.includes(gs+n)?null:wfPartyLabel(st)).filter(Boolean);
+      .map((st,n)=>answered(gs+n)?null:wfPartyLabel(st)).filter(Boolean);
     row['Workflow Done']=JSON.stringify(done);
     if(waiting.length){
       row['Workflow Status']='In Review';
