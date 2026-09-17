@@ -152,9 +152,27 @@ console.log('And it is in Settings, with the rule stated');
   ok(/>PAY<\/th>/.test(html), 'the contacts table has the column');
   ok(/togglePayNotify\(/.test(html), 'which can be switched');
   const t=html.split('const payTog=(r,i)=>{')[1].split('\n  };')[0];
-  ok(/if\(!inAudience\)/.test(t) && /\\u2014<\/span>/.test(t),
+  ok(/if\(!why\)/.test(t) && /\\u2014<\/span>/.test(t),
      'and shows a dash rather than a switch for anybody the rule does not reach — '
      +'a toggle that changes nothing is worse than no toggle');
+  // Yes beside three Nos reads as a mistake, or as this column meaning the
+  // reverse of its neighbours. It is not a choice anybody made.
+  ok(/>'\+\(off\?'Off':'Auto'\)\+'<\/button>/.test(t),
+     'and says Auto rather than Yes, because nobody chose it — the rule did');
+  ok(!/'No'/.test(t), 'and Off rather than No, for the same reason');
+  ok(/On automatically, because they are '\+why/.test(t),
+     'with the reason on hover: Fidevia, the design team, or the contractor on these applications');
+  ok(/contactIsFidevia\(r\) \? 'Fidevia'/.test(t) && /contactIsDesign\(r\) \? 'on the design team'/.test(t),
+     'named from the same three tests the rule itself uses');
+  ok(/Click to take them off\./.test(t) && /Click to put them back on/.test(t),
+     'and what pressing it will do');
+}
+{
+  const th=html.split('>PAY</th>')[0].split('<th class="hide-external notify-col"').pop();
+  ok(/not an opt-in like the three to the left/.test(th),
+     'the column header says it is a different kind of thing from its neighbours');
+  ok(/Auto means the rule reaches them; Off means somebody took them out of it; a dash means/.test(th),
+     'and what each of the three states means');
 }
 
 console.log((bad?'FAIL':'ok  ')+' tools-test-paynotify.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));

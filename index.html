@@ -1391,7 +1391,7 @@
           <span id="jc-dirty-note" style="font-size:13px;color:var(--danger);font-weight:600;"></span>
         </div>
         <div class="cd-card">
-          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external notify-col" title="Email this contact about payment applications. Who may be told is a rule, not a choice: Fidevia, the design team, and each contractor about their own applications only. This turns it off for somebody who is on that list.">PAY</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th class="nw">Phone</th><th class="hide-external notify-col" title="Email this contact when an RFI is submitted">RFI</th><th class="hide-external notify-col" title="Email this contact when a change order is submitted">CO</th><th class="hide-external notify-col" title="Email this contact when a submittal is submitted">SUB</th><th class="hide-external notify-col" title="Payment applications are not an opt-in like the three to the left. Who may be told is a rule: Fidevia, the design team, and each contractor about their own applications only. Auto means the rule reaches them; Off means somebody took them out of it; a dash means the rule does not reach them at all.">PAY</th><th class="hide-external nw" title="Has created a dashboard account">Account</th><th class="hide-external nw" title="Has been granted access to this project">Access</th><th class="admin-col nw">Actions</th></tr></thead>
           <tbody id="tbody-contacts"><tr class="loading-row"><td colspan="12">Loading…</td></tr></tbody></table>
         </div>
       </div>
@@ -5329,22 +5329,31 @@ function renderContacts(){
   if(!all.length){tb.innerHTML=emptyRow(11);return;}
   if(!keep.length){tb.innerHTML='<tr class="empty-row"><td colspan="12">No contacts match \u201c'+esc(q)+'\u201d.</td></tr>';return;}
   const rows=all;
-  // The payment application column reads the other way round. The three beside
-  // it are opt-in: blank means no. This one is opt-out, because the audience is
-  // already narrowed to the people who belong on the thread, and a new column
-  // defaulting to off would have silenced all of them at once. It is greyed for
-  // anybody the rule does not reach, since a toggle that changes nothing is
-  // worse than no toggle.
+  // Payment applications are not an opt-in like the three beside them. Who may
+  // be told is a rule — Fidevia, the design team, and each contractor about
+  // their own — so nobody chose this and it should not say Yes as though
+  // somebody had. A contact with nothing set read "No No No Yes", which looks
+  // either like a mistake or like this column meaning the reverse of its
+  // neighbours. It says Auto instead: on because the rule reaches you.
+  //
+  //   Auto  on by the rule, nobody chose it
+  //   Off   somebody took this person off it
+  //   —     the rule does not reach them, so there is nothing to choose
   const payTog=(r,i)=>{
     if(!IS_ADMIN) return '<td class="hide-external notify-col"></td>';
-    const inAudience = contactIsFidevia(r) || contactIsDesign(r)
-      || (allData.pay_apps||[]).some(p=>String(p['Contractor']||p['Company']||'').trim().toLowerCase()
-            ===String(r['Company']||'').trim().toLowerCase() && String(r['Company']||'').trim());
-    if(!inAudience) return '<td class="hide-external notify-col"><span style="color:var(--muted);font-size:12px;" '
-      +'title="Not on the payment application thread: only Fidevia, the design team and a contractor\u2019s own people are.">\u2014</span></td>';
+    const why = contactIsFidevia(r) ? 'Fidevia'
+      : contactIsDesign(r) ? 'on the design team'
+      : ((allData.pay_apps||[]).some(p=>String(p['Contractor']||p['Company']||'').trim().toLowerCase()
+            ===String(r['Company']||'').trim().toLowerCase() && String(r['Company']||'').trim())
+          ? 'the contractor on these applications' : '');
+    if(!why) return '<td class="hide-external notify-col"><span style="color:var(--muted);font-size:12px;" '
+      +'title="Not on the payment application thread. Only Fidevia, the design team and a contractor\u2019s own people are, and there is nothing to switch for anybody else.">\u2014</span></td>';
     const off=String(r['Notify - Pay App']||'').trim().toLowerCase()==='no';
     return '<td class="hide-external notify-col"><button class="notify-toggle '+(off?'off':'on')+'"'
-      +' onclick="event.stopPropagation();togglePayNotify('+i+')">'+(off?'No':'Yes')+'</button></td>';
+      +' title="'+esc(off
+          ? 'Taken off payment application emails. Click to put them back on, which the rule would do by itself.'
+          : ('On automatically, because they are '+why+'. Nobody chose this. Click to take them off.'))+'"'
+      +' onclick="event.stopPropagation();togglePayNotify('+i+')">'+(off?'Off':'Auto')+'</button></td>';
   };
   const tog=(v,i,f)=>{ const yes=String(v||'').toLowerCase()==='yes'; return IS_ADMIN ? '<td class="hide-external notify-col"><button class="notify-toggle '+(yes?'on':'off')+'" onclick="event.stopPropagation();toggleNotify('+i+',\''+f+'\')">'+(yes?'Yes':'No')+'</button></td>' : '<td class="hide-external notify-col">'+esc(v)+'</td>'; };
   // Where a contact has an account and the project value disagrees with their
@@ -5489,7 +5498,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 00:45';
+const BUILD_STAMP='2026-09-17 00:47';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
