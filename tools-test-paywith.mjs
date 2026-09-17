@@ -175,6 +175,17 @@ console.log('The pill can be asked what the row actually holds');
   ok(/Done \(blank\)/.test(t) && /Signed \(blank\)/.test(t),
      'and says blank rather than leaving an empty gap where a record should be');
   ok(/steps: 0=Fidevia, 1=Architect 2/.test(t), 'with the chain as it stands, by office');
+  ok(/chain: project default/.test(t), 'and which of the two chains the row followed');
+  // A contractor's own chain beats the default, so the default can be edited,
+  // saved, and still not be the chain this row is running.
+  P.run(`currentProject={name:'X',config:{workflowsByCompany:{'Summit Builders':{
+      payapp_pencil:[{name:'Old Step', person:'Somebody', company:'Fidevia'}]}}}};`);
+  ok(/chain: override for Summit Builders/.test(
+       String(P.run(`payStatusTitle(${JSON.stringify(ROW({'Contractor':'Summit Builders'}))})`))),
+     'and says so by name when a contractor has one');
+  ok(P.run(`payChainSource({'Contractor':'Summit Builders','Copy Type':'Final'})`)==='project default',
+     'the two halves are answered separately \u2014 an override on the pencil chain is not one on the final');
+  P.run(`currentProject={name:'X',config:{}};`);
   const b=P.run(`payStatusTitle(${JSON.stringify(ROW({'Workflow Step':''}))})`);
   ok(/Workflow Step \(blank\)/.test(b), 'a blank step column says so \u2014 it is the difference between 0 and nothing');
   P.run(`wfEffectiveSteps=function(){ throw new Error('x'); };`);

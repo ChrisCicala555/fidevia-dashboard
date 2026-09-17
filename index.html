@@ -5493,7 +5493,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 03:05';
+const BUILD_STAMP='2026-09-17 03:07';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13689,6 +13689,19 @@ function payWithNow(row){
 // The workflow columns as they actually are, for Fidevia to read off the pill.
 // Twice now a status has been wrong and twice I reasoned about which record
 // must be missing instead of looking. The row can say.
+// Which of the two chains this row actually followed. A contractor can have
+// their own, and it beats the project default — so the default can be edited,
+// saved and still not be the chain the row is running. That is invisible from
+// the log, which is where somebody looks when the two disagree.
+function payChainSource(row){
+  const co=rowCompany(row);
+  const ck=wfCompanyKey(co);
+  if(ck){
+    const set=wfOverrides()[ck]||{};
+    if(wfFromConfig(set, wfCfgKey('pay_apps', row)).length) return 'override for '+ck;
+  }
+  return 'project default';
+}
 function payStatusTitle(row){
   if(!IS_ADMIN || viewingAsExternal()) return '';
   let steps=[]; try{ steps=wfEffectiveSteps('pay_apps', row)||[]; }catch(e){}
@@ -13700,6 +13713,7 @@ function payStatusTitle(row){
     +' \u00b7 Status '+(String((row&&row['Workflow Status'])||'')||'(blank)')
     +' \u00b7 Done '+(String((row&&row['Workflow Done'])||'')||'(blank)')
     +' \u00b7 Signed '+(String((row&&row['Workflow Signed'])||'')||'(blank)')
+    +' \u00b7 chain: '+payChainSource(row)
     +' \u00b7 steps: '+steps.map((st,i)=>i+'='+(wfPartyLabel(st)||'?')).join(', ');
 }
 // What the log shows. The stored status wherever it records a decision; who it
