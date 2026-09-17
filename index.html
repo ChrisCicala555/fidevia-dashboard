@@ -5253,8 +5253,8 @@ function updateCoBar(rows){
 // a CO number. The log showed all three as one list, so "approved" covered
 // both the ones that had become change orders and the ones still waiting to be
 // written — and only the latter are still somebody's job.
-const CO_STAGES=[['','All'],['open','Open'],['agreed','Approved, no CO yet'],
-                 ['executed','Executed COs'],['closed','Closed']];
+const CO_STAGES=[['','All'],['open','Open PCOs'],['agreed','PCO Approved'],
+                 ['executed','CO Approved'],['closed','Closed']];
 function coStage(r){
   if(DECIDED_AGAINST.test(String((r&&r['Status'])||''))) return 'closed';
   if(coIsExecuted(r)) return 'executed';
@@ -5623,7 +5623,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:57';
+const BUILD_STAMP='2026-09-17 05:01';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;

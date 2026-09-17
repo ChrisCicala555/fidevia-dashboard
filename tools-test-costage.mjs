@@ -81,19 +81,23 @@ console.log('Counting them, with a way into each');
               {'CO #':'CO-001','Status':'Approved'},{'CO #':'CO-002','Status':'Executed'},
               {'Status':'Rejected'}];
   const h=chips(rows);
+  // The vocabulary is the one on the paperwork: a proposal is a PCO until it
+  // is approved, and the approved change order is a CO.
+  ok(/>All <span/.test(h) && /Open PCOs/.test(h) && /PCO Approved/.test(h) && /CO Approved/.test(h),
+     'the chips are named the way the job names them');
   ok(/All <span[^>]*>6</.test(h), 'every row is counted once');
-  ok(/Open <span[^>]*>2</.test(h), 'two still open');
-  ok(/Approved, no CO yet <span[^>]*>1</.test(h), 'one agreed and unwritten, which is the number worth seeing');
-  ok(/Executed COs <span[^>]*>2</.test(h), 'two that became change orders');
+  ok(/Open PCOs <span[^>]*>2</.test(h), 'two proposals still open');
+  ok(/PCO Approved <span[^>]*>1</.test(h), 'one agreed and unwritten, which is the number worth seeing');
+  ok(/CO Approved <span[^>]*>2</.test(h), 'two that became change orders');
   ok(/Closed <span[^>]*>1</.test(h), 'and one that never will');
   ok(/setCoStage\('executed'\)/.test(h), 'each count is a way into that stage');
 
   // A stage nobody is in is not a filter, it is a dead end.
   const none=chips([{'Status':'Open'}]);
-  ok(!/Executed COs/.test(none), 'a stage with nothing in it is not offered');
+  ok(!/CO Approved/.test(none), 'a stage with nothing in it is not offered');
   ok(/All <span[^>]*>1</.test(none), 'while All is always there');
   P.run(`CO_STAGE='executed'`);
-  ok(/Executed COs <span[^>]*>0</.test(chips([{'Status':'Open'}])),
+  ok(/CO Approved <span[^>]*>0</.test(chips([{'Status':'Open'}])),
      'unless it is the one being looked at, which still needs its way out');
   P.run(`CO_STAGE=''`);
 }
