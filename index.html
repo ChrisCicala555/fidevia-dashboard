@@ -5766,7 +5766,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 18:52';
+const BUILD_STAMP='2026-09-17 19:12';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -16257,7 +16257,11 @@ function wfProgressHTML(key,r,i){
       +'<span style="font-weight:700;">'+mark+'</span><span style="font-weight:'+(isCur?'700':'500')+';">'+esc(s.name||('Step '+(n+1)))+'</span>'
       +(mineNow?'<span style="font-size:10px;font-weight:700;background:var(--olive-700);color:#fff;padding:1px 7px;border-radius:3px;letter-spacing:.4px;">'
           +(s.returned?'YOUR TURN':'YOUR REVIEW')+'</span>':'')
-      +(s.person?'<span style="color:var(--muted);">\u2014 '+esc(s.person)+(wfCompanyOf(s.person)?' <span style="font-size:12px;opacity:.85;">('+esc(wfCompanyOf(s.person))+')</span>':'')+'</span>':'')
+      // The firm owes the step, so the firm is what the line says. Naming a
+      // person read as though only that desk could answer — which stopped being
+      // true when permission moved to the firm, and was never true of a chain
+      // set up by company.
+      +(wfPartyLabel(s)?'<span style="color:var(--muted);">\u2014 '+esc(wfPartyLabel(s))+'</span>':'')
       +(s.parallel&&n>0?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">parallel</span>':'')
       +(s.added?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">'+(s.returned?'sent back':(s.rereview?'revision':'added'))+'</span>':'')
       +(s.reassigned?'<span style="font-size:10px;background:var(--khaki-100);padding:1px 6px;border-radius:3px;color:var(--muted);">reassigned</span>':'')
@@ -16286,10 +16290,15 @@ function wfProgressHTML(key,r,i){
     : done ? '<span style="color:var(--olive-700);font-weight:700;">Workflow complete</span>'
     : (function(){
         const grp=steps.slice(gs,ge+1);
-        const names=grp.map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; });
+        // Firms, deduplicated: two reviewers from one office is one office
+        // waiting, and reading it twice suggests two things outstanding.
+        const firmsOf=list=>{ const seen=new Set();
+          return list.map(s=>wfPartyLabel(s)||s.name||'').filter(x=>{ if(!x) return false;
+            const k=x.toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; }); };
+        const names=firmsOf(grp);
         // Leading with "you" rather than burying the reader in the list.
         if(grp.some(wfStepIsMine)){
-          const others=grp.filter(s=>!wfStepIsMine(s)).map(s=>{ const p=s.person||s.name; const co=wfCompanyOf(s.person); return co?(p+' ('+co+')'):p; });
+          const others=firmsOf(grp.filter(s=>!wfStepIsMine(s)));
           return '<span style="color:var(--danger);font-weight:700;">Awaiting you'
             +(others.length?(' and '+esc(others.join(', '))):'')+'</span>';
         }
@@ -16307,8 +16316,12 @@ function wfProgressHTML(key,r,i){
       ? '<button class="btn-secondary" style="margin-top:8px;padding:6px 12px;'+(isMine?'':'border-color:#c9a227;color:#8a5a00;')
         +'" onclick="event.stopPropagation();withBusy(event,\'Recording\u2026\',()=>wfAdvance(\''+key+'\','+i+'))">'
         +(isMine?'Approve Step &rarr;':'Override \u2014 Record An Approval')+'</button>'
-        +(isMine?'':'<div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-style:italic;">This step is not yours. Recording it stands in for the named reviewer and is logged as an override.</div>')
-      : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">Only the assigned reviewer can advance this step.</div>' : '');
+        +(isMine?'':'<div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-style:italic;">This step is not yours. Recording it stands in for the firm that owes it and is logged as an override.</div>')
+      : (!done ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);font-style:italic;">'
+          // Anyone there, not one named desk: one person's absence used to stop
+          // a whole office, and the permission check has not worked that way
+          // for a while. The sentence was still describing the old rule.
+          +'Anyone at '+esc(wfPartyLabel(steps[gs])||'the assigned firm')+' can advance this step.</div>' : '');
   return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">'
     +'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px;">Workflow</div>'
     +items+'<div style="margin-top:6px;font-size:13px;">'+status+'</div>'+btn+'</div>';

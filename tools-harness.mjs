@@ -153,7 +153,12 @@ allData = {
              'Requested Amount':'100000','Approved Amount':'','Status':'Submitted','Version History':'[]'}],
   contacts:[{'Name':'Dave Chen','Company':'Summit Builders','Role':'PM','Email':'d@s.test',
              'Phone':'5551234567','Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes'},
-            {'Name':'Test Architect','Company':'Architect 2','Role':'Architect','Email':'a@x.test','Phone':''}],
+            {'Name':'Test Architect','Company':'Architect 2','Role':'Architect','Email':'a@x.test','Phone':''},
+            // The seeded chain has an engineer on its parallel step. Without her
+            // on the contact sheet the panel could not name her firm and fell
+            // back to her name, which is the fallback rather than the rule.
+            {'Name':'Penelope Odiem','Company':'Next Level Engineers','Role':'Engineer','Email':'p@y.test',
+             'Phone':'','Notify - RFI':'Yes','Notify - CO':'Yes','Notify - Submittal':'Yes'}],
   daily:[{'Date':'2026-09-01','Submitted By':'Chris','Work Performed':'Framing'}],
   contractor_daily:[{'Date':'2026-09-01','Company':'Summit Builders','Submitted By':'Dave'}],
   payrolls:[{'Week Ending':'2026-09-05','Company':'Summit Builders','Payroll #':'1','Submitted By':'Dave'}],

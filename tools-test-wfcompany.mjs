@@ -96,5 +96,28 @@ console.log('And the chain tells the firms still owed');
      'not the old lookup against a contact name, which found nobody once steps stopped naming people');
 }
 
+console.log('And the row reads by firm, not by desk')
+{
+  // "The awaiting review display — i just think we should remove the
+  // individual." Right: the firm owes the step, permission is matched on the
+  // firm, and naming a person read as though only that desk could answer.
+  const w=html.split('function wfThreadHTML')[1]||html.slice(html.indexOf('Awaiting: ')-9000, html.indexOf('Awaiting: ')+3000);
+  ok(/\+\(wfPartyLabel\(s\)\?'<span style="color:var\(--muted\);">/.test(w),
+     'the step line names the firm');
+  ok(!/esc\(s\.person\)\+\(wfCompanyOf\(s\.person\)/.test(w),
+     'and no longer the person with the firm in brackets after them');
+  ok(/const names=firmsOf\(grp\);/.test(w), 'Awaiting names firms');
+  ok(/const others=firmsOf\(grp\.filter/.test(w), 'and so does the "you and…" form');
+  ok(/if\(seen\.has\(k\)\) return false; seen\.add\(k\); return true;/.test(w),
+     'deduplicated \u2014 two reviewers from one office is one office waiting, and reading it twice '
+     +'suggests two things outstanding');
+  ok(/Anyone at '\+esc\(wfPartyLabel\(steps\[gs\]\)\|\|'the assigned firm'\)\+' can advance this step/.test(w),
+     'and the footnote says anyone there can advance it, which is what the permission check has '
+     +'actually done for a while \u2014 the sentence was still describing the old rule');
+  ok(!/Only the assigned reviewer can advance/.test(html), 'the old sentence is gone');
+  ok(/stands in for the firm that owes it/.test(html),
+     'and an override stands in for a firm rather than for a named reviewer');
+}
+
 console.log(bad ? `FAIL tools-test-wfcompany.mjs — ${bad} of ${n}` : `ok   tools-test-wfcompany.mjs — ${n} assertions`);
 process.exit(bad?1:0);

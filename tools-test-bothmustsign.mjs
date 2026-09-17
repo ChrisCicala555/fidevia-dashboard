@@ -40,7 +40,7 @@ for(const key of ['rfi','sub']){
   ok(b.run(`allData.${key}[0]['Workflow Status']`)==='In Review',
      key+': one approval does not finish a two-person group');
   ok(b.run(`allData.${key}[0]['Workflow Step']`)==='0', key+': and does not move the chain past it');
-  ok(/Awaiting you and Penelope Odiem|Awaiting: Penelope Odiem/.test(panel(key)),
+  ok(/Awaiting you and Next Level Engineers|Awaiting: Next Level Engineers/.test(panel(key)),
      key+': the panel still asks for the other one');
   ok(!/✓ Engineer Review/.test(panel(key)), key+': the engineer is not ticked off by somebody else');
   as('p@y.test','Next Level Engineers','engineer','Penelope Odiem'); act(key,'Approved');

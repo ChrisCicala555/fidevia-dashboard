@@ -13,16 +13,16 @@ const text = () => raw().replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
 // ── the step is marked, for whichever reviewer is reading ──
 as('a@x.test');
 ok(raw().includes('YOUR REVIEW'), 'the architect sees their own step called out');
-ok(/Awaiting you and Penelope Odiem/.test(text()),
+ok(/Awaiting you and Next Level Engineers/.test(text()),
    'and the waiting line leads with them rather than burying them in a list');
 as('p@y.test');
 ok(raw().includes('YOUR REVIEW'), 'so does the engineer');
-ok(/Awaiting you and Test Architect/.test(text()), 'with the other party named after');
+ok(/Awaiting you and Architect 2/.test(text()), 'with the other firm named after');
 
 // ── and not for anyone else ──
 as('d@s.test');
 ok(!raw().includes('YOUR REVIEW'), 'the contractor who submitted it is not marked');
-ok(/Awaiting: Test Architect/.test(text()), 'and reads the plain list');
+ok(/Awaiting: Architect 2/.test(text()), 'and reads the plain list of firms');
 b.run("IS_ADMIN=true; EXTERNAL=false; ME_EMAIL='cc@fidevia.com';");
 ok(!raw().includes('YOUR REVIEW'), 'nor is Fidevia, who is on neither step');
 

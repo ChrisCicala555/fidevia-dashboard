@@ -57,7 +57,7 @@ console.log('It still works when it works');
   const nw=JSON.parse(b.run("JSON.stringify(wfNowWith('sub',allData.sub[0]))"));
   ok(nw && nw.label==='Test Architect', 'onto the reviewer who asked for it');
   const panel=b.run("wfProgressHTML('sub',allData.sub[0],0)").replace(/<[^>]+>/g,' ');
-  ok(/Awaiting: Test Architect/.test(panel),
+  ok(/Awaiting: Architect 2/.test(panel),
      'and the panel says the same thing the email says — they read one row, so they cannot disagree');
   ok(!/Awaiting you/.test(panel), 'not that it is still with the contractor');
 }

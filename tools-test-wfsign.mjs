@@ -16,6 +16,10 @@ function wfIsStopped(r){ return /reject|denied/i.test(String(r['Workflow Status'
 function wfIsDone(r){ return String(r['Workflow Status']||'')==='Complete'; }
 function wfActiveIdx(r){ const n=parseInt(r['Workflow Step']); return isNaN(n)?0:n; }
 function wfCompanyOf(p){ return ({'Test Architect':'Architect 2','Penelope Odiem':'Next Level Engineers'})[p]||''; }
+// The panel names the firm that owes a step, not the desk. Stubbed the way the
+// real one reads: the company on the step, else the firm of whoever it names.
+function wfPartyLabel(st){ if(!st) return '';
+  return String(st.company||'').trim() || wfCompanyOf(st.person) || String(st.person||'').trim(); }
 function wfEmailOf(p){ return ({'Test Architect':'arch@a2.test','Penelope Odiem':'pen@nle.test'})[p]||''; }
 // A step is matched on its firm as well as the address on it. These tests are
 // about attribution, so the reader is nobody's colleague: firm matching is

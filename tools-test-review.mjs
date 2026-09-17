@@ -95,8 +95,9 @@ ok(/Further Review\/Dave Chen/.test(b.run("wfEffectiveSteps('sub', allData.sub[0
 // The index stays at the head of the group, so reading st[n] gives the
 // architect who has just signed. What the item is waiting on is what the panel
 // says, which is also what a person sees.
-ok(/Awaiting[^<]*Penelope Odiem/.test(b.run("wfProgressHTML('sub',allData.sub[0],0)").replace(/<[^>]+>/g,'')),
-   'the item still waits on the rest of the group');
+ok(/Awaiting[^<]*Next Level Engineers/.test(b.run("wfProgressHTML('sub',allData.sub[0],0)").replace(/<[^>]+>/g,'')),
+   'the item still waits on the rest of the group, named by firm \u2014 the step is the office\u2019s, and '
+   +'anyone there can answer it');
 ok(b.run("allData.sub[0]['Workflow Status']")==='In Review', 'so the chain has not moved on');
 ok(b.run("(()=>{const st=wfEffectiveSteps('sub',allData.sub[0]);return st[st.length-1].person;})()")==='Dave Chen',
    'and the person sent it is queued after them');
