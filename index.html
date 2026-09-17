@@ -1331,6 +1331,16 @@
             <button class="btn-add ae-ok hide-contractor" onclick="openNewCo()">+ New CO</button><span id="arch-all-co"></span>
           </div>
         </div>
+        <div class="contract-bar" id="co-bar" style="display:none;">
+          <div class="cb-head">Change Order Summary</div>
+          <div class="cb-items">
+            <div class="cb-item"><div class="cb-lbl">Approved Cost Impact</div><div class="cb-val" id="cob-impact">—</div></div>
+            <div class="cb-item"><div class="cb-lbl" title="Funded from the contractor's allowance, which was already inside the contract">From Allowance</div><div class="cb-val" id="cob-allow">—</div></div>
+            <div class="cb-item"><div class="cb-lbl" title="The part that actually increases the contract">To Contract</div><div class="cb-val" id="cob-contract">—</div></div>
+            <div class="cb-item"><div class="cb-lbl">Revised Contract</div><div class="cb-val" id="cob-revised">—</div></div>
+          </div>
+          <p class="file-hint" style="margin:10px 0 0;" id="cob-note"></p>
+        </div>
         <div class="panel">
           <div class="panel-header"><span>All Change Orders</span><span class="src">Box · 02 - Change Orders</span></div>
           <table><thead><tr><th>PCO / CO #</th><th>Description</th><th>Submitted By</th><th>Submitted On</th><th>Cost Impact</th><th title="Portion funded from the contractor's allowance">From Allowance</th><th title="Portion that increases the contract">To Contract</th><th>Status</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
@@ -5185,8 +5195,54 @@ function renderRFIs(){
   const note=document.getElementById('note-rfis'); if(note){ note.innerHTML=''; note.style.display='none'; }
 }
 
+// The log says what happened; this says what it has cost. Three numbers,
+// because one would be a lie by omission: the cost impact is what was agreed,
+// the allowance draw is the part of it the contract was already carrying, and
+// only the difference moves the contract.
+//
+// Counted over every change order, archived included — archiving files a row
+// away, it does not un-agree it, and the Financial Summary counts the same set.
+// Two summaries of one fact that disagree are worse than one.
+function updateCoBar(rows){
+  const el=id=>document.getElementById(id);
+  const bar=el('co-bar'); if(!bar) return;
+  const cfg=(currentProject&&currentProject.config)||{};
+  let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  let scoped=rows||[];
+  // Fidevia previewing a contractor sees that contractor's arithmetic, not the
+  // project's — the same scoping the payment application bar does.
+  if(viewingAsExternal() && isContractorView()){
+    const mine=String(companyScope()||'').trim().toLowerCase();
+    contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
+    scoped=mine ? scoped.filter(r=>String(rowCompany(r)||'').trim().toLowerCase()===mine) : [];
+  }
+  if(!scoped.length && !contractors.length){ bar.style.display='none'; return; }
+  bar.style.display='';
+  const approved=scoped.filter(coIsApproved);
+  const sum=(list,f)=>list.reduce((s,r)=>s+f(r),0);
+  const impact  = sum(approved, coApprovedAmount);
+  const draw    = sum(approved, coAllowanceDraw);
+  const executed= sum(scoped.filter(coIsExecuted), coContractImpact);
+  // Agreed but not yet papered. It is in the cost impact above and not in the
+  // contract below, and without saying so the two columns look like an error.
+  const unpapered= sum(scoped.filter(coIsPending), coContractImpact);
+  const base=contractors.reduce((s,c)=>s+payNum(c.contract),0);
+  const open=scoped.filter(r=>!coIsApproved(r) && !DECIDED_AGAINST.test(String(r['Status']||'')) && !isArchived(r));
+  const set=(id,v)=>{ const e=el(id); if(e) e.textContent=v; };
+  set('cob-impact', fmtMoney(impact));
+  set('cob-allow', fmtMoney(draw));
+  set('cob-contract', fmtMoney(executed));
+  set('cob-revised', fmtMoney(base+executed));
+  const notes=[];
+  if(unpapered) notes.push(fmtMoney(unpapered)+' approved but not yet executed — it reaches the contract '
+    +'when the change order is written, and is not in Revised Contract yet.');
+  if(open.length) notes.push(open.length+' still open, '
+    +fmtMoney(sum(open, r=>payNum(r['Cost Impact'])))+' requested.');
+  set('cob-note', notes.join(' '));
+}
 function renderCOs(){
   const all=allData.co||[], tb=document.getElementById('tbody-cos');
+  updateCoBar(all);
   // Change orders could be archived and had nowhere to go: the row stayed in
   // the live log, so the button appeared to do nothing. They now split the same
   // way RFIs and submittals do.
@@ -5500,7 +5556,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 04:40';
+const BUILD_STAMP='2026-09-17 04:47';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
