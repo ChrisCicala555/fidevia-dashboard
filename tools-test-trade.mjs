@@ -13,7 +13,13 @@ ok(/r\[0\]==='Other'\?'OC':r\[0\]/.test(ro), 'each option shows the code that wi
 ok(/cannot quietly be whichever option happens to be first/.test(html),
    'the reason the blank option exists is recorded');
 
-ok(/class="cn-role">'\+contractorRoleOptions\(''\)/.test(html), 'the wizard uses it');
+// The wizard lists the primes against a firm rather than offering one from a
+// dropdown, since a firm can hold two and a dropdown cannot say so. The blank
+// option still guards every other place a single trade is chosen.
+ok(/CONTRACTOR_ROLES\.map\(function\(r\)\{/.test(html) && /class="ct-on"/.test(html),
+   'the wizard lists every trade against the firm, each with its own contract');
+ok(/class="ce-role">'\+contractorRoleOptions\(c\.role\|\|''\)/.test(html),
+   'while the contractors editor still chooses one at a time, and gets the blank option');
 ok(/class="ce-role">'\+contractorRoleOptions\(c\.role\|\|''\)/.test(html), 'the contractors editor does too');
 // The builder itself maps CONTRACTOR_ROLES, so count call sites instead.
 ok((html.match(/CONTRACTOR_ROLES\.map\(r=>.<option/g)||[]).length===1,

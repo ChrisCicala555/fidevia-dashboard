@@ -18,7 +18,7 @@ console.log('Money reads as an illustration, not as a figure off a real job');
 const MONEY=['pa-contract','pa-prev','pa-req','pa-amount','pa-cos',
              'f-contract','f-prev','f-req','f-cost','f-cos-approved',
              'f-budget','f-committed','f-actual','nc-amount',
-             'cn-contract','alw-amt'];
+             'ct-amt','alw-amt'];
 MONEY.forEach(id=>{
   const p=of(id);
   ok(p!==null, id+' has an example at all');

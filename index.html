@@ -410,6 +410,27 @@
     border-radius:4px; padding:3px 6px; cursor:pointer;}
   .jc-trade:hover{border-color:var(--olive-700); background:var(--white);}
   .jc-trade-none{color:var(--danger);}
+  .wiz-contractor-row{border:1px solid var(--border); border-radius:8px; padding:12px 14px;
+    margin-bottom:10px; position:relative; background:var(--white);}
+  .cn-trades{display:grid; gap:4px;}
+  .cn-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px;
+    color:var(--muted); margin:0 8px 6px;}
+  .cn-head-amt{flex:0 0 170px;}
+  .cn-trade{display:flex; align-items:center; gap:10px; padding:5px 8px; border-radius:6px;}
+  .cn-trade.on{background:var(--khaki-50,#f7f5ef);}
+  .cn-tick{display:flex; align-items:center; gap:8px; flex:0 0 250px; cursor:pointer; margin:0;}
+  .cn-trade .ct-code{font:700 12px/1 'Helvetica Neue',Helvetica,Arial,sans-serif;
+    letter-spacing:.4px; color:var(--olive-700); min-width:26px;}
+  .cn-trade .ct-name{font-size:13.5px; color:var(--muted);}
+  .cn-trade.on .ct-name{color:var(--olive-900); font-weight:600;}
+  .cn-trade .ct-amt{flex:0 0 170px;}
+  .cn-trade .ct-label{flex:0 0 200px;}
+  .cn-trade input[type=text],.cn-trade .ct-amt,.cn-trade .ct-label{
+    border:1px solid var(--border); border-radius:6px; padding:7px 9px; font-family:inherit; font-size:13.5px;}
+  .cn-trade .ct-amt:disabled,.cn-trade .ct-label:disabled{background:#f3f2ec; color:#a8a69c;}
+  .cn-drop{position:absolute; top:8px; right:10px; background:none; border:none;
+    color:var(--danger); cursor:pointer; font-size:19px; line-height:1;}
   .jc-trade-flat{margin-left:9px; font:700 12px/1 'Helvetica Neue',Helvetica,Arial,sans-serif;
     letter-spacing:.4px; color:var(--olive-700);}
   .jc-role-dirty{border-color:var(--danger); box-shadow:0 0 0 2px rgba(192,57,43,.12);}
@@ -3212,13 +3233,32 @@ function wizRestoreState(st){
     if(ac){ ac.value=c._access||''; ac.dataset.touched='1'; wizAccessNote(ac); }
   });
   const nw=document.getElementById('np-contractors'); nw.innerHTML='';
-  (st.contractors&&st.contractors.length?st.contractors:[null]).forEach(c=>{
-    wizAddContractor();
-    if(!c) return;
-    const row=nw.lastElementChild;
-    const set=(sel,v)=>{ const el=row.querySelector(sel); if(el) el.value=v==null?'':v; };
-    set('.cn-role',c.role); set('.cn-name',c.name); set('.cn-contract',c.contract);
-  });
+  // A draft holds a flat list of contracts. On the way back in they are grouped
+  // by firm again, which is how they were entered — a firm holding two primes
+  // is one row with two ticks, not two rows that look like two companies.
+  { const byName=[];
+    (st.contractors||[]).forEach(function(c){
+      const nm=String((c&&c.name)||'').trim(); if(!nm) return;
+      let g=byName.find(x=>coNorm(x.name)===coNorm(nm));
+      if(!g){ g={name:nm, lines:[]}; byName.push(g); }
+      g.lines.push(c);
+    });
+    (byName.length?byName:[null]).forEach(function(g){
+      wizAddContractor();
+      if(!g) return;
+      const row=nw.lastElementChild;
+      const nm=row.querySelector('.cn-name'); if(nm) nm.value=g.name;
+      g.lines.forEach(function(c){
+        const code=String((c&&c.role)||'').trim();
+        const box=[...row.querySelectorAll('.cn-trade')]
+          .find(t=>String(t.getAttribute('data-code')||'').toUpperCase()===code.toUpperCase());
+        if(!box) return;
+        const cb=box.querySelector('.ct-on'); if(cb){ cb.checked=true; wizTradeToggle(cb); }
+        const amt=box.querySelector('.ct-amt'); if(amt) amt.value=(c.contract==null?'':c.contract);
+        const lab=box.querySelector('.ct-label'); if(lab) lab.value=c.label||'';
+      });
+    });
+  }
   // Allowances are drawn from the restored contractor records, not from the
   // rows above, which carry no allowance of their own.
   try{ alwRenderAll('np','np-allowances', st.contractors||[]); }catch(e){}
@@ -3571,42 +3611,75 @@ function wizAddContractor(){
   const div=document.createElement('div');
   div.className='wiz-contractor-row';
   div.style='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML='<div class="field" style="margin:0;flex:0 0 160px;"><label style="font-size:12px;">Trade</label><select autocomplete="off" class="cn-role">'+contractorRoleOptions('')+'</select></div>'
-    +'<div class="field" style="margin:0;flex:1;"><label style="font-size:12px;">Contractor Name</label><input autocomplete="off" class="cn-name" placeholder="e.g. Example Contracting LLC"></div>'
-    +'<div class="field" style="margin:0;flex:0 0 150px;"><label style="font-size:12px;">Original Contract ($)</label><input autocomplete="off" class="cn-contract" placeholder="1,000,000"></div>'
-    // A firm can hold several of the four primes, and each is its own contract
-    // with its own sum — so it is another row, not another tick, because one
-    // tick could not carry a second contract amount.
-    +'<div class="field" style="margin:0;flex:0 0 116px;"><label style="font-size:12px;">&nbsp;</label>'
-      +'<button type="button" class="row-act" style="margin:0;" title="This firm holds another of the primes — a second contract, with its own sum" onclick="wizAddTrade(this)">+ Trade</button></div>'
-    +(idx>0?'<button type="button" onclick="wizDropContractor(this)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:19px;padding-bottom:6px;">&times;</button>':'<span style="width:14px;"></span>');
+  // One firm, the primes it holds listed against it. A separate row per trade
+  // read as a separate company — which is what "Garden Spot Mechanical - MC"
+  // typed into a name field was somebody working around — and a single dropdown
+  // could not say a firm holds two. Each trade carries its own contract sum,
+  // because each is its own agreement with the owner.
+  div.innerHTML='<div class="field" style="margin:0 0 10px;"><label style="font-size:12px;">Contractor Name</label>'
+      +'<input autocomplete="off" class="cn-name" placeholder="e.g. Garden Spot Mechanical"></div>'
+    +'<div class="cn-head"><span>Contracts held \u2014 tick each prime this firm was awarded</span>'
+      +'<span class="cn-head-amt">Original contract ($)</span></div>'
+    +'<div class="cn-trades">'+CONTRACTOR_ROLES.map(function(r){
+      const code=(r[0]==='Other')?'OC':r[0];
+      return '<div class="cn-trade" data-code="'+esc(r[0])+'">'
+        +'<label class="cn-tick"><input type="checkbox" class="ct-on" onchange="wizTradeToggle(this)">'
+          +'<span class="ct-code">'+esc(code)+'</span>'
+          +'<span class="ct-name">'+esc(r[1])+'</span></label>'
+        +(r[0]==='Other'?'<input autocomplete="off" class="ct-label" placeholder="Scope, e.g. Roofing" disabled>':'')
+        +'<input autocomplete="off" class="ct-amt" placeholder="1,000,000" disabled>'
+        +'</div>';
+    }).join('')+'</div>'
+    +(idx>0?'<button type="button" class="cn-drop" onclick="wizDropContractor(this)" title="Remove this contractor">&times;</button>':'');
   wrap.appendChild(div);
   div.addEventListener('input', wizContractorNote);
   div.addEventListener('change', wizContractorNote);
   wizContractorNote();
 }
-// Another prime for the firm already on that row: same name, blank trade, blank
-// contract. Copying the name is the whole point — typed twice it is two firms.
-function wizAddTrade(btn){
-  const row=btn.closest('.wiz-contractor-row'); if(!row) return;
-  const nm=(row.querySelector('.cn-name')||{}).value||'';
-  wizAddContractor();
-  const wrap=document.getElementById('np-contractors');
-  const fresh=wrap.lastElementChild;
-  const f=fresh&&fresh.querySelector('.cn-name'); if(f) f.value=nm;
-  const t=fresh&&fresh.querySelector('.cn-role'); if(t) t.focus();
+// A contract sum belongs to a trade that was actually awarded, so the box only
+// opens once the trade is ticked — and clears when it is not, or an amount
+// typed and then unticked would be saved against nothing.
+function wizTradeToggle(cb){
+  const box=cb.closest('.cn-trade'); if(!box) return;
+  const on=cb.checked;
+  [...box.querySelectorAll('.ct-amt,.ct-label')].forEach(function(el){
+    el.disabled=!on; if(!on) el.value='';
+  });
+  box.classList.toggle('on', on);
+  if(on){ const f=box.querySelector('.ct-label:not([disabled])')||box.querySelector('.ct-amt'); if(f) f.focus(); }
   wizContractorNote();
 }
 function wizDropContractor(btn){
   const row=btn.closest('.wiz-contractor-row'); if(row) row.remove();
   wizContractorNote();
 }
-// Reads back what a firm holding several primes has just been set up to be,
-// where somebody can see it before the project is written.
+// Every firm on the step, with whatever primes are ticked against it. Kept as a
+// flat list of contracts because that is what a contract line is; the grouping
+// is how it is entered, not how it is held.
+function wizContractorRows(){
+  return [...document.querySelectorAll('#np-contractors .wiz-contractor-row')].map(function(row){
+    const name=String((row.querySelector('.cn-name')||{}).value||'').trim();
+    const lines=[...row.querySelectorAll('.cn-trade')].filter(t=>(t.querySelector('.ct-on')||{}).checked)
+      .map(function(t){
+        return { role:t.getAttribute('data-code'), name:name,
+                 label:String((t.querySelector('.ct-label')||{}).value||'').trim(),
+                 contract:payNum((t.querySelector('.ct-amt')||{}).value), active:true };
+      });
+    return {name, lines};
+  }).filter(r=>r.name);
+}
 function wizContractorNote(){
   const el=document.getElementById('np-contractor-note'); if(!el) return;
   let notes=[], bad=[];
-  try{ notes=multiTradeNote(wizGatherContractors()); bad=contractLineProblems(wizGatherContractors()); }catch(e){}
+  try{
+    const lines=wizGatherContractors();
+    notes=multiTradeNote(lines); bad=contractLineProblems(lines);
+    // A firm with no prime ticked is not a contract at all, which the flat list
+    // cannot say because it is simply not in it.
+    wizContractorRows().filter(r=>!r.lines.length).forEach(r=>bad.push(r.name
+      +' \u2014 no trade ticked. Every RFI, submittal and change order for that firm is numbered by it.'));
+    try{ alwRenderAll('np','np-allowances', lines); }catch(e){}
+  }catch(e){}
   el.innerHTML = (bad.length
       ? '<p class="file-hint" style="margin:6px 0 0;color:#8a5a00;font-weight:600;">'+esc(bad.join(' '))+'</p>' : '')
     + (notes.length
@@ -3777,6 +3850,10 @@ function alwAdd(prefix, co){
   wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co, i, {id:allowanceLetter(i)}));
 }
 function alwKey(co){ return String(co||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x'; }
+// An allowance sits inside one contract, not inside a firm. Keyed on the
+// company alone, a firm holding the mechanical and the plumbing primes had one
+// set of boxes for two contracts, and whichever rendered last owned them.
+function alwLineKey(c){ return alwKey(String((c&&c.name)||'')+' '+tradeKeyOf(c)); }
 function alwRenderAll(prefix, containerId, contractors){
   const el=document.getElementById(containerId); if(!el) return;
   const list=(contractors||[]).filter(c=>c && String(c.name||'').trim());
@@ -3790,8 +3867,10 @@ function alwRenderAll(prefix, containerId, contractors){
       ? c.allowances
       : (payNum(c.allowance)? [{name:'Allowance', amount:payNum(c.allowance)}] : []);
     return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">'
-      +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(c.name)+'</div>'
-      +'<div class="alw-rows" id="'+prefix+'-alw-'+alwKey(c.name)+'">'
+      +'<div style="font-weight:700;color:var(--olive-900);margin-bottom:8px;">'+esc(c.name)
+        +(tradeLabelOf(c)?'<span style="margin-left:8px;font-size:12px;color:var(--olive-700);">'+esc(tradeLabelOf(c))+'</span>':'')
+      +'</div>'
+      +'<div class="alw-rows" id="'+prefix+'-alw-'+alwLineKey(c)+'">'
         +rows.map((a,i)=>alwRow(prefix,c.name,i,a)).join('')
       +'</div>'
       +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;"'
@@ -3803,8 +3882,8 @@ function alwRenderAll(prefix, containerId, contractors){
 function alwGather(prefix, contractors){
   const out={};
   (contractors||[]).forEach(c=>{
-    const wrap=document.getElementById(prefix+'-alw-'+alwKey(c.name)); if(!wrap) return;
-    out[c.name]=[...wrap.querySelectorAll('.alw-row')].map((r,i)=>({
+    const wrap=document.getElementById(prefix+'-alw-'+alwLineKey(c)); if(!wrap) return;
+    out[alwLineKey(c)]=[...wrap.querySelectorAll('.alw-row')].map((r,i)=>({
       id: r.getAttribute('data-id') || allowanceLetter(i),
       name: (r.querySelector('.alw-name').value||'').trim(),
       amount: payNum(r.querySelector('.alw-amt').value)
@@ -3813,11 +3892,8 @@ function alwGather(prefix, contractors){
   return out;
 }
 function wizGatherContractors(){
-  return [...document.querySelectorAll('#np-contractors .wiz-contractor-row')].map(row=>{
-    const role=row.querySelector('.cn-role').value; const name=row.querySelector('.cn-name').value.trim(); const contract=parseFloat((row.querySelector('.cn-contract').value||'').replace(/[^0-9.]/g,''))||0;
-    if(!name) return null;
-    return { role, name, contract, active:true };
-  }).filter(Boolean);
+  const out=[]; wizContractorRows().forEach(r=>r.lines.forEach(l=>out.push(l)));
+  return out;
 }
 const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],
   // A pencil copy and the final application are not the same thing to review.
@@ -5681,7 +5757,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 12:17';
+const BUILD_STAMP='2026-09-17 12:26';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
