@@ -80,7 +80,9 @@ ok('a failure is shown, not just logged', /DOCS_STD_ERR/.test(src));
 ok('the per-party helpers are gone',    !/docsSetupParties|docsPartyNames|PARTY_FOLDERS/.test(src));
 ok('and the root no longer claims each party sees only their own',
    !/Each party has their own folder/.test(src));
-ok('only missing ones are created', /if \(lower\.has\(name\.toLowerCase\(\)\)\) continue;/.test(proxy));
+ok('only missing ones are created', /let id = byName\.get\(f\.name\.toLowerCase\(\)\);\s*\n\s*if \(!id\) id = await mk\(/.test(proxy));
+ok('and the folders come from the settings template, not a constant',
+   /const tmpl = \(await getSettings\(\)\)\.docFolders;/.test(proxy));
 ok('the nine standard folders are named', ['Testing','ASIs','Inspections','Punch List',
   'Meeting Minutes','Closeout','Drawings and Specifications','Schedules','Fidevia Internal']
   .every(nme=>proxy.includes("'"+nme+"'")));

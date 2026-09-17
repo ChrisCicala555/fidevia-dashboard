@@ -887,6 +887,7 @@
       <div class="picker-actions" id="picker-actions">
         <button class="btn-logout" onclick="openAccount()">My Account</button>
         <button class="btn-logout admin-only" onclick="openContactDir()">Contact Directory</button>
+        <button class="btn-logout admin-only" onclick="openProjSettings()">Project Settings</button>
         <button class="btn-logout" onclick="logoutAuth0()">Sign out</button>
       </div>
       <button class="tb-signout" onclick="logoutAuth0()">Sign Out</button>
@@ -1050,6 +1051,36 @@
       <button class="btn-secondary" onclick="loadPicker()">Back</button>
     </div>
     <div class="status-msg" id="req-status"></div>
+  </div>
+</div>
+
+<!-- ══ PROJECT SETTINGS ══ -->
+<div id="screen-projsettings" class="screen">
+  <div class="cd-page">
+    <div class="cd-page-head">
+      <h2 class="picker-heading" style="margin:0;text-align:left;">Project Settings</h2>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-add" id="btn-ps-save" onclick="psSave()" style="padding:9px 15px;">Save</button>
+        <button class="btn-secondary" onclick="psBack()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 15px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          Back</button>
+      </div>
+    </div>
+    <p class="file-hint" style="margin:0 0 4px;">What a new project starts with. Changing this does not touch
+      Ithaca, Lincoln or any project already set up — open a project’s Documents tab and press
+      <strong>Bring It Up To Date</strong> to add anything it is missing. Nothing is ever renamed or deleted in Box.</p>
+    <div id="ps-status" style="display:none;margin:10px 0;padding:10px 14px;border-radius:8px;font-size:13px;"></div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-header">Standard Document Folders</div>
+      <div style="padding:14px 18px 18px;">
+        <p class="file-hint" style="margin:0 0 12px;">Every new project’s Documents tab starts with these.
+          Who can see a folder is set on the folder itself; anything filed inside a subfolder follows
+          whatever the folder above it says.</p>
+        <div id="ps-folders"></div>
+        <button class="btn-secondary" onclick="psAddFolder()" style="margin-top:12px;padding:8px 14px;">+ Add a folder</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -5795,7 +5826,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 22:59';
+const BUILD_STAMP='2026-09-17 23:13';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6936,14 +6967,10 @@ async function docsUpload(input){
 
 // Documents is a live folder browser now; the old index table is gone. Kept as
 // a no-op so renderAll and anything else still calling it does not throw.
-// The folders every project's Documents tab carries. Kept in step with
-// DOCS_FOLDERS in the proxy; the server is what enforces them.
-// Schedules is deliberately absent. The files stay where they are in Box, but
-// the folder is not part of Documents any more — it is not listed, it cannot be
-// filed into by hand, and the Schedule tab is the way in. The server hides it
-// as well; this list only decides what gets created.
-const DOCS_FOLDERS=['Testing','ASIs','Inspections','Punch List','Meeting Minutes',
-  'Closeout','Drawings and Specifications','Fidevia Internal'];
+// The folders every project's Documents tab carries are Fidevia's now: edited
+// in Project Settings, held by the server, and enforced there too. The browser
+// deliberately keeps no copy of the list — a second hard-coded one is how the
+// two drift, and this one would drift the first time anybody edited it.
 const DOCS_CONFIDENTIAL='fidevia internal';
 // Kept in step with DOCS_HIDDEN_FILES in the proxy, which is what enforces it.
 const DOCS_HIDDEN_FILES=new Set(['documents.csv','document index.csv']);
@@ -9336,6 +9363,136 @@ async function exportContactsNow(){
   try{ const d=await proxyCall('exportContacts',{}); alert('Saved '+(d.count||0)+' contacts to Box as '+(d.file||'a snapshot')+'.'); }
   catch(e){ alert('Export failed: '+e.message); }
   if(btn){ btn.disabled=false; btn.textContent=orig||'Export to Box'; }
+}
+// ── PROJECT SETTINGS ──────────────────────────────────────────────────────
+// Fidevia's defaults rather than any one project's. Held as a tree here and
+// saved as one; the server sanitises whatever arrives, so this is the
+// convenient shape, not the trusted one.
+let PS_FOLDERS=[], PS_DIRTY=false;
+const PS_VIS=[['all','Everyone on the project'],['design','Fidevia, architect and engineers'],
+              ['owner','Fidevia and the owner'],['fidevia','Fidevia only']];
+// Kept private whatever the page says. A folder that is Fidevia's by name is
+// Fidevia's on the server too, and a mis-set dropdown should not be the thing
+// that publishes it.
+const PS_LOCKED='fidevia internal';
+function psLocked(nm){ return String(nm||'').trim().toLowerCase()===PS_LOCKED; }
+async function openProjSettings(){
+  document.querySelectorAll('.picker-actions.open').forEach(x=>x.classList.remove('open'));
+  showScreen('screen-projsettings');
+  try{ animateSection(document.querySelector('#screen-projsettings .cd-page')); }catch(e){}
+  PS_DIRTY=false; psStatus('');
+  const host=document.getElementById('ps-folders');
+  host.innerHTML='<div style="color:var(--muted)">Loading\u2026</div>';
+  try{
+    const d=await proxyCall('settingsGet',{});
+    PS_FOLDERS=((d.settings&&d.settings.docFolders)||[]).map(f=>({
+      name:String(f.name||''), visibility:String(f.visibility||'all'),
+      children:(f.children||[]).map(c=>({name:String(c.name||'')}))
+    }));
+    psRender();
+  }catch(e){ host.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
+}
+function psBack(){
+  if(PS_DIRTY && !confirm('You have unsaved changes to the project defaults.\n\nLeave without saving?')) return;
+  showScreen('screen-picker');
+}
+function psStatus(msg, bad){
+  const el=document.getElementById('ps-status'); if(!el) return;
+  el.style.display=msg?'block':'none';
+  el.style.background=bad?'var(--warn-bg,#F6E6C8)':'var(--khaki-100)';
+  el.style.color=bad?'#8a5a00':'var(--olive-900)';
+  el.textContent=msg||'';
+}
+function psTouch(){ PS_DIRTY=true; psStatus(''); }
+function psRender(){
+  const host=document.getElementById('ps-folders'); if(!host) return;
+  if(!PS_FOLDERS.length){ host.innerHTML='<div style="color:var(--muted);font-size:13px;">No folders. Add at least one.</div>'; return; }
+  host.innerHTML=PS_FOLDERS.map(function(f,i){
+    const lock=psLocked(f.name);
+    const vis=lock
+      ? '<span style="font-size:12px;color:var(--muted);padding:6px 0;">Fidevia only \u2014 always</span>'
+      : '<select onchange="psSetVis('+i+',this.value)" style="padding:6px 8px;font-size:13px;">'
+        +PS_VIS.map(v=>'<option value="'+v[0]+'"'+(f.visibility===v[0]?' selected':'')+'>'+esc(v[1])+'</option>').join('')
+        +'</select>';
+    const kids=(f.children||[]).map((c,j)=>
+      '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 0 30px;">'
+      +'<span style="color:var(--muted);">\u21b3</span>'
+      +'<input value="'+esc(c.name)+'" onchange="psRenameChild('+i+','+j+',this.value)" '
+      +'style="flex:1;max-width:320px;padding:6px 9px;font-size:13px;">'
+      +'<button class="row-act" onclick="psDelChild('+i+','+j+')">Remove</button></div>').join('');
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--white);">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+      +'<button class="row-act" title="Move up" onclick="psMove('+i+',-1)" '+(i===0?'disabled':'')+'>\u2191</button>'
+      +'<button class="row-act" title="Move down" onclick="psMove('+i+',1)" '+(i===PS_FOLDERS.length-1?'disabled':'')+'>\u2193</button>'
+      +'<input value="'+esc(f.name)+'" onchange="psRename('+i+',this.value)"'+(lock?' readonly':'')
+      +' style="flex:1;min-width:180px;max-width:320px;padding:7px 10px;font-size:13.5px;font-weight:600;'
+      +(lock?'background:var(--khaki-100);':'')+'">'
+      +vis
+      +'<span style="flex:1;"></span>'
+      +'<button class="row-act" onclick="psAddChild('+i+')">+ Subfolder</button>'
+      +(lock?'':'<button class="row-act" onclick="psDelFolder('+i+')">Remove</button>')
+      +'</div>'+kids+'</div>';
+  }).join('');
+}
+function psAddFolder(){ PS_FOLDERS.push({name:'New Folder',visibility:'all',children:[]}); psTouch(); psRender(); }
+function psRename(i,v){ if(PS_FOLDERS[i] && !psLocked(PS_FOLDERS[i].name)){ PS_FOLDERS[i].name=v; psTouch(); psRender(); } }
+function psSetVis(i,v){ if(PS_FOLDERS[i]){ PS_FOLDERS[i].visibility=v; psTouch(); } }
+function psDelFolder(i){
+  const f=PS_FOLDERS[i]; if(!f || psLocked(f.name)) return;
+  // Says what removing does, because it does less than it sounds: the folder
+  // stops being created on new projects and stays exactly where it is on every
+  // project that already has one.
+  if(!confirm('Remove \u201c'+f.name+'\u201d from the defaults?\n\nNew projects will not get it. '
+    +'Projects that already have the folder keep it, and nothing in Box is deleted.')) return;
+  PS_FOLDERS.splice(i,1); psTouch(); psRender();
+}
+function psMove(i,d){
+  const j=i+d; if(j<0||j>=PS_FOLDERS.length) return;
+  const t=PS_FOLDERS[i]; PS_FOLDERS[i]=PS_FOLDERS[j]; PS_FOLDERS[j]=t; psTouch(); psRender();
+}
+function psAddChild(i){ if(!PS_FOLDERS[i]) return;
+  PS_FOLDERS[i].children=(PS_FOLDERS[i].children||[]).concat([{name:'New Subfolder'}]); psTouch(); psRender(); }
+function psRenameChild(i,j,v){ if(PS_FOLDERS[i]&&PS_FOLDERS[i].children[j]){ PS_FOLDERS[i].children[j].name=v; psTouch(); psRender(); } }
+function psDelChild(i,j){ if(PS_FOLDERS[i]&&PS_FOLDERS[i].children){ PS_FOLDERS[i].children.splice(j,1); psTouch(); psRender(); } }
+// What the page refuses to save. The server sanitises too — it has to, since
+// it cannot trust this — but a folder silently dropped on the way in is worse
+// than being told which one and why.
+function psProblems(list){
+  const out=[]; const seen={};
+  (list||[]).forEach(function(f){
+    const nm=String(f.name||'').trim();
+    if(!nm){ out.push('A folder has no name.'); return; }
+    if(/[\/\\]/.test(nm)) out.push('\u201c'+nm+'\u201d contains a slash, which a folder name cannot.');
+    const k=nm.toLowerCase();
+    if(seen[k]) out.push('\u201c'+nm+'\u201d is listed twice.'); else seen[k]=1;
+    const kseen={};
+    (f.children||[]).forEach(function(c){
+      const cn=String(c.name||'').trim();
+      if(!cn){ out.push('A subfolder of \u201c'+nm+'\u201d has no name.'); return; }
+      if(/[\/\\]/.test(cn)) out.push('\u201c'+cn+'\u201d contains a slash.');
+      const ck=cn.toLowerCase();
+      if(kseen[ck]) out.push('\u201c'+cn+'\u201d is listed twice under \u201c'+nm+'\u201d.'); else kseen[ck]=1;
+    });
+  });
+  if(!(list||[]).length) out.push('Keep at least one document folder.');
+  return out.filter((x,i,a)=>a.indexOf(x)===i);
+}
+async function psSave(){
+  const probs=psProblems(PS_FOLDERS);
+  if(probs.length){ psStatus(probs.join('  '), true); return; }
+  const btn=document.getElementById('btn-ps-save'); if(btn) btn.disabled=true;
+  psStatus('Saving\u2026');
+  try{
+    const d=await proxyCall('settingsSave',{docFolders:PS_FOLDERS});
+    PS_FOLDERS=((d.settings&&d.settings.docFolders)||PS_FOLDERS).map(f=>({
+      name:String(f.name||''), visibility:String(f.visibility||'all'),
+      children:(f.children||[]).map(c=>({name:String(c.name||'')}))
+    }));
+    PS_DIRTY=false; psRender();
+    psStatus('Saved. New projects will start with these folders.');
+    try{ auditLog('Project defaults changed','gendocs',{}, PS_FOLDERS.map(f=>f.name).join(', ')); }catch(e){}
+  }catch(e){ psStatus(e.message||'Could not save.', true); }
+  if(btn) btn.disabled=false;
 }
 async function openContactDir(){
   try{ cdTab('directory'); }catch(e){}

@@ -221,6 +221,9 @@ const reminderStore = () => getStore('reminder-settings');
 const archivedStore = () => getStore('archived-projects');
 async function getArchivedIds(){ try{ const d=await archivedStore().get('ids',{type:'json'}); return Array.isArray(d)?d.map(String):[]; }catch(e){ return []; } }
 const adminListStore = () => getStore('admin-list');
+// Fidevia's own defaults, not any one project's. What a new project starts
+// with, and — for the document folders — who may see each one.
+const settingsStore = () => getStore('fidevia-settings');
 // Organizations. A company has existed only as free text on each person, so
 // "Summit Builders" and "Summit Builders LLC" were different firms and neither
 // had anywhere to keep an address. Keyed on a normalised name so the record
@@ -519,6 +522,88 @@ async function docsPositionOf(H, folderId){
 // genuinely is private: pay applications, contractor daily reports, payrolls.
 const DOCS_FOLDERS = ['Testing', 'ASIs', 'Inspections', 'Punch List', 'Meeting Minutes',
   'Closeout', 'Drawings and Specifications', 'Fidevia Internal'];
+// Who may see a standard folder. Decided on the TOP-LEVEL folder only, and
+// inherited by everything nested under it: one rule per pile of paperwork,
+// rather than a permission surface that grows every time somebody adds a
+// subfolder. VIS_ALL is the default because Documents is the shared record of
+// the job — the exception is the point, not the rule.
+const VIS_ALL = 'all';            // everybody granted the project
+const VIS_DESIGN = 'design';      // Fidevia, the architect and the engineers
+const VIS_OWNER = 'owner';        // Fidevia and the owner
+const VIS_FIDEVIA = 'fidevia';    // Fidevia alone
+const VIS_VALUES = [VIS_ALL, VIS_DESIGN, VIS_OWNER, VIS_FIDEVIA];
+function normVis(v){
+  const t = String(v || '').trim().toLowerCase();
+  // An unknown value is not a licence to show it to everyone. Anything the
+  // server does not recognise is Fidevia's until somebody says otherwise.
+  return VIS_VALUES.includes(t) ? t : (t ? VIS_FIDEVIA : VIS_ALL);
+}
+// Whether a role may see a folder carrying this visibility. Fidevia is handled
+// by the caller, which returns before reaching here.
+function visAllowsRole(vis, role){
+  switch (normVis(vis)) {
+    case VIS_ALL:     return true;
+    case VIS_DESIGN:  return DESIGN_ROLES.includes(role);
+    case VIS_OWNER:   return role === ROLE_OWNER;
+    default:          return false;
+  }
+}
+// The folder template, as stored. Sanitised on the way in and on the way out,
+// so a hand-edited blob cannot widen anybody's access or nest without limit.
+function cleanFolderName(x){
+  return String(x == null ? '' : x).replace(/[\/\\]/g, ' ').trim().slice(0, 80);
+}
+function cleanTemplate(list, depth){
+  if (!Array.isArray(list)) return [];
+  const seen = new Set(); const out = [];
+  for (const raw of list) {
+    const name = cleanFolderName(raw && raw.name);
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (seen.has(k)) continue;              // Box would refuse the second one anyway
+    seen.add(k);
+    const node = { name, visibility: normVis(raw && raw.visibility) };
+    // One level of nesting. Deeper is allowed inside a project by hand; the
+    // template stops here because the visibility rule does.
+    if (!depth) {
+      const kids = cleanTemplate((raw && raw.children) || [], 1);
+      if (kids.length) node.children = kids.map(c => ({ name: c.name }));
+    }
+    out.push(node);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+// A function, not a const: DOCS_PRIVATE is declared further down this file, and
+// a top-level const would read it before it exists and take the whole module
+// out at load. Nothing would have reached Box at all.
+function defaultDocFolders(){
+  return DOCS_FOLDERS.map(name => ({
+    name, visibility: name.toLowerCase() === DOCS_PRIVATE ? VIS_FIDEVIA : VIS_ALL
+  }));
+}
+let _settingsCache = null, _settingsAt = 0;
+async function getSettings(){
+  // Cached briefly: every docsList and every docsAllows reads this, and the
+  // defaults change about once a quarter.
+  if (_settingsCache && (Date.now() - _settingsAt) < 30000) return _settingsCache;
+  let d = null;
+  try { d = await settingsStore().get('settings', { type: 'json' }); } catch (e) { d = null; }
+  const docFolders = cleanTemplate((d && d.docFolders) || [], 0);
+  _settingsCache = { docFolders: docFolders.length ? docFolders : defaultDocFolders() };
+  _settingsAt = Date.now();
+  return _settingsCache;
+}
+// The visibility that applies at a position in Documents, by its top folder.
+async function visForParty(party){
+  const nm = String(party || '').trim().toLowerCase();
+  if (!nm) return VIS_ALL;
+  const s = await getSettings();
+  const hit = s.docFolders.find(f => f.name.toLowerCase() === nm);
+  // A folder nobody put in the template is one somebody made inside the
+  // project, and those are the shared record like everything else.
+  return hit ? hit.visibility : VIS_ALL;
+}
 // Schedules is no longer one of them. The files still live there — a programme
 // has to be somewhere in Box, and moving them would strand every link already
 // issued — but the folder is not part of the filing system any more. It does
@@ -580,6 +665,11 @@ async function docsAllows(H, t, grants, who, folderId){
   if (!g) return false;
   if (docsIsConfidential(pos)) return false;    // Fidevia's alone
   if (docsIsSchedules(pos)) return false;       // reached through the Schedule tab, not here
+  // Whatever the template says about the top folder this sits under. Decided
+  // here rather than in the browser because the browser is the thing being
+  // kept out: a folder hidden only in the client is a folder anybody can still
+  // fetch by id.
+  if (!visAllowsRole(await visForParty(pos.party), role)) return false;
   return true;
 }
 const reqKey = (projectId, email) => `${projectId}__${email}`;
@@ -1364,6 +1454,27 @@ export default async (req) => {
     }
     // Create any of the standard folders a project is missing. Safe to call
     // repeatedly: it adds what is absent and touches nothing that exists.
+    if (op === 'settingsGet') {
+      const st = await getSettings();
+      if (who.isAdmin) return json({ ok: true, settings: st });
+      // Everyone else gets the folders they could see anyway. The template
+      // names folders that exist on every project, so handing the whole list
+      // to a contractor would tell them what Fidevia keeps and they cannot.
+      const g = await grantFor(t, _grants, 'folder', String(body.projectId || ''));
+      const role = normRole(g && g.role);
+      return json({ ok: true, settings: {
+        docFolders: st.docFolders.filter(f => visAllowsRole(f.visibility, role))
+                                 .map(f => ({ name: f.name, children: f.children || [] }))
+      } });
+    }
+    if (op === 'settingsSave') {
+      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
+      const docFolders = cleanTemplate(body.docFolders || [], 0);
+      if (!docFolders.length) return json({ error: 'Keep at least one document folder.' }, 400);
+      await settingsStore().setJSON('settings', { docFolders });
+      _settingsCache = null;            // the next read is the one just saved
+      return json({ ok: true, settings: { docFolders } });
+    }
     if (op === 'docsEnsureStandard') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const projectId = String(body.projectId || '');
@@ -1380,15 +1491,40 @@ export default async (req) => {
       // Schedules is created but not listed. It left the browser, not Box —
       // the Schedule tab uploads into it, so a project without one cannot take
       // a programme at all.
-      for (const name of DOCS_FOLDERS.concat(['Schedules'])) {
-        if (lower.has(name.toLowerCase())) continue;
+      const mk = async (name, parentId) => {
         const r = await boxFetch('https://api.box.com/2.0/folders', {
           method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, parent: { id: String(docs.id) } })
+          body: JSON.stringify({ name, parent: { id: String(parentId) } })
         });
-        if (r.ok) made.push(name);
+        if (r.ok) { made.push(name); try { return (await r.json()).id; } catch (e) { return ''; } }
+        // Already there under a different case, or Box refused it. Either way
+        // the id is wanted, so the children still land somewhere sensible.
+        if (r.status === 409) {
+          try { const c = (await r.json()).context_info; return (c && c.conflicts && c.conflicts.id) || ''; }
+          catch (e) { return ''; }
+        }
+        return '';
+      };
+      const tmpl = (await getSettings()).docFolders;
+      const byName = new Map(have.filter(e => e.type === 'folder')
+        .map(e => [String(e.name || '').trim().toLowerCase(), e.id]));
+      for (const f of tmpl) {
+        let id = byName.get(f.name.toLowerCase());
+        if (!id) id = await mk(f.name, docs.id);
+        if (!id || !(f.children || []).length) continue;
+        const kidsR = await boxFetch(`https://api.box.com/2.0/folders/${id}/items?limit=1000&fields=id,name,type`, { headers: H });
+        const kidsHave = kidsR.ok ? ((await kidsR.json()).entries || []) : [];
+        const kidLower = new Set(kidsHave.filter(e => e.type === 'folder')
+          .map(e => String(e.name || '').trim().toLowerCase()));
+        for (const c of f.children) {
+          if (kidLower.has(c.name.toLowerCase())) continue;
+          await mk(c.name, id);
+        }
       }
-      return json({ ok: true, made, folders: DOCS_FOLDERS, docsFolderId: docs.id });
+      // Not part of the template and never has been: the Schedule tab writes
+      // here, so a project without one cannot take a programme at all.
+      if (!lower.has('schedules')) await mk('Schedules', docs.id);
+      return json({ ok: true, made, folders: tmpl.map(f => f.name), docsFolderId: docs.id });
     }
     // Move what was filed under the old Meeting Minutes and Drawings tabs into
     // the Documents folders that replaced them. Those tabs are gone, and their
@@ -1642,6 +1778,18 @@ export default async (req) => {
       // being shown and refused on opening.
       if (!who.isAdmin && pos && pos.atRoot) {
         entries = entries.filter(e => String(e.name || '').trim().toLowerCase() !== DOCS_PRIVATE);
+        // And anything else the template keeps from this role. docsAllows
+        // already refuses to open them; listing them anyway would name every
+        // folder Fidevia keeps to the people it is being kept from.
+        {
+          const g = await grantFor(t, _grants, 'folder', body.folderId);
+          const role = normRole(g && g.role);
+          const tmpl = (await getSettings()).docFolders;
+          const visOf = nm => { const h = tmpl.find(f => f.name.toLowerCase() === nm);
+                                return h ? h.visibility : VIS_ALL; };
+          entries = entries.filter(e => e.type !== 'folder'
+            || visAllowsRole(visOf(String(e.name || '').trim().toLowerCase()), role));
+        }
         // The index CSVs are the dashboard's own plumbing, not documents. They
         // sat at the top of the list looking like something to open, and a
         // contractor downloading one gets the raw log rather than a record.

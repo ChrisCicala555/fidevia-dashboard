@@ -12,5 +12,9 @@ const out = [
   braceFn(at('function parseCSVServer')),
   lines[at('function toCSVServer')],
   whole.slice(whole.indexOf('function filterProjectConfig'), whole.indexOf('async function grantFor')),
-].join('\n') + '\nexport { splitName, filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite };\n';
+  // The document-folder template: who may see which standard folder, and what
+  // a stored template is allowed to say. Pure, so it can be asked directly
+  // rather than inferred from a Box round trip.
+  whole.slice(whole.indexOf("const VIS_ALL = 'all'"), whole.indexOf('function defaultDocFolders')),
+].join('\n') + '\nexport { splitName, filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite, normVis, visAllowsRole, cleanTemplate, cleanFolderName, VIS_ALL, VIS_DESIGN, VIS_OWNER, VIS_FIDEVIA };\n';
 fs.writeFileSync('.filters.tmp.mjs', out);

@@ -16,8 +16,11 @@ FOLDERS.forEach(f=>{
   ok(new RegExp("'"+f.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+"'").test(srv.split('const DOCS_FOLDERS')[1].split(']')[0]),
      'the server knows about '+f);
 });
-ok(/const DOCS_FOLDERS=\['Testing'/.test(html.replace(/\s+/g,' ').replace(/const DOCS_FOLDERS=\[ /,"const DOCS_FOLDERS=['"))
-   || /DOCS_FOLDERS=\['Testing'/.test(html), 'and so does the browser');
+// The browser used to keep its own copy. It cannot now: the list is editable
+// in Project Settings, so a second hard-coded one would be wrong the first
+// time anybody changed it.
+ok(!/const DOCS_FOLDERS=/.test(html), 'and the browser keeps no copy of its own to drift');
+ok(/settingsGet/.test(html), 'it asks the server for the list instead');
 
 // ── who may see what ──
 {
@@ -40,8 +43,9 @@ ok(/if \(op === 'docsEnsureStandard'\)/.test(srv), 'the standard folders can be 
 {
   const c = srv.split("if (op === 'docsEnsureStandard')")[1].split("if (op === 'docsList')")[0];
   ok(/if \(!who\.isAdmin\)/.test(c), 'by Fidevia only');
-  ok(/if \(lower\.has\(name\.toLowerCase\(\)\)\) continue;/.test(c),
-     'and running it twice does not duplicate them');
+  ok(/let id = byName\.get\(f\.name\.toLowerCase\(\)\);\s*\n\s*if \(!id\) id = await mk\(/.test(c)
+     && /if \(kidLower\.has\(c\.name\.toLowerCase\(\)\)\) continue;/.test(c),
+     'and running it twice does not duplicate them, at either level');
 }
 
 // ── the schedule reminder survives the move ──
@@ -59,8 +63,10 @@ ok(/Schedules moved to the /.test(html),
    'and a stale page still sitting in that folder is sent to the tab');
 ok(!/'Schedules'/.test(srv.split('const DOCS_FOLDERS')[1].split(']')[0]),
    'the server does not list it as a standard folder');
-ok(/DOCS_FOLDERS\.concat\(\['Schedules'\]\)/.test(srv),
+ok(/if \(!lower\.has\('schedules'\)\) await mk\('Schedules', docs\.id\);/.test(srv),
    'but still makes one, or a project could not take a programme');
+ok(!/docFolders.*[Ss]chedules/.test(srv),
+   'and it is not in the editable template, so it cannot be renamed or removed by hand');
 ok(/Fidevia only\. Nobody outside Fidevia can open this folder/.test(html),
    'and Confidential says what it is');
 

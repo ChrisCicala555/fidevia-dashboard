@@ -14,7 +14,7 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 console.log('Out of the filing system');
 ok(!/'Drawings and Specifications', 'Schedules'/.test(srv), 'not a standard Documents folder any more');
 ok(!/'Drawings and Specifications','Schedules'/.test(html), 'client side either');
-ok(/DOCS_FOLDERS\.concat\(\['Schedules'\]\)/.test(srv),
+ok(/if \(!lower\.has\('schedules'\)\) await mk\('Schedules', docs\.id\);/.test(srv),
    'but still created, or a project could not take a programme at all');
 ok(/String\(e\.name \|\| ''\)\.trim\(\)\.toLowerCase\(\) === DOCS_SCHEDULES/.test(srv),
    'and filtered out of the folder listing');
