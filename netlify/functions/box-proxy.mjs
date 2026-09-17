@@ -224,6 +224,15 @@ const adminListStore = () => getStore('admin-list');
 // Fidevia's own defaults, not any one project's. What a new project starts
 // with, and — for the document folders — who may see each one.
 const settingsStore = () => getStore('fidevia-settings');
+// A subject line for one of the server's own emails, with Fidevia's wording if
+// they have set any. Falls back to what shipped: an unreachable settings blob
+// is not a reason for an invitation to go out with no subject.
+async function emailSubject(id, fallback, vars){
+  let tpl = fallback;
+  try { const s = await getSettings(); const t = s && s.emails && s.emails[id] && s.emails[id].subject;
+        if (t) tpl = t; } catch (e) {}
+  return String(tpl).replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null && vars[k] !== '') ? vars[k] : m);
+}
 // Organizations. A company has existed only as free text on each person, so
 // "Summit Builders" and "Summit Builders LLC" were different firms and neither
 // had anywhere to keep an address. Keyed on a normalised name so the record
@@ -331,7 +340,9 @@ async function sendGrantEmailMany(email, projectNames, company, role, opts){
     <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3">
       <div style="font-family:${sans};font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.<br>Fidevia &middot; Construction Management &amp; Consulting</div></td></tr>
     </table></div>`;
-  const subject = '[Fidevia] You have access to ' + (multi ? (names.length + ' projects') : (projectName || 'a project'));
+  const subject = await emailSubject('access',
+    '[Fidevia] You have access to {project}',
+    { project: multi ? (names.length + ' projects') : (projectName || 'a project') });
   const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject, content:[{type:'text/html',value:html}] };
   const r = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
   await logNotif({ to:[email], subject, kind:'access', project:names.join(', '), projectId:opts&&opts.projectId, by:opts&&opts.by, ok:r.status===202, error:r.status===202?'':('SendGrid '+r.status) });
@@ -386,7 +397,8 @@ async function notifyAdminsOfRequest(projectName, requester, H, projectId){
     </td></tr>
     <tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent automatically by the Fidevia Construction Dashboard.</div></td></tr>
     </table></div>`;
-  const subject2 = '[Fidevia] Access request: '+(projectName||'a project');
+  const subject2 = await emailSubject('access_request', '[Fidevia] Access request: {project}',
+    { project: projectName || 'a project' });
   const r2 = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
     body:JSON.stringify({ personalizations:[{to:to.map(e=>({email:e}))}], from:{email:process.env.FROM_EMAIL||'dashboard@fidevia.com',name:'Fidevia Dashboard'},
       subject:subject2, content:[{type:'text/html',value:html}] })});
@@ -604,6 +616,35 @@ function cleanWorkflows(w){
   }
   return any ? out : null;
 }
+// The wording of every email the system sends. Only the ids the dashboard
+// knows are kept, and only a subject and an opening line: the tables, the
+// values and the sign-in buttons are structure, and an editable sign-in link
+// is a phishing template with our logo on it.
+//
+// Kept in step with EMAIL_KINDS in the browser, which is what draws the
+// editor. tools-test-emails.mjs fails if the two lists stop matching.
+const EMAIL_IDS = ['rfi','co','co_issued','sub','pay_apps','wf_action','wf_update',
+  'wf_override','reply','pay_step','pay_replaced','schedule','digest','archive',
+  'deleted','invite','added','access','access_request'];
+function cleanEmails(e){
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+  const out = {}; let any = false;
+  for (const id of EMAIL_IDS) {
+    // Only the guard that earns its keep: reading .subject off undefined
+    // throws, while reading it off a string or an array is simply nothing,
+    // and nothing is already handled below.
+    const v = e[id]; if (!v) continue;
+    const row = {};
+    for (const f of ['subject','intro']) {
+      // One line, no markup: these land in a subject header and in a heading,
+      // and a tag pasted into either is a hole rather than a flourish.
+      const t = String(v[f] == null ? '' : v[f]).replace(/[\r\n<>]/g, ' ').trim().slice(0, 200);
+      if (t) row[f] = t;
+    }
+    if (Object.keys(row).length) { out[id] = row; any = true; }
+  }
+  return any ? out : null;
+}
 let _settingsCache = null, _settingsAt = 0;
 async function getSettings(){
   // Cached briefly: every docsList and every docsAllows reads this, and the
@@ -613,7 +654,8 @@ async function getSettings(){
   try { d = await settingsStore().get('settings', { type: 'json' }); } catch (e) { d = null; }
   const docFolders = cleanTemplate((d && d.docFolders) || [], 0);
   _settingsCache = { docFolders: docFolders.length ? docFolders : defaultDocFolders(),
-                     workflows: cleanWorkflows(d && d.workflows) };
+                     workflows: cleanWorkflows(d && d.workflows),
+                     emails: cleanEmails(d && d.emails) };
   _settingsAt = Date.now();
   return _settingsCache;
 }
@@ -1497,9 +1539,10 @@ export default async (req) => {
       const docFolders = cleanTemplate(body.docFolders || [], 0);
       if (!docFolders.length) return json({ error: 'Keep at least one document folder.' }, 400);
       const workflows = cleanWorkflows(body.workflows);
-      await settingsStore().setJSON('settings', { docFolders, workflows });
+      const emails = cleanEmails(body.emails);
+      await settingsStore().setJSON('settings', { docFolders, workflows, emails });
       _settingsCache = null;            // the next read is the one just saved
-      return json({ ok: true, settings: { docFolders, workflows } });
+      return json({ ok: true, settings: { docFolders, workflows, emails } });
     }
     if (op === 'docsEnsureStandard') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);

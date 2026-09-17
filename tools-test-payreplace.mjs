@@ -89,7 +89,7 @@ console.log('What replacing does, and what it leaves alone');
   ok(/Replaced by the contractor before review/.test(sub), 'saying plainly what happened');
   ok(/was '\+old/.test(sub), 'and naming what it replaced, so the history reads without opening the files');
   ok(/auditLog\('Document replaced before review'/.test(sub), 'it reaches the audit log');
-  ok(/payNotify\(r, /.test(sub) && /document replaced/.test(sub),
+  ok(/payNotify\(r, applyVars\(_prC\.subject,_prV\)/.test(sub) && /emailCfg\('pay_replaced'\)/.test(sub),
      'and Fidevia is told, because they may be part-way through reading the old one');
   ok(!/notifyContacts\(/.test(sub),
      'through the rule that keeps one contractor\u2019s money out of another\u2019s inbox, not the shared toggle list');

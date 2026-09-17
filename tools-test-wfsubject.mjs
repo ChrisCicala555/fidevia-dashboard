@@ -68,7 +68,8 @@ console.log('Wiring');
 // Only the explanatory comment may mention the old wording, never a subject.
 ok('the misleading subject is gone',
    !/'\[Fidevia\][^']*Ready for your review/.test(src));
-ok('the subject says who it awaits',  /— Awaiting '\+\(nextFirms/.test(src));
+ok('the subject says who it awaits',
+   /firm:\(nextFirms\|\|'review'\)/.test(src) && /Awaiting \{firm\}/.test(src));
 ok('completion still reads plainly',  /— Workflow complete/.test(src));
 ok('everyone on the notify list is still included', /notifyContacts\(notifyField, subj/.test(src));
 ok('the next reviewer is still added on top', /extraTo:extra/.test(src));

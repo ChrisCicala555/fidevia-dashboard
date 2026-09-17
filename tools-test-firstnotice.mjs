@@ -28,11 +28,13 @@ console.log('Who it goes to');
 console.log('What it says when more than one person is reading it');
 {
   ok(/const _shared=_to\.length>_wfFirst\.length;/.test(f), 'it knows when it has gone wider');
-  ok(/'\[Fidevia\] '\+\(_shared\?'':'Action required: '\)/.test(f),
+  ok(/_shared\s*\n?\s*\? \('\[Fidevia\] '\+_lbl/.test(f),
      'and does not demand action from people who have none');
-  ok(/\(_shared\?' filed — with '\+\(_with\|\|_step\):' awaits your review'\)/.test(f),
+  ok(/filed \\u2014 with '\+\(_with\|\|_step\)/.test(f),
      'the subject says it was filed and who it is with, rather than that it awaits yours');
-  ok(/\(_shared\?'Filed: ':'Action Required: '\)\+_lbl/.test(f), 'the heading follows');
+  ok(/applyVars\(_acC\.subject,_acV\)/.test(f),
+     'while the one that does await somebody uses the wording set in Project Settings');
+  ok(/_shared \? \('Filed: '\+_lbl\)/.test(f), 'the heading follows');
   ok(/_shared\?'First Step':'Your Step'/.test(f),
      'and the row cannot say "Your Step" to somebody it is not with');
   ok(/_step\+\(_shared&&_with\?\(' — '\+_with\):''\)/.test(f),
