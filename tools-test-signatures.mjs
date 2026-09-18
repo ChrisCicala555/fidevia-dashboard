@@ -146,11 +146,16 @@ ok('pay app review is either-or',        /\{name:'Architect Review', person:'', 
 // The comment above the template mentions pencil copies, so check the step
 // names rather than the whole block.
 ok('no pencil copy step', !(T.match(/\{name:'[^']*'/g)||[]).some(n=>/pencil/i.test(n)));
-ok('change orders review before signing',/co:\[\s*\{name:'Fidevia Review'/.test(T));
-// Scoped to the change order chain: 'Fidevia Signature' also appears in the
-// pay app final chain, which is declared earlier in the file.
+// Reviewing and signing are two chains now, the same way a pencil copy and a
+// final application are: nobody signs a price that is still being argued over.
+ok('the proposal chain reviews', /co_pco:\[\s*\{name:'Fidevia Review'/.test(T));
 {
-  const co=/co:\[[\s\S]*?\n  \]/.exec(T)[0];
+  const pco=/co_pco:\[[\s\S]*?\n  \]/.exec(T)[0];
+  ok('and asks for no signature', !/Signature/.test(pco));
+}
+{
+  const co=/co_final:\[[\s\S]*?\n  \]/.exec(T)[0];
+  ok('the execution chain is signatures', !/Review/.test(co));
   ok('the contractor signs first', co.indexOf('Contractor Signature') < co.indexOf('Fidevia Signature'));
 }
 ok('architect and Fidevia sign together',/\{name:'Architect Signature', person:'', parallel:true, requireAll:true\}/.test(T));

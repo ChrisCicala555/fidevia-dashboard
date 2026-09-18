@@ -91,32 +91,42 @@ console.log('What the submission writes');
 
 console.log('The chain resolves the signer per row');
 {
+  // The signature step lives on the execution chain, so every row here carries
+  // a change order number: that is what tells the two chains apart.
   const steps=(row, key)=>JSON.parse(P.run(`(function(){
-    currentProject.config.workflows.co=[{name:'Fidevia Review',company:'Fidevia'},
+    currentProject.config.workflows.co_pco=[{name:'Fidevia Review',company:'Fidevia'}];
+    currentProject.config.workflows.co_final=[{name:'Fidevia Countersign',company:'Fidevia'},
       {name:'Contractor Signature',company:'(submitting contractor)'}];
     currentProject.config.workflows.rfi=[{name:'Back to the filer',company:'(submitting contractor)'}];
     return JSON.stringify(wfEffectiveSteps(${JSON.stringify(key||'co')}, ${JSON.stringify(row)})
       .map(s=>({name:s.name, company:s.company, sub:!!s.submitterStep}))); })()`));
+  const CO={'CO #':'CO-GC-001'};
+  const co=(o)=>Object.assign({}, CO, o);
 
-  const a=steps({'Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0'});
+  const a=steps(co({'Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0'}));
   ok(a[1].company==='Summit Builders',
      'a change Fidevia wrote up is signed by the contractor whose contract it changes');
   ok(a[1].sub===true, 'and the step knows it was resolved rather than typed');
   ok(a[0].company==='Fidevia', 'the step that does name a firm is left exactly as it was');
 
-  const b=steps({'Company':'Summit Builders','Workflow Step':'0'});
+  const b=steps(co({'Company':'Summit Builders','Workflow Step':'0'}));
   ok(b[1].company==='Summit Builders',
      'a contractor raising their own change signs it themselves, from the same chain');
 
-  const c=steps({'Company':'Summit Builders','Contractor':'','Submitted By':'Dave (Summit Builders)','Workflow Step':'0'});
+  const c=steps(co({'Company':'Summit Builders','Contractor':'','Submitted By':'Dave (Summit Builders)','Workflow Step':'0'}));
   ok(c[1].company==='Summit Builders', 'and so does a row written before the column existed');
 
   const r=steps({'Company':'Summit Builders','Workflow Step':'0'}, 'rfi');
   ok(r[0].company==='Summit Builders',
      'on a log with no Contractor column it means the submitter, which is what it reads as there');
 
-  const none=steps({'Workflow Step':'0'});
+  const none=steps(co({'Workflow Step':'0'}));
   ok(none[1].company==='', 'a row naming nobody resolves to nobody rather than to a stray firm');
+
+  // And the proposal chain does not ask anybody to sign.
+  const prop=steps({'PCO #':'PCO-GC-001','Company':'Summit Builders','Workflow Step':'0'});
+  ok(prop.length===1 && prop[0].name==='Fidevia Review',
+     'a proposal runs the review chain and nothing else \u2014 nobody signs a price still being argued');
 }
 
 console.log('Including on a chain somebody has added to');
@@ -125,9 +135,9 @@ console.log('Including on a chain somebody has added to');
   // grown chain returns down a different path. Both paths have to resolve, or
   // the signature step dies the moment anybody adds a reviewer.
   const out=JSON.parse(P.run(`(function(){
-    currentProject.config.workflows.co=[{name:'Fidevia Review',company:'Fidevia'},
+    currentProject.config.workflows.co_final=[{name:'Fidevia Countersign',company:'Fidevia'},
       {name:'Contractor Signature',company:'(submitting contractor)'}];
-    const row={'Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0',
+    const row={'CO #':'CO-GC-001','Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0',
       'Workflow Extra':JSON.stringify([{after:0,name:'Further Review',company:'Beers + Hoffman'}])};
     return JSON.stringify(wfEffectiveSteps('co', row).map(s=>({name:s.name, company:s.company}))); })()`));
   ok(out.length===3, 'the added reviewer is in the chain');
@@ -140,16 +150,16 @@ console.log('Including on a chain somebody has added to');
 console.log('A resolved step belongs to that contractor');
 {
   const mine=P.run(`(function(){
-    currentProject.config.workflows.co=[{name:'Contractor Signature',company:'(submitting contractor)'}];
+    currentProject.config.workflows.co_final=[{name:'Contractor Signature',company:'(submitting contractor)'}];
     ME_COMPANY='Summit Builders'; ME_EMAIL='d@s.test';
-    const st=wfEffectiveSteps('co', {'Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0'})[0];
+    const st=wfEffectiveSteps('co', {'CO #':'CO-GC-001','Company':'Fidevia','Contractor':'Summit Builders','Workflow Step':'0'})[0];
     const r=wfStepIsMine(st); ME_COMPANY='Fidevia'; ME_EMAIL='cc@fidevia.com'; return r; })()`);
   ok(mine===true, 'the contractor can act on it — the whole point, and a blank step matched nobody');
 }
 
 console.log('The shipped default uses it');
 {
-  const sig=JSON.parse(P.run("JSON.stringify(WF_TEMPLATES.co.find(s=>/contractor signature/i.test(s.name)))"));
+  const sig=JSON.parse(P.run("JSON.stringify(WF_TEMPLATES.co_final.find(s=>/contractor signature/i.test(s.name)))"));
   ok(P.run(`wfIsSubmitterToken(${JSON.stringify(sig.company)})`)===true,
      'a new project starts with Contractor Signature resolving per change order');
   // WF_TEMPLATES is evaluated at load and the constant is declared further down

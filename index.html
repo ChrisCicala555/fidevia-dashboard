@@ -3981,7 +3981,15 @@ function wizGatherContractors(){
   const out=[]; wizContractorRows().forEach(r=>r.lines.forEach(l=>out.push(l)));
   return out;
 }
-const WF_TYPES=[['rfi','RFIs'],['co','Change Orders'],['sub','Submittals'],
+const WF_TYPES=[['rfi','RFIs'],
+  // A proposal and the change order that covers it are two rows and two
+  // different jobs. The proposal is argued over — priced, questioned, sent
+  // back. The change order is signed. Running one chain over both put signature
+  // steps on a price nobody had agreed yet, which is the same mistake the
+  // pencil copy taught us on a payment application.
+  ['co_pco','Change Orders — Proposal (PCO)'],
+  ['co_final','Change Orders — Execution & Signatures'],
+  ['sub','Submittals'],
   // A pencil copy and the final application are not the same thing to review.
   // The pencil is worked through — amounts read off, figures argued, markup
   // returned. The final is signed. Running one chain over both put signature
@@ -4011,10 +4019,16 @@ const WF_TEMPLATES={
     {name:'Fidevia Signature', person:'', requireAll:true},
     {name:'Architect Signature', person:'', parallel:true, requireAll:true}
   ],
-  co:[
+  // Priced and argued. Nobody signs a proposal.
+  co_pco:[
     {name:'Fidevia Review', person:''},
-    {name:'Design Team Review', person:'', parallel:true},
-    {name:'Contractor Signature', person:'', company:'(submitting contractor)'},
+    {name:'Design Team Review', person:'', parallel:true}
+  ],
+  // Begins the moment the change order is generated, which is why there is no
+  // step for generating it. The contractor signing is whoever the change is
+  // against, resolved per row rather than named here.
+  co_final:[
+    {name:'Contractor Signature', person:'', company:'(submitting contractor)', requireAll:true},
     {name:'Fidevia Signature', person:'', requireAll:true},
     {name:'Architect Signature', person:'', parallel:true, requireAll:true},
     {name:'Owner Signature', person:''}
@@ -5947,7 +5961,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 12:08';
+const BUILD_STAMP='2026-09-18 12:22';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8761,7 +8775,13 @@ function wfOutstandingSteps(key, row){
 // Only the executed document is held to this. A row with no chain configured
 // has nothing outstanding and is not warned about.
 function coGenNeedsReview(row){
-  return coIsApproved(row) ? wfOutstandingSteps('co', row) : [];
+  if(!coIsApproved(row)) return [];
+  // The question is whether the PROPOSAL's review finished, so it is asked of
+  // the proposal chain even once the row carries a change order number. Asked
+  // of the row as it stands, a numbered row resolves to the signature chain
+  // instead, and the answer is about signatures nobody has collected yet — a
+  // different question, whose answer at the moment of generating is always no.
+  return wfOutstandingSteps('co', Object.assign({}, row, {'CO #':''}));
 }
 function coUnreviewedHTML(row){
   const out=coGenNeedsReview(row);
@@ -11803,9 +11823,18 @@ async function submitNewCo(){
     row['Attachment File ID']=fileId; row['Attachment Name']=fileName;
     row['Signed File ID']=fileId; row['Signed File Name']=fileName;
     row['Company']=co;
-    // Issued, not proposed: there is no review chain to run on a change order
-    // that arrives already executed.
-    row['Workflow Status']='Complete'; row['Workflow Step']='0';
+    // Whose contract this changes. On this path the two are the same — the
+    // dialog picks the contractor — but the field has to carry it, because the
+    // signature step below resolves against it rather than against whoever
+    // pressed Generate.
+    row['Contractor']=co; row['Trade']=String(tradeOfRow({'Contractor':co})||'');
+    // The change order runs the signature chain. Issuing it is the trigger, not
+    // a step: by the time anybody sees the row it has been issued. Where no
+    // signature chain is configured there is nothing to run, and the row is
+    // complete on arrival as it always was.
+    row['Workflow Step']='0'; row['Workflow Done']='[]'; row['Workflow Signed']='{}';
+    { let _sig=[]; try{ _sig=wfStepsFor('co', co, row)||[]; }catch(e){ _sig=[]; }
+      row['Workflow Status']= _sig.length ? 'In Review' : 'Complete'; }
     row['Version History']=JSON.stringify([{v:1, fileId, fileName, status:'Approved',
       date:etToday(), by:ME_NAME||ME_EMAIL||'', co:ME_COMPANY||'', note:'Change order issued and uploaded.'}]);
     rows.push(row);
@@ -16633,7 +16662,11 @@ function wfUpdateCo(inp){ const row=inp.closest('.wf-row'); if(!row) return; con
 // Which configured chain a row runs. Every module has one; a payment
 // application has two, and which of them applies is a property of the row
 // rather than of the module.
+// A row carrying a change order number is the executed document; anything else
+// on this log is still a proposal.
+function coIsChangeOrder(row){ return !!String((row&&row['CO #'])||'').trim(); }
 function wfCfgKey(key, row){
+  if(key==='co') return coIsChangeOrder(row) ? 'co_final' : 'co_pco';
   if(key!=='pay_apps') return WF_KEYMAP[key]||key;
   return payIsPencil(row) ? 'payapp_pencil' : 'payapp_final';
 }
@@ -16649,20 +16682,30 @@ function wfCfgKey(key, row){
 function wfIsSignatureStep(st){
   return /signature|^signed\b|\bsign\b/i.test(String((st&&st.name)||''));
 }
-function wfSplitLegacyPayapp(arr, want){
+// The same cut serves both splits: review above, signing below.
+function wfSplitAtSignature(arr, wantFirst){
   const steps=Array.isArray(arr)?arr:[];
   if(!steps.length) return [];
   let cut=steps.findIndex(wfIsSignatureStep);
-  // No signing step named at all: the whole thing is review, so it is the
-  // pencil chain and the final one is left to be built.
+  // No signing step named at all: the whole thing is review, so it is the first
+  // chain and the second is left to be built.
   if(cut<0) cut=steps.length;
-  return want==='payapp_pencil' ? steps.slice(0,cut) : steps.slice(cut);
+  return wantFirst ? steps.slice(0,cut) : steps.slice(cut);
 }
+function wfSplitLegacyPayapp(arr, want){ return wfSplitAtSignature(arr, want==='payapp_pencil'); }
 function wfFromConfig(set, cfgKey){
   const arr=set && set[cfgKey];
   if(Array.isArray(arr) && arr.length) return arr;
   if(cfgKey==='payapp_pencil' || cfgKey==='payapp_final'){
     return wfSplitLegacyPayapp(set && set.payapp, cfgKey);
+  }
+  // Chains configured before this split are all under 'co', built to carry a
+  // proposal from arrival through to the owner's signature. Cut where the
+  // signing starts, on read rather than on write, so a project keeps working
+  // before anybody opens Settings and Settings shows the two chains it is
+  // already running rather than a pair of defaults.
+  if(cfgKey==='co_pco' || cfgKey==='co_final'){
+    return wfSplitAtSignature(set && set.co, cfgKey==='co_pco');
   }
   return [];
 }

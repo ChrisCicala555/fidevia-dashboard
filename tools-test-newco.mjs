@@ -44,8 +44,13 @@ ok(/class="nc-roll-amt"[^>]*data-proposed/.test(html) || /nc-roll-amt/.test(html
   ok(/Choose which allowance each line comes from/.test(sb), 'an amount with no allowance is refused');
   ok(/more than the change order is worth/.test(sb), 'and a draw larger than the change order');
   ok(/row\['Status'\]='Approved'/.test(sb), 'an issued change order is approved');
-  ok(/row\['Workflow Status'\]='Complete'/.test(sb),
-     'with no review chain, since it arrives already executed');
+  // The change order runs the signature chain now: the proposal was argued
+  // over, and this is the document the parties put their names on. Issuing it
+  // is the trigger rather than a step, which is why nothing is ticked.
+  ok(/_sig\.length \? 'In Review' : 'Complete'/.test(sb),
+     'and starts the signature chain \u2014 falling back to complete where a project has none configured');
+  ok(/row\['Contractor'\]=co/.test(sb),
+     'carrying the contract it is against, which is who the signature step resolves to');
   ok(/x\['Rolled Into'\]=num/.test(sb), 'covered proposals record it');
   ok(/\(amount<proposed\)\?\('Rolled into '\+num\+' \(part\)'\)/.test(sb), 'and say when accepted in part');
   ok(/nextItemNumber\('co', co\)/.test(sb), 'the number follows the project sequence when left blank');

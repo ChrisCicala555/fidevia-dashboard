@@ -31,8 +31,11 @@ ok(/catch\(e\)\{ FID_SETTINGS=\{\}; \}/.test(html),
    'settings that cannot be reached do not block making a project');
 
 console.log('What the server will store');
-ok(WF.WF_KEYS.join()==='rfi,co,sub,payapp_pencil,payapp_final',
+ok(WF.WF_KEYS.join()==='rfi,co,co_pco,co_final,sub,payapp_pencil,payapp_final',
    'every chain the dashboard runs, and only those');
+ok(WF.WF_KEYS.includes('co'),
+   'including the retired single change order key \u2014 a settings blob saved before the split still '
+   +'carries one, and dropping it would throw away the chain a project is running');
 {
   const c=WF.cleanWorkflows({sub:[{name:'Architect Review',company:'Architect 2',parallel:true,requireAll:true}]});
   ok(c.sub.length===1, 'a chain survives');

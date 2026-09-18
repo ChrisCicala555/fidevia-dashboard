@@ -39,9 +39,13 @@ ok(/The review chain is open again, at the step it was left on/.test(html), 'reo
 ok(/reject\|denied\|\\bden\\b\|void\|withdrawn\|cancell\?ed/.test(srv),
    'the server refuses too, which is the copy that matters');
 {
-  // emailByName is built before the row is loaded, so the window has to be
-  // the whole op rather than up to that point.
-  const sa = srv.split("op === 'advanceWorkflow'")[1].slice(0, 6000);
+  // emailByName and the chain resolution are both built before the row is
+  // loaded, so the window has to be the whole op rather than up to that point.
+  // It is cut at the next op rather than at a character count, which is what
+  // made this read as a failure the moment the op grew.
+  const _sa0 = srv.split("op === 'advanceWorkflow'")[1];
+  const _nx = _sa0.indexOf("op === '", 200);
+  const sa = _nx > 0 ? _sa0.slice(0, _nx) : _sa0;
   ok(/409/.test(sa), 'the server answers with a conflict rather than pretending');
   ok(sa.indexOf('rows.find') < sa.indexOf('409'), 'the row is loaded before the check');
 }

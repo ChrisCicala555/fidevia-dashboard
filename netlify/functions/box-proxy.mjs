@@ -619,7 +619,11 @@ function defaultDocFolders(){
 // The chains a new project starts with. Sanitised on the way in for the same
 // reason as the folders: this is a stored blob, and the wizard is not the only
 // thing that could have written it.
-const WF_KEYS = ['rfi', 'co', 'sub', 'payapp_pencil', 'payapp_final'];
+// 'co' stays in the list although nothing writes it any more: a settings blob
+// saved before the proposal/execution split still carries one, and dropping it
+// here would throw away the chain a project is running the first time anybody
+// saves anything else.
+const WF_KEYS = ['rfi', 'co', 'co_pco', 'co_final', 'sub', 'payapp_pencil', 'payapp_final'];
 function cleanWorkflows(w){
   if (!w) return null;
   const out = {}; let any = false;
@@ -2249,14 +2253,37 @@ export default async (req) => {
       let cfg = {}; if (cfgFile) { try { cfg = JSON.parse(await (await boxFetch(`https://api.box.com/2.0/files/${cfgFile.id}/content`, { headers: H })).text()) || {}; } catch (e) {} }
       // Resolve the chain the same way the client does: the submitting
       // company's override if it has one, otherwise the project default.
+      // Chains saved before a split live under the old single key, built to
+      // carry an item from arrival through to signature. Cut where the signing
+      // starts: review above, signing below. Read rather than rewritten, and
+      // the page does exactly the same — without this a project that has not
+      // re-saved Settings would get "No workflow configured" on every change
+      // order and every payment application the moment the split shipped.
+      const isSignatureStep = (st) => /signature|^signed\b|\bsign\b/i.test(String((st && st.name) || ''));
+      const splitAtSignature = (arr, wantFirst) => {
+        const steps = Array.isArray(arr) ? arr : [];
+        if (!steps.length) return [];
+        let cut = steps.findIndex(isSignatureStep);
+        if (cut < 0) cut = steps.length;
+        return wantFirst ? steps.slice(0, cut) : steps.slice(cut);
+      };
+      const LEGACY_SPLIT = { co_pco:['co',true], co_final:['co',false],
+                             payapp_pencil:['payapp',true], payapp_final:['payapp',false] };
+      const fromSet = (set) => {
+        if (!set) return [];
+        const arr = set[wfKey];
+        if (Array.isArray(arr) && arr.length) return arr;
+        const leg = LEGACY_SPLIT[wfKey];
+        return leg ? splitAtSignature(set[leg[0]], leg[1]) : [];
+      };
       const wfForCompany = (company) => {
         const t = String(company || '').trim().toLowerCase();
         if (t) {
           const byCo = cfg.workflowsByCompany || {};
           const ck = Object.keys(byCo).find(k => k.trim().toLowerCase() === t);
-          if (ck) { const arr = (byCo[ck] || {})[wfKey]; if (Array.isArray(arr) && arr.length) return arr; }
+          if (ck) { const arr = fromSet(byCo[ck]); if (arr.length) return arr; }
         }
-        return ((cfg.workflows || {})[wfKey]) || [];
+        return fromSet(cfg.workflows || {});
       };
       const rowCompanyOf = (r) => {
         if (!r) return '';

@@ -73,8 +73,8 @@ console.log('It reaches the row');
   ok(/row\['Cost Impact'\]=String\(gross\); row\['Approved Amount'\]=String\(gross\)/.test(sub),
      'and the amount lands on both the cost impact and the approved amount, since an issued change order is already agreed');
   ok(/row\['PCO #'\]=''/.test(sub), 'with no PCO number, because there was no proposal');
-  ok(/row\['Workflow Status'\]='Complete'/.test(sub),
-     'and no review chain to run on something that arrives already executed');
+  ok(/_sig\.length \? 'In Review' : 'Complete'/.test(sub),
+     'and runs the signature chain \u2014 there was no proposal to review, but the document still gets signed');
 }
 
 console.log((bad?'FAIL ':'ok   ')+'tools-test-standaloneco.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
