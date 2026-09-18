@@ -5963,7 +5963,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 13:57';
+const BUILD_STAMP='2026-09-18 14:41';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -13230,8 +13230,18 @@ function setViewer(mode){
   document.getElementById('btn-external').classList.toggle('active',mode==='external');
   const vc=document.getElementById('viewer-company');
   if(vc && !EXTERNAL && mode==='external'){
+    // Once per firm, named with the contracts it holds. A contractor's access is
+    // granted to a COMPANY — somebody signed in for Garden Spot sees the
+    // mechanical and the plumbing both — so the firm twice in this list was two
+    // entries that previewed the identical screen, and picking between them
+    // implied a difference the grant does not have.
     const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
-    vc.innerHTML='<option value="">All companies</option>'+cts.map(c=>'<option value="'+esc(c.name)+'"'+(VIEWER_COMPANY===c.name?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+    const firms=wfScopeFirms(cts.map(c=>c.name));
+    vc.innerHTML='<option value="">All companies</option>'+firms.map(function(nm){
+      const cl=contractLabelFor(nm);
+      return '<option value="'+esc(nm)+'"'+(VIEWER_COMPANY===nm?' selected':'')+'>'
+        +esc(nm)+(cl?(' — '+esc(cl)):'')+'</option>';
+    }).join('');
   }
   syncViewerControls();
   applyRoleClasses();
