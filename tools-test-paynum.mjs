@@ -14,7 +14,7 @@ fs.writeFileSync('.pn.tmp.mjs', [
   "export function setContractors(cs){ currentProject.config.contractors=cs; }",
   "export function seed(k,rows){ allData[k]=rows; }",
   grab('function rowCompany'),
-  grab('function nextItemNumber(key, comp, run)'), grab('function nextItemNumberByCompany'),
+  grab('function nextItemNumber(key, comp, run, trade)'), grab('function nextItemNumberByCompany'),
   // Proposals and change orders became two registers; the label/column lookup
   // moved out into its own function.
   grab('function numRunFields'),
@@ -109,8 +109,13 @@ ok('a typed number still wins',     /'App #':\(v\('f-num'\)\|\|PRE_NUM\)/.test(s
 // A pay app number can come round again after a delete, so Box is asked what it
 // still holds before one is issued — the log cannot see a folder left behind by
 // a delete that failed halfway.
-ok('contractor uploads are numbered', /const _panum = PRE_NUM \|\| \(await payNextNumber\(_comp/.test(src));
-ok('and the log is the last resort, not the first', /\|\| nextItemNumber\('pay_apps',_comp\);/.test(src));
+ok('contractor uploads are numbered', /await payNextNumber\(_comp, currentProject\.folders\.pay_apps, _ptp\.trade\)/.test(src));
+ok('and the log is the last resort, not the first', /\|\| nextItemNumber\('pay_apps',_comp,null,_ptp\.trade\);/.test(src));
+// A firm holding two contracts is numbered from the log alone: the floor asks
+// Box which folders survive a failed delete, and those are named per company,
+// so it cannot tell one contract's run from the other's.
+ok('a reserved number is not reused across two contracts', /\(_ptp\.trade \? '' : PRE_NUM\)/.test(src));
+ok('and the floor is skipped when there are two', /if\(trade\) return fromLog;/.test(src));
 ok('the form renumbers when the contractor changes',
    /ci\.onchange=function\(\)\{ renum\(\);/.test(src));
 ok('a typed number is not overwritten', /num\.dataset\.touched/.test(src));

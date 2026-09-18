@@ -2837,13 +2837,13 @@ function toCSV(headers, rows){
 // header would erase that history the next time the log is written.
 const MODULES = {
   rfi:      {folder:'01 - RFIs',           log:'RFI Log.csv',          headers:['RFI #','Subject','Description','Submitted By','Assigned To','Date Submitted','Due Date','Contract Due','Date Closed','Status','Response Summary','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Copied To','Archived','Archived By','Archived Date']},
-  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
+  co:       {folder:'02 - Change Orders',  log:'Change Order Log.csv', headers:['PCO #','CO #','Description','Submitted By','Trade','Cost Impact','Approved Amount','Applied to Allowance','Allowance','Allowance Splits','Rolled Into','Cause','Schedule Impact (Days)','Status','Linked RFI','Date Submitted','Date Approved','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   sub:      {folder:'03 - Submittals',     log:'Submittals Log.csv',   headers:['Submittal #','Spec Section','Description','Submitted By (Sub)','Reviewer','Date Submitted','Due Date','Contract Due','Status','Attachment File ID','Attachment Name','Version History','Importance','Company','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned','Submitted By Email','Copied To','Archived','Archived By','Archived Date']},
   daily:    {folder:'04 - Daily Logs',     log:'Daily Log Index.csv',  headers:['Date','Submitted By','Submitted By Email','Weather','Crew Count','Work Performed','Delays / Issues','Photo Notes','Attachment File ID','Attachment Name','Report Data']},
   contacts: {folder:'05 - Contacts',       log:'Job Contacts.csv',     headers:['Name','Company','Role','Email','Phone','Notify - RFI','Notify - CO','Notify - Submittal','Notify - Pay Pencil','Notify - Pay Final']},
   budget:   {folder:'06 - Budget',         log:'Budget Tracker.csv',   headers:['Cost Code','Description','Budget Amount','Committed Costs','Approved Change Orders','Actual to Date','Variance']},
   docs:     {folder:'07 - Documents',      log:'Document Index.csv',   headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Submitted By','Submitted By Email','Version History']},
-  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Copy Type','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Change Orders Claimed','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
+  pay_apps: {folder:'09 - Payment Applications', log:'Payment Applications.csv', headers:['App #','Contractor','Company','Trade','Copy Type','Period From','Period To','Period','Due Date','Contract Amount','Approved Change Orders','Change Orders Claimed','Previously Paid','Requested Amount','Remaining on Contract','Approved Amount','Status','Action','Reviewed By','Review Date','Attachment File ID','Attachment Name','Signed File ID','Signed File Name','Version History','Importance','Workflow Step','Workflow Status','Workflow Done','Workflow Signed','Workflow Extra','Workflow Reassigned']},
   meetings: {folder:'10 - Meeting Minutes',    log:'Meeting Minutes.csv',    headers:['Date','Meeting Type','Attendees','Summary','Attachment File ID','Attachment Name']},
   board:    {folder:'11 - Board Reports',       log:'Board Reports.csv',       headers:['Date','Title','Summary','Attachment File ID','Attachment Name']},
   gendocs:  {folder:'12 - Documents',            log:'Documents.csv',           headers:['Document Name','Category','Version','Date','Visible To','File ID','File Name','Version History','Submitted By','Submitted By Email']},
@@ -4781,13 +4781,17 @@ function numRunFields(key, run){
                          idField:{rfi:'RFI #',sub:'Submittal #',pay_apps:'App #'}[key]};
   return run==='pco' ? {label:'PCO', idField:'PCO #'} : {label:'CO', idField:'CO #'};
 }
-function nextItemNumber(key, comp, run){
+// trade: which of the firm's contracts this is for, when it holds several.
+// Without it tradeCodeFor cannot say — contractorRec refuses to pick between
+// two, and rightly, so the run would fall back to a code nobody chose.
+function nextItemNumber(key, comp, run, trade){
   const {label, idField}=numRunFields(key, run);
   if(!label || !idField) return '';
   // Pay applications stay per contractor: they are billing against one
-  // contract, so a shared trade run would be wrong.
-  if(key==='pay_apps') return nextItemNumberByCompany(label, idField, comp);
-  const code=tradeCodeFor(comp);
+  // contract, so a shared trade run would be wrong. Per CONTRACT, though, once
+  // a firm holds two — otherwise both of a month's applications are PA-001.
+  if(key==='pay_apps') return nextItemNumberByCompany(label, idField, comp, trade);
+  const code=String(trade||'').trim().toUpperCase() || tradeCodeFor(comp);
   const rows=allData[key]||[]; let max=0;
   rows.forEach(r=>{
     // Only this register's own column. A row carrying both numbers counts once
@@ -4806,12 +4810,17 @@ function nextItemNumber(key, comp, run){
   const gone=retiredHigh(key, comp, run); if(gone>max) max=gone;
   return label+'-'+code+'-'+String(max+1).padStart(3,'0');
 }
-function nextItemNumberByCompany(label, idField, comp){
+function nextItemNumberByCompany(label, idField, comp, trade){
   const rows=allData.pay_apps||[]; const c=(comp||'').trim().toLowerCase(); let max=0;
+  const t=String(trade||'').trim().toUpperCase();
   rows.forEach(r=>{
     if(rowCompany(r).trim().toLowerCase()!==c) return;
+    // One firm, two contracts: only the run for THIS contract counts. Reading
+    // both would make the plumbing application follow the mechanical one and
+    // skip a number on each.
+    if(t && String(r['Trade']||'').trim().toUpperCase()!==t) return;
     const v=String(r[idField]||'');
-    let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?)?(\d+)\s*$/i);
+    let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?(?:[A-Z]{2,5}-)?)?(\d+)\s*$/i);
     if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
   });
   // No retired mark is read here. Pay app numbers are reused after a delete, so
@@ -4825,7 +4834,10 @@ function nextItemNumberByCompany(label, idField, comp){
   if(!NUMBER_REUSED_AFTER_DELETE.pay_apps){
     const gone=retiredHigh('pay_apps', comp); if(gone>max) max=gone;
   }
-  return label+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
+  // The contract goes in the number when there is more than one, so PA-MC-001
+  // and PA-PC-001 read as what they are rather than colliding on PA-001.
+  const part = t ? (label+'-'+t) : label;
+  return part+'-'+String(max+1).padStart(3,'0')+'_'+(comp||'').trim();
 }
 function withIdxSorted(rows, df){ return rows.map((r,idx)=>({r,idx})).sort((a,b)=>(Date.parse(b.r[df]||'')||0)-(Date.parse(a.r[df]||'')||0)); }
 // Index against the FULL array, then filter. Filtering first renumbers the rows
@@ -5900,7 +5912,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:18';
+const BUILD_STAMP='2026-09-18 01:29';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8962,6 +8974,7 @@ const FORMS = {
     <div class="field"><label>Description *</label><input autocomplete="off" id="f-subject" placeholder="e.g. Additional structural bracing per RFI-001"></div>
     <div class="field-row"><div class="field"><label>Cost Impact ($)</label><input autocomplete="off" id="f-cost" placeholder="e.g. 10,000"><p class="file-hint" style="margin-top:3px;">Enter a deduct as a negative, e.g. -10,000. A deduct reduces the contract. Which allowances it writes down, if any, is set on the change order.</p></div><div class="field"></div></div>
     <div class="field-row"><div class="field"><label>Linked RFI (If Applicable)</label><input autocomplete="off" id="f-linked" placeholder="Type a number or a subject…" oninput="rfiShowAC(this)" onfocus="rfiShowAC(this)"><p class="file-hint" style="margin-top:3px;" id="f-linked-note"></p></div><div class="field"><label>Date Submitted</label><input autocomplete="off" type="date" id="f-date-sub" readonly title="Locked to the submission date (Eastern Time)" style="background:#f0efe9;color:#777;cursor:not-allowed;"></div></div>
+    <div id="f-trade-slot"></div>
     <div class="field"><label>Supporting Document <span id="f-file-req-co"></span></label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">Uploaded directly to Box.</p></div>`},
   submittal:{title:'New Submittal',html:`
     <div class="field-row"><div class="field"><label>Review Due</label><input autocomplete="off" type="date" id="f-sub-due"><p class="file-hint" style="margin-top:3px;" id="f-sub-due-hint"></p></div><div class="field"></div></div>
@@ -8998,6 +9011,7 @@ const FORMS = {
     <div class="field-row"><div class="field"><label>Period (MM/DD/YYYY)</label><input autocomplete="off" type="date" id="f-period"></div><div class="field"><label>Due Date (MM/DD/YYYY) *</label><input autocomplete="off" type="date" id="f-due"></div></div>
     <div class="field-row"><div class="field"><label>Contract Amount ($)</label><input autocomplete="off" id="f-contract" placeholder="e.g. 1,000,000"></div><div class="field"><label>Approved Change Orders ($)</label><input autocomplete="off" id="f-cos-approved" placeholder="e.g. 0" readonly class="fig-locked"><div id="f-co-pick"></div></div></div>
     <div class="field-row"><div class="field"><label>Previously Paid ($)</label><input autocomplete="off" id="f-prev" placeholder="e.g. 250,000"></div><div class="field"><label>Requested This Period ($) *</label><input autocomplete="off" id="f-req" placeholder="e.g. 50,000"></div></div>
+    <div id="f-trade-slot"></div>
     <div class="field"><label>Payment Application Document</label><input autocomplete="off" type="file" id="f-file"><p class="file-hint">The pay application PDF, uploaded to Box. Remaining is calculated automatically. Fidevia will review and sign.</p></div>`},
     document:{title:'Upload Document',html:`
     <div class="field"><label>Document Name *</label><input autocomplete="off" id="f-name" placeholder="e.g. Architectural Drawings - Set A"></div>
@@ -9008,6 +9022,7 @@ const FORMS = {
     <p class="file-hint" style="margin:0 0 14px;">Upload your daily report. Fidevia records it against <strong id="f-ext-co-label"></strong> and today's date, then reviews it.</p>
     <div class="field"><label>Daily Report File *</label><input autocomplete="off" type="file" multiple id="f-file"><p class="file-hint">PDF or photos. Choose several to file a batch \u2014 each becomes its own row.</p></div>`},
   payapp_ext:{title:'Upload Payment Application',html:`
+    <div id="f-trade-slot"></div>
     <p class="file-hint" style="margin:0 0 14px;">Upload your pay application. Fidevia records it against <strong id="f-ext-co-label"></strong>, enters the amounts from your document, then reviews and signs.</p>
     <div class="field"><label>Which is this?</label>
       <div class="seg" id="f-copytype" role="radiogroup" aria-label="Copy type">
@@ -9067,6 +9082,16 @@ function openModal(type){
   currentModal=type;
   document.getElementById('modal-title').textContent=def.title;
   document.getElementById('modal-body').innerHTML=def.html;
+  // The contract picker, filled from whichever firm is filing. Rendered here
+  // rather than in the form's own markup because it depends on the project and
+  // the person, and a form is a constant.
+  {
+    const slot=document.getElementById('f-trade-slot');
+    if(slot){
+      const co = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
+      slot.innerHTML=tradePickerHTML('f-trade', co);
+    }
+  }
   if(['rfi','co','submittal','payapp'].includes(type)){ document.getElementById('modal-body').insertAdjacentHTML('beforeend','<label style="display:block;margin-top:10px;font-size:14px;font-weight:600;color:var(--danger)"><input type="checkbox" id="f-high" style="margin-right:8px;">High Importance</label>'); }
   document.querySelectorAll('#modal-body input, #modal-body textarea').forEach(el=>{ if(el.type!=='file') el.value=''; });
   document.querySelectorAll('#modal-body select').forEach(el=>{ el.selectedIndex=0; });
@@ -10252,6 +10277,11 @@ async function submitForm(){
       await resolveMe();
       const _cc = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : (ME_COMPANY||'Fidevia');
       if(!v('f-subject')) throw new Error('Description is required.');
+      // Which of their contracts this is against, when the firm holds several.
+      // Refused rather than defaulted: picking one would put the cost, and any
+      // allowance it draws on, against a contract nobody chose.
+      const _tp=tradePicked('f-trade', _cc);
+      if(!_tp.ok) throw new Error(_cc+' holds more than one contract on this job. Choose which one this change is against.');
       // The proposal number, and — where Fidevia is recording something that
       // arrived already agreed — a change order number from the other
       // register. Two registers, so two numbers rather than one used twice.
@@ -10260,7 +10290,7 @@ async function submitForm(){
       const _cnum = _appr ? nextItemNumber('co', _cc, 'co') : '';
       newRow={'PCO #':_pnum,'CO #':_cnum,'Description':v('f-subject'),'Submitted By':(v('f-by')||(ME_COMPANY?(ME_NAME+' ('+ME_COMPANY+')'):(ME_NAME||ME_EMAIL||''))),'Cost Impact':v('f-cost'),'Approved Amount':(_appr?v('f-cost'):''),// An allowance is allocated when the change is agreed, not when it is
       // proposed, so a PCO carries neither.
-      'Applied to Allowance':'','Allowance':'','Cause':'','Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':(_appr?etToday():''),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc};
+      'Applied to Allowance':'','Allowance':'','Cause':'','Schedule Impact (Days)':'','Status':v('f-status'),'Linked RFI':v('f-linked'),'Date Submitted':etToday(),'Date Approved':(_appr?etToday():''),'Attachment File ID':attachId,'Attachment Name':attachName,'Company':_cc,'Trade':_tp.trade};
       sendItemNotif('Notify - CO','co',{subject:'[Fidevia] New Change Order: {number}',intro:'Change Order Submitted: {title}'},{project:currentProject.name,number:newRow['CO #'],title:newRow['Description'],submitter:newRow['Submitted By']||''},[['CO #',newRow['CO #']],['Submitted By',newRow['Submitted By']],['Cost Impact',newRow['Cost Impact']],['Status',newRow['Status']]].concat(_wfNextLabel?[['Next in Workflow',_wfNextLabel]]:[]));
     } else if(currentModal==='submittal'){
 
@@ -10300,7 +10330,9 @@ async function submitForm(){
       // Which change orders that total is of. A list survives the question a
       // total cannot answer: which one is missing.
       const _claimed = CO_PICK.manual ? '' : coPickChosen().map(c=>c.num).filter(Boolean).join('; ');
-      newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Change Orders Claimed':_claimed,'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
+      const _ftp=tradePicked('f-trade', v('f-contr'));
+      if(!_ftp.ok) throw new Error(v('f-contr')+' holds more than one contract on this job. Choose which one this application is against.');
+      newRow={'App #':(v('f-num')||PRE_NUM),'Contractor':v('f-contr'),'Company':v('f-company'),'Trade':_ftp.trade,'Period From':'','Period To':'','Period':v('f-period'),'Due Date':v('f-due'),'Contract Amount':v('f-contract'),'Approved Change Orders':String(cosApp),'Change Orders Claimed':_claimed,'Previously Paid':v('f-prev'),'Requested Amount':v('f-req'),'Remaining on Contract':remain.toFixed(2),'Approved Amount':'','Status':'Submitted','Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:'Submitted',date:etToday(),by:v('f-contr'),note:'Submitted'}])};
     } else if(currentModal==='cdaily_ext'){
       if(!attachId) throw new Error('Please choose your daily report file.');
       const _comp=viewingAsCompany();
@@ -10325,9 +10357,15 @@ async function submitForm(){
       // PRE_NUM already asked Box. Where it is missing — the reservation failed,
       // or this path was reached another way — ask again rather than fall back
       // to the log alone, which is the copy that cannot see a leftover folder.
-      const _panum = PRE_NUM || (await payNextNumber(_comp, currentProject.folders.pay_apps))
-                             || nextItemNumber('pay_apps',_comp);
-      newRow={'App #':_panum,'Contractor':_comp,'Company':_comp,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
+      // Which contract is being billed, when the firm holds several. The
+      // number, the contract amount and everything drawn off it belong to one
+      // of them, and nothing else on the row says which.
+      const _ptp=tradePicked('f-trade', _comp);
+      if(!_ptp.ok) throw new Error(_comp+' holds more than one contract on this job. Choose which one this application is against.');
+      const _panum = (_ptp.trade ? '' : PRE_NUM)
+                  || (await payNextNumber(_comp, currentProject.folders.pay_apps, _ptp.trade))
+                  || nextItemNumber('pay_apps',_comp,null,_ptp.trade);
+      newRow={'App #':_panum,'Contractor':_comp,'Company':_comp,'Trade':_ptp.trade,'Copy Type':_copy,'Period From':'','Period To':'','Period':_period,'Due Date':payUploadDue(_period),'Contract Amount':'','Approved Change Orders':'','Previously Paid':'','Requested Amount':'','Remaining on Contract':'','Approved Amount':'','Status':(_copy==='Pencil'?'Pencil — awaiting Fidevia':'Uploaded — awaiting Fidevia'),'Action':'','Reviewed By':'','Review Date':'','Attachment File ID':attachId,'Attachment Name':attachName,'Signed File ID':'','Signed File Name':'','Version History':JSON.stringify([{v:1,fileId:attachId,fileName:attachName,status:_copy,date:etToday(),by:_comp,note:(_copy==='Pencil'?'Pencil copy uploaded by contractor':'Uploaded by contractor')}])};
     } else if(currentModal==='cdaily'){
       if(!attachId) throw new Error('A daily report file is required.');
       const _comp = EXTERNAL ? ((currentProject&&currentProject.userCompany)||'') : v('f-company');
@@ -13752,6 +13790,34 @@ function coPendingFor(who){
 //
 // OC and an unset trade fall back to A, B, C: a reference with no prime in it
 // is better than one claiming a prime the contract does not hold.
+// Which contract a row is filed against. A firm holding one prime is not asked
+// — there is nothing to choose and the name already answers it. Holding two,
+// the row has to say, because nothing else on it can: a change order against
+// Garden Spot reached neither the mechanical nor the plumbing allowances, and
+// a payment application for them added up against no contract at all.
+function tradeChoicesFor(company){
+  const mine=linesForCompany(company);
+  return mine.length>1 ? mine.map(c=>({key:tradeKeyOf(c), label:tradeLabelOf(c)||tradeKeyOf(c)})) : [];
+}
+function tradePickerHTML(id, company){
+  const opts=tradeChoicesFor(company);
+  if(!opts.length) return '';
+  return '<div class="field" id="'+id+'-field"><label>Contract *</label>'
+    +'<select autocomplete="off" id="'+id+'">'
+    +'<option value="">Which contract is this against?\u2026</option>'
+    +opts.map(o=>'<option value="'+esc(o.key)+'">'+esc(o.label)+'</option>').join('')
+    +'</select>'
+    +'<p class="file-hint" style="margin-top:3px;">'+esc(company)+' holds '+opts.length
+    +' contracts on this job. Which one this belongs to decides the allowances it can draw on '
+    +'and the contract it is billed against.</p></div>';
+}
+// What to store, and whether the form may be submitted at all.
+function tradePicked(id, company){
+  const opts=tradeChoicesFor(company);
+  if(!opts.length) return { ok:true, trade:'' };
+  const v=String((document.getElementById(id)||{}).value||'').trim().toUpperCase();
+  return v ? { ok:true, trade:v } : { ok:false, trade:'' };
+}
 function alwPrefix(line){
   const k=String(tradeKeyOf(line)||'').toUpperCase();
   if(!k || k==='OC' || k.startsWith('OC:')) return '';
@@ -14635,8 +14701,13 @@ async function payNumberFloor(comp, moduleFolderId){
   return max;
 }
 // The number to issue, having asked Box what it still has.
-async function payNextNumber(comp, moduleFolderId){
-  const fromLog=nextItemNumber('pay_apps', comp);
+async function payNextNumber(comp, moduleFolderId, trade){
+  const fromLog=nextItemNumber('pay_apps', comp, null, trade);
+  // The floor asks Box what folders it still holds, and those are named per
+  // company. It cannot tell one contract from another, so a firm holding two
+  // is answered from the log alone rather than from a floor that would push
+  // both runs past each other.
+  if(trade) return fromLog;
   const floor=await payNumberFloor(comp, moduleFolderId);
   if(!floor) return fromLog;
   const have=itemNumberValue(fromLog);
