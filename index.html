@@ -990,6 +990,7 @@
         <label style="font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">These steps apply to</label>
         <select id="npwf-scope" onchange="wizWfScopeChange()" style="border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:14px;font-family:inherit;background:var(--white);color:var(--ink);"></select>
         <button type="button" class="btn-secondary" id="npwf-revert" onclick="wizWfRevert()" style="display:none;padding:7px 13px;">Use the default instead</button>
+        <button type="button" class="btn-secondary" id="npwf-fidevia" onclick="wizWfUseFidevia()" style="padding:7px 13px;">Use Fidevia’s current defaults</button>
       </div>
       <div id="npwf-scope-hint" style="font-size:12.5px;color:var(--muted);margin:-6px 0 14px;line-height:1.45;"></div>
       <div id="np-workflows"></div>
@@ -3835,6 +3836,19 @@ function wizWfScopeOptions(){
           : 'Applies to everyone. Add contractors on the previous step to give any of them their own chain.');
   }
 }
+// A setup paused before the defaults were changed carries the chains as they
+// were: the draft stores what was gathered, which is the point of a draft. This
+// is the way to take the new ones without starting the project again.
+async function wizWfUseFidevia(){
+  const cfg=await fidSettings();
+  const w=(cfg&&cfg.workflows)||null;   // nothing set: wfRenderAll draws the built-in templates
+  const what=NPWF_SCOPE ? ('the chain for '+NPWF_SCOPE) : 'the default chain';
+  if(!confirm('Replace '+what+' with the review workflows set in Project Settings?\n\n'
+    +'Anything typed here for it is lost. Every other step of this setup is untouched.')) return;
+  if(NPWF_SCOPE) NPWF_BYCO[NPWF_SCOPE]=w||null; else NPWF_DEFAULT=w;
+  wfRenderAll('npwf','np-workflows', w, []);
+  try{ wfSyncWizardPeople(); }catch(e){}
+}
 // Keep whatever is on screen before switching away from it.
 function wizWfCapture(){
   const g=wfGather('npwf');
@@ -5874,7 +5888,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 00:41';
+const BUILD_STAMP='2026-09-18 00:47';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
