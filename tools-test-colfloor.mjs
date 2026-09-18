@@ -60,5 +60,15 @@ console.log('And the wrapper is what slides');
   ok(/w\.className='tscroll'/.test(w), 'and every wide table is put inside one');
 }
 
+console.log('The activity feed’s Item column is a description column');
+// It is a number and then whatever the thing was called. Matching nothing in
+// the list, it fell to the default, and a long title wrapped into ten lines in
+// a column narrower than the date beside it.
+ok(floor('Item')===300, 'Item gets the wide-text floor');
+ok(floor('Itemised Cost')===116,
+   'but a heading that merely begins with the word does not — anchored, not substring');
+ok(floor('Line Item')===116, 'nor one that ends with it');
+ok(/<th>Item<\/th>/.test(html), 'and the feed is the table that uses it');
+
 console.log(bad ? `FAIL tools-test-colfloor.mjs — ${bad} of ${n}` : `ok   tools-test-colfloor.mjs — ${n} assertions`);
 process.exit(bad?1:0);

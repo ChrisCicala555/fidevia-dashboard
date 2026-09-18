@@ -4386,7 +4386,10 @@ async function loadModule(key){
 // room; a date is eight characters and never more. Matched on the heading,
 // because that is what says what the column holds.
 const COL_FLOOR=[
-  [/description|subject|scope|summary|notes?|comment/i, 300],
+  // Item is the activity feed's description column: a number and then whatever
+  // the thing was called. Matching nothing, it fell to the default and a long
+  // title wrapped into ten lines in a column narrower than the date beside it.
+  [/description|subject|scope|summary|notes?|comment|^item$/i, 300],
   [/submitted by|assigned to|reviewer|contractor|company|submitter|recorded by/i, 150],
   [/spec section|pco|co #|rfi #|submittal #|app #|payroll/i, 140],
   [/file|document|attachment/i, 170],
@@ -5913,7 +5916,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:48';
+const BUILD_STAMP='2026-09-18 02:08';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
