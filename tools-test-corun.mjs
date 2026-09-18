@@ -112,9 +112,13 @@ console.log('Raising one of each through the form');
 {
   const src=html.slice(html.indexOf("} else if(currentModal==='co'){"));
   const body=src.slice(0, src.indexOf('sendItemNotif'));
-  ok(/nextItemNumber\('co', _cc, 'pco'\)/.test(body), 'the New PCO form draws from the proposal register');
-  ok(/_appr \? nextItemNumber\('co', _cc, 'co'\) : ''/.test(body),
+  ok(/nextItemNumber\('co', _against, 'pco', _trade\)/.test(body),
+     'the New PCO form draws from the proposal register, against the contract the change is on');
+  ok(/_appr \? nextItemNumber\('co', _against, 'co', _trade\) : ''/.test(body),
      'and takes a change order number as well only when it arrived already approved');
+  ok(!/nextItemNumber\('co', _cc,/.test(body),
+     'and never numbers it against the filer \u2014 Fidevia writes up most changes, and every one of '
+     +'them would have read PCO-CM-001');
   ok(!/replace\(\/\^CO\/,'PCO'\)/.test(body),
      'rather than spelling one number two ways, which is what tied the registers together');
   ok(/'PCO #':_pnum,'CO #':_cnum/.test(body), 'each column gets its own register’s number');

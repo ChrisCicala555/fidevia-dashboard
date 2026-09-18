@@ -302,8 +302,8 @@ ok(!/&& !String\(x\['Signed File Name'\]\|\|''\)\.trim\(\)/.test(html),
   ok(/coRollCandidatesFor\(co\)/.test(f.slice(0, f.indexOf('\nfunction '))),
      'the New CO picker uses the shared list rather than its own copy of the filter');
 }
-ok(/function coRollCandidates\(idx\)\{[\s\S]{0,200}coRollCandidatesFor\(rowCompany\(r\), idx\)/.test(html),
-   'and so does the generator');
+ok(/function coRollCandidates\(idx\)\{[\s\S]{0,200}coRollCandidatesFor\(coContractorOf\(r\), idx\)/.test(html),
+   'and so does the generator, asking by the contract the change is against');
 
 console.log((bad?'FAIL':'ok  ')+' tools-test-rolleligible.mjs — '+n+' assertions'+(bad?', '+bad+' failed':''));
 process.exit(bad?1:0);

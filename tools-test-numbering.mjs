@@ -20,8 +20,9 @@ ok(!/'_'\+\(comp/.test(ni), 'the company suffix is gone from new numbers');
 ok(/if\(key==='pay_apps'\) return nextItemNumberByCompany/.test(ni),
    'pay applications stay per contractor, since they bill one contract');
 ok(/m\[1\]\.toUpperCase\(\)===code/.test(ni), 'the run is per code, so two firms sharing one do not collide');
-ok(/tradeCodeFor\(rowCompany\(r\)\)!==code/.test(ni),
-   'items numbered before this change still feed the right run');
+ok(/tradeCodeFor\(key==='co' \? coContractorOf\(r\) : rowCompany\(r\)\)!==code/.test(ni),
+   'items numbered before this change still feed the right run \u2014 a change order by the contract it '
+   +'is against, everything else by who filed it');
 
 // the numbering itself
 {

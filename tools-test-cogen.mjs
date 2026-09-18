@@ -13,7 +13,7 @@ fs.writeFileSync('.cg.tmp.mjs', [
   "export function setup(cfg,cos){ currentProject.config=cfg; allData.co=cos; }",
   "const payNum=x=>parseFloat(String(x==null?'':x).replace(/[^0-9.\\-]/g,''))||0;",
   "const orgKeyOf=n=>String(n||'').trim().toLowerCase().replace(/[.,]/g,'').replace(/\\s+/g,' ');",
-  grab('function rowCompany'), grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
+  grab('function coContractorOf'), grab('function rowCompany'), grab('function coApprovedAmount'), grab('function coAllowanceSplits'), grab('function coSplitsTotal'),
   grab('function coAllowanceAmountFor'), grab('function coAllowanceDraw'),
   grab('function coContractImpact('), grab('function coIsApproved'), grab('function coIsExecuted'),
   // allowanceFor now sums a named list, so its helpers come too.

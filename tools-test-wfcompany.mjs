@@ -82,7 +82,7 @@ console.log('The editor asks for a firm');
      'with nobody named: the signature records whoever actually pressed it, which is the part that '
      +'has to be exact');
   const ac=html.split('function wfShowAC')[1].split("document.addEventListener('click'")[0];
-  ok(/const firms=wfCompanyList/.test(ac), 'the picker offers firms');
+  ok(/firms=wfCompanyList/.test(ac), 'the picker offers firms');
   ok(/p\.n\+' '\+\(p\.n===1\?'person':'people'\)/.test(ac),
      'each with how many people would hear about it, which is the number worth seeing before assigning');
 }

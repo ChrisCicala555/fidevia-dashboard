@@ -16,7 +16,8 @@ ok(/co:\{title:'New PCO'/.test(html), 'and so does the form, matching the button
 // tools-test-rolleligible.mjs.
 const cc = html.split('function coRollCandidatesFor')[1].split('\nfunction coRollExcluded')[0];
 ok(/i!==skip/.test(cc), 'the one being generated is not offered to itself');
-ok(/rowCompany\(x\)[^=]*===co/.test(cc), 'only the same contract');
+ok(/coContractorOf\(x\)[^=]*===co/.test(cc),
+   'only the same contract \u2014 the one the change is against, not the one that filed it');
 // Approved proposals are the main case: agreed, not yet papered.
 ok(!/!coIsApproved\(x\)/.test(cc), 'an approved proposal is still eligible');
 ok(!/Signed File Name/.test(cc),

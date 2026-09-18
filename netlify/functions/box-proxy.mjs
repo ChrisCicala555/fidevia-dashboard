@@ -2265,6 +2265,22 @@ export default async (req) => {
         const m = String(r['Submitted By'] || r['Submitted By (Sub)'] || '').match(/\(([^)]+)\)\s*$/);
         return m ? m[1].trim() : '';
       };
+      // A step assigned to "(submitting contractor)" belongs to whoever the item
+      // is against, which is a property of the row and not of the stored chain.
+      // A change order written up by Fidevia names the contractor in Contractor
+      // and the filer in Company; every other log has no Contractor column, so
+      // this falls back to the submitter, which is what the step means there
+      // too. The page resolves it identically — if this did not, a contractor
+      // would be offered a signature button the server then refused.
+      const SUBMITTER_STEP = /^\(?\s*submitting contractor\s*\)?$/i;
+      const contractorOfRow = (r) => {
+        const direct = String((r && r['Contractor']) || '').trim();
+        return direct || rowCompanyOf(r);
+      };
+      const resolveSubmitterSteps = (list, r) => (list || []).map(s0 => {
+        if (!s0 || !SUBMITTER_STEP.test(String(s0.company || ''))) return s0;
+        return Object.assign({}, s0, { company: contractorOfRow(r), person: '', email: '' });
+      });
       // --- contacts: name -> email ---
       const emailByName = {};
       // A step names one person and belongs to their firm. Anyone at that firm
@@ -2293,7 +2309,7 @@ export default async (req) => {
         return json({ error: 'This item was decided against, so its review chain is closed.' }, 409);
       }
       if (String(row['Workflow Status'] || '').toLowerCase() === 'complete') return json({ error: 'Workflow already complete' }, 400);
-      const steps = wfForCompany(rowCompanyOf(row));
+      const steps = resolveSubmitterSteps(wfForCompany(rowCompanyOf(row)), row);
       if (!steps.length) return json({ error: 'No workflow configured' }, 400);
       // --- current parallel group ---
       let cur = parseInt(row['Workflow Step']); if (isNaN(cur)) cur = 0;
@@ -2475,8 +2491,14 @@ export default async (req) => {
         // apply to them.
         if (!seesAllCompanies(role)) {
           const mine = String((g && g.company) || '').trim().toLowerCase();
-          const theirs = String(row['Company'] || row['Contractor'] || '').trim().toLowerCase();
-          if (!mine || !theirs || mine !== theirs) return json({ error: 'Access denied' }, 403);
+          // Either answer is their row: the firm that filed it, or the firm
+          // whose contract it is against. They are the same name on everything a
+          // contractor files; they differ on a change order Fidevia wrote up,
+          // and reading only the first refused the contractor any part in a
+          // change to their own contract.
+          const theirs = [row['Company'], row['Contractor']]
+            .map(x => String(x || '').trim().toLowerCase()).filter(Boolean);
+          if (!mine || !theirs.length || !theirs.includes(mine)) return json({ error: 'Access denied' }, 403);
         }
         // Only the fields a review actually writes. Everything else on the row
         // — the amounts, who submitted it, the dates — is not a reviewer's to
