@@ -3916,13 +3916,14 @@ function alwRemove(btn){
 // company AND trade - so looking them up by company alone found nothing, and
 // this returned without a word: the button did nothing at all, on every
 // contractor, whether or not the firm held more than one prime.
-function alwAdd(prefix, key, co){
+function alwAdd(prefix, key, co, line){
   const wrap=document.getElementById(prefix+'-alw-'+key); if(!wrap) return;
   // The next unused letter, not the next position, so a gap left by a removal
   // is never filled by a new allowance inheriting an old reference.
   const used=new Set([...wrap.querySelectorAll('.alw-row')].map(r=>r.getAttribute('data-id')));
-  let i=0; while(used.has(allowanceLetter(i))) i++;
-  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co||'', i, {id:allowanceLetter(i)}));
+  let ln=null; try{ ln=JSON.parse(decodeURIComponent(line||'')); }catch(e){ ln=null; }
+  let i=0; while(used.has(allowanceIdFor(ln,i))) i++;
+  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co||'', i, {id:allowanceIdFor(ln,i)}));
 }
 function alwKey(co){ return String(co||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x'; }
 // An allowance sits inside one contract, not inside a firm. Keyed on the
@@ -3946,10 +3947,11 @@ function alwRenderAll(prefix, containerId, contractors){
         +(tradeLabelOf(c)?'<span style="margin-left:8px;font-size:12px;color:var(--olive-700);">'+esc(tradeLabelOf(c))+'</span>':'')
       +'</div>'
       +'<div class="alw-rows" id="'+prefix+'-alw-'+alwLineKey(c)+'">'
-        +rows.map((a,i)=>alwRow(prefix,c.name,i,a)).join('')
+        +rows.map((a,i)=>alwRow(prefix,c.name,i,Object.assign({},a,{id:(a&&a.id)||allowanceIdFor(c,i)}))).join('')
       +'</div>'
       +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;"'
-        +' onclick="alwAdd(\''+prefix+'\',\''+alwLineKey(c)+'\',\''+esc(String(c.name).replace(/'/g,"\\'"))+'\')">+ Add Allowance</button>'
+        +' onclick="alwAdd(\''+prefix+'\',\''+alwLineKey(c)+'\',\''+esc(String(c.name).replace(/'/g,"\\'"))+'\',\''
+          +encodeURIComponent(JSON.stringify({name:c.name, role:c.role||'', label:c.label||''}))+'\')">+ Add Allowance</button>'
       +'</div>';
   }).join('');
 }
@@ -3959,7 +3961,7 @@ function alwGather(prefix, contractors){
   (contractors||[]).forEach(c=>{
     const wrap=document.getElementById(prefix+'-alw-'+alwLineKey(c)); if(!wrap) return;
     out[alwLineKey(c)]=[...wrap.querySelectorAll('.alw-row')].map((r,i)=>({
-      id: r.getAttribute('data-id') || allowanceLetter(i),
+      id: r.getAttribute('data-id') || allowanceIdFor(c,i),
       name: (r.querySelector('.alw-name').value||'').trim(),
       amount: payNum(r.querySelector('.alw-amt').value)
     })).filter(a=>a.name||a.amount);
@@ -5897,7 +5899,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:05';
+const BUILD_STAMP='2026-09-18 01:16';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12253,6 +12255,66 @@ function fillAllowances(){
   alwRenderAll('ps','ps-allowances',contractorLines());
   const st=document.getElementById('psa-status'); if(st){ st.textContent=''; st.className='status-msg'; }
 }
+// Renumbering an existing job. Two things move together or the record breaks:
+// the ids on the allowances themselves, and every change order that named one.
+// A draw recorded against "Allowance B" has to come back pointing at MC2, or
+// the money is attached to a reference that no longer exists and the remaining
+// balance silently changes.
+//
+// Returns what it WOULD do without touching anything, so the count can be put
+// in front of somebody before they agree to it.
+function alwRenumberPlan(){
+  const lines=contractorLines();
+  const map={};            // lineKey -> { oldId: newId }
+  const renamed=[];
+  lines.forEach(line=>{
+    const list=(line.allowances||[]);
+    if(!list.length) return;
+    const m={};
+    list.forEach((a,i)=>{
+      const was=String((a&&a.id)||allowanceLetter(i)).toUpperCase();
+      const now=allowanceIdFor(line,i);
+      if(was!==now){ m[was]=now; renamed.push({company:line.name, trade:tradeLabelOf(line), from:was, to:now}); }
+    });
+    if(Object.keys(m).length) map[alwLineKey(line)]=m;
+  });
+  // Which change orders name one of the ids about to change. Matched on the
+  // contract, because "B" on the mechanical contract is not "B" on the
+  // electrical one and rewriting both from one map would cross them over.
+  const cos=[];
+  (allData.co||[]).forEach((r,idx)=>{
+    const line=lineOfRow(r); if(!line) return;
+    const m=map[alwLineKey(line)]; if(!m) return;
+    const ids=coAllowanceSplits(r).map(x=>x.id);
+    const hit=ids.filter(id=>m[id]);
+    if(hit.length) cos.push({idx:idx, co:r['CO #']||r['PCO #']||'', from:hit.slice(), to:hit.map(id=>m[id])});
+  });
+  return { map, renamed, cos, unmatched:(allData.co||[]).filter(r=>coAllowanceSplits(r).length && !lineOfRow(r)).length };
+}
+function alwApplyRenumber(plan){
+  // The allowances first, then the references, from the same map — built once
+  // so the two cannot disagree about what B became.
+  const cfg=(currentProject&&currentProject.config)||{};
+  (cfg.contractors||[]).forEach(function(rec){
+    const expand = Array.isArray(rec.lines) && rec.lines.length ? rec.lines : [rec];
+    expand.forEach(function(ln){
+      const line=Object.assign({}, rec, ln);
+      const m=plan.map[alwLineKey(line)]; if(!m) return;
+      const list=(ln.allowances||rec.allowances||[]);
+      list.forEach((a,i)=>{ const was=String((a&&a.id)||allowanceLetter(i)).toUpperCase();
+                            if(m[was]) a.id=m[was]; });
+    });
+  });
+  plan.cos.forEach(function(hit){
+    const r=(allData.co||[])[hit.idx]; if(!r) return;
+    const line=lineOfRow(r); if(!line) return;
+    const m=plan.map[alwLineKey(line)]; if(!m) return;
+    const splits=coAllowanceSplits(r).map(x=>({id:(m[x.id]||x.id), amount:x.amount}));
+    r['Allowance Splits']=JSON.stringify(splits);
+    r['Allowance']=splits.length===1 ? splits[0].id : splits.map(x=>x.id).join('+');
+  });
+  return plan;
+}
 async function saveAllowances(ev){
   const btn=document.getElementById('psa-save'); if(btn) btn.disabled=true;
   showStatus('psa-status','Saving\u2026','info');
@@ -13627,6 +13689,24 @@ function coPendingFor(who){
 // number could not say which had been drawn down. They are lettered A, B, C
 // for reference on paperwork and keyed by that letter, so renaming one does
 // not orphan the change orders that drew from it.
+// The prime this allowance sits under, as the prefix on its reference. A
+// letter said nothing about whose contract it was, so "Allowance B" meant
+// three different sums on a job with three primes, and the specification it
+// has to be checked against numbers them GC1, MC1, EC1.
+//
+// OC and an unset trade fall back to A, B, C: a reference with no prime in it
+// is better than one claiming a prime the contract does not hold.
+function alwPrefix(line){
+  const k=String(tradeKeyOf(line)||'').toUpperCase();
+  if(!k || k==='OC' || k.startsWith('OC:')) return '';
+  return k;
+}
+function allowanceIdFor(line, i){
+  const p=alwPrefix(line);
+  return p ? (p+String(i+1)) : allowanceLetter(i);
+}
+// Whether a reference belongs to this contract, used when renumbering so a
+// draw is rewritten against the allowance it actually named.
 function allowanceLetter(i){
   // A..Z, then AA, AB — enough for any real contract.
   let n=i, out='';
@@ -13677,10 +13757,10 @@ function allowancesFor(who){
   };
   if(Array.isArray(c.allowances) && c.allowances.length){
     return c.allowances.map((a,i)=>build(
-      String((a&&a.id)||allowanceLetter(i)), String((a&&a.name)||''), payNum(a&&a.amount)));
+      String((a&&a.id)||allowanceIdFor(c,i)), String((a&&a.name)||''), payNum(a&&a.amount)));
   }
   const legacy=payNum(c.allowance);
-  return legacy ? [build('A','Allowance',legacy,true)] : [];
+  return legacy ? [build(allowanceIdFor(c,0),'Allowance',legacy,true)] : [];
 }
 // What a deduct tied to this allowance may still take out: the money that is
 // there and has not already been spent. Reducing below what has been drawn

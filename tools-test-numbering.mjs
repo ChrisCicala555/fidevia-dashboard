@@ -70,8 +70,8 @@ ok(!/function alwReletter/.test(html), 'the re-lettering that caused the bug is 
 }
 {
   const ad = html.split('function alwAdd')[1].split('function alwKey')[0];
-  ok(/while\(used\.has\(allowanceLetter\(i\)\)\) i\+\+/.test(ad),
-     'a new allowance takes the next unused letter, not the next position');
+  ok(/while\(used\.has\(allowanceIdFor\(ln,i\)\)\) i\+\+/.test(ad),
+     'a new allowance takes the next unused reference, not the next position');
 }
 {
   // deleting B must not turn C into B

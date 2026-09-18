@@ -22,7 +22,11 @@ fs.writeFileSync('.cg.tmp.mjs', [
   grab('function contractorLines'), grab('function coNorm'), grab('function tradeKeyOf'),
   grab('function linesForCompany'), grab('function lineOfRow'), grab('function tradeOfRow'),
   grab('function rowOnLine'), grab('function billedAgainst'),
-  grab('function allowanceLetter'), grab('function contractorRec'),
+  // A reference now carries the prime it sits under, so the two helpers that
+  // build one come along with the letter fallback they use for a contract
+  // holding no prime.
+  grab('function allowanceLetter'), grab('function alwPrefix'), grab('function allowanceIdFor'),
+  grab('function contractorRec'),
   // allowancesFor nets off approved deducts tied to each allowance, so its
   // write-down helper comes with it.
   grab('function allowanceReducedById'), grab('function allowancesFor'),
