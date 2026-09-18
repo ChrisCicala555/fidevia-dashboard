@@ -2565,7 +2565,26 @@ export default async (req) => {
       if (existing) {
         const cr = await boxFetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
         const current = cr.ok ? await cr.text() : '';
-        out = current.replace(/\s*$/, '') + '\n' + rowLine + '\n';
+        // The row is built from the caller's header list; the FILE has whatever
+        // header row it was created with. Adding a column to a module put those
+        // out of step, and appending the longer line to the shorter header
+        // shifted every value past the new column into its neighbour's field:
+        // Copy Type read "GC", Period From read "Pencil", and the last value
+        // fell off the end. The row looked right to the browser that had just
+        // built it and wrong to everybody who read it back.
+        //
+        // So the file is brought up to the current headers first, its existing
+        // rows remapped BY NAME rather than by position. A column that has been
+        // added gains an empty value; one that has gone is dropped.
+        const head = String(current.split('\n')[0] || '').replace(/\r/g, '').trim();
+        const want = headers.join(',');
+        if (head && head !== want) {
+          const prev = parseCSVServer(current);
+          const lines = prev.rows.map(r => headers.map(h => csvEsc(r[h] !== undefined ? r[h] : '')).join(','));
+          out = want + '\n' + (lines.length ? lines.join('\n') + '\n' : '') + rowLine + '\n';
+        } else {
+          out = (head ? current.replace(/\s*$/, '') : want) + '\n' + rowLine + '\n';
+        }
         uploadUrl = `https://upload.box.com/api/2.0/files/${existing.id}/content`;
         attrs = JSON.stringify({ name: filename });
       } else {
