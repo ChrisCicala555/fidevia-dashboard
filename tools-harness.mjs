@@ -16,6 +16,19 @@ import vm from 'vm';
 export function makeDoc(knownIds){
   const known = knownIds instanceof Set ? knownIds : null;
   const byId = new Map();
+  // Scanned rather than tracked: elements are plain objects here and innerHTML
+  // is just a string, so the honest way to know whether the page has produced
+  // an id is to look at what it has written.
+  const writtenIds = () => {
+    const out=new Set();
+    byId.forEach(el=>{
+      const h=String((el&&el.innerHTML)||'');
+      if(!h) return;
+      const re=/\bid=["']([A-Za-z][\w:.-]*)["']/g; let m;
+      while((m=re.exec(h))) out.add(m[1]);
+    });
+    return out;
+  };
   const mk = (id) => {
     const e = {
       id, value:'', textContent:'', innerHTML:'', outerHTML:'', placeholder:'', title:'',
@@ -24,7 +37,16 @@ export function makeDoc(knownIds){
       classList:{ add:(...c)=>c.forEach(x=>e._classes.add(x)), remove:(...c)=>c.forEach(x=>e._classes.delete(x)),
                   toggle:(c)=>e._classes.has(c)?e._classes.delete(c):e._classes.add(c),
                   contains:(c)=>e._classes.has(c) },
-      appendChild(){}, removeChild(){}, remove(){}, insertBefore(){}, insertAdjacentHTML(){},
+      appendChild(){}, removeChild(){}, remove(){}, insertBefore(){},
+      // Real enough to see: a page that renders a container and then appends
+      // into it could not be observed at all while this threw the markup away.
+      // Still only a string — there is no node tree here, so querySelectorAll
+      // on what was appended stays empty and a test must read innerHTML.
+      insertAdjacentHTML(pos, h){
+        const p=String(pos||'').toLowerCase();
+        if(p==='beforeend') e.innerHTML = String(e.innerHTML||'') + String(h||'');
+        else if(p==='afterbegin') e.innerHTML = String(h||'') + String(e.innerHTML||'');
+      },
       addEventListener(){}, removeEventListener(){},
       // Attributes used to be no-ops here, which meant a test could not tell a
       // field that had been made read-only from one that had not.
@@ -49,9 +71,17 @@ export function makeDoc(knownIds){
   };
   const doc = {
     getElementById(id){
-      if(known && !known.has(String(id))) return null;
-      if(!byId.has(id)) byId.set(id, mk(id));
-      return byId.get(id);
+      const k=String(id);
+      if(byId.has(k)) return byId.get(k);
+      // Ids the page has WRITTEN, not only ones it shipped with. Half this
+      // dashboard renders a container and then looks it up by an id it just
+      // built, and a stub that only knew the static markup answered null to
+      // every one of them. That made the lookup untestable: the right key and
+      // a wrong key both came back null, which is how a button that had been
+      // handed the wrong key sat there doing nothing on a live page.
+      if(known && !known.has(k) && !writtenIds().has(k)) return null;
+      byId.set(k, mk(k));
+      return byId.get(k);
     },
     querySelector:()=>null, querySelectorAll:()=>[], createElement:(t)=>mk('<'+t+'>'),
     createTextNode:()=>mk('#text'), createDocumentFragment:()=>mk('#frag'),

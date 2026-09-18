@@ -3246,7 +3246,9 @@ function wizCaptureState(){
     contacts: wizGatherContacts(),
     contractors: (()=>{ const cs=wizGatherContractors(); let a={};
       try{ a=alwGather('np', cs); }catch(e){}
-      return cs.map(c=>Object.assign({}, c, { allowances: a[c.name]||[] })); })(),
+      // By contract, not by company: alwGather keys on the line, so reading it
+      // back by name found nothing and a draft saved no allowances at all.
+      return cs.map(c=>Object.assign({}, c, { allowances: a[alwLineKey(c)]||[] })); })(),
     milestones: wizGatherMilestones(),
     workflows: (NPWF_SCOPE ? (NPWF_DEFAULT||{}) : wfGather('npwf')),
     workflowsByCompany: (()=>{ const b=Object.assign({}, NPWF_BYCO);
@@ -3794,7 +3796,7 @@ function wizRenderAllowances(){
   let held={};
   try{ held=alwGather('np', contractors); }catch(e){}
   const merged=contractors.map(c=>Object.assign({}, c, {
-    allowances: (held[c.name]&&held[c.name].length) ? held[c.name] : (c.allowances||[])
+    allowances: (held[alwLineKey(c)]&&held[alwLineKey(c)].length) ? held[alwLineKey(c)] : (c.allowances||[])
   }));
   alwRenderAll('np','np-allowances',merged);
 }
@@ -3910,13 +3912,17 @@ function alwRemove(btn){
   if(!confirm('Remove Allowance '+id+'?\n\nAny change order already drawn against it keeps that reference, and the letter will not be reused.')) return;
   row.remove();
 }
-function alwAdd(prefix, co){
-  const wrap=document.getElementById(prefix+'-alw-'+alwKey(co)); if(!wrap) return;
+// Takes the line key, not the company. The boxes are keyed on the contract -
+// company AND trade - so looking them up by company alone found nothing, and
+// this returned without a word: the button did nothing at all, on every
+// contractor, whether or not the firm held more than one prime.
+function alwAdd(prefix, key, co){
+  const wrap=document.getElementById(prefix+'-alw-'+key); if(!wrap) return;
   // The next unused letter, not the next position, so a gap left by a removal
   // is never filled by a new allowance inheriting an old reference.
   const used=new Set([...wrap.querySelectorAll('.alw-row')].map(r=>r.getAttribute('data-id')));
   let i=0; while(used.has(allowanceLetter(i))) i++;
-  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co, i, {id:allowanceLetter(i)}));
+  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co||'', i, {id:allowanceLetter(i)}));
 }
 function alwKey(co){ return String(co||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x'; }
 // An allowance sits inside one contract, not inside a firm. Keyed on the
@@ -3943,7 +3949,7 @@ function alwRenderAll(prefix, containerId, contractors){
         +rows.map((a,i)=>alwRow(prefix,c.name,i,a)).join('')
       +'</div>'
       +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;"'
-        +' onclick="alwAdd(\''+prefix+'\',\''+esc(String(c.name).replace(/'/g,"\\'"))+'\')">+ Add Allowance</button>'
+        +' onclick="alwAdd(\''+prefix+'\',\''+alwLineKey(c)+'\',\''+esc(String(c.name).replace(/'/g,"\\'"))+'\')">+ Add Allowance</button>'
       +'</div>';
   }).join('');
 }
@@ -4203,7 +4209,10 @@ async function createProject(){
       milestones: wizGatherMilestones(),
       contractors: (()=>{ const cs=wizGatherContractors(); let a={};
         try{ a=alwGather('np', cs); }catch(e){}
-        return cs.map(c=>Object.assign({}, c, { allowances: a[c.name]||[] })); })(),
+        // Same again, and this one is the create path: anything typed into the
+        // allowance step was read back under a key that does not exist, so a
+        // project was built carrying none of it.
+        return cs.map(c=>Object.assign({}, c, { allowances: a[alwLineKey(c)]||[] })); })(),
       projectAdmin: 'ccicala@fidevia.com',
       workflows: (()=>{ const g=(WIZ_STEP===5 && !NPWF_SCOPE) ? wfGather('npwf') : (NPWF_DEFAULT||wfGather('npwf'));
         // Anything left untouched in the wizard falls back to the standard chain.
@@ -5888,7 +5897,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:00';
+const BUILD_STAMP='2026-09-18 01:04';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
