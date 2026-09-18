@@ -1548,7 +1548,6 @@
           <h2>Contractor Daily Reports</h2>
           <button class="btn-add" onclick="openModal('cdaily')">+ Add Daily Report</button>
         </div>
-        <p class="file-hint" style="margin:0 0 12px;">Each company sees only its own reports; Fidevia sees all.</p>
         <div class="panel">
           <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">Daily Reports by Contractor<span class="seg" id="cd-company"></span></span></div>
           <table><thead><tr><th>Date</th><th>Company</th><th>Submitted By</th><th>Report</th><th class="admin-col">Actions</th></tr></thead>
@@ -1562,7 +1561,6 @@
           <h2>Certified Payrolls</h2>
           <button class="btn-add" onclick="openModal('payroll')">+ Upload Payroll</button>
         </div>
-        <p class="file-hint" style="margin:0 0 12px;">Each company sees only its own payrolls; Fidevia sees all.</p>
         <div class="panel">
           <div class="panel-header"><span style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">Certified Payrolls by Contractor<span class="seg" id="pr-company"></span></span></div>
           <table><thead><tr><th>Week Ending</th><th>Company</th><th>Payroll #</th><th>Submitted By</th><th>File</th><th class="admin-col">Actions</th></tr></thead>
@@ -5935,7 +5933,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 11:13';
+const BUILD_STAMP='2026-09-18 11:16';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
