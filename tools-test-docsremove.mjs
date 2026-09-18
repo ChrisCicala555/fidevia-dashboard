@@ -13,7 +13,9 @@ const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
   ok(/method: 'PUT'/.test(c) && /parent: \{ id: String\(bin\.id\) \}/.test(c),
      'the file is moved into the Removed folder');
   ok(/if \(!who\.isAdmin\)/.test(c), 'only Fidevia can do it');
-  ok(/if \(!await guardFile\(fileId\)\)/.test(c), 'and only for a file on a project they hold');
+  ok(/guardFolder\(fileId\) : !await guardFile\(fileId\)/.test(c),
+     'and only for something on a project they hold \u2014 a folder guarded as a folder, since a file '
+     +'guard on a folder id proves nothing about the folder');
   ok(/if \(!pos\) return json\(\{ error: 'That file is not in Documents\.' \}/.test(c),
      'a file outside Documents cannot be removed through this, whatever id is passed');
   ok(/name: 'Removed'/.test(c), 'the folder is made on first use rather than assumed');

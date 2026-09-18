@@ -5963,7 +5963,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 14:41';
+const BUILD_STAMP='2026-09-18 14:50';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6927,9 +6927,11 @@ function renderDocs(){
         // Taking a file down is Fidevia's; anyone else asks. Documents is a
         // shared record, and one party removing another's file is not a thing
         // to allow.
-        +(isF ? '' : (IS_ADMIN && !viewingAsExternal()
-            ? '<button class="row-act" onclick="docsRemove('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Remove</button>'
-            : '<button class="row-act" onclick="docsAskRemoval('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Request removal</button>'))
+        // A folder goes the same way a file does \u2014 moved to Removed, with
+        // everything inside it \u2014 so the control is the same control.
+        +(IS_ADMIN && !viewingAsExternal()
+            ? '<button class="row-act" onclick="docsRemove('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+','+esc(JSON.stringify(e.type))+')">Remove</button>'
+            : (isF ? '' : '<button class="row-act" onclick="docsAskRemoval('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Request removal</button>'))
       +'</td></tr>';
   };
   tb.innerHTML=folders.map(row).join('')+files.map(row).join('');
@@ -6971,18 +6973,38 @@ async function docsNewFolder(){
 }
 // Removing a file from the dashboard. It is not deleted: it moves to a Removed
 // folder that nobody sees in the tab, and stays in Box.
-async function docsRemove(id, name){
+async function docsRemove(id, name, kind){
   if(!IS_ADMIN || viewingAsExternal()) return;
-  if(!confirm('Take \u201c'+name+'\u201d off the dashboard?\n\n'
+  const isFolder=String(kind||'')==='folder';
+  // A folder takes everything inside it. Said before, with a count, rather than
+  // discovered afterwards in the Removed folder.
+  const n=isFolder ? await docsCountIn(id) : -1;
+  const carries = (isFolder && n>0)
+    ? ('\n\nEverything in it goes too \u2014 '+n+' item'+(n===1?'':'s')+' \u2014 and comes back with it if you put it back.')
+    : '';
+  if(!confirm('Take \u201c'+name+'\u201d off the dashboard?'+carries+'\n\n'
     +'It moves to a Removed folder in Box, stamped with where it came from. '
     +'Nobody sees it here afterwards, and it is not deleted.')) return;
   try{
-    await proxyCall('docsRemove',{projectId:currentProject.folderId, fileId:id});
-    try{ auditLog('Removed a document','gendocs',{}, name); }catch(e){}
+    await proxyCall('docsRemove',{projectId:currentProject.folderId, fileId:id, kind:(isFolder?'folder':'file')});
+    try{ auditLog(isFolder?'Removed a folder':'Removed a document','gendocs',{}, name); }catch(e){}
     // If it was removed because somebody asked, the request is answered.
     try{ await proxyCall('docsRemovalRequests',{projectId:currentProject.folderId, close:id},{quiet:true}); }catch(e){}
     await loadDocs();
-  }catch(e){ alert(e.message||'Could not remove that file.'); }
+  }catch(e){ alert(e.message||('Could not remove that '+(isFolder?'folder':'file')+'.')); }
+}
+// How much a folder takes with it. Asked of the server rather than read off
+// the listing: the browser shows one level at a time, so a folder's contents
+// are not on screen and counting what is would have answered nought every
+// time \u2014 a confirmation that quietly promised the folder was empty.
+//
+// One level, which is what can be said quickly. -1 when it could not be
+// counted, and the sentence is left out rather than guessed at.
+async function docsCountIn(id){
+  try{
+    const d=await proxyCall('docsList',{folderId:id},{quiet:true});
+    return ((d&&d.entries)||[]).length;
+  }catch(e){ return -1; }
 }
 // Asking Fidevia to take something down.
 async function docsAskRemoval(id, name){

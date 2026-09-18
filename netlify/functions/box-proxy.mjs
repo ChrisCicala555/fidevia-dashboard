@@ -1777,16 +1777,45 @@ export default async (req) => {
     if (op === 'docsRemove') {
       if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const fileId = String(body.fileId || ''), projectId = String(body.projectId || '');
+      // A folder goes the same way a file does: moved into Removed, not
+      // deleted. Box moves a folder with everything inside it, so a folder full
+      // of superseded drawings comes out in one move and every one of them is
+      // still there to be put back. Nothing here destroys anything.
+      const kind = String(body.kind || 'file') === 'folder' ? 'folder' : 'file';
       if (!fileId || !projectId) return json({ error: 'fileId and projectId required' }, 400);
-      if (!await guardFile(fileId)) return json({ error: 'Access denied' }, 403);
-      // Only files inside this project's Documents. Nothing else is removable
+      if (kind === 'folder' ? !await guardFolder(fileId) : !await guardFile(fileId)) {
+        return json({ error: 'Access denied' }, 403);
+      }
+      // Only things inside this project's Documents. Nothing else is removable
       // from here, whatever id is passed.
       let parentId = '', origName = '';
       try {
-        const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=name,parent`, { headers: H })).json();
+        const url = kind === 'folder'
+          ? `https://api.box.com/2.0/folders/${encodeURIComponent(fileId)}?fields=name,parent`
+          : `https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=name,parent`;
+        const fi = await (await boxFetch(url, { headers: H })).json();
         origName = String(fi.name || ''); parentId = String((fi.parent && fi.parent.id) || '');
       } catch (e) {}
-      if (!parentId) return json({ error: 'Could not read that file.' }, 502);
+      if (!parentId) return json({ error: 'Could not read that ' + kind + '.' }, 502);
+      if (kind === 'folder') {
+        const nm = origName.trim().toLowerCase();
+        // The bin cannot be put in the bin, and the Schedule tab writes into
+        // Schedules — taking it away stops every programme on the job.
+        if (nm === DOCS_REMOVED) return json({ error: 'The Removed folder stays where it is.' }, 400);
+        if (/^schedules?$/.test(nm)) {
+          return json({ error: 'Schedules is where the Schedule tab files every programme. '
+            + 'Removing it would stop contractors uploading one.' }, 400);
+        }
+        // A standard folder would be recreated the next time anybody opens this
+        // tab, so removing it looks like it worked and then undoes itself. Said
+        // plainly, with where to change it, rather than letting it come back.
+        const std = (await getSettings()).docFolders || [];
+        if (std.some(f => String(f.name || '').trim().toLowerCase() === nm)) {
+          return json({ error: '\u201c' + origName + '\u201d is one of the standard folders, so it would be '
+            + 'created again the next time this tab is opened. Take it out of the template in Project '
+            + 'Settings if it should not be there.' }, 400);
+        }
+      }
       const pos = await docsPositionOf(H, parentId);
       if (!pos) return json({ error: 'That file is not in Documents.' }, 400);
 
@@ -1807,22 +1836,22 @@ export default async (req) => {
       const stamp = new Date().toISOString().slice(0, 10);
       const from = String(pos.party || 'Documents').replace(/[\/\\]/g, '-');
       const want = (stamp + ' - ' + from + ' - ' + origName).slice(0, 240);
-      const mv = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}`, {
+      const base = kind === 'folder' ? 'folders' : 'files';
+      const moveTo = (nm) => boxFetch(`https://api.box.com/2.0/${base}/${encodeURIComponent(fileId)}`, {
         method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parent: { id: String(bin.id) }, name: want }) });
+        body: JSON.stringify({ parent: { id: String(bin.id) }, name: nm }) });
+      const mv = await moveTo(want);
       if (!mv.ok) {
         // A name clash means one was removed from the same place today.
         if (mv.status === 409) {
           const alt = (stamp + ' - ' + from + ' - ' + Date.now() + ' - ' + origName).slice(0, 240);
-          const again = await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}`, {
-            method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parent: { id: String(bin.id) }, name: alt }) });
+          const again = await moveTo(alt);
           if (!again.ok) return json({ error: 'Box refused the move (' + again.status + ')' }, 502);
-          return json({ ok: true, name: alt, by: who.email || '' });
+          return json({ ok: true, name: alt, kind, by: who.email || '' });
         }
         return json({ error: 'Box refused the move (' + mv.status + ')' }, 502);
       }
-      return json({ ok: true, name: want, by: who.email || '' });
+      return json({ ok: true, name: want, kind, by: who.email || '' });
     }
     // Anyone on the project can ask for a file to come down. They cannot take
     // it down themselves: Documents is a shared record, and one party removing
