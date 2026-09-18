@@ -23,8 +23,9 @@ ok(/admin-only" onclick="openProjSettings/.test(html), 'and it is admin-only, li
 ok(/settingsSave/.test(fs.readFileSync('netlify/functions/box-proxy.mjs','utf8')), 'the server has somewhere to put it');
 
 console.log('The page says what it does and does not touch');
-ok(/does not touch/.test(html) && /Bring It Up To Date/.test(html),
-   'that existing projects are unaffected, and how to bring one up to date');
+ok(/does not touch/.test(html) && /added on sight/.test(html),
+   'that existing projects are unaffected, and that opening one picks up what it is missing \u2014 '
+   +'no longer pointing at a button that was removed');
 ok(/renamed or deleted in Box/.test(html), 'and that nothing is destroyed');
 
 console.log('Editing the list');

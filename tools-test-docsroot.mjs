@@ -30,20 +30,37 @@ const run = async (setup) => {
   `);
   await b.ctx.loadDocs();
   return { ops: JSON.parse(b.run('JSON.stringify(__ops)')),
-           box: b.run("document.getElementById('docs-catchup').style.display") };
+           box: b.run("document.getElementById('docs-catchup').style.display"),
+           why: b.run("document.getElementById('docs-catchup-why').textContent") };
 };
 
 {
   const r = await run();
   ok(r.ops.includes('docsEnsureStandard'),
      'at the root, Fidevia opening the tab creates the folders the project is missing');
-  ok(r.box==='block', 'and the catch-up notice is shown');
+  ok(r.box==='none',
+     'and says nothing about it \u2014 the folders were just made, so a notice telling Fidevia to make '
+     +'them is a standing instruction to do what already happened');
+}
+// The one thing the box is still for: the automatic run could not.
+{
+  const r = await run("proxyCall = async (op)=>{ __ops.push(op); "
+    + "if(op==='docsEnsureStandard') throw new Error('Box 403'); "
+    + "if(op==='docsList') return {entries:[], atRoot:true}; return {}; };");
+  ok(r.box==='block', 'a failure is shown, because that is the only part that was ever news');
+  ok(/Box 403/.test(r.why||''), 'saying what went wrong rather than what to press');
 }
 {
   const r = await run("DOCS_PATH.push({id:'999',name:'Testing'});");
   ok(!r.ops.includes('docsEnsureStandard'),
      'inside a folder it does not try again');
   ok(r.box==='none', 'nor offer the notice there');
+}
+{
+  // Even with a failure on record: the message is about the project's own
+  // folders, and three levels down is not where somebody is looking for it.
+  const r = await run("DOCS_PATH.push({id:'999',name:'Testing'}); DOCS_STD_ERR='Box 403';");
+  ok(r.box==='none', 'and a failure does not follow you into a subfolder');
 }
 {
   const r = await run("EXTERNAL=true; IS_ADMIN=false;");

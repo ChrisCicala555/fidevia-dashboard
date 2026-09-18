@@ -1068,8 +1068,8 @@
       </div>
     </div>
     <p class="file-hint" style="margin:0 0 4px;">What a new project starts with. Changing this does not touch
-      Ithaca, Lincoln or any project already set up — open a project’s Documents tab and press
-      <strong>Bring It Up To Date</strong> to add anything it is missing. Nothing is ever renamed or deleted in Box.</p>
+      Ithaca, Lincoln or any project already set up — open that project’s Documents tab and anything
+      it is missing is added on sight. Nothing is ever renamed or deleted in Box.</p>
     <div id="ps-status" style="display:none;margin:10px 0;padding:10px 14px;border-radius:8px;font-size:13px;"></div>
 
     <div class="panel" style="margin-top:16px;">
@@ -1520,14 +1520,16 @@
         <div id="docs-crumbs" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;font-size:13.5px;"></div>
         <div id="docs-folder-note" style="display:none;background:var(--khaki-100);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
         <div id="docs-requests" style="display:none;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin-bottom:14px;font-size:13px;color:var(--olive-900);max-width:760px;"></div>
-        <div class="admin-only" id="docs-catchup" style="margin-bottom:14px;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;font-size:13px;color:var(--olive-900);max-width:760px;display:none;">
-          <strong>Bring this project up to date.</strong>
-          Adds any of the standard folders this project is missing, and moves anything filed under the old
-          Meeting Minutes and Drawings &amp; Specifications tabs into the folders that replaced them.
-          Nothing is deleted, and a file already at the destination is left alone.
+        <!-- Not a standing notice any more. Opening this tab already creates
+             any standard folder the project is missing, so saying so on every
+             project forever was telling Fidevia to press a button for something
+             that had already happened. What is left is the one thing that was
+             ever news: that the automatic setup failed. -->
+        <div class="admin-only" id="docs-catchup" style="display:none;margin-bottom:14px;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;font-size:13px;color:var(--olive-900);">
+          <strong>The standard folders could not be set up.</strong>
+          <span id="docs-catchup-why"></span>
           <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button class="btn-secondary" id="btn-docs-catchup" onclick="docsCatchUp()">Bring It Up To Date</button>
-            <button class="btn-secondary" id="btn-docs-clear" onclick="docsRemoveLegacy()">Clear Out The Old Company Folders</button>
+            <button class="btn-secondary" id="btn-docs-catchup" onclick="docsCatchUp()">Try Again</button>
             <span class="status-msg" id="docs-catchup-status"></span>
           </div>
         </div>
@@ -5961,7 +5963,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 13:52';
+const BUILD_STAMP='2026-09-18 13:57';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6847,13 +6849,12 @@ function renderDocs(){
   }
   { const cu=document.getElementById('docs-catchup');
     if(cu){
-      const show = IS_ADMIN && !viewingAsExternal() && !DOCS_PATH.length;
+      // Only when something went wrong. A project whose folders were made on
+      // sight \u2014 which is every project, almost always \u2014 says nothing.
+      const show = IS_ADMIN && !viewingAsExternal() && !DOCS_PATH.length && !!DOCS_STD_ERR;
       cu.style.display = show ? 'block' : 'none';
-      const st=document.getElementById('docs-catchup-status');
-      if(show && st && DOCS_STD_ERR && !st.textContent){
-        st.textContent='The standard folders could not be created automatically: '+DOCS_STD_ERR;
-        st.className='status-msg error';
-      }
+      const why=document.getElementById('docs-catchup-why');
+      if(why) why.textContent = show ? (' '+DOCS_STD_ERR) : '';
     } }
   const cr=document.getElementById('docs-crumbs');
   if(cr){
@@ -7116,41 +7117,12 @@ const DOCS_HIDDEN_FILES=new Set(['documents.csv','document index.csv']);
 // Removing the folder-per-company tree the shared tab replaced. It looks first
 // and tells you what it found, because deleting a folder that still holds work
 // is not something to do on the strength of one press.
-async function docsRemoveLegacy(){
-  if(!IS_ADMIN || viewingAsExternal() || !currentProject) return;
-  const btn=document.getElementById('btn-docs-clear');
-  const say=(t,c)=>showStatus('docs-catchup-status', t, c||'');
-  if(btn) btn.disabled=true;
-  say('Looking\u2026');
-  try{
-    const plan=await proxyCall('docsRemoveLegacy',{projectId:currentProject.folderId});
-    const moved=plan.movedSchedules||[], removed=plan.removed||[], kept=plan.kept||[];
-    if(!removed.length && !moved.length){
-      say(kept.length
-        ? 'Nothing can be removed yet. Still holding files: '+kept.join(', ')+'. Move what matters into the folders above, then run this again.'
-        : 'There are no old company folders left.', kept.length?'':'success');
-      if(btn) btn.disabled=false; return;
-    }
-    const lines=[];
-    if(moved.length) lines.push('Move '+moved.length+' schedule'+(moved.length===1?'':'s')+' into the shared Schedules folder.');
-    if(removed.length) lines.push('Delete '+removed.length+' empty folder'+(removed.length===1?'':'s')+': '+removed.join(', ')+'.');
-    if(kept.length) lines.push('Leave alone (still holding files): '+kept.join(', ')+'.');
-    if(!confirm(lines.join('\n\n')+'\n\nDeleted folders go to your Box trash, not straight out.\n\nGo ahead?')){
-      say('Left as it was.'); if(btn) btn.disabled=false; return;
-    }
-    say('Working\u2026');
-    const done=await proxyCall('docsRemoveLegacy',{projectId:currentProject.folderId, apply:true});
-    const dm=(done.movedSchedules||[]).length, dr=(done.removed||[]).length, dk=done.kept||[];
-    say('Done. '+(dm?dm+' schedule'+(dm===1?'':'s')+' moved. ':'')
-      +(dr?dr+' folder'+(dr===1?'':'s')+' removed. ':'')
-      +(dk.length?('Still holding files, left alone: '+dk.join(', ')+'.'):''), 'success');
-    try{ auditLog('Removed old company document folders','gendocs',{},
-      (done.removed||[]).join(', ')+(dm?(' \u00b7 '+dm+' schedules moved'):'')); }catch(e){}
-    DOCS_PATH.length=0;
-    await loadDocs();
-  }catch(e){ say('Could not finish: '+(e.message||'unknown error'), 'error'); }
-  if(btn) btn.disabled=false;
-}
+// docsRemoveLegacy lived here: a one-off that moved any schedule left in an old
+// per-company folder into the shared Schedules folder and then deleted the empty
+// folders. Its only caller was a button on a standing notice that told Fidevia
+// to press it on every project forever, which is what this removed. The server
+// op is untouched, so it is a button and a function away if an old project ever
+// needs it.
 async function docsCatchUp(){
   if(!IS_ADMIN || viewingAsExternal() || !currentProject) return;
   const btn=document.getElementById('btn-docs-catchup'); if(btn) btn.disabled=true;
@@ -8134,7 +8106,8 @@ async function schedUpload(f, company, periodLabel, say, trade){
   if(!f) return false;
   say=say||function(){};
   if(!SCHED_FOLDER_ID){
-    say('This project has no Schedules folder yet \u2014 a Fidevia administrator can add one with Bring It Up To Date on the Documents tab.');
+    say('This project has no Schedules folder yet. A Fidevia administrator opening the Schedule or '
+      +'Documents tab creates one; ask them to, and try again.');
     return false;
   }
   const dot=String(f.name).lastIndexOf('.');

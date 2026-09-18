@@ -92,9 +92,14 @@ ok(/if \(op === 'docsMigrateLegacy'\)/.test(srv),
   ok(/skipped\.push/.test(c), 'and anything it could not move is reported rather than swallowed');
   ok(!/delete/i.test(c), 'nothing is deleted');
 }
-ok(/function docsCatchUp\(\)/.test(html), 'Fidevia can run it from the tab');
-ok(/Nothing is deleted, and a file already at the destination is left alone/.test(html),
-   'and is told what it will and will not do before pressing it');
+ok(/function docsCatchUp\(\)/.test(html), 'Fidevia can still run it by hand');
+// It is no longer offered as a standing notice: opening the tab already does
+// it. What is left is the retry, shown only when the automatic run failed, so
+// what Fidevia reads is the reason rather than an instruction.
+ok(/The standard folders could not be set up/.test(html),
+   'and is offered it where it is news \u2014 when the automatic run could not');
+ok(/id="btn-docs-catchup" onclick="docsCatchUp\(\)">Try Again</.test(html),
+   'as a retry rather than a chore');
 
 // ── it still runs ──
 const b = bootPage('index.html'); b.run(SEED);
