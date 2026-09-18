@@ -133,5 +133,34 @@ P.run(`currentProject.config={contractors:[
   ok(p2.cos.length===0, 'and is left alone rather than rewritten into the wrong one');
 }
 
+console.log('The button does the whole job, not half of it');
+{
+  const html=fs.readFileSync('index.html','utf8');
+  const fn=html.split('async function alwRenumber(ev)')[1].split('async function saveAllowances')[0];
+  ok(/confirm\(msg\)/.test(fn), 'it asks first');
+  ok(/from\+'  \u2192  '\+r\.to/.test(fn) || /r\.from/.test(fn), 'showing what each reference becomes');
+  ok(/will be '\s*\+\s*'rewritten to point at the new reference/.test(fn) || /rewritten to point at the new reference/.test(fn),
+     'and how many change orders it touches');
+  ok(/drew on a firm holding more than one prime/.test(fn),
+     'and warns about the ones it cannot attribute');
+  ok(/disagree with the dashboard until it is reissued/.test(fn),
+     'and that paper already issued will disagree');
+  // The three writes that have to happen together.
+  ok(fn.indexOf('alwApplyRenumber(plan)') < fn.indexOf("alwRenderAll('ps'"),
+     'it redraws from the config before saving, or the old ids on screen overwrite the new ones');
+  ok(fn.indexOf("alwRenderAll('ps'") < fn.indexOf('saveAllowances(null)'),
+     'then saves the allowances');
+  ok(/boxUploadText\(mod\.log/.test(fn) && /MODULES\.co/.test(fn),
+     'and writes the change order log too \u2014 a reference moved in one file and not the other is the broken state');
+  ok(/auditLog\('Allowances renumbered by prime'/.test(fn), 'and it is on the audit log');
+}
+{
+  const html=fs.readFileSync('index.html','utf8');
+  ok(/id="psa-renumber"/.test(html), 'there is a control for it');
+  ok(/Numbered by prime \u2014 GC1, MC1, PC1, EC1/.test(html) || /GC1, MC1, PC1, EC1/.test(html),
+     'and the panel says how allowances are numbered now');
+  ok(!/Lettered A, B, C for reference on paperwork/.test(html), 'not the old wording');
+}
+
 console.log(`\n${n-bad} passed, ${bad} failed`);
 process.exit(bad?1:0);

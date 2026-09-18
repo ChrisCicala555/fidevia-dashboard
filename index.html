@@ -976,7 +976,7 @@
       <div id="np-contractor-note"></div>
       <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--khaki-300);">
         <h4 style="font-size:14px;margin:0 0 4px;color:var(--olive-900);">Allowances</h4>
-        <p class="form-desc" style="margin:0 0 12px;max-width:640px;">Sums carried inside a contract for scope that is not yet defined. Lettered A, B, C for reference on paperwork. A change order can draw against one, and the remainder is what still sits in the contract.</p>
+        <p class="form-desc" style="margin:0 0 12px;max-width:640px;">Sums carried inside a contract for scope that is not yet defined. Numbered by prime — GC1, MC1, PC1, EC1 — so a reference says whose contract it sits in. A change order can draw against one, and the remainder is what still sits in the contract.</p>
         <div id="np-allowances"></div>
       </div>
       <button type="button" class="btn-secondary" onclick="wizAddContractor()" style="margin-top:6px;">+ Add Contractor</button>
@@ -1669,9 +1669,10 @@
         </div>
 
         <div class="set-pane" id="set-pane-allowances" style="display:none;">
-          <p class="form-desc" style="max-width:640px;">Sums carried inside a contract for scope that is not yet defined. Lettered A, B, C for reference on paperwork. A change order can draw against one; what is left stays in the contract.</p>
+          <p class="form-desc" style="max-width:640px;">Sums carried inside a contract for scope that is not yet defined. Numbered by prime — GC1, MC1, PC1, EC1 — so a reference says whose contract it sits in. A change order can draw against one; what is left stays in the contract.</p>
           <div id="ps-allowances"></div>
           <div style="margin-top:14px;"><button class="btn-primary" id="psa-save" onclick="saveAllowances(event)">Save</button>
+            <button class="btn-secondary" id="psa-renumber" onclick="alwRenumber(event)" style="margin-left:8px;">Renumber by prime…</button>
             <span class="status-msg" id="psa-status" style="margin-left:8px;"></span></div>
         </div>
 
@@ -5899,7 +5900,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:16';
+const BUILD_STAMP='2026-09-18 01:18';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -12314,6 +12315,61 @@ function alwApplyRenumber(plan){
     r['Allowance']=splits.length===1 ? splits[0].id : splits.map(x=>x.id).join('+');
   });
   return plan;
+}
+// Run by hand, on a project that predates the numbering. Says exactly what it
+// will do first, because it rewrites change orders that are already agreed.
+async function alwRenumber(ev){
+  const plan=alwRenumberPlan();
+  if(!plan.renamed.length){ showStatus('psa-status','Every allowance is already numbered by its prime.','info'); return; }
+  const lines=plan.renamed.slice(0,12)
+    .map(r=>'  '+r.company+(r.trade?(' ('+r.trade+')'):'')+':  '+r.from+'  →  '+r.to);
+  if(plan.renamed.length>12) lines.push('  …and '+(plan.renamed.length-12)+' more');
+  let msg='Renumber '+plan.renamed.length+' allowance'+(plan.renamed.length===1?'':'s')+' by prime?\n\n'
+    +lines.join('\n')+'\n\n'
+    +(plan.cos.length
+        ? plan.cos.length+' change order'+(plan.cos.length===1?'':'s')+' drew against one of these and will be '
+          +'rewritten to point at the new reference. The money does not move.\n\n'
+        : 'No change order has drawn against any of them.\n\n');
+  if(plan.unmatched) msg+='\u26a0 '+plan.unmatched+' change order'+(plan.unmatched===1?'':'s')
+    +' drew on a firm holding more than one prime. Nothing on those rows says which contract '
+    +'it was, so they are left alone and will still name the old reference. Fix those by hand.\n\n';
+  msg+='Anything already issued on paper will disagree with the dashboard until it is reissued.';
+  if(!confirm(msg)) return;
+  const btn=document.getElementById('psa-renumber'); if(btn) btn.disabled=true;
+  showStatus('psa-status','Renumbering\u2026','info');
+  try{
+    alwApplyRenumber(plan);
+    // The boxes on screen still show the old references, and saveAllowances
+    // reads them back off the page. Redrawn from the config first, or saving
+    // would write the old ids straight over the ones just assigned.
+    alwRenderAll('ps','ps-allowances',contractorLines());
+    await saveAllowances(null);
+    // The change orders are a separate file, and the whole point is that the
+    // two move together. A reference rewritten in the config and not in the
+    // log is the broken state this was meant to avoid.
+    if(plan.cos.length){
+      showStatus('psa-status','Updating change orders\u2026','info');
+      const mod=MODULES.co, fid=currentProject.folders.co;
+      const existing=await findFile(fid,mod.log);
+      const rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+      const byId=new Map(rows.map((r,i)=>[String(r['CO #']||r['PCO #']||'').trim(),i]));
+      plan.cos.forEach(function(hit){
+        const src=(allData.co||[])[hit.idx]; if(!src) return;
+        const k=String(src['CO #']||src['PCO #']||'').trim();
+        const at=byId.has(k)?byId.get(k):-1; if(at<0) return;
+        rows[at]['Allowance Splits']=src['Allowance Splits'];
+        rows[at]['Allowance']=src['Allowance'];
+      });
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+      allData.co=rows;
+    }
+    try{ auditLog('Allowances renumbered by prime','budget',{},
+      plan.renamed.map(r=>r.from+'\u2192'+r.to).join(', ')); }catch(e){}
+    showStatus('psa-status','Renumbered '+plan.renamed.length+' allowance'+(plan.renamed.length===1?'':'s')
+      +(plan.cos.length?(' and '+plan.cos.length+' change order reference'+(plan.cos.length===1?'':'s')):'')+'.','success');
+    try{ renderAll(); }catch(e){}
+  }catch(e){ showStatus('psa-status','Error: '+e.message,'error'); }
+  if(btn) btn.disabled=false;
 }
 async function saveAllowances(ev){
   const btn=document.getElementById('psa-save'); if(btn) btn.disabled=true;
