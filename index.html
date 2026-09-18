@@ -3912,18 +3912,24 @@ function alwRemove(btn){
   if(!confirm('Remove Allowance '+id+'?\n\nAny change order already drawn against it keeps that reference, and the letter will not be reused.')) return;
   row.remove();
 }
-// Takes the line key, not the company. The boxes are keyed on the contract -
-// company AND trade - so looking them up by company alone found nothing, and
-// this returned without a word: the button did nothing at all, on every
-// contractor, whether or not the firm held more than one prime.
-function alwAdd(prefix, key, co, line){
-  const wrap=document.getElementById(prefix+'-alw-'+key); if(!wrap) return;
+// Takes a position in the list on screen, and nothing else. The contract it
+// belongs to is looked up here rather than carried through the markup: the
+// button used to be handed the company name and a URI-encoded copy of the
+// contract line, and encodeURIComponent does not touch an apostrophe, so a firm
+// called "Cook's Service Company" closed the argument early and the browser
+// threw the whole handler away. No error, no row, no clue — and only for
+// firms with a quote in the name.
+// The boxes themselves are keyed on the contract, company AND trade, because a
+// firm holding the mechanical and the plumbing primes has two of them.
+const ALW_LINES={};
+function alwAdd(prefix, idx){
+  const ln=(ALW_LINES[prefix]||[])[idx]; if(!ln) return;
+  const wrap=document.getElementById(prefix+'-alw-'+alwLineKey(ln)); if(!wrap) return;
   // The next unused letter, not the next position, so a gap left by a removal
   // is never filled by a new allowance inheriting an old reference.
   const used=new Set([...wrap.querySelectorAll('.alw-row')].map(r=>r.getAttribute('data-id')));
-  let ln=null; try{ ln=JSON.parse(decodeURIComponent(line||'')); }catch(e){ ln=null; }
   let i=0; while(used.has(allowanceIdFor(ln,i))) i++;
-  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, co||'', i, {id:allowanceIdFor(ln,i)}));
+  wrap.insertAdjacentHTML('beforeend', alwRow(prefix, ln.name||'', i, {id:allowanceIdFor(ln,i)}));
 }
 function alwKey(co){ return String(co||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'x'; }
 // An allowance sits inside one contract, not inside a firm. Keyed on the
@@ -3938,7 +3944,11 @@ function alwRenderAll(prefix, containerId, contractors){
       +'Add a contractor first — an allowance sits inside a contract, so it needs one to belong to.</div>';
     return;
   }
-  el.innerHTML=list.map(c=>{
+  // Held for the Add button, which addresses a contract by where it sits on
+  // screen rather than by anything that has to survive being written into an
+  // HTML attribute.
+  ALW_LINES[prefix]=list;
+  el.innerHTML=list.map((c,li)=>{
     const rows=(c.allowances&&c.allowances.length)
       ? c.allowances
       : (payNum(c.allowance)? [{name:'Allowance', amount:payNum(c.allowance)}] : []);
@@ -3950,8 +3960,7 @@ function alwRenderAll(prefix, containerId, contractors){
         +rows.map((a,i)=>alwRow(prefix,c.name,i,Object.assign({},a,{id:(a&&a.id)||allowanceIdFor(c,i)}))).join('')
       +'</div>'
       +'<button type="button" class="btn-secondary" style="padding:5px 11px;margin-top:2px;"'
-        +' onclick="alwAdd(\''+prefix+'\',\''+alwLineKey(c)+'\',\''+esc(String(c.name).replace(/'/g,"\\'"))+'\',\''
-          +encodeURIComponent(JSON.stringify({name:c.name, role:c.role||'', label:c.label||''}))+'\')">+ Add Allowance</button>'
+        +' onclick="alwAdd(\''+prefix+'\','+li+')">+ Add Allowance</button>'
       +'</div>';
   }).join('');
 }
@@ -5933,7 +5942,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 11:16';
+const BUILD_STAMP='2026-09-18 11:44';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;

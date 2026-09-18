@@ -25,6 +25,29 @@ console.log('No handler is built by embedding JSON.stringify in a double-quoted 
      + (hits.length?(' — '+hits.join(' | ')):''));
 }
 
+console.log('Nor by URI-encoding it, which is the same mistake wearing a hat');
+{
+  // encodeURIComponent does NOT escape an apostrophe. A contract line encoded
+  // into a single-quoted argument therefore ended early for "Cook's Service
+  // Company", the handler would not parse, and the button was dead for that one
+  // firm with nothing logged. esc(JSON.stringify(x)) is the form that works.
+  const re=/on(?:click|change|input|submit|blur|focus)="[^"]{0,400}?\+\s*encodeURIComponent\(/g;
+  const hits=[]; let m; while((m=re.exec(html))) hits.push(html.slice(m.index, m.index+120));
+  ok(hits.length===0,
+     'no handler carries a URI-encoded value'+(hits.length?(' \u2014 '+hits.join(' | ')):''));
+}
+
+console.log('What a handler may carry instead');
+{
+  // The way out of quoting a name is not to quote it: pass where the thing sits
+  // and look it up on the other side.
+  const btn=(html.match(/onclick="alwAdd\([^"]*\)"/)||[''])[0];
+  ok(/alwAdd\(\\'{0,2}'\+prefix\+'\\'{0,2},'\+li\+'\)/.test(btn) || /alwAdd\([^"]*\+li\+/.test(btn),
+     'the Add Allowance button carries a position');
+  ok(!/c\.name/.test(btn), 'and no company name');
+  ok(!/encodeURIComponent/.test(btn), 'and nothing URI-encoded');
+}
+
 console.log('The override button specifically');
 {
   const w = html.split('function wfProgressHTML')[1].split('\n}')[0];
