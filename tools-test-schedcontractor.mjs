@@ -73,8 +73,9 @@ ok(/const shown=\(SCHED_UPLOADS\|\|\[\]\)\.filter\(r=>cos\.some/.test(html),
    'and the render draws the filtered list rather than trusting the cache');
 
 console.log('Uploading');
-ok(/safeFileName\(company\+' \\u2014 '\+periodLabel\)\+ext/.test(html),
-   'the file is named for the contract and the month it covers, which is what the chase reads');
+ok(/safeFileName\(schedFileBase\(company, trade, periodLabel\)\)\+ext/.test(html),
+   'the file is named for the contract \u2014 firm, trade where the firm holds two, and the month it '
+   +'covers \u2014 which is what the panel and the chase both read back');
 ok(/if\(!SCHED_FOLDER_ID\)\{/.test(html), 'a project with no Schedules folder says so rather than failing');
 ok(/SCHED_UPLOADS=null; MY_SCHEDULE=null;/.test(html), 'and the row refreshes after an upload');
 

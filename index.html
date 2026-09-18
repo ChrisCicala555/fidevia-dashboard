@@ -5961,7 +5961,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 12:46';
+const BUILD_STAMP='2026-09-18 12:56';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7652,14 +7652,16 @@ async function renderScheduleUploads(){
   const readsAll = isFidevia || DESIGN_ROLES.includes(viewingAsRole()) || isOwnerView();
   const myCo = readsAll ? '' : String((currentProject&&currentProject.userCompany)||'').trim();
   if(!readsAll && !myCo){ panel.style.display='none'; return; }
-  // Once per firm. A firm on two primes was asked twice and answered twice,
-  // with the same files under both — the server matches a schedule to a company
-  // name, so there was never a second answer to give.
-  let cos=wfScopeFirms(((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
-    .filter(c=>c.active!==false).map(c=>c.name));
+  // Once per CONTRACT. A firm holding the general and the mechanical owes two
+  // programmes against two contracts, and one row for both could only ever show
+  // the same files twice. Which contract a file is for is carried in its name,
+  // the same way the month and the company already are.
+  let lines=contractorLines().filter(c=>String((c&&c.name)||'').trim());
+  let cos=wfScopeFirms(lines.map(c=>c.name));
   if(!readsAll){
     const norm=x=>String(x||'').trim().toLowerCase();
     cos=cos.filter(c=>norm(c)===norm(myCo));
+    lines=lines.filter(c=>norm(c.name)===norm(myCo));
     // Not a prime on this job: nothing is expected of them here.
     if(!cos.length){ panel.style.display='none'; return; }
   }
@@ -7669,8 +7671,9 @@ async function renderScheduleUploads(){
     box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Checking\u2026</div>';
     try{
       const d=await proxyCall('scheduleUploads',
-        {projectId:currentProject.folderId, companies:cos, since:monthStart(),
-         period:String(monthStart()).slice(0,7)},{quiet:true});
+        {projectId:currentProject.folderId, companies:cos,
+         contracts:lines.map(c=>({company:c.name, trade:tradeKeyOf(c)||''})),
+         since:monthStart(), period:String(monthStart()).slice(0,7)},{quiet:true});
       SCHED_UPLOADS=d.companies||[];
       SCHED_LAST_SEND=d.lastScheduleSend||null;
       SCHED_FOLDER_ID=d.schedulesFolderId||'';
@@ -7698,6 +7701,10 @@ async function renderScheduleUploads(){
   // again, so the preview showed a contractor rows they would never get.
   const norm=x=>String(x||'').trim().toLowerCase();
   const shown=(SCHED_UPLOADS||[]).filter(r=>cos.some(c=>norm(c)===norm(r.company)));
+  // A contract is a firm AND a trade, so that is what identifies a card: two
+  // Summit rows opening and closing together was the giveaway that they were
+  // keyed on the name alone.
+  const rowKey=r=>String(r.company||'')+(r.trade?('\u241f'+r.trade):'');
   // Reading is not the same as being asked. A reviewer with no contract is
   // shown what is on file and offered nothing to press.
   const mayPost = !readsAll || isFidevia;
@@ -7710,7 +7717,7 @@ async function renderScheduleUploads(){
     const t=ok?null:targetFor(r.company);
     const last=schedLastFor(r.company);
     const files=(r.files||[]);
-    const open=SCHED_OPEN_CO===String(r.company||'');
+    const open=SCHED_OPEN_CO===rowKey(r);
     // The state chip already says a contract has nothing, so the summary does
     // not repeat it as "0 schedules · none on file". And the month named is the
     // one that answers the question — the file covering the month being asked
@@ -7726,11 +7733,11 @@ async function renderScheduleUploads(){
     const meta=bits.join(' \u00b7 ');
     // The head is the summary and the control; the actions sit in it rather
     // than below, so a collapsed card still offers the one thing to do.
-    const head='<div class="sched-group-head" onclick="schedToggleFiles('+esc(JSON.stringify(String(r.company||'')))+')">'
+    const head='<div class="sched-group-head" onclick="schedToggleFiles('+esc(JSON.stringify(rowKey(r)))+')">'
       +'<span class="thread-arrow" style="'+(open?'transform:rotate(90deg);':'')+'">&#9656;</span>'
       +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
       +'<strong>'+esc(r.company)+'</strong>'
-      +(function(){ const cl=contractLabelFor(r.company);
+      +(function(){ const cl=r.trade ? tradeLabelForKey(r.company, r.trade) : contractLabelFor(r.company);
           return cl ? '<span style="font-size:12px;color:var(--olive-700);font-weight:600;white-space:nowrap;">'
                         +esc(cl)+'</span>' : ''; })()
       +'<span class="sched-state" style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'
@@ -7738,7 +7745,7 @@ async function renderScheduleUploads(){
       +'<span class="sched-group-meta">'+esc(meta)+'</span>'
       +(mayPost
          ? '<span class="sched-group-acts" onclick="event.stopPropagation()">'
-           +schedUploadBtn(r.company)+(t?schedRowRemind(t):'')+'</span>'
+           +schedUploadBtn(r.company, r.trade)+(t?schedRowRemind(t):'')+'</span>'
          : '')
       +'</div>';
     const note=last
@@ -7840,11 +7847,21 @@ function schedRowRemind(t){
 // was chosen and named it for whatever month it happened to be. Nobody was
 // ever asked what the programme was actually for, so a schedule posted on the
 // 30th for the month ahead was filed as this month's.
-function schedUploadBtn(company){
+function schedUploadBtn(company, trade){
   return '<button class="btn-secondary sched-remind" onclick="event.stopPropagation();openSchedUpload('
-    +esc(JSON.stringify(String(company)))+')" title="Upload a schedule for '+esc(company)+'">Upload</button>';
+    +esc(JSON.stringify(String(company)))+',null,'+esc(JSON.stringify(String(trade||'')))+')"'
+    +' title="Upload a schedule for '+esc(company)+(trade?(' \u2014 '+esc(trade)):'')+'">Upload</button>';
+}
+// The label for one contract a firm holds, rather than for all of them.
+function tradeLabelForKey(company, trade){
+  const t=String(trade||'').trim().toUpperCase(); if(!t) return '';
+  const hit=linesForCompany(company).find(c=>String(tradeKeyOf(c)||'').toUpperCase()===t);
+  return hit ? (tradeLabelOf(hit)||t) : t;
 }
 let SCHED_UP_CO='';
+// Which of the firm's contracts this upload is for. Written into the filename,
+// because the shared folder cannot say and the name is what everything reads.
+let SCHED_UP_TRADE='';
 function schedPeriodOptions(){
   const now=new Date(), m=document.getElementById('sched-up-month'), y=document.getElementById('sched-up-year');
   if(!m||!y) return;
@@ -7870,14 +7887,36 @@ function schedUpPreview(){
   const f=((document.getElementById('sched-up-file')||{}).files||[])[0];
   const dot=f?String(f.name).lastIndexOf('.'):-1;
   const ext=(f&&dot>0)?String(f.name).slice(dot):'';
-  el.textContent=safeFileName(SCHED_UP_CO+' \u2014 '+schedUpLabel())+(ext||'.\u2026');
+  el.textContent=safeFileName(schedUpBaseName())+(ext||'.\u2026');
 }
 let SCHED_UP_REPLACE=null;
-function openSchedUpload(company, replace){
+// "<Company> \u2014 <TRADE> \u2014 <Month> <Year>". The trade only where the firm holds
+// more than one contract: on a single-contract firm it is noise, and every file
+// already filed reads correctly without it.
+//
+// One function, used by the preview and by the upload. They were two copies of
+// the same sentence, and two copies of a rule is how a preview starts telling
+// somebody a filename that is not the one that lands.
+// Who a schedule belongs to, in words: the firm, and the contract as well where
+// the firm holds more than one. Everything that has to name the party \u2014 the
+// filename, the dialog title, what the upload says when it lands \u2014 says it
+// from here, so they cannot drift into disagreeing about who was asked.
+function schedParty(company, trade){
+  const tr=String(trade||'').trim().toUpperCase();
+  const many=linesForCompany(company).length>1;
+  return String(company||'')+((many&&tr)?(' \u2014 '+tr):'');
+}
+function schedFileBase(company, trade, label){
+  return schedParty(company, trade)+' \u2014 '+String(label||'');
+}
+function schedUpBaseName(){ return schedFileBase(SCHED_UP_CO, SCHED_UP_TRADE, schedUpLabel()); }
+function openSchedUpload(company, replace, trade){
   SCHED_UP_CO=String(company||'');
+  SCHED_UP_TRADE=String(trade||'').trim().toUpperCase();
   SCHED_UP_REPLACE=replace||null;
   const t=document.getElementById('sched-up-title');
-  if(t) t.textContent=(SCHED_UP_REPLACE?'Update Schedule \u2014 ':'Upload Schedule \u2014 ')+SCHED_UP_CO;
+  if(t) t.textContent=(SCHED_UP_REPLACE?'Update Schedule \u2014 ':'Upload Schedule \u2014 ')
+    +schedParty(SCHED_UP_CO, SCHED_UP_TRADE);
   schedPeriodOptions();
   // Replacing is for one particular month, so the month is not up for grabs:
   // changing it would file the new copy somewhere else and leave the old one
@@ -7902,7 +7941,7 @@ function openSchedUpload(company, replace){
 }
 function closeSchedUpload(){
   const bd=document.getElementById('sched-backdrop'); if(bd) bd.classList.remove('open');
-  SCHED_UP_CO=''; SCHED_UP_REPLACE=null;
+  SCHED_UP_CO=''; SCHED_UP_TRADE=''; SCHED_UP_REPLACE=null;
   ['sched-up-month','sched-up-year'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled=false; });
 }
 async function submitSchedUpload(){
@@ -7914,7 +7953,7 @@ async function submitSchedUpload(){
   const co=SCHED_UP_CO;
   const done=SCHED_UP_REPLACE
     ? await schedReplace(f, co, SCHED_UP_REPLACE, say)
-    : await schedUpload(f, co, schedUpLabel(), say);
+    : await schedUpload(f, co, schedUpLabel(), say, SCHED_UP_TRADE);
   if(btn) btn.disabled=false;
   if(done) closeSchedUpload();
 }
@@ -8059,7 +8098,7 @@ async function schedReplace(f, company, target, say){
        if(EXTERNAL) await loadMySchedule(); }catch(e){ console.warn('schedule refresh:', e.message); }
   return true;
 }
-async function schedUpload(f, company, periodLabel, say){
+async function schedUpload(f, company, periodLabel, say, trade){
   if(!f) return false;
   say=say||function(){};
   if(!SCHED_FOLDER_ID){
@@ -8071,12 +8110,15 @@ async function schedUpload(f, company, periodLabel, say){
   // Named for the contract and the month it covers. That name is the record:
   // the folder is shared, so it cannot say whose a file is or what it is for.
   // Both the panel and the nightly chase read it back.
-  const name=safeFileName(company+' \u2014 '+periodLabel)+ext;
+  // The trade goes in only where the firm holds more than one contract \u2014 on a
+  // single-contract firm it is noise, and every file already filed reads
+  // correctly without it.
+  const name=safeFileName(schedFileBase(company, trade, periodLabel))+ext;
   say('Uploading '+name+'\u2026');
   try{
     const up=await boxUploadBinary(new File([f], name, {type:f.type}), SCHED_FOLDER_ID, t=>say(t));
     const landed=(up&&up._renamedTo)||name;
-    say('Uploaded. '+company+' is current for '+periodLabel+'.'
+    say('Uploaded. '+schedParty(company, trade)+' is current for '+periodLabel+'.'
       +(up&&up._renamedTo?(' One was already on file for that month, so this went up as '+landed+'.'):''));
     try{ auditLog('Schedule uploaded','gendocs',{}, company+' \u2014 '+landed); }catch(e){}
   }catch(e){

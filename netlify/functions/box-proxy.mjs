@@ -2,7 +2,7 @@ import { getStore } from '@netlify/blobs';
 import { sendGridWhy } from './lib/sendgrid-why.mjs';
 import { logNotif, readNotifLog } from './lib/notif-log.mjs';
 import { scheduleState, periodOfDate, periodFromName, periodLabel, newestFirst,
-         norm as schedNorm } from './lib/sched.mjs';
+         tradeFromName, filesForContract, norm as schedNorm } from './lib/sched.mjs';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const AUTH0_DOMAIN = 'login.fidevia.com';
@@ -1514,8 +1514,24 @@ export default async (req) => {
       const norm = schedNorm;
       let sharedFiles = [];
       if (shared) sharedFiles = (await listOf(shared.id)).filter(e => e.type === 'file');
+      // One entry per CONTRACT, not per firm. A firm holding the general and
+      // the mechanical owes two programmes against two contracts, and drawing
+      // one row for both asked the same question twice and answered it twice.
+      // Older callers send plain company names and get exactly what they got.
+      const contracts = Array.isArray(body.contracts) && body.contracts.length
+        ? body.contracts.map(c => ({ company: String((c && c.company) || '').trim(),
+                                     trade: String((c && c.trade) || '').trim().toUpperCase() }))
+                        .filter(c => c.company)
+        : companies.map(c => ({ company: c, trade: '' }));
+      const tradesOf = {};
+      for (const c of contracts) {
+        const k = c.company.toLowerCase();
+        (tradesOf[k] = tradesOf[k] || []);
+        if (c.trade && !tradesOf[k].includes(c.trade)) tradesOf[k].push(c.trade);
+      }
       const out = [];
-      for (const co of companies) {
+      for (const ct of contracts) {
+        const co = ct.company;
         // Their own folder still counts if the project has one: nothing already
         // uploaded stops being a schedule because the filing changed.
         const party = parties.find(e => e.type === 'folder'
@@ -1526,7 +1542,12 @@ export default async (req) => {
           const sched = subs.find(e => e.type === 'folder' && /^schedules?$/i.test(String(e.name || '').trim()));
           if (sched) files = files.concat((await listOf(sched.id)).filter(e => e.type === 'file'));
         }
-        if (!shared && !party) { out.push({ company: co, state: 'no-schedules-folder' }); continue; }
+        if (!shared && !party) { out.push({ company: co, trade: ct.trade, state: 'no-schedules-folder' }); continue; }
+        // Narrowed to this contract. A file naming no contract counts for every
+        // one the firm holds, so a programme posted before the name carried a
+        // trade keeps the contract current instead of turning it red.
+        const held = tradesOf[co.toLowerCase()] || [];
+        files = filesForContract(files, ct.trade, held);
         // Which month it is for is what the uploader said, read back off the
         // name; when it arrived is created_at. They are different questions and
         // the panel shows both.
@@ -1537,9 +1558,13 @@ export default async (req) => {
         const listed = newestFirst(files).slice(0, 24).map(f => ({
           id: String(f.id), name: f.name || '',
           period: periodFromName(f.name), periodLabel: periodLabel(periodFromName(f.name)),
+          // Which contract the file itself claims. Blank where the name does not
+          // say, which the panel shows rather than guessing.
+          trade: tradeFromName(f.name, tradesOf[co.toLowerCase()] || []),
           date: String(f.created_at || '').slice(0, 10)
         }));
-        out.push(Object.assign({ company: co, files: listed }, scheduleState(files, want, since)));
+        out.push(Object.assign({ company: co, trade: ct.trade, files: listed },
+                               scheduleState(files, want, since)));
       }
       return json({ companies: out, due, lastScheduleSend, schedulesFolderId: shared ? String(shared.id) : '' });
     }

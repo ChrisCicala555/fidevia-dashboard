@@ -19,11 +19,12 @@ ok(!/DOCS_CONFIDENTIAL='confidential'/.test(html), 'and from the browser');
 ok(/overstated it/.test(srv), 'with the reason for the change recorded');
 
 // ── the upload ──
-ok(/function schedUploadBtn\(company\)/.test(html), 'each contract row carries an upload');
+ok(/function schedUploadBtn\(company, trade\)/.test(html),
+   'each contract row carries an upload, for that contract rather than for the firm');
 {
-  const c = html.split('async function schedUpload(f, company, periodLabel, say)')[1].split('function schedChaseFooter')[0];
+  const c = html.split('async function schedUpload(f, company, periodLabel, say, trade)')[1].split('function schedChaseFooter')[0];
   // The month is the one the uploader named, not the one it happens to be.
-  ok(/safeFileName\(company\+' \\u2014 '\+periodLabel\)/.test(c),
+  ok(/safeFileName\(schedFileBase\(company, trade, periodLabel\)\)/.test(c),
      'the file is named for the contract and the month, so the shared folder can still say whose it is');
   ok(/SCHED_FOLDER_ID/.test(c), 'it goes to the shared Schedules folder');
   ok(/has no Schedules folder yet/.test(c), 'and says so plainly when the project has none');

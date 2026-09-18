@@ -50,11 +50,13 @@ console.log('One row per firm, not one per contract');
   ok(JSON.parse(cos).length===2, 'two firms, two rows — not three');
   ok(JSON.parse(cos)[0]==='Summit Builders', 'Summit once');
 
-  const src=html.split('async function renderScheduleUploads')[1].slice(0, 1400);
-  ok(/let cos=wfScopeFirms\(/.test(src),
-     'the panel asks the server once per firm, which is all it can answer');
-  ok(!/\.map\(c=>String\(c\.name\|\|''\)\.trim\(\)\)\.filter\(Boolean\)/.test(src),
-     'and no longer builds the list straight off the contract lines');
+  const src=html.split('async function renderScheduleUploads')[1].split('\n  const wantLabel')[0];
+  ok(/let lines=contractorLines\(\)/.test(src),
+     'the panel asks per contract \u2014 a firm on two primes owes two programmes');
+  ok(/contracts:lines\.map\(c=>\(\{company:c\.name, trade:tradeKeyOf\(c\)\|\|''\}\)\)/.test(src),
+     'sending the firm and the trade together, because a contract is both');
+  ok(/let cos=wfScopeFirms\(lines\.map\(c=>c\.name\)\)/.test(src),
+     'and the company list stays deduped, since the folder lookup is by name');
 }
 
 console.log('The row says which contracts it covers');

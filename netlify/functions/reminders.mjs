@@ -1,7 +1,7 @@
 import { getStore } from '@netlify/blobs';
 import { logNotif } from './lib/notif-log.mjs';
 import { sendGridWhy } from './lib/sendgrid-why.mjs';
-import { scheduleState, periodOfDate, periodLabel, norm as schedNorm } from './lib/sched.mjs';
+import { scheduleState, periodOfDate, periodLabel, filesForContract, norm as schedNorm } from './lib/sched.mjs';
 
 // Retry Box calls that come back rate-limited. This job runs unattended, so a
 // silent 429 means a reminder is never sent and nobody finds out.
@@ -202,6 +202,17 @@ export default async () => {
         let pcfg = {};
         if (cfgFile) { try { pcfg = JSON.parse(await readText(t, cfgFile.id)) || {}; } catch (e) {} }
         const cos = (pcfg.contractors || []).filter(c => c && c.active !== false && c.name);
+        // Chased per CONTRACT. A firm holding the general and the mechanical
+        // owes two programmes, and this iterated the contract list already \u2014
+        // so it asked twice and, reading the whole folder both times, answered
+        // "current" both times the moment either one arrived.
+        const tradesOf = {};
+        for (const c of cos) {
+          const k = String(c.name).trim().toLowerCase();
+          const tr = String(c.role || '').trim().toUpperCase();
+          (tradesOf[k] = tradesOf[k] || []);
+          if (tr && !tradesOf[k].includes(tr)) tradesOf[k].push(tr);
+        }
         const docsF = items.find(i => i.type === 'folder' && i.name.startsWith('12'));
         const since = monthStart(now);
         const contacts = conF ? await readCSV(t, conF, 'Job Contacts.csv') : [];
@@ -226,6 +237,8 @@ export default async () => {
               && String(f.name || '').trim().toLowerCase() === String(c.name).trim().toLowerCase());
             const sched = party ? (await listFolder(t, party.id)).find(f => f.type === 'folder' && /^schedules?$/i.test(f.name || '')) : null;
             if (sched) files = files.concat((await listFolder(t, sched.id)).filter(f => f.type === 'file'));
+            files = filesForContract(files, String(c.role || '').trim().toUpperCase(),
+                                     tradesOf[String(c.name).trim().toLowerCase()] || []);
             const st = scheduleState(files, periodOfDate(now), since);
             lastDate = st.date || '';
             lastPeriod = st.periodLabel || '';
@@ -236,8 +249,12 @@ export default async () => {
             .filter(r => String(r['Company'] || '').trim().toLowerCase() === String(c.name).trim().toLowerCase())
             .map(r => String(r['Email'] || '').trim().toLowerCase()).filter(Boolean))];
           if (!to.length) continue;
+          // Named so a firm chased about two contracts can tell the two emails
+          // apart. Left alone where they hold one, which is everybody else.
+          const held = tradesOf[String(c.name).trim().toLowerCase()] || [];
+          const who = c.name + ((held.length > 1 && c.role) ? (' — ' + String(c.role).toUpperCase()) : '');
           await sendEmail(to, '[Fidevia] Monthly schedule due — ' + p.name,
-            scheduleChaseHTML(p.name, c.name, lastDate ? lastDate : '', lastPeriod, periodLabel(periodOfDate(now))),
+            scheduleChaseHTML(p.name, who, lastDate ? lastDate : '', lastPeriod, periodLabel(periodOfDate(now))),
             { kind: 'schedule', projectId: String(p.id || ''), project: p.name });
           sent++;
         }

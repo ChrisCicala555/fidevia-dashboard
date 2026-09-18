@@ -91,8 +91,8 @@ ok(/Choose the schedule file/.test(b.run("document.getElementById('sched-up-stat
    'a period with no file is refused');
 ok(b.run("document.getElementById('sched-backdrop').classList.contains('open')")===true,
    'and the dialog stays open rather than swallowing the attempt');
-ok(/const name=safeFileName\(company\+' \\u2014 '\+periodLabel\)\+ext;/.test(html),
-   'the upload writes the period the person chose, not today’s month');
+ok(/const name=safeFileName\(schedFileBase\(company, trade, periodLabel\)\)\+ext;/.test(html),
+   'the upload writes the period the person chose, not today\u2019s month');
 ok(!/onchange="schedUpload\(this,/.test(html),
    'and nothing uploads the instant a file is picked any more');
 

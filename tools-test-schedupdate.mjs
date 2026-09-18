@@ -118,7 +118,7 @@ ok(!/proxyCall\('uploadToken',\{folderId:parentId\}\)/.test(html), 'and none of 
 }
 // And a refresh that fails is not an upload that failed.
 {
-  const c = html.split('async function schedUpload(f, company, periodLabel, say)')[1].split('\nfunction ')[0];
+  const c = html.split('async function schedUpload(f, company, periodLabel, say, trade)')[1].split('\nfunction ')[0];
   ok(/Past this point the file is in Box/.test(c), 'the read-back is outside the try that reports failure');
   ok(/console\.warn\('schedule refresh:'/.test(c),
      'so a folder that cannot be listed does not report a landed schedule as lost');
