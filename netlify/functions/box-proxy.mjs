@@ -246,6 +246,35 @@ const adminListStore = () => getStore('admin-list');
 // Fidevia's own defaults, not any one project's. What a new project starts
 // with, and — for the document folders — who may see each one.
 const settingsStore = () => getStore('fidevia-settings');
+// Who put a document in Documents.
+//
+// Every upload goes through the service account, so Box says Fidevia uploaded
+// everything on the job \u2014 there is no ownership in the folder to read. Kept
+// here instead, against the file id, which survives a rename and a move.
+//
+// Recorded as a FIRM rather than a person, because that is the unit everywhere
+// else: a review step belongs to a company, permission is matched on a company,
+// and a superintendent should be able to take down what their project manager
+// filed by mistake.
+const uploaderStore = () => getStore('doc-uploaders');
+async function uploadersFor(projectId){
+  try{ return (await uploaderStore().get(String(projectId), { type:'json' })) || {}; }
+  catch(e){ return {}; }
+}
+async function recordUploader(projectId, fileId, company, email){
+  const pid = String(projectId || ''), fid = String(fileId || '');
+  if (!pid || !fid) return;
+  try{
+    const all = await uploadersFor(pid);
+    all[fid] = { company: String(company || '').trim(), by: String(email || '').trim(),
+                 at: new Date().toISOString().slice(0, 10) };
+    // A project's Documents folder is not unbounded, but a store is not a place
+    // to let something grow forever either.
+    const keys = Object.keys(all);
+    if (keys.length > 4000) { for (const k of keys.slice(0, keys.length - 4000)) delete all[k]; }
+    await uploaderStore().setJSON(pid, all);
+  }catch(e){}
+}
 // A subject line for one of the server's own emails, with Fidevia's wording if
 // they have set any. Falls back to what shipped: an unreachable settings blob
 // is not a reason for an invitation to go out with no subject.
@@ -1775,8 +1804,24 @@ export default async (req) => {
     // Removed folder, stamped with where it came from and who took it down, and
     // stays there until somebody in Box decides otherwise.
     if (op === 'docsRemove') {
-      if (!who.isAdmin) return json({ error: 'Admins only' }, 403);
       const fileId = String(body.fileId || ''), projectId = String(body.projectId || '');
+      // Fidevia takes anything down. Everybody else may take back a FILE their
+      // own firm filed, and nothing else: a folder is the filing system rather
+      // than a document, and one party removing another's paperwork from a
+      // shared record is not a thing to allow.
+      if (!who.isAdmin) {
+        if (String(body.kind || 'file') === 'folder') {
+          return json({ error: 'Folders are Fidevia\u2019s to remove.' }, 403);
+        }
+        const g = await grantFor(t, _grants, 'folder', projectId);
+        const mine = String((g && g.company) || '').trim().toLowerCase();
+        const owner = String((((await uploadersFor(projectId))[fileId] || {}).company) || '').trim().toLowerCase();
+        // No owner on record means it predates the record, or it arrived some
+        // other way. Not yours by default: asking is the path for those.
+        if (!mine || !owner || mine !== owner) {
+          return json({ error: 'That is not your firm\u2019s to take down. Ask Fidevia to remove it.' }, 403);
+        }
+      }
       // A folder goes the same way a file does: moved into Removed, not
       // deleted. Box moves a folder with everything inside it, so a folder full
       // of superseded drawings comes out in one move and every one of them is
@@ -1891,6 +1936,37 @@ export default async (req) => {
       }
       return json({ requests: list.filter(r => r.state !== 'done') });
     }
+    // Who filed a document, recorded after it lands.
+    //
+    // A file reaches Box three ways: straight from the browser, in chunks, or
+    // through the proxy. Stamping inside one of those would have recorded a
+    // third of the uploads and left the rest ownerless, so the page says what it
+    // has just filed and this checks the claim: the caller must be allowed to
+    // write into the folder the file is actually in, which is the same test the
+    // upload itself passed.
+    if (op === 'docsClaim') {
+      const projectId = String(body.projectId || ''), fileId = String(body.fileId || '');
+      if (!projectId || !fileId) return json({ error: 'projectId and fileId required' }, 400);
+      if (!await guardFile(fileId)) return json({ error: 'Access denied' }, 403);
+      let parentId = '';
+      try {
+        const fi = await (await boxFetch(`https://api.box.com/2.0/files/${encodeURIComponent(fileId)}?fields=parent`, { headers: H })).json();
+        parentId = String((fi.parent && fi.parent.id) || '');
+      } catch (e) {}
+      if (!parentId) return json({ error: 'Could not read that file.' }, 502);
+      const pos = await docsPositionOf(H, parentId);
+      if (!pos) return json({ error: 'That file is not in Documents.' }, 400);
+      if (!await folderWritableBy(H, t, _grants, who, parentId)) return json({ error: 'Access denied' }, 403);
+      const g = await grantFor(t, _grants, 'folder', projectId);
+      const co = who.isAdmin ? 'Fidevia' : String((g && g.company) || '').trim();
+      if (!co) return json({ ok: true, claimed: false });
+      // First claim wins. Re-uploading over somebody else's file does not make
+      // it yours, and a second claim is the only way that could happen.
+      const all = await uploadersFor(projectId);
+      if (all[fileId]) return json({ ok: true, claimed: false });
+      await recordUploader(projectId, fileId, co, who.email || '');
+      return json({ ok: true, claimed: true, company: co });
+    }
     // Notes that belong to a file rather than to a row: who was at the meeting,
     // what was decided. Box keeps a description per file, which means the note
     // travels with the document instead of living in an index that can fall out
@@ -1954,6 +2030,23 @@ export default async (req) => {
         // knows which month a file is for and who still owes one.
         entries = entries.filter(e => !(e.type === 'folder' && String(e.name || '').trim().toLowerCase() === DOCS_SCHEDULES));
       }
+      // Which of these the caller may take down themselves. A boolean, not the
+      // uploader's name: who filed what is not a thing to hand every party on
+      // the job, and the page only needs to know whether to draw Remove or
+      // Request removal.
+      try{
+        const pid = String(body.projectId || '');
+        if (pid) {
+          const g = await grantFor(t, _grants, 'folder', pid);
+          const mine = who.isAdmin ? '' : String((g && g.company) || '').trim().toLowerCase();
+          if (mine) {
+            const owners = await uploadersFor(pid);
+            entries = entries.map(e => (e.type === 'file'
+              && String(((owners[String(e.id)] || {}).company) || '').trim().toLowerCase() === mine)
+                ? Object.assign({}, e, { yours: true }) : e);
+          }
+        }
+      }catch(e){}
       return json({ entries, atRoot: !!(pos && pos.atRoot) });
     }
     // Rename a file or folder. Renaming is how a filing system stays legible,

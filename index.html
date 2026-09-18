@@ -5963,7 +5963,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 14:50';
+const BUILD_STAMP='2026-09-18 14:59';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -6794,7 +6794,7 @@ async function loadDocs(){
     }
   }
   try{
-    const d=await proxyCall('docsList',{folderId:docsHere()||root});
+    const d=await proxyCall('docsList',{folderId:docsHere()||root, projectId:currentProject.folderId});
     DOCS_ENTRIES=d.entries||[]; DOCS_AT_ROOT=!!d.atRoot;
     // The server already withholds these from anyone outside Fidevia. It
     // cannot do so in the External Viewer preview, where the request is still
@@ -6929,7 +6929,13 @@ function renderDocs(){
         // to allow.
         // A folder goes the same way a file does \u2014 moved to Removed, with
         // everything inside it \u2014 so the control is the same control.
-        +(IS_ADMIN && !viewingAsExternal()
+        //
+        // Fidevia takes anything down. A firm takes back a file it filed itself,
+        // which is the ordinary correction: wrong revision, wrong folder, sent
+        // before it was ready. Anything else is asked for, because Documents is
+        // a shared record and one party removing another's paperwork is not a
+        // thing to allow. The server decides this too, on the same rule.
+        +((IS_ADMIN && !viewingAsExternal()) || (!isF && e.yours)
             ? '<button class="row-act" onclick="docsRemove('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+','+esc(JSON.stringify(e.type))+')">Remove</button>'
             : (isF ? '' : '<button class="row-act" onclick="docsAskRemoval('+esc(JSON.stringify(e.id))+','+esc(JSON.stringify(e.name))+')">Request removal</button>'))
       +'</td></tr>';
@@ -6974,8 +6980,11 @@ async function docsNewFolder(){
 // Removing a file from the dashboard. It is not deleted: it moves to a Removed
 // folder that nobody sees in the tab, and stays in Box.
 async function docsRemove(id, name, kind){
-  if(!IS_ADMIN || viewingAsExternal()) return;
   const isFolder=String(kind||'')==='folder';
+  // A folder is Fidevia's. A file is Fidevia's, or the firm that filed it \u2014
+  // and the server checks the second, so this is only about which button to
+  // honour if one is somehow pressed.
+  if(isFolder && (!IS_ADMIN || viewingAsExternal())) return;
   // A folder takes everything inside it. Said before, with a count, rather than
   // discovered afterwards in the Removed folder.
   const n=isFolder ? await docsCountIn(id) : -1;
@@ -7113,6 +7122,14 @@ async function docsUpload(input){
       // Renaming somebody's file without telling them is how two documents end
       // up mistaken for one.
       if(up && up._renamedTo) renamed.push(up._renamedTo);
+      // Whose it is, so they can take it back down. Said here rather than
+      // stamped inside one upload path: a file reaches Box three ways, and
+      // stamping one of them records a third of the uploads.
+      try{
+        const ent=(up && up.entries && up.entries[0]) || up;
+        if(ent && ent.id) await proxyCall('docsClaim',
+          {projectId:currentProject.folderId, fileId:String(ent.id)},{quiet:true});
+      }catch(e){ console.warn('claim:', e && e.message); }
       done++;
     }catch(e){ prog.textContent='Could not upload '+f.name+': '+(e.message||''); await new Promise(r=>setTimeout(r,2500)); }
   }

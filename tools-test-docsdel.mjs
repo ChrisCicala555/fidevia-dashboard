@@ -60,7 +60,10 @@ console.log('Who gets the control');
      'and everybody else may ask about a file but is offered nothing on a folder — Documents is a '
      +'shared record, and one party taking another’s folder down is not a thing to allow');
   ok(/Request removal/.test(row), 'the asking path is still there');
-  ok(/'Admins only'/.test(op), 'and the server says so too, which is the copy that matters');
+  // A file its own firm filed is theirs to take back \u2014 covered in
+  // tools-test-docsown.mjs. What must never move is a FOLDER.
+  ok(/Folders are Fidevia\\u2019s to remove/.test(op),
+     'and the server says so too, which is the copy that matters');
 }
 
 console.log('The confirmation says what goes with it');
