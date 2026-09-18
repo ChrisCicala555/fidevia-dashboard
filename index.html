@@ -3824,7 +3824,7 @@ let NPWF_SCOPE='';                 // '' = the default chain
 let NPWF_BYCO={};                  // company -> gathered chains
 function wizWfScopeOptions(){
   const sel=document.getElementById('npwf-scope'); if(!sel) return;
-  const names=wizGatherContractors().map(c=>c.name).filter(Boolean);
+  const names=wfScopeFirms(wizGatherContractors().map(c=>c.name));
   sel.innerHTML='<option value="">Every company (default)</option>'
     +names.map(n=>'<option value="'+esc(n)+'"'+(NPWF_SCOPE===n?' selected':'')
       +'>'+esc(n)+(NPWF_BYCO[n]?' \u2014 custom':'')+'</option>').join('');
@@ -4076,15 +4076,28 @@ function wfGather(prefix){
   });
   return out;
 }
+// A firm holding two primes shows up twice in the contract list, but a workflow
+// chain is keyed on the company name: both rows would address the same chain and
+// saving one would quietly overwrite the other. One row per firm in both pickers.
+function wfScopeFirms(list){
+  const seen={}, out=[];
+  (list||[]).forEach(n=>{
+    const t=String(n||'').trim(); if(!t) return;
+    const k=t.toLowerCase(); if(seen[k]) return;
+    seen[k]=1; out.push(t);
+  });
+  return out;
+}
 let WF_SCOPE='';   // '' = project default, otherwise a contractor name
 function wfScopeOptions(){
   const cts=((currentProject&&currentProject.config&&currentProject.config.contractors)||[]).filter(c=>c.active!==false);
   const sel=document.getElementById('wf-scope'); if(!sel) return;
-  sel.innerHTML='<option value="">Default (all companies)</option>'+cts.map(c=>{
-    const has=wfHasOverride(c.name,'rfi')||wfHasOverride(c.name,'co')||wfHasOverride(c.name,'sub')||wfHasOverride(c.name,'pay_apps');
+  const names=wfScopeFirms(cts.map(c=>c.name));
+  sel.innerHTML='<option value="">Default (all companies)</option>'+names.map(n=>{
+    const has=wfHasOverride(n,'rfi')||wfHasOverride(n,'co')||wfHasOverride(n,'sub')||wfHasOverride(n,'pay_apps');
     // pay_apps resolves to whichever chain a row is on, so an override on
     // either half counts as this contractor having one.
-    return '<option value="'+esc(c.name)+'"'+(WF_SCOPE===c.name?' selected':'')+'>'+esc(c.name)+(has?' — custom':'')+'</option>';
+    return '<option value="'+esc(n)+'"'+(WF_SCOPE===n?' selected':'')+'>'+esc(n)+(has?' — custom':'')+'</option>';
   }).join('');
 }
 function loadWorkflowSettings(){
@@ -5922,7 +5935,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 02:39';
+const BUILD_STAMP='2026-09-18 02:50';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
