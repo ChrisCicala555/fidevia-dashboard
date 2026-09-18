@@ -7,7 +7,10 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 // Run the real thing.
-const a = html.indexOf('function schedChaseTargets()');
+// Starts at the not-ready helpers rather than at schedChaseTargets: deciding
+// that a project without a Schedules folder is not a contractor who is late
+// is part of the chase rules, and running the rest without them ran nothing.
+const a = html.indexOf('const SCHED_NOT_READY=');
 const b = html.indexOf('function scheduleStats()');
 const pre = `function esc(x){return String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function fmtDMY(v){ if(!v) return ''; const m=String(v).match(/^(\\d{4})-(\\d{2})-(\\d{2})/); return m?(m[2]+'/'+m[3]+'/'+m[1]):String(v); }
@@ -19,11 +22,15 @@ const H = new Function(pre + html.slice(a,b) +
   'schedChaseTargets,schedChaseSendable,schedChaseFooter,schedRowRemind,schedLastFor,schedNearMiss};')();
 const strip = x => x.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
 
+// 'stale' rather than 'no-schedules-folder': these are contracts that are LATE,
+// which is what a chase is for. A project with no Schedules folder is Fidevia
+// not having finished setting it up, and nobody is chased for that — checked
+// at the foot of this file.
 const FOUR = [
   {company:'Summit Builders', state:'current', date:'2026-09-07'},
-  {company:'Comfort Systems', state:'no-schedules-folder'},
-  {company:'AH Plumbing',     state:'no-schedules-folder'},
-  {company:'Voltage Electric',state:'no-schedules-folder'}
+  {company:'Comfort Systems', state:'stale'},
+  {company:'AH Plumbing',     state:'stale'},
+  {company:'Voltage Electric',state:'stale'}
 ];
 H.set(FOUR, null, [
   {Company:'Summit Builders', Email:'d@summit.com'},
@@ -101,6 +108,28 @@ ok(/have anyone with an email address/.test(strip(H.schedChaseFooter())),
      'and reminding one preserves what was recorded for the others');
   ok(/by: who\.email/.test(c), 'the sender is the caller the server verified');
   ok(/slice\(0, 120\)/.test(c) && /slice\(0, 60\)/.test(c), 'bounded in both name length and count');
+}
+
+
+// ── a project that is not set up is not a contractor who is late ──
+{
+  H.set([
+    {company:'LA Building Contractors', state:'no-schedules-folder'},
+    {company:'Garden Spot Mechanical',  state:'no-schedules-folder'},
+    {company:'Cook\u2019s Service Company', state:'no-documents'}
+  ], null, [
+    {Company:'LA Building Contractors', Email:'a@la.test'},
+    {Company:'Garden Spot Mechanical',  Email:'b@gs.test'}
+  ]);
+  ok(H.schedChaseTargets().length===0,
+     'nobody is chased for failing to upload into a folder that does not exist');
+  ok(H.schedChaseSendable().length===0, 'and there is nothing to send');
+  const f=strip(H.schedChaseFooter());
+  ok(/no Schedules folder yet/.test(f), 'the panel says what is actually wrong');
+  ok(/Bring It Up To Date/.test(f), 'and who fixes it, and how');
+  ok(!/Remind All/.test(H.schedChaseFooter()),
+     'and offers no bulk reminder \u2014 three contractors chased for Fidevia\u2019s setup is the '
+     +'one thing this panel must not do');
 }
 
 console.log((bad?'FAIL':'ok  '),' tools-test-schedone.mjs —',n,'assertions');

@@ -5961,7 +5961,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 12:56';
+const BUILD_STAMP='2026-09-18 13:52';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7677,6 +7677,26 @@ async function renderScheduleUploads(){
       SCHED_UPLOADS=d.companies||[];
       SCHED_LAST_SEND=d.lastScheduleSend||null;
       SCHED_FOLDER_ID=d.schedulesFolderId||'';
+      // A project whose Documents folder has never been opened has no Schedules
+      // folder yet: it is made the first time Fidevia opens that tab. Which
+      // meant a job could sit on the Schedule tab showing every contract red
+      // for a folder that did not exist, and offering to chase all of them for
+      // it. Made here too, once, and only by the person who can make it.
+      if(!SCHED_FOLDER_ID && IS_ADMIN && !viewingAsExternal() && !SCHED_STD_TRIED){
+        SCHED_STD_TRIED=true;
+        try{
+          const st=await proxyCall('docsEnsureStandard',{projectId:currentProject.folderId},{quiet:true});
+          if(st && (st.made||[]).length){
+            try{ auditLog('Set up standard document folders','gendocs',{}, st.made.join(', ')); }catch(e){}
+            const again=await proxyCall('scheduleUploads',
+              {projectId:currentProject.folderId, companies:cos,
+               contracts:lines.map(c=>({company:c.name, trade:tradeKeyOf(c)||''})),
+               since:monthStart(), period:String(monthStart()).slice(0,7)},{quiet:true});
+            SCHED_UPLOADS=again.companies||SCHED_UPLOADS;
+            SCHED_FOLDER_ID=again.schedulesFolderId||SCHED_FOLDER_ID;
+          }
+        }catch(e){ console.warn('schedules folder:', e&&e.message); }
+      }
     }catch(e){
       box.innerHTML='<div style="padding:12px 18px;color:var(--muted);font-size:13px;">Could not check the schedule folders.</div>';
       return;
@@ -7688,8 +7708,10 @@ async function renderScheduleUploads(){
   const wantLabel=schedPeriodLabel(String(monthStart()).slice(0,7))||'this month';
   const label={
     current:'On file', stale:'No '+wantLabel+' schedule', never:'Never uploaded',
-    'no-schedules-folder':'No Schedules folder', 'no-folder':'No document folder',
-    'no-documents':'Documents not set up on this project'
+    // Said as what it is \u2014 a project not finished being set up \u2014 rather than as
+    // something the contractor has failed to do.
+    'no-schedules-folder':'Not set up yet', 'no-folder':'Not set up yet',
+    'no-documents':'Not set up yet'
   };
   const good=r=>r.state==='current';
   const targets=schedChaseTargets();
@@ -7714,7 +7736,10 @@ async function renderScheduleUploads(){
   // whose a file was.
   box.innerHTML=shown.map((r,gi)=>{
     const ok=good(r);
-    const t=ok?null:targetFor(r.company);
+    // Not ready is not late: no reminder is offered for a folder that does not
+    // exist, and no upload either, because there is nowhere for it to land.
+    const pending=schedNotReady(r);
+    const t=(ok||pending)?null:targetFor(r.company);
     const last=schedLastFor(r.company);
     const files=(r.files||[]);
     const open=SCHED_OPEN_CO===rowKey(r);
@@ -7735,15 +7760,16 @@ async function renderScheduleUploads(){
     // than below, so a collapsed card still offers the one thing to do.
     const head='<div class="sched-group-head" onclick="schedToggleFiles('+esc(JSON.stringify(rowKey(r)))+')">'
       +'<span class="thread-arrow" style="'+(open?'transform:rotate(90deg);':'')+'">&#9656;</span>'
-      +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
+      +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'
+        +(ok?'#3b6d11':(pending?'#B98900':'var(--danger)'))+';"></span>'
       +'<strong>'+esc(r.company)+'</strong>'
       +(function(){ const cl=r.trade ? tradeLabelForKey(r.company, r.trade) : contractLabelFor(r.company);
           return cl ? '<span style="font-size:12px;color:var(--olive-700);font-weight:600;white-space:nowrap;">'
                         +esc(cl)+'</span>' : ''; })()
-      +'<span class="sched-state" style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'
+      +'<span class="sched-state" style="color:'+(ok?'var(--muted)':(pending?'#8a6d3b':'var(--danger)'))+';">'
         +esc(label[r.state]||r.state)+'</span>'
       +'<span class="sched-group-meta">'+esc(meta)+'</span>'
-      +(mayPost
+      +((mayPost && !pending)
          ? '<span class="sched-group-acts" onclick="event.stopPropagation()">'
            +schedUploadBtn(r.company, r.trade)+(t?schedRowRemind(t):'')+'</span>'
          : '')
@@ -7775,6 +7801,11 @@ async function renderScheduleUploads(){
 }
 // Who a chase would go to right now, and why. Kept separate from the render so
 // the button and the confirmation prompt cannot disagree about the list.
+// States that say the project is not set up, not that a contractor is late.
+// Nobody is chased for failing to upload into a folder that does not exist.
+const SCHED_NOT_READY=['no-schedules-folder','no-folder','no-documents'];
+function schedNotReady(r){ return SCHED_NOT_READY.indexOf(String((r&&r.state)||''))>=0; }
+function schedAnyNotReady(){ return (SCHED_UPLOADS||[]).some(schedNotReady); }
 function schedChaseTargets(){
   const norm=s=>String(s||'').trim().toLowerCase();
   const contacts=allData.contacts||[];
@@ -7783,7 +7814,7 @@ function schedChaseTargets(){
   // saying which contract, so a company name that disagrees with the contact
   // sheet looked the same as a company with no contacts at all.
   return (SCHED_UPLOADS||[])
-    .filter(r=>r.state!=='current')
+    .filter(r=>r.state!=='current' && !schedNotReady(r))
     .map(r=>{
       const emails=[...new Set(contacts
         .filter(c=>norm(c['Company'])===norm(r.company) && c['Email'])
@@ -7858,6 +7889,7 @@ function tradeLabelForKey(company, trade){
   const hit=linesForCompany(company).find(c=>String(tradeKeyOf(c)||'').toUpperCase()===t);
   return hit ? (tradeLabelOf(hit)||t) : t;
 }
+let SCHED_STD_TRIED=false;
 let SCHED_UP_CO='';
 // Which of the firm's contracts this upload is for. Written into the filename,
 // because the shared folder cannot say and the name is what everything reads.
@@ -8134,10 +8166,19 @@ async function schedUpload(f, company, periodLabel, say, trade){
 }
 function schedChaseFooter(){
   const sendable=schedChaseSendable();
+  // Not filtered for not-ready: the branch below returns before this is read
+  // unless there are none, and a filter that can never change an answer reads
+  // as a rule somebody has to keep in their head.
   const behind=(SCHED_UPLOADS||[]).filter(r=>r.state!=='current').length;
   const people=sendable.reduce((n,t)=>n+t.emails.length,0);
+  const notReady=(SCHED_UPLOADS||[]).filter(schedNotReady).length;
   let note;
-  if(!behind) note='Everyone is current, so there is nobody to chase.';
+  // A project with nowhere to file a programme is Fidevia's to fix, and saying
+  // so beats a red row per contract and an offer to chase all of them for it.
+  if(notReady) note='This project has no Schedules folder yet, so there is nowhere to file a '
+    +'programme \u2014 and nobody to chase for one. Open the Documents tab and press Bring It Up '
+    +'To Date, and it will be made.';
+  else if(!behind) note='Everyone is current, so there is nobody to chase.';
   else if(!sendable.length){
     const mism=schedChaseTargets().map(t=>({c:t.company, near:schedNearMiss(t.company)})).filter(x=>x.near);
     note = mism.length
