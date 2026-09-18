@@ -1352,6 +1352,7 @@
           <button class="btn-add admin-only" onclick="openContractors()">Manage Contractors</button>
         </div>
         <div class="stat-grid" id="fin-kpis"></div>
+        <div class="admin-only" id="fin-unattributed" style="display:none;background:var(--warn-bg,#F6E6C8);border:1px solid var(--khaki-300);border-radius:8px;padding:12px 15px;margin:14px 0;font-size:13px;color:var(--olive-900);max-width:820px;"></div>
         <div class="panel">
           <div class="panel-header">By Contractor</div>
           <table><thead><tr><th>Role</th><th>Contractor</th><th>Contract</th><th title="Allowance remaining of the original allowance">Allowance Left</th><th title="Approved change orders that increase the contract, excluding anything funded from the allowance">Approved COs</th><th>Revised Contract</th><th>Billed to Date</th><th>Remaining</th><th>% Complete</th><th>CO %</th></tr></thead>
@@ -5912,7 +5913,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 01:29';
+const BUILD_STAMP='2026-09-18 01:48';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7223,11 +7224,10 @@ function toggleVerHistory(i){ const el=document.getElementById('verhist-'+i); if
 
 // Every executed change order that names this allowance, as the reconciliation
 // record: what it took out, or what it wrote off.
-function allowanceActivity(name, id){
-  const norm=String(name||'').trim().toLowerCase();
+function allowanceActivity(who, id){
+  const mine=billedAgainst(who);
   const want=String(id||'').trim().toUpperCase();
-  return (allData.co||[]).filter(r=>coIsExecuted(r)
-      && String(r['Company']||'').trim().toLowerCase()===norm
+  return (allData.co||[]).filter(r=>coIsExecuted(r) && mine(r)
       && coAllowanceAmountFor(r, want)>0)
     .map(r=>{
       const share=coAllowanceAmountFor(r, want);
@@ -7243,12 +7243,17 @@ function allowanceActivity(name, id){
     }).filter(x=>x.amount>0);
 }
 // One allowance's whole story, as the panel states it.
-function allowanceSummaryFor(name){
-  return allowancesFor(name).map(a=>{
-    const used=allowanceUsedById(name, a.id);
+// Takes a contract line where there is one, not a company name. Asked by name,
+// a firm holding two primes resolves to neither and the whole panel came back
+// empty: Summit's allowances vanished from the Financial Summary the moment
+// they picked up a second contract, while Settings — which had already been
+// moved onto lines — showed them correctly. Two readings of the same figures.
+function allowanceSummaryFor(who){
+  return allowancesFor(who).map(a=>{
+    const used=allowanceUsedById(who, a.id);
     return { id:a.id, label:a.name, original:a.original, reduced:a.reduced,
              current:a.amount, used, left:a.amount-used,
-             activity:allowanceActivity(name, a.id) };
+             activity:allowanceActivity(who, a.id) };
   });
 }
 // What to call the state of one, in the words somebody would use out loud.
@@ -7263,15 +7268,15 @@ function renderAllowances(){
   const tb=document.getElementById('tbody-allowances');
   const panel=document.getElementById('fin-allow-panel');
   if(!tb||!panel) return;
-  const cfg=(currentProject&&currentProject.config)||{};
-  let contractors=(cfg.contractors||[]).filter(c=>c.active!==false);
+  // One entry per CONTRACT, the same list the table above and Settings use.
+  let contractors=contractorLines().filter(c=>c.active!==false);
   // The same scoping the table above uses: a contractor sees their own
   // contract and nobody else's.
   if(viewingAsExternal() && isContractorView()){
     const mine=companyScope().toLowerCase();
     contractors=contractors.filter(c=>mine && String(c.name||'').trim().toLowerCase()===mine);
   }
-  const withAllow=contractors.map(c=>({c, list:allowanceSummaryFor(c.name)})).filter(x=>x.list.length);
+  const withAllow=contractors.map(c=>({c, list:allowanceSummaryFor(c)})).filter(x=>x.list.length);
   // No allowances is not an empty table, it is a panel that should not be here.
   if(!withAllow.length){ panel.style.display='none'; tb.innerHTML=''; return; }
   panel.style.display='';
@@ -7283,6 +7288,7 @@ function renderAllowances(){
     // are meaningless pooled across several.
     if(withAllow.length>1 || contractors.length>1)
       rows+='<tr class="cd-band"><td colspan="6"><span class="cdb-key" style="font-size:15px;">'+esc(c.name)
+        +(tradeLabelOf(c)?'<span style="margin-left:8px;font-size:12px;color:var(--olive-700);font-weight:600;">'+esc(tradeLabelOf(c))+'</span>':'')
         +'</span><span class="cdb-n">'+list.length+'</span></td></tr>';
     list.forEach(a=>{
       nAll++; tOrig+=a.original; tCut+=a.reduced; tUsed+=a.used; tLeft+=a.left;
@@ -7319,6 +7325,7 @@ function renderAllowances(){
     +(tCut?(' \u00b7 '+fmtMoney(tCut)+' written off'):'');
 }
 function renderFinancials(){
+  try{ unattributedNote(); }catch(e){}
   const tb=document.getElementById('tbody-financials'); if(!tb) return;
   // One row per contract, not per company: a firm holding the mechanical and
   // the plumbing primes has two contracts, two schedules of values and two sets
@@ -12356,6 +12363,89 @@ function alwApplyRenumber(plan){
 }
 // Run by hand, on a project that predates the numbering. Says exactly what it
 // will do first, because it rewrites change orders that are already agreed.
+// Rows filed before a firm picked up a second prime carry no contract, and the
+// moment it holds two they attribute to neither: Summit's billed-to-date went
+// to zero and a $7,000 allowance draw disappeared, on a project where nothing
+// had been deleted. Nothing can deduce which contract those rows meant - the
+// dashboard never asked - so this states the problem and lets it be answered
+// once per firm.
+function unattributedByFirm(){
+  const out={};
+  const add=(key, r, idx)=>{ (out[key]=out[key]||{co:[],pay:[]}); };
+  const firms={};
+  contractorLines().forEach(function(l){
+    const k=coNorm(l.name);
+    (firms[k]=firms[k]||{name:l.name, trades:[]}).trades.push({key:tradeKeyOf(l), label:tradeLabelOf(l)||tradeKeyOf(l)});
+  });
+  Object.keys(firms).forEach(function(k){
+    const f=firms[k];
+    if(f.trades.length<2) return;      // one contract: the name still answers it
+    const co=[], pay=[];
+    (allData.co||[]).forEach((r,i)=>{ if(coNorm(rowCompany(r))===k && !String(r['Trade']||'').trim()) co.push(i); });
+    (allData.pay_apps||[]).forEach((r,i)=>{ if(coNorm(rowCompany(r))===k && !String(r['Trade']||'').trim()) pay.push(i); });
+    if(co.length||pay.length) out[f.name]={name:f.name, trades:f.trades, co:co, pay:pay};
+  });
+  return out;
+}
+let UNATTRIB=[];
+function unattributedNote(){
+  const el=document.getElementById('fin-unattributed'); if(!el) return;
+  if(!IS_ADMIN || viewingAsExternal()){ el.style.display='none'; return; }
+  const by=unattributedByFirm(); const names=Object.keys(by);
+  UNATTRIB=names;
+  if(!names.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='block';
+  el.innerHTML=names.map(function(nm, ni){
+    const f=by[nm]; const n=f.co.length+f.pay.length;
+    return '<div style="margin-bottom:8px;"><strong>'+esc(nm)+'</strong> holds '+f.trades.length
+      +' contracts, and '+n+' record'+(n===1?'':'s')+' filed before that do not say which one: '
+      +f.co.length+' change order'+(f.co.length===1?'':'s')+' and '
+      +f.pay.length+' payment application'+(f.pay.length===1?'':'s')+'. '
+      +'They are counted against neither contract until they do.'
+      +'<div style="margin-top:6px;">Assign them to '
+      +'<select id="una-'+alwKey(nm)+'" style="padding:5px 8px;font-size:13px;">'
+      +f.trades.map(t=>'<option value="'+esc(t.key)+'">'+esc(t.label)+'</option>').join('')
+      +'</select> '
+      +'<button class="btn-secondary" style="padding:5px 11px;" onclick="assignUnattributed('+ni+')">Assign</button>'
+      +'</div></div>';
+  }).join('');
+}
+async function assignUnattributed(i){
+  const name=UNATTRIB[i]; if(!name) return;
+  const f=unattributedByFirm()[name]; if(!f) return;
+  const sel=document.getElementById('una-'+alwKey(name));
+  const trade=String((sel&&sel.value)||'').trim().toUpperCase();
+  if(!trade) return;
+  const n=f.co.length+f.pay.length;
+  if(!confirm('Assign '+n+' record'+(n===1?'':'s')+' for '+name+' to the '+trade+' contract?\n\n'
+    +'This says which contract they were always against. No figure changes \u2014 they simply '
+    +'count again, on that contract. Anything filed from now on is asked at the time.')) return;
+  try{
+    if(f.co.length){
+      const mod=MODULES.co, fid=currentProject.folders.co;
+      const existing=await findFile(fid,mod.log);
+      const rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+      const want=new Set(f.co.map(i=>String((allData.co[i]||{})['CO #']||(allData.co[i]||{})['PCO #']||'').trim()));
+      rows.forEach(r=>{ const k=String(r['CO #']||r['PCO #']||'').trim();
+        if(want.has(k) && !String(r['Trade']||'').trim()) r['Trade']=trade; });
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+      allData.co=rows;
+    }
+    if(f.pay.length){
+      const mod=MODULES.pay_apps, fid=currentProject.folders.pay_apps;
+      const existing=await findFile(fid,mod.log);
+      const rows=existing?(parseCSV(await boxGetText(existing.id))).rows:[];
+      const want=new Set(f.pay.map(i=>String((allData.pay_apps[i]||{})['App #']||'').trim()));
+      rows.forEach(r=>{ const k=String(r['App #']||'').trim();
+        if(want.has(k) && !String(r['Trade']||'').trim()) r['Trade']=trade; });
+      await boxUploadText(mod.log,toCSV(mod.headers,rows),fid,existing?existing.id:null);
+      allData.pay_apps=rows;
+    }
+    try{ auditLog('Records assigned to a contract','budget',{}, name+' \u2192 '+trade+' ('+n+')'); }catch(e){}
+    renderAll();
+    alert(n+' record'+(n===1?'':'s')+' assigned to the '+trade+' contract.');
+  }catch(e){ alert('Could not assign: '+e.message); }
+}
 async function alwRenumber(ev){
   const plan=alwRenumberPlan();
   if(!plan.renamed.length){ showStatus('psa-status','Every allowance is already numbered by its prime.','info'); return; }
