@@ -5935,7 +5935,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 02:50';
+const BUILD_STAMP='2026-09-18 11:13';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8958,11 +8958,16 @@ function renderOverview(){
   }).join(''); }
   renderAttention(rfis,cos,subs,pays,openR,openC,openS,openP,ovd);
   // ---- Activity Feed (most recent first) ----
+  // Every log reads by company — whose submittal is this — with the person as
+  // the detail underneath, so the feed that gathers all four does too. It carries
+  // the row rather than a flattened string, because submitterCell is what knows
+  // where the firm lives on each kind of row and how to resolve a bare address
+  // into a name. Change orders showed nothing at all here before.
   const feed=[
-    ...rfis.map(r=>({date:r['Date Submitted']||'',type:'RFI',item:(r['RFI #']||'')+' — '+(r['Subject']||''),by:r['Submitted By']||'',status:r['Status']||'',od:isOverdue(r)})),
-    ...cos.map(r=>({date:r['Date Submitted']||'',type:'Change Order',item:(r['CO #']||'')+' — '+(r['Description']||''),by:'',status:r['Status']||'',od:false})),
-    ...subs.map(r=>({date:r['Date Submitted']||'',type:'Submittal',item:(r['Submittal #']||'')+' — '+(r['Description']||''),by:r['Submitted By (Sub)']||'',status:r['Status']||'',od:false})),
-    ...pays.map(r=>{ const _st=(r['Status']||'').toLowerCase(); const _pend=_st.indexOf('submit')>=0||_st.indexOf('pending')>=0; return {date:r['Review Date']||r['Period']||'',type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),by:r['Contractor']||'',status:r['Status']||'',od:!!(_pend && r['Due Date'] && Date.parse(r['Due Date'])<Date.now())}; })
+    ...rfis.map(r=>({date:r['Date Submitted']||'',type:'RFI',item:(r['RFI #']||'')+' — '+(r['Subject']||''),row:r,status:r['Status']||'',od:isOverdue(r)})),
+    ...cos.map(r=>({date:r['Date Submitted']||'',type:'Change Order',item:(r['CO #']||r['PCO #']||'')+' — '+(r['Description']||''),row:r,status:r['Status']||'',od:false})),
+    ...subs.map(r=>({date:r['Date Submitted']||'',type:'Submittal',item:(r['Submittal #']||'')+' — '+(r['Description']||''),row:r,status:r['Status']||'',od:false})),
+    ...pays.map(r=>{ const _st=(r['Status']||'').toLowerCase(); const _pend=_st.indexOf('submit')>=0||_st.indexOf('pending')>=0; return {date:r['Review Date']||r['Period']||'',type:'Pay App',item:(r['App #']||'')+' — '+(r['Contractor']||''),row:r,status:r['Status']||'',od:!!(_pend && r['Due Date'] && Date.parse(r['Due Date'])<Date.now())}; })
   ].filter(x=>x.item.replace(/^ — /,'').trim());
   feed.sort((a,b)=>(Date.parse(b.date)||0)-(Date.parse(a.date)||0));
   const fb=document.getElementById('tbody-feed');
@@ -8974,7 +8979,7 @@ function renderOverview(){
         : '<td>'+esc(r.item)+'</td>';
       const sec=secMap[r.type];
       const click=sec?' style="cursor:pointer;" onclick="navTo(\''+sec+'\')"':'';
-      return '<tr'+click+'>'+'<td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td>'+itemCell+'<td>'+esc(r.by)+'</td><td>'+pill(r.status,r.od)+'</td></tr>';
+      return '<tr'+click+'>'+'<td style="white-space:nowrap;color:var(--muted);font-size:13px;">'+esc(fmtDMY(r.date)||'—')+'</td><td>'+esc(r.type)+'</td>'+itemCell+'<td>'+submitterCell(r.row)+'</td><td>'+pill(r.status,r.od)+'</td></tr>';
     }).join(''):'<tr class="empty-row"><td colspan="5">No activity yet.</td></tr>';
   }
 }
