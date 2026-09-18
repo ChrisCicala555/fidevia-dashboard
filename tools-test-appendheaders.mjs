@@ -71,8 +71,11 @@ console.log('A file written with Windows line endings is not rewritten every tim
   // file - correct output, but the entire log rewritten on each submission.
   const crlf = NEW.join(',')+'\r\n'+'PA-001,Summit,Summit,GC,Final,Sept,Approved\r\n';
   const out=append(crlf, NEW, fresh);
-  ok(out.indexOf(NEW.join(',')+'\r\n')===0 || out.indexOf(NEW.join(','))===0,
-     'the header is left as it was');
+  // The discriminator: appending leaves the file's own bytes alone, so the
+  // carriage returns survive. Rewriting normalises them away, which is how you
+  // can tell the whole log was rebuilt when it did not need to be.
+  ok(out.indexOf('\r')>=0, 'the file\u2019s own line endings survive, so it was appended to, not rebuilt');
+  ok(out.indexOf(NEW.join(','))===0, 'and the header is where it was');
   ok((out.match(/PA-001/g)||[]).length===1, 'the existing row appears once, not rewritten and re-added');
   const p=parse(out);
   ok(p.rows.length===2, 'two rows');
