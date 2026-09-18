@@ -16,6 +16,7 @@
 // So: same module system and the same static import as the ones that work, and
 // a failure to record now says so rather than disappearing.
 import { logNotif } from './lib/notif-log.mjs';
+import { sendGridWhy, sendGridKeyMissing, NO_KEY } from './lib/sendgrid-why.mjs';
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
@@ -55,6 +56,13 @@ export default async (req) => {
         .map(a => ({ content: a.content, filename: a.filename, type: a.type || 'application/octet-stream', disposition: 'attachment' }));
       if (atts.length) payload.attachments = atts;
     }
+    // 'Bearer undefined' is a 401, and so is a revoked key: the log said the
+    // same thing for a variable nobody set and a key somebody deleted, and the
+    // two are fixed in different places.
+    if (sendGridKeyMissing()) {
+      const logged = await record(Object.assign({}, meta, { ok: false, error: NO_KEY }));
+      return json({ ok: false, error: NO_KEY, logged });
+    }
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' },
@@ -63,7 +71,7 @@ export default async (req) => {
     const ok = res.status === 202;
     // A refused send is a thing that happened and belongs in the log with its
     // reason, which is why this records on both paths rather than only on ok.
-    const logged = await record(Object.assign({}, meta, ok ? { ok: true } : { ok: false, error: 'SendGrid ' + res.status }));
+    const logged = await record(Object.assign({}, meta, ok ? { ok: true } : { ok: false, error: sendGridWhy(res.status) }));
     return json({ ok, logged }, ok ? 202 : res.status);
   } catch (e) {
     if (meta) await record(Object.assign({}, meta, { ok: false, error: e.message }));

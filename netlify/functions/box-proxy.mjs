@@ -1,4 +1,5 @@
 import { getStore } from '@netlify/blobs';
+import { sendGridWhy } from './lib/sendgrid-why.mjs';
 import { logNotif, readNotifLog } from './lib/notif-log.mjs';
 import { scheduleState, periodOfDate, periodFromName, periodLabel, newestFirst,
          norm as schedNorm } from './lib/sched.mjs';
@@ -345,7 +346,7 @@ async function sendGrantEmailMany(email, projectNames, company, role, opts){
     { project: multi ? (names.length + ' projects') : (projectName || 'a project') });
   const payload = { personalizations:[{to:[{email}]}], from:{email:from,name:'Fidevia Dashboard'}, subject, content:[{type:'text/html',value:html}] };
   const r = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  await logNotif({ to:[email], subject, kind:'access', project:names.join(', '), projectId:opts&&opts.projectId, by:opts&&opts.by, ok:r.status===202, error:r.status===202?'':('SendGrid '+r.status) });
+  await logNotif({ to:[email], subject, kind:'access', project:names.join(', '), projectId:opts&&opts.projectId, by:opts&&opts.by, ok:r.status===202, error:r.status===202?'':sendGridWhy(r.status) });
 }
 // A request used to be written to storage and nothing else. It surfaced only
 // when an administrator happened to open that particular project, so a request
@@ -402,7 +403,7 @@ async function notifyAdminsOfRequest(projectName, requester, H, projectId){
   const r2 = await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
     body:JSON.stringify({ personalizations:[{to:to.map(e=>({email:e}))}], from:{email:process.env.FROM_EMAIL||'dashboard@fidevia.com',name:'Fidevia Dashboard'},
       subject:subject2, content:[{type:'text/html',value:html}] })});
-  await logNotif({ to, subject:subject2, kind:'access-request', project:projectName||'', ok:r2.status===202, error:r2.status===202?'':('SendGrid '+r2.status) });
+  await logNotif({ to, subject:subject2, kind:'access-request', project:projectName||'', ok:r2.status===202, error:r2.status===202?'':sendGridWhy(r2.status) });
 }
 // The three company-private modules keep a folder per firm. A caller scoped to
 // one company may write inside their own, or directly into the module folder —
@@ -3164,7 +3165,7 @@ export default async (req) => {
           const html = `<div style="background:#f4f2ec;padding:28px 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2ddd5;border-radius:12px;overflow:hidden"><tr><td style="padding:26px 24px 12px;text-align:center"><img src="${origin}/fidevia-email-logo.png" alt="Fidevia" width="164" style="display:block;margin:0 auto 6px;max-width:164px;height:auto"><div style="font-size:11px;letter-spacing:2px;color:#8a8550;text-transform:uppercase">Construction Dashboard</div></td></tr><tr><td style="padding:0 24px"><div style="height:2px;line-height:2px;font-size:0;background:#515520">&nbsp;</div></td></tr><tr><td style="padding:24px"><div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:700;margin:0 0 12px"><span style="color:#515520">Project closing:</span> <span style="color:#2f2f2f">${body.projectName || 'Project'}</span></div><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">This project will be archived on <strong>${when}</strong>. After that date it will no longer appear in your project list and you will not be able to access its records.</p><p style="font-size:14px;color:#2f2f2f;line-height:1.6;margin:0 0 14px">If you need copies of any documents, please download them before then.</p><div style="text-align:center;margin:22px 0 4px"><a href="${origin}" style="display:inline-block;background:#515520;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 30px;border-radius:6px">Open the Dashboard</a></div></td></tr><tr><td style="padding:14px 24px 22px;text-align:center;border-top:1px solid #f0ece3"><div style="font-size:11px;color:#b3b0a4;line-height:1.6">Sent from the Fidevia Construction Dashboard.</div></td></tr></table></div>`;
           const subject = '[Fidevia] ' + (body.projectName || 'Project') + ' will be archived on ' + when;
           const r = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.SENDGRID_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ personalizations: [{ to: emails.map(e => ({ email: e })) }], from: { email: process.env.FROM_EMAIL || 'dashboard@fidevia.com', name: 'Fidevia Dashboard' }, subject, content: [{ type: 'text/html', value: html }] }) });
-          await logNotif({ to: emails, subject, kind: 'archive', trigger: 'manual', projectId: pid, project: body.projectName || '', by: who.email || '', ok: r.status === 202, error: r.status === 202 ? '' : ('SendGrid ' + r.status) });
+          await logNotif({ to: emails, subject, kind: 'archive', trigger: 'manual', projectId: pid, project: body.projectName || '', by: who.email || '', ok: r.status === 202, error: r.status === 202 ? '' : sendGridWhy(r.status) });
           sent = emails.length;
         }
       } catch (e) {}

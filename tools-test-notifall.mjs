@@ -23,8 +23,10 @@ ok(/console\.error\('\[send-email\] notification log write failed:'/.test(send),
    'a failure to record says so rather than vanishing into an empty catch');
 ok(/return json\(\{ ok, logged \}/.test(send),
    'and the caller is told whether it was recorded');
-ok(/ok \? \{ ok: true \} : \{ ok: false, error: 'SendGrid ' \+ res\.status \}/.test(send),
+ok(/ok \? \{ ok: true \} : \{ ok: false, error: sendGridWhy\(res\.status\) \}/.test(send),
    'a refused send is recorded with its reason, not dropped');
+ok(/sendGridKeyMissing\(\)/.test(send),
+   'and a send with no key set is refused here, rather than read as a rejected key');
 
 console.log('One funnel, and it carries the context');
 {

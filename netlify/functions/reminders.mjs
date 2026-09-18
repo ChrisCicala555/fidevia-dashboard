@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs';
 import { logNotif } from './lib/notif-log.mjs';
+import { sendGridWhy } from './lib/sendgrid-why.mjs';
 import { scheduleState, periodOfDate, periodLabel, norm as schedNorm } from './lib/sched.mjs';
 
 // Retry Box calls that come back rate-limited. This job runs unattended, so a
@@ -79,7 +80,7 @@ async function sendEmail(to, subject, html, meta) {
     })
   });
   await logNotif(Object.assign({ to, subject, trigger: 'auto', by: 'Scheduled reminder' }, meta || {},
-    { ok: r.status === 202, error: r.status === 202 ? '' : ('SendGrid ' + r.status) }));
+    { ok: r.status === 202, error: r.status === 202 ? '' : sendGridWhy(r.status) }));
 }
 // ── Monthly schedule chase ────────────────────────────────────────────────
 // Each prime contractor posts an updated schedule into
