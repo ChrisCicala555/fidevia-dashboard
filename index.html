@@ -5874,7 +5874,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-17 23:56';
+const BUILD_STAMP='2026-09-18 00:06';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9505,13 +9505,20 @@ function psRender(){
 // nobody reads to the bottom of, so this steps through them and shows one,
 // with what fires it and who receives it beside the wording being changed.
 let PS_EMAIL={}, ET_AT=0;
-function etSample(){
-  return {project:'Ithaca Housing Complex', number:'RFI-014', title:'Slab edge detail',
-          submitter:'John Reyes', item:'Submittal', step:'Architect Review',
-          firm:'Architect 2', outcome:'Approved as Noted', status:'Revise and Resubmit',
-          who:'Fidevia', company:'Summit Builders', period:'September 2026',
-          name:'Penelope Odiem', role:'Engineer', email:'p@nextlevel.test',
-          date:'31 December 2026'};
+// Values a reader recognises as belonging to THIS email. One shared set
+// previewed a change order as "New Change Order: RFI-014", which reads as a
+// fault in the dashboard rather than a placeholder in a sample.
+function etSample(k){
+  const base={project:'Ithaca Housing Complex', number:'\u2014', title:'\u2014',
+              // A dash, not a plausible value. If a kind ever forgets its own
+              // sample, the preview should look unfinished rather than look
+              // like a change order numbered RFI-014.
+              submitter:'John Reyes', item:'\u2014', step:'Architect Review',
+              firm:'Architect 2', outcome:'Approved as Noted', status:'Revise and Resubmit',
+              who:'Fidevia', company:'Summit Builders', period:'September 2026',
+              name:'Penelope Odiem', role:'Engineer', email:'p@nextlevel.test',
+              date:'31 December 2026'};
+  return Object.assign(base, (k&&k.sample)||{});
 }
 function etApply(str, v){
   return String(str||'').replace(/\{(\w+)\}/g, (m,k)=> (v[k]!=null && v[k]!=='') ? v[k] : m);
@@ -9539,7 +9546,7 @@ function etReset(){
 }
 function etPreview(){
   const k=EMAIL_KINDS[ET_AT]; if(!k) return;
-  const v=etSample(); const host=document.getElementById('et-preview'); if(!host) return;
+  const v=etSample(k); const host=document.getElementById('et-preview'); if(!host) return;
   host.innerHTML='<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">As it arrives</div>'
     +'<div style="background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">'
     +'<div style="font-size:13px;color:var(--muted);">Subject</div>'
@@ -10467,32 +10474,38 @@ const EMAIL_KINDS=[
   {id:'rfi', group:'Something was filed', label:'New RFI',
    when:'A contractor files an RFI.', who:'Everyone with Notify — RFI ticked, and the first reviewer.',
    vars:['{project}','{number}','{title}','{submitter}'],
+   sample:{number:'RFI-014', title:'Slab edge detail', item:'RFI'},
    subject:'[Fidevia] New RFI Submitted: {number}', intro:'New RFI: {title}',
    fixed:'The RFI number, who filed it, who it is assigned to, the due date and the status.'},
   {id:'co', group:'Something was filed', label:'New change order',
    when:'A change order or PCO is filed.', who:'Everyone with Notify — CO ticked, and the first reviewer.',
    vars:['{project}','{number}','{title}','{submitter}'],
+   sample:{number:'PCO-007', title:'Added site lighting at the north walk', item:'Change Order'},
    subject:'[Fidevia] New Change Order: {number}', intro:'Change Order Submitted: {title}',
    fixed:'The CO number, who filed it, the cost impact and the status.'},
   {id:'co_issued', group:'Something was filed', label:'Change order issued',
    when:'The architect issues a change order by uploading one.', who:'Everyone with Notify — CO ticked.',
    vars:['{project}','{number}','{title}'],
+   sample:{number:'CO-003', title:'Added site lighting at the north walk', item:'Change Order'},
    subject:'[Fidevia] Change Order Issued: {number}', intro:'Change Order Issued: {title}',
    fixed:'The CO number, the cost impact and the status.'},
   {id:'sub', group:'Something was filed', label:'New submittal',
    when:'A contractor files a submittal.', who:'Everyone with Notify — Submittal ticked, and the first reviewer.',
    vars:['{project}','{number}','{title}','{submitter}'],
+   sample:{number:'SUB-GC-008', title:'Stone masonry shop drawings', item:'Submittal'},
    subject:'[Fidevia] New Submittal: {number}', intro:'Submittal Received: {title}',
    fixed:'The submittal number, spec section, who filed it, the reviewer and the status.'},
   {id:'pay_apps', group:'Something was filed', label:'Payment application',
    when:'A contractor files a payment application.', who:'Fidevia and that contractor only — never a rival.',
    vars:['{project}','{number}','{title}','{submitter}'],
+   sample:{number:'PA-004', title:'August 2026', item:'Payment Application'},
    subject:'[Fidevia] Payment Application: {number}', intro:'Payment Application: {title}',
    fixed:'The application number, the contractor and the amounts.'},
 
   {id:'wf_action', group:'Somebody has to act', label:'Action required',
    when:'An item reaches the first step of its review chain.', who:'The firm that owes the step.',
    vars:['{project}','{item}','{number}','{step}','{firm}'],
+   sample:{item:'Submittal', number:'SUB-GC-008', step:'Architect Review', firm:'Architect 2'},
    subject:'[Fidevia] Action required: {item} {number} awaits your review',
    intro:'Action Required: {item} Review',
    fixed:'The item number, which step it is, and a link to the item.'},
@@ -10500,27 +10513,32 @@ const EMAIL_KINDS=[
    when:'A reviewer signs and the item moves to the next firm, or the chain completes.',
    who:'Everyone on that item’s notify list.',
    vars:['{project}','{item}','{number}','{firm}'],
+   sample:{item:'Submittal', number:'SUB-GC-008', firm:'Next Level Engineers'},
    subject:'[Fidevia] {item} {number} — Awaiting {firm}', intro:'{item} Workflow Update',
    fixed:'Who signed, what they said, and who it is with now.'},
   {id:'wf_override', group:'Somebody has to act', label:'Review recorded on a firm’s behalf',
    when:'Fidevia records a step for somebody else.', who:'Everyone on that item’s notify list.',
    vars:['{project}','{item}','{number}','{outcome}','{who}'],
+   sample:{item:'RFI', number:'RFI-014', outcome:'Answered', who:'Fidevia'},
    subject:'[Fidevia] {item} {number} — {outcome}', intro:'{item} {outcome}',
    fixed:'That Fidevia acted on their behalf, and the reason given.'},
   {id:'reply', group:'Somebody has to act', label:'Item updated after a review',
    when:'A reviewer replies, uploads a version, or changes a status.',
    who:'Everyone on that item’s notify list, plus anyone copied in.',
    vars:['{project}','{item}','{number}','{status}'],
+   sample:{item:'Submittal', number:'SUB-GC-008', status:'Revise and Resubmit'},
    subject:'[Fidevia] {item} {number} — {status}', intro:'{item} Updated: {status}',
    fixed:'The new status, who updated it, their note, and who it is with now.'},
   {id:'pay_step', group:'Somebody has to act', label:'Pay application review recorded',
    when:'A step of a payment application chain is signed.', who:'Fidevia and that contractor only.',
    vars:['{project}','{number}','{step}','{outcome}'],
+   sample:{number:'PA-004', step:'Pencil Review', outcome:'Approved as Noted'},
    subject:'[Fidevia] Payment Application {number} — {outcome}', intro:'Payment Application {outcome}',
    fixed:'The application number, the step, the outcome and who it is with now.'},
   {id:'pay_replaced', group:'Somebody has to act', label:'Pay application document replaced',
    when:'A payment application’s document is replaced.', who:'Fidevia and that contractor only.',
    vars:['{project}','{number}'],
+   sample:{number:'PA-004'},
    subject:'[Fidevia] Payment Application {number} — document replaced',
    intro:'Payment Application Document Replaced',
    fixed:'The application number and who replaced it.'},
@@ -10529,6 +10547,7 @@ const EMAIL_KINDS=[
    when:'The monthly chase runs, or Fidevia presses Send now on the Schedule tab.',
    who:'The contractor who owes a programme.',
    vars:['{project}','{company}','{period}'],
+   sample:{company:'Summit Builders', period:'September 2026'},
    subject:'[Fidevia] Monthly schedule due — {project}',
    intro:'{company}: this month’s schedule is due',
    fixed:'Which period is owed, and when they last filed one.'},
@@ -10541,12 +10560,14 @@ const EMAIL_KINDS=[
   {id:'archive', group:'Chasing and reminders', label:'Project will be archived',
    when:'Fidevia warns a project is closing.', who:'Everyone holding access to that project.',
    vars:['{project}','{date}'],
+   sample:{date:'31 December 2026'},
    subject:'[Fidevia] {project} will be archived on {date}',
    intro:'Project closing: {project}',
    fixed:'The date, what happens after it, and a sign-in button.'},
   {id:'deleted', group:'Chasing and reminders', label:'Record deleted',
    when:'Somebody removes a record.', who:'Fidevia, and whoever filed it.',
    vars:['{project}','{item}','{number}','{who}'],
+   sample:{item:'RFI', number:'RFI-014', who:'Sophie Grant'},
    subject:'[Fidevia] Record deleted: {item} {number}', intro:'A record was deleted',
    fixed:'What was deleted, by whom, and the reason given.'},
 
@@ -10571,6 +10592,7 @@ const EMAIL_KINDS=[
   {id:'access_request', group:'People and access', label:'Somebody asked for access',
    when:'A person requests access to a project.', who:'Fidevia.',
    vars:['{project}','{name}','{email}'],
+   sample:{name:'Dave Kowalski', email:'dave@ahplumbing.test'},
    subject:'[Fidevia] Access request: {project}',
    intro:'Somebody has asked for access to {project}.',
    fixed:'Who asked, their address, and a button to open the dashboard.'}

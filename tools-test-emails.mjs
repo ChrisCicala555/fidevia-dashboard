@@ -46,10 +46,56 @@ console.log('Each one says what it is and what fills it in');
   const unknown=[];
   ids.forEach((id,i)=>{
     const k=JSON.parse(P.run(`JSON.stringify(EMAIL_KINDS[${i}])`));
-    const v=JSON.parse(P.run("JSON.stringify(etSample())"));
+    const v=JSON.parse(P.run(`JSON.stringify(etSample(EMAIL_KINDS[${i}]))`));
     k.vars.forEach(x=>{ if(!(x.slice(1,-1) in v)) unknown.push(id+' '+x); });
   });
   ok(unknown.length===0, 'and the preview can fill in every one ('+unknown.join(', ')+')');
+}
+
+console.log('The preview shows values that belong to that email');
+// One shared sample previewed a change order as "New Change Order: RFI-014",
+// which reads as a fault in the dashboard rather than a placeholder.
+{
+  const wrong=[];
+  ids.forEach((id,i)=>{
+    P.run(`PS_EMAIL={}; etGo(${i});`);
+    const txt=P.run("document.getElementById('et-preview').innerHTML").replace(/<[^>]+>/g,' ');
+    // No email but the RFI ones should be showing an RFI number.
+    if(!/^(rfi|wf_override|deleted)$/.test(id) && /RFI-014/.test(txt)) wrong.push(id);
+    // Nothing should preview with an unfilled brace.
+    if(/\{\w+\}/.test(txt)) wrong.push(id+' (unfilled)');
+  });
+  ok(wrong.length===0, 'no email borrows another\u2019s number ('+wrong.join(', ')+')');
+}
+{
+  const num=(i)=>{ P.run(`PS_EMAIL={}; etGo(${i});`);
+    return P.run("document.getElementById('et-preview').innerHTML").replace(/<[^>]+>/g,' '); };
+  ok(/PCO-007/.test(num(ids.indexOf('co'))), 'a change order previews as a PCO number');
+  ok(/CO-003/.test(num(ids.indexOf('co_issued'))), 'an issued one as a CO number');
+  ok(/SUB-GC-008/.test(num(ids.indexOf('sub'))), 'a submittal as a submittal number');
+  ok(/PA-004/.test(num(ids.indexOf('pay_apps'))), 'a payment application as an application number');
+  ok(/RFI-014/.test(num(ids.indexOf('rfi'))), 'and an RFI as an RFI number');
+  ok(/Stone masonry/.test(num(ids.indexOf('sub'))), 'with a title that suits it too');
+  ok(/site lighting/.test(num(ids.indexOf('co'))), 'on both');
+}
+{
+  // Every kind that takes {number} or {title} says what its own looks like,
+  // so a kind added later cannot quietly fall back to another's.
+  const bare=[];
+  ids.forEach((id,i)=>{
+    const k=JSON.parse(P.run(`JSON.stringify(EMAIL_KINDS[${i}])`));
+    const uses=(k.subject+' '+k.intro).match(/\{(number|title|item)\}/g)||[];
+    if(uses.length && !(k.sample && (k.sample.number||k.sample.title||k.sample.item))) bare.push(id);
+  });
+  ok(bare.length===0, 'and every kind using a number, title or item brings its own ('+bare.join(', ')+')');
+}
+{
+  // The shared fallback must not look like a real value: a kind that forgets
+  // its sample should read as unfinished, not as the wrong item type.
+  const base=JSON.parse(P.run("JSON.stringify(etSample(null))"));
+  ok(!/^(RFI|Submittal|Change Order|Payment Application)$/.test(base.item),
+     'the fallback item type is a placeholder, not a real one');
+  ok(!/^[A-Z]{2,}-\d+/.test(base.number||''), 'and the fallback number is not a plausible number');
 }
 
 console.log('The slider steps through them');
