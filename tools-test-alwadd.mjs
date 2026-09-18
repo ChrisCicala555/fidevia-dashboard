@@ -36,7 +36,17 @@ seed();
 }
 
 console.log('The button adds a row to the right contract');
-ok(/alwAdd\('np','[a-z0-9-]+','/.test(view()), 'it hands over the contract key, not just the company');
+{
+  // The keys the buttons actually carry, in order.
+  const carried=[...view().matchAll(/alwAdd\('np','([a-z0-9-]+)'/g)].map(m=>m[1]);
+  ok(carried.length===4, 'a button for each contract');
+  ok(carried.join()===LINES.map((_,i)=>keyOf(i)).join(),
+     'each carrying its own contract key, not the company\u2019s');
+  ok(carried[1]!==carried[2],
+     'so the two Garden Spot primes send different keys \u2014 the whole reason for the key');
+  ok(carried.every((k,i)=>view().indexOf('id="np-alw-'+k+'"')>=0),
+     'and every key names a container that is actually on the page');
+}
 P.run(`alwAdd('np','${keyOf(1)}','Garden Spot Mechanical')`);
 ok(rowsIn(keyOf(1))===1, 'a row appears under the mechanical contract');
 ok(rowsIn(keyOf(2))===0, 'and not under the plumbing one');
