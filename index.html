@@ -5874,7 +5874,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 00:06';
+const BUILD_STAMP='2026-09-18 00:25';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -8048,7 +8048,9 @@ async function sendScheduleChaseNow(company){
         +' Please upload the current one.');
     try{
       const _schC=emailCfg('schedule');
-      const _schV={project:currentProject.name, company:t.company||'', period:periodLabel(periodOfDate(new Date()))||''};
+      // schedMonthLabel, not periodLabel: the latter lives in reminders.mjs and
+      // does not exist in the browser, so this threw and the chase never went.
+      const _schV={project:currentProject.name, company:t.company||'', period:schedMonthLabel()};
       await sendEmail(t.emails, applyVars(_schC.subject,_schV), body,
         {kind:'schedule', trigger:'manual'});
       sent+=t.emails.length;
@@ -15857,7 +15859,16 @@ function emailCfg(id, def){
   return { subject:pick('subject'), intro:pick('intro') };
 }
 function notifCfg(type, def){ return emailCfg(type, def); }
-function applyVars(s, v){ return String(s||'').replace(/\{project\}/g,v.project||'').replace(/\{number\}/g,v.number||'').replace(/\{submitter\}/g,v.submitter||'').replace(/\{title\}/g,v.title||''); }
+// Named fill-ins were listed one at a time, and only four ever were: every
+// email using {item}, {firm}, {status}, {step} or {outcome} went out with the
+// brace still in the subject line. Whatever is supplied is substituted now, and
+// anything left over is removed rather than posted to a client.
+function applyVars(s, v){
+  v=v||{};
+  return String(s||'')
+    .replace(/\{(\w+)\}/g, (m,k)=> (v[k]!=null && v[k]!=='') ? v[k] : '')
+    .replace(/\s{2,}/g,' ').replace(/\s+([.,;:])/g,'$1').trim();
+}
 let _NOTIF_OPTS=null;
 // Add everyone at these firms who asked to hear about this kind of item.
 // Recipients are de-duplicated when the message is built, so overlapping firms

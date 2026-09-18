@@ -154,5 +154,53 @@ ok(S.cleanEmails({rfi:{subject:'A\nB'}}).rfi.subject==='A B', 'nor a second line
 ok(S.cleanEmails({rfi:{subject:'x'.repeat(500)}}).rfi.subject.length===200, 'and a subject has a ceiling');
 ok(!S.cleanEmails({rfi:{subject:'   '}}), 'blank wording is no wording, so the default still applies');
 
+console.log('The sends actually run, and say what they mean');
+// Added after shipping a break: the tests inspected the source and the preview
+// and never ran a send, so a server-only helper called from the browser and a
+// substituter that knew four fill-ins out of sixteen both got through. These
+// drive the paths.
+{
+  const P2=bootPage('index.html'); P2.run(SEED);
+  P2.run(`window.__sent=[]; sendEmail=function(to,subj){ window.__sent.push(subj); return Promise.resolve(); };
+    currentProject.name='Ithaca Housing Complex'; 1;`);
+  const drive=(label, js)=>{
+    P2.run("window.__sent=[];");
+    let threw='';
+    try{ P2.run(js); }catch(e){ threw=e.message; }
+    const got=JSON.parse(P2.run("JSON.stringify(window.__sent)"));
+    ok(!threw, label+' does not throw ('+threw+')');
+    ok(got.length===1, label+' sends');
+    ok(!/[{}]/.test(got[0]||''), label+' has no fill-in left in the subject: '+(got[0]||''));
+    return got[0]||'';
+  };
+  drive('a deletion', "var _c=emailCfg('deleted'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,item:'RFI',number:'RFI-014',who:'Sophie'}));");
+  drive('a schedule chase', "var _c=emailCfg('schedule'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,company:'Summit Builders',period:schedMonthLabel()}));");
+  drive('a reply', "var _c=emailCfg('reply'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,item:'Submittal',number:'SUB-1',status:'Approved'}));");
+  drive('an action request', "var _c=emailCfg('wf_action'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,item:'Submittal',number:'SUB-1',step:'Architect Review',firm:'Architect 2'}));");
+  drive('a workflow move', "var _c=emailCfg('wf_update'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,item:'RFI',number:'RFI-1',firm:'Moore'}));");
+  drive('an override', "var _c=emailCfg('wf_override'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,item:'RFI',number:'RFI-1',outcome:'Answered',who:'Fidevia'}));");
+  drive('a replaced pay app', "var _c=emailCfg('pay_replaced'); sendEmail(['x'], applyVars(_c.subject,{project:currentProject.name,number:'PA-4'}));");
+}
+
+console.log('Every fill-in the registry declares is one applyVars can fill');
+{
+  const v={}; const all=[];
+  ids.forEach((id,i)=>{ JSON.parse(P.run(`JSON.stringify(EMAIL_KINDS[${i}].vars)`)).forEach(x=>all.push(x)); });
+  [...new Set(all)].forEach(x=>{ v[x.slice(1,-1)]='VALUE'; });
+  const out=P.run(`applyVars(${JSON.stringify([...new Set(all)].join('|'))}, ${JSON.stringify(v)})`);
+  ok(!/[{}]/.test(out), 'no declared fill-in is left as a brace: '+out.slice(0,80));
+}
+ok(P.run("applyVars('a {nope} b', {})")==='a b',
+   'and one nothing was supplied for is removed rather than posted to a client');
+ok(P.run("applyVars('a {b} c')")==='a c',
+   'called with no values at all it still returns a subject rather than throwing');
+
+console.log('No send path calls something that only exists on the server');
+{
+  const serverOnly=['periodLabel','periodOfDate','digestHTML','scheduleChaseHTML','logNotif','boxFetch'];
+  const missing=serverOnly.filter(f=>new RegExp('[^.\\w]'+f+'\\s*\\(').test(html) && !new RegExp('function '+f).test(html));
+  ok(missing.length===0, 'the browser calls none of them ('+missing.join(', ')+')');
+}
+
 console.log(`\n${n-bad} passed, ${bad} failed`);
 process.exit(bad?1:0);
