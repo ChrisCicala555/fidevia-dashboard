@@ -19,5 +19,7 @@ const out = [
   // The review chains a new project starts with, and the wording of every
   // email, sanitised the same way.
   whole.slice(whole.indexOf("const WF_KEYS ="), whole.indexOf('let _settingsCache')),
-].join('\n') + '\nexport { cleanWorkflows, WF_KEYS, cleanEmails, EMAIL_IDS, splitName, filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite, normVis, visAllowsRole, cleanTemplate, cleanFolderName, VIS_ALL, VIS_DESIGN, VIS_OWNER, VIS_FIDEVIA };\n';
+  // Appending a row to a log, with the file brought up to the current columns.
+  braceFn(at('function csvAppend')),
+].join('\n') + '\nexport { csvAppend, cleanWorkflows, WF_KEYS, cleanEmails, EMAIL_IDS, splitName, filterCsvForCaller, filterProjectConfig, EXTERNAL_READABLE_CSV, PRIVATE_CSV, fileIdsInRow, rowVisibleToExternal, normRole, seesAllCompanies, roleMayWrite, normVis, visAllowsRole, cleanTemplate, cleanFolderName, VIS_ALL, VIS_DESIGN, VIS_OWNER, VIS_FIDEVIA };\n';
 fs.writeFileSync('.filters.tmp.mjs', out);

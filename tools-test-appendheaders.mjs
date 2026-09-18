@@ -12,32 +12,22 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 const src=fs.readFileSync('netlify/functions/box-proxy.mjs','utf8');
 
-// The append body, lifted and run against a fake file rather than Box.
-const body=src.split("if (op === 'appendRow') {")[1].split("if (op === 'getNotifTemplates')")[0];
-// The real parser and escaper, lifted out of the proxy so this cannot drift
-// from what the server actually does.
-const grab=(sig)=>{ const i=src.indexOf(sig); let d=0, on=false, j=i;
-  for(; j<src.length; j++){ const c=src[j];
-    if(c==='{'){ d++; on=true; } else if(c==='}'){ d--; if(on&&d===0){ j++; break; } } }
-  return src.slice(i, j); };
-const mod=grab('function parseCSVServer(text){')+'\n'+grab('const csvEsc')
-  .replace(/^const csvEsc\s*=\s*/,'function csvEsc_(v){ return (')+')(v); }';
-const F=new Function(mod+'\nreturn {parseCSVServer, csvEsc:csvEsc_};')();
-const parse=F.parseCSVServer, csvEsc=F.csvEsc;
-
-// A miniature of what the server does, built from the same source text so it
-// cannot drift from it.
-function append(current, headers, row){
-  const rowLine = headers.map(h => csvEsc(row[h])).join(',');
-  const head = String(current.split('\n')[0]||'').replace(/\r/g,'').trim();
-  const want = headers.join(',');
-  if (head && head !== want) {
-    const prev = parse(current);
-    const lines = prev.rows.map(r => headers.map(h => csvEsc(r[h]!==undefined?r[h]:'')).join(','));
-    return want + '\n' + (lines.length ? lines.join('\n')+'\n' : '') + rowLine + '\n';
-  }
-  return (head ? current.replace(/\s*$/,'') : want) + '\n' + rowLine + '\n';
-}
+import { execSync } from 'child_process';
+execSync('node tools-extract-filters.mjs', { cwd: process.cwd() });
+const S = await import('./.filters.tmp.mjs');
+// The server's own function, not a copy of it. An earlier version of this test
+// reimplemented the logic and then asserted against the copy — so mutating the
+// server changed nothing and two faults went unnoticed.
+const append = S.csvAppend;
+const parse = (t)=>{ const lines=String(t).replace(/\r/g,'').split('\n').filter(l=>l.length);
+  const cut=(l)=>{ const out=[]; let cur='', q=false;
+    for(let i=0;i<l.length;i++){ const c=l[i];
+      if(c==='"'){ if(q&&l[i+1]==='"'){cur+='"';i++;} else q=!q; }
+      else if(c===','&&!q){ out.push(cur.trim()); cur=''; } else cur+=c; }
+  out.push(cur.trim()); return out; };
+  const headers=cut(lines[0]||'');
+  return { headers, rows: lines.slice(1).map(l=>{ const v=cut(l), o={};
+    headers.forEach((h,k)=>o[h]=v[k]!==undefined?v[k]:''); return o; }) }; };
 
 const OLD=['App #','Contractor','Company','Copy Type','Period','Status'];
 const NEW=['App #','Contractor','Company','Trade','Copy Type','Period','Status'];
@@ -74,6 +64,21 @@ console.log('A file already up to date is appended to, not rewritten');
   ok(p.rows[0]['Trade']==='GC' && p.rows[1]['Trade']==='GC', 'both rows keep their contract');
 }
 
+console.log('A file written with Windows line endings is not rewritten every time');
+{
+  // Box hands back whatever was uploaded. A stray carriage return on the header
+  // made it compare unequal to the caller's, so every append rewrote the whole
+  // file - correct output, but the entire log rewritten on each submission.
+  const crlf = NEW.join(',')+'\r\n'+'PA-001,Summit,Summit,GC,Final,Sept,Approved\r\n';
+  const out=append(crlf, NEW, fresh);
+  ok(out.indexOf(NEW.join(',')+'\r\n')===0 || out.indexOf(NEW.join(','))===0,
+     'the header is left as it was');
+  ok((out.match(/PA-001/g)||[]).length===1, 'the existing row appears once, not rewritten and re-added');
+  const p=parse(out);
+  ok(p.rows.length===2, 'two rows');
+  ok(p.rows[1]['Trade']==='GC', 'and the new one still records its contract');
+}
+
 console.log('A column that has gone away is dropped, not left dangling');
 {
   const retired = ['App #','Contractor','Company','Obsolete','Copy Type','Period','Status'].join(',')+'\n'
@@ -91,11 +96,11 @@ console.log('An empty or missing file still gets a header');
   ok(p.rows.length===1 && p.rows[0]['Trade']==='GC', 'and the row beneath them');
 }
 
-console.log('The server does this, not just this test');
-ok(/const head = String\(current\.split\('\\n'\)\[0\] \|\| ''\)/.test(src), 'it reads the file\u2019s own header');
-ok(/if \(head && head !== want\)/.test(src), 'compares it with the caller\u2019s');
-ok(/prev\.rows\.map\(r => headers\.map\(h => csvEsc\(r\[h\] !== undefined \? r\[h\] : ''\)\)/.test(src),
-   'and remaps the existing rows by name');
+console.log('And the op uses it, rather than a second copy of it');
+ok(/out = csvAppend\(cr\.ok \? await cr\.text\(\) : '', headers, row\);/.test(src),
+   'appending to a file that exists goes through csvAppend');
+ok(/out = csvAppend\('', headers, row\);/.test(src), 'and so does creating one');
+ok((src.match(/function csvAppend/g)||[]).length===1, 'there is one implementation of it');
 
 console.log(`\n${n-bad} passed, ${bad} failed`);
 process.exit(bad?1:0);

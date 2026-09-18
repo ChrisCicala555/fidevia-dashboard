@@ -71,6 +71,27 @@ const ADMIN_DOMAIN = 'fidevia.com';
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 const csvEsc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+// Appending a row to a log, with the file brought up to the current columns
+// first. The row is built from the CALLER's header list; the file carries
+// whatever header row it was created with. The moment a column is added to a
+// module those go out of step, and the longer line lands against the shorter
+// header: every value past the new column shifts into its neighbour's field.
+// Copy Type read 'GC', Period From read 'Pencil', the last value fell off.
+//
+// Existing rows are remapped BY NAME. A column that has been added arrives
+// empty; one that has gone is dropped. A file already up to date is appended
+// to unchanged, which is the ordinary case and stays cheap.
+function csvAppend(current, headers, row){
+  const rowLine = headers.map(h => csvEsc(row[h])).join(',');
+  const head = String(String(current || '').split('\n')[0] || '').replace(/\r/g, '').trim();
+  const want = headers.join(',');
+  if (head && head !== want) {
+    const prev = parseCSVServer(current);
+    const lines = prev.rows.map(r => headers.map(h => csvEsc(r[h] !== undefined ? r[h] : '')).join(','));
+    return want + '\n' + (lines.length ? lines.join('\n') + '\n' : '') + rowLine + '\n';
+  }
+  return (head ? String(current).replace(/\s*$/, '') : want) + '\n' + rowLine + '\n';
+}
 function parseCSVServer(text){
   if(!text || !text.trim()) return { headers:[], rows:[] };
   const lines = text.replace(/\r/g,'').split('\n').filter(l=>l.length);
@@ -2557,38 +2578,17 @@ export default async (req) => {
         if ('Submitted By Email' in row) row['Submitted By Email'] = who.email || '';
         if ('Company' in row && co2) row['Company'] = co2;
       }
-      const rowLine = headers.map(h => csvEsc(row[h])).join(',');
       const lr = await boxFetch(`https://api.box.com/2.0/folders/${encodeURIComponent(folderId)}/items?limit=1000&fields=id,name,type`, { headers: H });
       const items = lr.ok ? ((await lr.json()).entries || []) : [];
       const existing = items.find(i => i.type === 'file' && i.name === filename);
       let out, uploadUrl, attrs;
       if (existing) {
         const cr = await boxFetch(`https://api.box.com/2.0/files/${existing.id}/content`, { headers: H });
-        const current = cr.ok ? await cr.text() : '';
-        // The row is built from the caller's header list; the FILE has whatever
-        // header row it was created with. Adding a column to a module put those
-        // out of step, and appending the longer line to the shorter header
-        // shifted every value past the new column into its neighbour's field:
-        // Copy Type read "GC", Period From read "Pencil", and the last value
-        // fell off the end. The row looked right to the browser that had just
-        // built it and wrong to everybody who read it back.
-        //
-        // So the file is brought up to the current headers first, its existing
-        // rows remapped BY NAME rather than by position. A column that has been
-        // added gains an empty value; one that has gone is dropped.
-        const head = String(current.split('\n')[0] || '').replace(/\r/g, '').trim();
-        const want = headers.join(',');
-        if (head && head !== want) {
-          const prev = parseCSVServer(current);
-          const lines = prev.rows.map(r => headers.map(h => csvEsc(r[h] !== undefined ? r[h] : '')).join(','));
-          out = want + '\n' + (lines.length ? lines.join('\n') + '\n' : '') + rowLine + '\n';
-        } else {
-          out = (head ? current.replace(/\s*$/, '') : want) + '\n' + rowLine + '\n';
-        }
+        out = csvAppend(cr.ok ? await cr.text() : '', headers, row);
         uploadUrl = `https://upload.box.com/api/2.0/files/${existing.id}/content`;
         attrs = JSON.stringify({ name: filename });
       } else {
-        out = headers.join(',') + '\n' + rowLine + '\n';
+        out = csvAppend('', headers, row);
         uploadUrl = 'https://upload.box.com/api/2.0/files/content';
         attrs = JSON.stringify({ name: filename, parent: { id: String(folderId) } });
       }
