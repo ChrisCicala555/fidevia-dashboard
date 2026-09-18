@@ -5888,7 +5888,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 00:47';
+const BUILD_STAMP='2026-09-18 01:00';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -9672,12 +9672,34 @@ async function openContactDir(){
   try{ const d=await proxyCall('allContacts',{}); CONTACT_DIR=d.contacts||[]; renderContactDir(); }
   catch(e){ list.innerHTML='<div style="color:var(--danger)">'+esc(e.message)+'</div>'; }
 }
+// Shut by default. Opened by hand, or by a search that might match somebody in
+// it, and the choice does not outlive the page.
+let CD_UN_OPEN=false;
+function cdToggleUnassigned(){ CD_UN_OPEN=!CD_UN_OPEN; renderContactDir(); }
 function renderContactDir(){
   const q=(document.getElementById('cd-search').value||'').trim().toLowerCase();
   let list=CONTACT_DIR;
   if(q) list=list.filter(c=>((c.name||'')+' '+(c.company||'')+' '+(c.email||'')+' '+(c.role||'')).toLowerCase().includes(q));
+  // Worked out BEFORE the A-Z is built, not after. Grouping the whole list
+  // and then removing these from it left the groups holding them anyway, so
+  // an unassigned account appeared twice: once in the band at the top and
+  // again under its own letter.
+  // Accounts that exist but are on nothing. Two kinds land here and both want
+  // looking at: someone invited who signed up and was never placed, and
+  // someone who found the sign-up page and was never invited at all. Fidevia
+  // addresses are excluded — they are administrators by domain and would fill
+  // this permanently without meaning anything.
+  const unassigned = list.filter(c =>
+    !c.pending &&
+    !FIDEVIA_EMAIL.test(String(c.email||'').trim()) &&
+    !Number(c.projects||0));
+  const unassignedSubs = new Set(unassigned.map(c=>c.sub));
+  list = list.filter(c=>!unassignedSubs.has(c.sub));
   const el=document.getElementById('cd-list');
-  if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">'+(q?'No contacts match your search.':'No accounts yet.')+'</div>'; return; }
+  // Counting the unassigned too. Searching for somebody who is on no project
+  // emptied the A-Z and answered "No contacts match your search", about a
+  // person who is in the directory and was matched a line above.
+  if(!list.length && !unassigned.length){ el.innerHTML='<div style="color:var(--muted);font-style:italic;">'+(q?'No contacts match your search.':'No accounts yet.')+'</div>'; return; }
   const mode=((document.getElementById('cd-group')||{}).value)||'name';
   const groups={};
   // Grouped and sorted on the family name, the way a directory is read. Falls
@@ -9706,17 +9728,6 @@ function renderContactDir(){
     return a.localeCompare(b);
   });
   letters.forEach(L=>groups[L].sort(byName));
-  // Accounts that exist but are on nothing. Two kinds land here and both want
-  // looking at: someone invited who signed up and was never placed, and
-  // someone who found the sign-up page and was never invited at all. Fidevia
-  // addresses are excluded — they are administrators by domain and would fill
-  // this permanently without meaning anything.
-  const unassigned = list.filter(c =>
-    !c.pending &&
-    !FIDEVIA_EMAIL.test(String(c.email||'').trim()) &&
-    !Number(c.projects||0));
-  const unassignedSubs = new Set(unassigned.map(c=>c.sub));
-  list = list.filter(c=>!unassignedSubs.has(c.sub));
   const cnt=document.getElementById('cd-count');
   if(cnt){
     const total=list.length+unassigned.length;
@@ -9752,17 +9763,32 @@ function renderContactDir(){
         +'</td>':'')+'</tr>'; };
   try{ cdUpdateSaveBar(); }catch(e){}
   const NCOL = CD_UNLOCKED ? 6 : 5;
-  // Pinned above the A-Z, because the point of it is to be noticed.
-  const unassignedRows = unassigned.length
-    ? '<tr class="cd-band cd-band-warn"><td colspan="'+NCOL+'">'
+  const head='<thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th>'
+    +(CD_UNLOCKED?'<th class="nw" style="text-align:right;">Actions</th>':'')+'</tr></thead>';
+  // Its own table above the A-Z, and shut unless asked for. Eleven of these
+  // sat between the search box and the letter A, so the directory opened on a
+  // list of people who are not on anything. It still says how many there are,
+  // which is the part that wanted noticing — the names are what can wait.
+  //
+  // A search opens it: a name that matches and is hidden behind a closed band
+  // reads as a name that is not there.
+  const open = CD_UN_OPEN || !!q;
+  const unassignedCard = unassigned.length
+    ? '<div class="cd-card" style="margin-bottom:14px;"><table>'
+      +(open?head:'')
+      +'<tbody><tr class="cd-band cd-band-warn" style="cursor:pointer;" onclick="cdToggleUnassigned()">'
+      +'<td colspan="'+NCOL+'">'
+        +'<span class="thread-arrow" style="margin-right:6px;">'+(open?'\u25be':'\u25b8')+'</span>'
         +'<span class="cdb-key">Unassigned accounts</span><span class="cdb-n">'+unassigned.length+'</span>'
-        +'<div class="cd-band-note">Signed up, but not on any project. Give them access from a project\u2019s contact sheet \u2014 or if you were not expecting them, treat it as someone who found the sign-up page.</div>'
+        +(open
+            ? '<div class="cd-band-note">Signed up, but not on any project. Give them access from a project\u2019s contact sheet \u2014 or if you were not expecting them, treat it as someone who found the sign-up page.</div>'
+            : '<div class="cd-band-note">Signed up, but not on any project. '+(q?'':'Click to see them.')+'</div>')
       +'</td></tr>'
-      + unassigned.slice().sort(byName).map(rowHtml).join('')
+      +(open ? unassigned.slice().sort(byName).map(rowHtml).join('') : '')
+      +'</tbody></table></div>'
     : '';
-  el.innerHTML='<div class="cd-card"><table><thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email</th><th>Phone</th>'
-    +(CD_UNLOCKED?'<th class="nw" style="text-align:right;">Actions</th>':'')+'</tr></thead><tbody>'
-    +unassignedRows
+  el.innerHTML=unassignedCard
+    +'<div class="cd-card"><table>'+head+'<tbody>'
     +letters.map(L=>'<tr class="cd-band"><td colspan="'+NCOL+'"><span class="cdb-key"'+(mode!=='name'?' style="font-size:15px;"':'')+'>'+esc(L)+'</span><span class="cdb-n">'+groups[L].length+'</span></td></tr>'+groups[L].map(rowHtml).join('')).join('')
     +'</tbody></table></div>';
 }

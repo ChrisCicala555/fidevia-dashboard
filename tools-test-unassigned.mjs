@@ -23,7 +23,9 @@ ok(/list = list\.filter\(c=>!unassignedSubs\.has\(c\.sub\)\)/.test(rd),
    'they are lifted out of the A-Z rather than appearing twice');
 ok(/Unassigned accounts/.test(rd), 'the band is labelled');
 ok(/cd-band-warn/.test(rd) && /\.cd-band-warn td\{background:#FBF3E7/.test(html), 'and looks different');
-ok(/Pinned above the A-Z/.test(rd), 'it sits at the top where it will be seen');
+ok(/Its own table above the A-Z/.test(rd), 'it sits at the top where it will be seen');
+ok(/shut unless asked for/.test(rd),
+   'closed, because the count is what wanted noticing and the names can wait');
 ok(rd.indexOf('unassignedRows') < rd.indexOf('letters.map'), 'and is emitted first');
 ok(/found the sign-up page/.test(rd), 'the note names the unexpected case, not just the invited one');
 ok(/unassigned\.length\?\(' · '\+unassigned\.length\+' unassigned'\)/.test(rd),
