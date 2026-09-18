@@ -5961,7 +5961,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 12:22';
+const BUILD_STAMP='2026-09-18 12:46';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
@@ -7652,8 +7652,11 @@ async function renderScheduleUploads(){
   const readsAll = isFidevia || DESIGN_ROLES.includes(viewingAsRole()) || isOwnerView();
   const myCo = readsAll ? '' : String((currentProject&&currentProject.userCompany)||'').trim();
   if(!readsAll && !myCo){ panel.style.display='none'; return; }
-  let cos=((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
-    .filter(c=>c.active!==false).map(c=>String(c.name||'').trim()).filter(Boolean);
+  // Once per firm. A firm on two primes was asked twice and answered twice,
+  // with the same files under both — the server matches a schedule to a company
+  // name, so there was never a second answer to give.
+  let cos=wfScopeFirms(((currentProject&&currentProject.config&&currentProject.config.contractors)||[])
+    .filter(c=>c.active!==false).map(c=>c.name));
   if(!readsAll){
     const norm=x=>String(x||'').trim().toLowerCase();
     cos=cos.filter(c=>norm(c)===norm(myCo));
@@ -7727,6 +7730,9 @@ async function renderScheduleUploads(){
       +'<span class="thread-arrow" style="'+(open?'transform:rotate(90deg);':'')+'">&#9656;</span>'
       +'<span style="flex:0 0 8px;height:8px;border-radius:50%;background:'+(ok?'#3b6d11':'var(--danger)')+';"></span>'
       +'<strong>'+esc(r.company)+'</strong>'
+      +(function(){ const cl=contractLabelFor(r.company);
+          return cl ? '<span style="font-size:12px;color:var(--olive-700);font-weight:600;white-space:nowrap;">'
+                        +esc(cl)+'</span>' : ''; })()
       +'<span class="sched-state" style="color:'+(ok?'var(--muted)':'var(--danger)')+';">'
         +esc(label[r.state]||r.state)+'</span>'
       +'<span class="sched-group-meta">'+esc(meta)+'</span>'
@@ -13784,6 +13790,13 @@ function tradeLabelOf(c){
   if(!/^(other|oc)$/i.test(r)) return r.toUpperCase();
   const lab=String((c&&c.label)||'').trim();
   return lab ? 'OC — '+lab : 'OC';
+}
+// The contracts one firm holds, as a label. A schedule is filed per COMPANY —
+// one folder, matched on the name in the filename — so a firm holding two
+// primes posts one programme covering both, and the panel says which two rather
+// than drawing the same row twice.
+function contractLabelFor(name){
+  return linesForCompany(name).map(tradeLabelOf).filter(Boolean).join(' \u00b7 ');
 }
 function linesForCompany(name){
   const n=coNorm(name);
