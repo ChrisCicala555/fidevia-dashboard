@@ -130,6 +130,34 @@ ok(P.run("nextItemNumber('co','Garden Spot Mechanical','pco','MC')")==='PCO-MC-0
 ok(P.run("nextItemNumber('co','Garden Spot Mechanical','pco','PC')")==='PCO-PC-001',
    'each with its own sequence');
 
+console.log('A number already in use is never issued twice');
+// A row filed before the contract column existed carries no contract, so the
+// run for a contract could not see it - and reissued the number it holds. Two
+// rows answering to PA-GC-001, and every later write refusing because more
+// than one matched. A gap in a sequence is a cosmetic problem; two records
+// with one name is not.
+P.run(`allData.pay_apps=[{'App #':'PA-GC-001_Garden Spot Mechanical',
+  'Contractor':'Garden Spot Mechanical','Trade':''}];`);
+ok(P.run("nextItemNumber('pay_apps','Garden Spot Mechanical',null,'MC')").indexOf('PA-MC-002')===0,
+   'an untagged row still occupies its number');
+ok(P.run("nextItemNumber('pay_apps','Garden Spot Mechanical',null,'PC')").indexOf('PA-PC-002')===0,
+   'on every contract, because nothing says which one it was');
+P.run(`allData.pay_apps=[
+  {'App #':'PA-MC-001_Garden Spot Mechanical','Contractor':'Garden Spot Mechanical','Trade':'MC'},
+  {'App #':'PA-MC-002_Garden Spot Mechanical','Contractor':'Garden Spot Mechanical','Trade':'MC'}];`);
+ok(P.run("nextItemNumber('pay_apps','Garden Spot Mechanical',null,'MC')").indexOf('PA-MC-003')===0,
+   'once they are tagged the run counts on normally');
+ok(P.run("nextItemNumber('pay_apps','Garden Spot Mechanical',null,'PC')").indexOf('PA-PC-001')===0,
+   'and the other contract is not dragged along by it');
+{
+  // Whatever it issues must not already be in the log.
+  const rows=JSON.parse(P.run("JSON.stringify(allData.pay_apps)")).map(r=>r['App #']);
+  ['MC','PC'].forEach(tr=>{
+    const nxt=P.run(`nextItemNumber('pay_apps','Garden Spot Mechanical',null,'${tr}')`);
+    ok(rows.indexOf(nxt)<0, tr+' is issued a number no row already holds: '+nxt);
+  });
+}
+
 console.log('A form with nothing chosen is refused');
 P.run(`EXTERNAL=true; currentProject.userCompany='Garden Spot Mechanical'; openModal('co');`);
 {

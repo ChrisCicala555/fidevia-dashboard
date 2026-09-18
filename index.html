@@ -4819,10 +4819,16 @@ function nextItemNumberByCompany(label, idField, comp, trade){
   const t=String(trade||'').trim().toUpperCase();
   rows.forEach(r=>{
     if(rowCompany(r).trim().toLowerCase()!==c) return;
-    // One firm, two contracts: only the run for THIS contract counts. Reading
-    // both would make the plumbing application follow the mechanical one and
-    // skip a number on each.
-    if(t && String(r['Trade']||'').trim().toUpperCase()!==t) return;
+    // One firm, two contracts: the run for THIS contract, plus any row that
+    // does not say which contract it is on. Reading only the matching trade
+    // made a row filed before the column existed invisible to the run, so the
+    // number it holds was issued a second time — two rows answering to
+    // PA-GC-001, and every later write refusing because more than one matched.
+    //
+    // A number skipped is a gap in a sequence. A number reissued is two records
+    // with one name, and nothing can tell them apart afterwards.
+    const rt=String(r['Trade']||'').trim().toUpperCase();
+    if(t && rt && rt!==t) return;
     const v=String(r[idField]||'');
     let m=v.match(/-(\d+)_/) || v.match(/^\s*(?:no\.?\s*|#\s*|PA[-\s]?(?:[A-Z]{2,5}-)?)?(\d+)\s*$/i);
     if(m){ const n=parseInt(m[1],10); if(n>max) max=n; }
@@ -5916,7 +5922,7 @@ function telLink(v, cls){
 }
 // Bumped with every push. If the footer shows an older stamp than the change
 // you are looking for, the page is cached rather than the change being absent.
-const BUILD_STAMP='2026-09-18 02:20';
+const BUILD_STAMP='2026-09-18 02:39';
 function showBuildStamp(){
   const el=document.getElementById('sf-build');
   if(el) el.textContent='build '+BUILD_STAMP;
