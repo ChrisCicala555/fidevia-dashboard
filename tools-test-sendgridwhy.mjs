@@ -8,8 +8,11 @@ let n=0, bad=0;
 const ok=(c,m)=>{ n++; if(!c){ bad++; console.error('  FAIL:',m); } };
 
 console.log('It says what to go and change');
+ok(/billing/i.test(sendGridWhy(401)), '401 names billing, and names it first');
+ok(sendGridWhy(401).indexOf('billing') < sendGridWhy(401).indexOf('revoked'),
+   'ahead of the key, because that is the one that cost hours');
 ok(/revoked or regenerated/.test(sendGridWhy(401)) && /SENDGRID_KEY/.test(sendGridWhy(401)),
-   '401 names both causes, because the log cannot tell them apart');
+   'and still names the other causes, because the log cannot tell them apart');
 ok(/Mail Send permission/.test(sendGridWhy(403)), '403 points at the key’s permission');
 ok(/attachment/.test(sendGridWhy(413)), '413 points at the attachment');
 ok(/again shortly/.test(sendGridWhy(429)), '429 says it will pass');
